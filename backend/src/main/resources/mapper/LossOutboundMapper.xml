@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.LossOutboundMapper">
+
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.LossOutbound">
+        <id column="id" property="id"/>
+        <result column="loss_no" property="lossNo"/>
+        <result column="product_id" property="productId"/>
+        <result column="product_name" property="productName"/>
+        <result column="loss_quantity" property="lossQuantity"/>
+        <result column="unit" property="unit"/>
+        <result column="loss_reason" property="lossReason"/>
+        <result column="warehouse_id" property="warehouseId"/>
+        <result column="warehouse_name" property="warehouseName"/>
+        <result column="loss_date" property="lossDate"/>
+        <result column="loss_amount" property="lossAmount"/>
+        <result column="status" property="status"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="approver_id" property="approverId"/>
+        <result column="approver_name" property="approverName"/>
+        <result column="approve_time" property="approveTime"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createdAt"/>
+        <result column="update_time" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, loss_no, product_id, product_name, loss_quantity, unit, loss_reason,
+        warehouse_id, warehouse_name, loss_date, loss_amount, status, operator_id,
+        operator_name, approver_id, approver_name, approve_time, remark, create_time, update_time, deleted
+    </sql>
+
+    <select id="selectPageByCondition" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM loss_outbound
+        WHERE deleted = 0
+        <if test="lossNo != null and lossNo != ''">
+            AND loss_no LIKE CONCAT('%', #{lossNo}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND loss_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND loss_date &lt;= #{endDate}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

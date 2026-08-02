@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.HardwareConfigVersionMapper">
+    
+    <!-- 根据硬件配置ID获取版本列表 -->
+    <select id="selectVersionsByHardwareId" resultType="com.foodtraceability.entity.HardwareConfigVersion">
+        SELECT
+            id,
+            hardware_id AS hardwareId,
+            device_type AS deviceType,
+            device_name AS deviceName,
+            device_model AS deviceModel,
+            connection_type AS connectionType,
+            ip_address AS ipAddress,
+            port,
+            baud_rate AS baudRate,
+            api_key AS apiKey,
+            remark,
+            status,
+            config_json AS configJson,
+            store_id AS storeId,
+            version,
+            created_by AS createdBy,
+            create_time AS createdAt,
+            version_desc AS versionDesc
+        FROM hardware_config_version
+        WHERE hardware_id = #{hardwareId}
+        ORDER BY version DESC
+    </select>
+    
+    <!-- 获取指定硬件配置的最新版本号 -->
+    <select id="selectMaxVersionByHardwareId" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(version), 0) AS max_version
+        FROM hardware_config_version
+        WHERE hardware_id = #{hardwareId}
+    </select>
+    
+    <!-- 根据ID获取版本详情 -->
+    <select id="selectVersionById" resultType="com.foodtraceability.entity.HardwareConfigVersion">
+        SELECT
+            id,
+            hardware_id AS hardwareId,
+            device_type AS deviceType,
+            device_name AS deviceName,
+            device_model AS deviceModel,
+            connection_type AS connectionType,
+            ip_address AS ipAddress,
+            port,
+            baud_rate AS baudRate,
+            api_key AS apiKey,
+            remark,
+            status,
+            config_json AS configJson,
+            store_id AS storeId,
+            version,
+            created_by AS createdBy,
+            create_time AS createdAt,
+            version_desc AS versionDesc
+        FROM hardware_config_version
+        WHERE id = #{id}
+    </select>
+</mapper>

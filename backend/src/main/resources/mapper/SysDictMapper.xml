@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.SysDictMapper">
+
+    <!-- 分页查询字典类型列表 -->
+    <select id="selectDictPage" resultType="com.foodtraceability.entity.SysDict">
+        SELECT * FROM sys_dict
+        <where>
+            deleted = 0
+            <if test="dictName != null and dictName != ''">
+                AND dict_name ILIKE CONCAT('%', #{dictName}, '%')
+            </if>
+            <if test="dictCode != null and dictCode != ''">
+                AND dict_code ILIKE CONCAT('%', #{dictCode}, '%')
+            </if>
+            <if test="dictGroup != null and dictGroup != ''">
+                AND dict_group = #{dictGroup}
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY sort_order ASC, create_time DESC
+    </select>
+
+</mapper>

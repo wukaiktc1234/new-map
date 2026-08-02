@@ -1,0 +1,74 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">会员中心</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="vip-header">
+    <view class="vip-card {{vipInfo.level}}">
+      <view class="vip-content">
+        <view class="vip-level">{{vipInfo.levelName}}</view>
+        <view class="vip-name">{{isLoggedIn ? userInfo.name : '未登录'}}</view>
+        <view class="vip-progress">
+          <view class="vip-progress-bar" style="width: {{vipInfo.progress}}%;"></view>
+        </view>
+        <view class="vip-progress-text">再消费{{vipInfo.needAmount}}元升级至{{vipInfo.nextLevelName}}</view>
+      </view>
+    </view>
+  </view>
+  
+  <view class="privilege-section">
+    <view class="section-title">会员特权</view>
+    <view class="privilege-grid">
+      <view class="privilege-item" bindtap="goToPrivilege" data-type="discount">
+        <view class="privilege-icon">
+          <view class="icon-discount"></view>
+        </view>
+        <view class="privilege-name">专属折扣</view>
+      </view>
+      <view class="privilege-item" bindtap="goToPrivilege" data-type="points">
+        <view class="privilege-icon">
+          <view class="icon-points"></view>
+        </view>
+        <view class="privilege-name">积分加倍</view>
+      </view>
+      <view class="privilege-item" bindtap="goToPrivilege" data-type="birthday">
+        <view class="privilege-icon">
+          <view class="icon-birthday"></view>
+        </view>
+        <view class="privilege-name">生日礼遇</view>
+      </view>
+      <view class="privilege-item" bindtap="goToPrivilege" data-type="priority">
+        <view class="privilege-icon">
+          <view class="icon-priority"></view>
+        </view>
+        <view class="privilege-name">优先排队</view>
+      </view>
+    </view>
+  </view>
+  
+  <view class="task-section">
+    <view class="section-title">会员任务</view>
+    <view class="task-card" wx:for="{{tasks}}" wx:key="id">
+      <view class="task-icon">
+        <view class="icon-{{item.icon}}"></view>
+      </view>
+      <view class="task-info">
+        <view class="task-name">{{item.name}}</view>
+        <view class="task-reward">+{{item.reward}}积分</view>
+      </view>
+      <view class="task-btn" bindtap="doTask" data-id="{{item.id}}">{{item.btnText}}</view>
+    </view>
+  </view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+</view>

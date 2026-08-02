@@ -1,0 +1,210 @@
+# ============================================================
+# 食品溯源系统 - 生产环境配置 (PostgreSQL)
+# ============================================================
+# 数据库: PostgreSQL 18
+# 缓存: Redis (哨兵集群)
+# 消息队列: RabbitMQ (镜像队列)
+# JDK: 21
+# ============================================================
+
+app:
+  security:
+    enabled: true
+  # 调度任务总开关
+  # false: 禁用所有 @Scheduled 注解任务（开发环境推荐，避免 JVM 频繁崩溃）
+  # true:  启用调度任务（生产环境必须为 true）
+  # 背景: Java 21 + Windows 平台虚拟线程稳定性问题（exit code -1073741819）
+  # 生产部署（Linux）应设为 true 或删除此配置（默认 true）
+  scheduling:
+    enabled: false
+  encryption:
+    # 生产环境必须通过 APP_ENCRYPTION_KEY 环境变量注入强随机密钥（无默认值，缺失则启动失败）
+    # 生成命令: openssl rand -base64 32
+    key: ${APP_ENCRYPTION_KEY}
+
+# 系统配置加密密钥（生产环境必须通过 CONFIG_ENCRYPT_KEY 环境变量注入，无默认值）
+config:
+  encrypt:
+    key: ${CONFIG_ENCRYPT_KEY}
+
+# AES 加密密钥（生产环境必须通过 AES_SECRET_KEY 环境变量注入，无默认值）
+aes:
+  secret:
+    key: ${AES_SECRET_KEY}
+
+# 百度智能云 TTS 配置（生产环境如启用，必须通过环境变量注入）
+baidu:
+  tts:
+    api-key: ${BAIDU_TTS_API_KEY:}
+    api-secret: ${BAIDU_TTS_API_SECRET:}
+
+spring:
+  main:
+    allow-circular-references: true
+  datasource:
+    # PostgreSQL 连接配置
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB_NAME:food_traceability}?currentSchema=public&useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useServerPrepStmts=true&sslmode=disable
+    username: ${PG_USERNAME:postgres}
+    # 生产环境必须通过 PG_PASSWORD 环境变量注入强密码（无默认值，缺失则启动失败）
+    password: ${PG_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      pool-name: PgProdPool
+      minimum-idle: 5
+      maximum-pool-size: 25
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      idle-timeout: 300000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+
+  mybatis-plus:
+    mapper-locations: classpath:mapper/**/*.xml
+    type-aliases-package: com.foodtraceability.entity
+    configuration:
+      map-underscore-to-camel-case: true
+      lazy-loading-enabled: true
+      aggressive-lazy-loading: false
+      local-cache-scope: STATEMENT
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      banner: false
+      db-config:
+        id-type: ASSIGN_ID
+        field-strategy: NOT_EMPTY
+
+  # Flyway 数据库迁移（生产环境启用，与 DatabaseInitConfig 协同）
+  # baseline-on-migrate 允许在已有数据库上启用 Flyway（首次启用时基线版本设为 0）
+  # clean-disabled 防止误删生产数据
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+    # 允许 out-of-order：2026-07-19 新增的 003~007 迁移文件需要在已有数据库上补执行；
+    # 这些迁移均为幂等 DDL（IF NOT EXISTS）+ 回填，启用后可安全补应用。
+    out-of-order: true
+    clean-disabled: true
+    # 消息模板等迁移脚本中包含 ${userName} 等占位符，需禁用 Flyway 占位符替换
+    placeholder-replacement: false
+
+  web:
+    resources:
+      add-mappings: false
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write_dates_as_timestamps: false
+      write-dates-as-timestamps: false
+    deserialization:
+      fail_on_unknown_properties: false
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+  mail:
+    # 生产环境 SMTP 服务器（默认使用示例域名，必须通过 MAIL_HOST 环境变量指定实际 SMTP 服务器）
+    # 注意: smtp.gmail.com 在中国大陆无法直连，请使用国内 SMTP 服务
+    host: ${MAIL_HOST:smtp.example.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+management:
+  tracing:
+    sampling:
+      probability: 0.1
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+    base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: when-authorized
+      probes:
+        enabled: true
+    defaults:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+jwt:
+  # 生产环境必须通过 JWT_SECRET 环境变量注入强随机密钥（≥64字节，无默认值，缺失则启动失败）
+  # 生成命令: openssl rand -base64 64
+  secret: ${JWT_SECRET}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:28800000}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}
+  refresh-window: ${JWT_REFRESH_WINDOW:3600000}
+  header: Authorization
+  prefix: Bearer
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD:}
+    iv-generator-classname: org.jasypt.iv.NoIvGenerator
+
+logging:
+  level:
+    root: WARN
+    com.foodtraceability: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.mybatis: INFO
+    org.apache.catalina: WARN
+  file:
+    name: ./logs/food-traceability.log
+    max-size: 200MB
+    max-history: 30
+    total-size-cap: 2GB
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  config: classpath:logback-spring.xml
+
+server:
+  port: 8081
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE_PATH:}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
+    key-alias: ${SSL_KEY_ALIAS:}
+    address: 0.0.0.0
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
+      timeout: 1800
+    context-path: /api
+  tomcat:
+    uri-encoding: UTF-8
+    max-connections: 16384
+    accept-count: 200
+    threads:
+      max: 400
+      min-spare: 20
+    connection-timeout: 15000
+    max-http-form-post-size: 52428800
+  headers:
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: DENY
+    X-XSS-Protection: 1; mode=block
+    Strict-Transport-Security: max-age=31536000; includeSubDomains

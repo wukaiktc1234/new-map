@@ -1,0 +1,401 @@
+// ========================================
+//  ITCSS Layer 2: Generic — 基础重置与全局规则
+//  View Transition 动画、滚动条、字体、选择、标签、动画控制
+// ========================================
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+  animation: fade-out 0.3s ease;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: var(--fts-font-size-base);
+  line-height: var(--fts-line-height-normal);
+  color: var(--fts-text-primary);
+  background-color: var(--fts-bg-page);
+  /* body始终预留滚动条空间，防止弹窗打开时内容偏移 */
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+
+  /* Element Plus打开弹窗时会给body添加overflow:hidden和padding-right */
+  /* 覆盖：隐藏滚动但保留gutter空间，防止内容偏移 */
+  &.el-popup-parent--hidden {
+    overflow: hidden !important;
+    scrollbar-gutter: stable !important;
+    padding-right: 0 !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--fts-border-hover, rgba(0, 0, 0, 0.15));
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fts-text-tertiary, rgba(0, 0, 0, 0.25));
+}
+
+/* Firefox滚动条美化 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--fts-border-hover, rgba(0, 0, 0, 0.15)) transparent;
+}
+
+::selection {
+  background: var(--fts-primary-light);
+  color: var(--fts-primary);
+}
+
+/* 表格悬停高亮控制 */
+html.table-no-hover .el-table__body-wrapper .el-table__body tbody tr:hover > td {
+  background-color: var(--el-table-tr-bg-color);
+}
+
+html.table-no-hover .el-table__body-wrapper .el-table__body tbody tr:hover > td.el-table-fixed-column--right {
+  background-color: var(--el-table-tr-bg-color);
+}
+
+html.table-no-hover .el-table__body-wrapper .el-table__body tbody tr.el-table__row--striped:hover > td {
+  background-color: var(--el-table-row-striped-bg-color);
+}
+
+html.font-system body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+html.font-serif body {
+  font-family: 'Noto Serif SC', 'SimSun', 'STSong', 'FangSong', serif;
+}
+
+html.font-mono body {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+html.anim-full * {
+  transition-duration: var(--fts-duration-normal);
+}
+
+/* 表格整体排除过渡动画：列宽/布局变化不应产生"平铺展开"效果 */
+/* 切换标签页时表格重载导致列宽调整，wrapper+cell 全树禁用过渡 */
+html.anim-full .el-table,
+html.anim-full .el-table * {
+  transition-duration: 0s;
+}
+
+html.anim-reduced * {
+  transition-duration: 50ms !important;
+  animation-duration: 50ms !important;
+}
+
+html.anim-none * {
+  transition: none !important;
+  animation: none !important;
+}
+
+html.anim-reduced .el-loading-spinner,
+html.anim-none .el-loading-spinner {
+  animation: none !important;
+}
+
+html.no-transition * {
+  transition: none !important;
+}
+
+html.theme-switching * {
+  transition: none !important;
+}
+
+html.compact-mode {
+  --fts-space-1: 2px;
+  --fts-space-2: 4px;
+  --fts-space-3: 6px;
+  --fts-space-4: 8px;
+  --fts-space-5: 12px;
+  --fts-space-6: 16px;
+  --fts-space-7: 20px;
+  --fts-space-8: 24px;
+  --fts-space-10: 32px;
+  --fts-space-12: 40px;
+
+  --fts-font-size-xs: 11px;
+  --fts-font-size-sm: 12px;
+  --fts-font-size-base: 13px;
+  --fts-font-size-lg: 14px;
+  --fts-font-size-xl: 16px;
+  --fts-font-size-2xl: 18px;
+  --fts-font-size-3xl: 20px;
+}
+
+html.table-density-compact {
+  .el-table {
+    .el-table__cell {
+      padding: 4px 8px !important;
+    }
+  }
+}
+
+html.table-density-comfortable {
+  .el-table {
+    .el-table__cell {
+      padding: 16px 12px !important;
+    }
+  }
+}
+
+html.table-border-none {
+  .el-table {
+    --el-table-border-color: transparent;
+
+    &::before,
+    &::after {
+      display: none;
+    }
+
+    .el-table__cell {
+      border-bottom: none !important;
+    }
+  }
+}
+
+html.table-border-full {
+  .el-table {
+    --el-table-border-color: var(--fts-border-primary);
+    border: 1px solid var(--fts-border-primary);
+    border-radius: var(--fts-radius-md);
+
+    .el-table__cell {
+      border-right: 1px solid var(--fts-border-primary) !important;
+    }
+  }
+}
+
+html.table-no-hover {
+  .el-table {
+    --el-table-row-hover-bg-color: transparent;
+  }
+}
+
+.el-card,
+.el-dialog,
+.el-drawer,
+.el-message-box,
+.el-dropdown__menu,
+.el-select-dropdown,
+.el-popover,
+.el-date-picker,
+.el-date-range-picker,
+.el-autocomplete-suggestion,
+.el-color-picker__panel,
+.el-cascader__dropdown {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) !important;
+}
+
+.el-button {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) !important;
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) !important;
+}
+
+.el-tag {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-sm)) !important;
+
+  &.el-tag--success {
+    color: #389e0d !important;
+    --el-tag-bg-color: #f6ffed !important;
+    --el-tag-border-color: #b7eb8f !important;
+    --el-tag-text-color: #389e0d !important;
+    font-weight: var(--fts-font-weight-medium, 500);
+  }
+
+  &.el-tag--warning {
+    color: #d48806 !important;
+    --el-tag-bg-color: #fffbe6 !important;
+    --el-tag-border-color: #ffe58f !important;
+    --el-tag-text-color: #d48806 !important;
+    font-weight: var(--fts-font-weight-medium, 600);
+  }
+
+  &.el-tag--danger {
+    color: #cf1322 !important;
+    --el-tag-bg-color: #fff2f0 !important;
+    --el-tag-border-color: #ffccc7 !important;
+    --el-tag-text-color: #cf1322 !important;
+    font-weight: var(--fts-font-weight-medium, 500);
+  }
+
+  &.el-tag--info {
+    color: #595959 !important;
+    --el-tag-bg-color: #fafafa !important;
+    --el-tag-border-color: #d9d9d9 !important;
+    --el-tag-text-color: #595959 !important;
+    font-weight: var(--fts-font-weight-medium, 500);
+  }
+
+  &.el-tag--primary {
+    color: #1677ff !important;
+    --el-tag-bg-color: #e6f4ff !important;
+    --el-tag-border-color: #91caff !important;
+    --el-tag-text-color: #1677ff !important;
+    font-weight: var(--fts-font-weight-medium, 500);
+  }
+
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.el-pagination .el-pager li {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-sm)) !important;
+}
+
+html.color-weak {
+  --fts-text-primary: #000000;
+  --fts-text-secondary: #333333;
+  --fts-text-tertiary: #666666;
+
+  --fts-border-primary: #888888;
+  --fts-border-secondary: #aaaaaa;
+  --fts-border-hover: #666666;
+
+  --fts-bg-page: #ffffff;
+  --fts-bg-card: #ffffff;
+  --fts-bg-hover: #e8f4fd;
+
+  --fts-primary: #0052cc;
+  --fts-primary-rgb: 0, 82, 204;
+  --fts-primary-hover: #0066ff;
+  --fts-success: #008000;
+  --fts-warning: #cc7a00;
+  --fts-error: #cc0000;
+}
+
+html.dark.color-weak {
+  --fts-text-primary: #ffffff;
+  --fts-text-secondary: #dddddd;
+  --fts-text-tertiary: #bbbbbb;
+
+  --fts-border-primary: #777777;
+  --fts-border-secondary: #555555;
+  --fts-border-hover: #999999;
+
+  --fts-bg-page: #000000;
+  --fts-bg-card: #1a1a1a;
+  --fts-bg-hover: #2d3748;
+
+  --fts-primary: #4d94ff;
+  --fts-primary-rgb: 77, 148, 255;
+  --fts-primary-hover: #66a3ff;
+  --fts-success: #4dff4d;
+  --fts-warning: #ffaa33;
+  --fts-error: #ff4d4d;
+}
+
+.el-button--primary.is-link,
+.el-button--primary.el-button--link,
+.el-button--primary.is-text {
+  color: var(--fts-primary, #409eff) !important;
+  font-weight: var(--fts-font-weight-medium, 500);
+  transition: color 0.2s ease, background-color 0.2s ease;
+
+  &:hover,
+  &:focus {
+    color: var(--fts-primary-hover, #66b1ff) !important;
+    background-color: rgba(64, 158, 255, 0.08) !important;
+  }
+
+  &:active {
+    color: var(--fts-primary-active, #8cc5ff) !important;
+    background-color: rgba(64, 158, 255, 0.15) !important;
+  }
+}
+
+.el-button--danger.is-link,
+.el-button--danger.el-button--link,
+.el-button--danger.is-text {
+  color: var(--fts-error, #f56c6c) !important;
+  font-weight: var(--fts-font-weight-medium, 500);
+  transition: color 0.2s ease, background-color 0.2s ease;
+
+  &:hover,
+  &:focus {
+    color: #f89898 !important;
+    background-color: rgba(245, 108, 108, 0.08) !important;
+  }
+
+  &:active {
+    color: #fab6b6 !important;
+    background-color: rgba(245, 108, 108, 0.15) !important;
+  }
+}
+
+// ==================== 弹窗打开时防止页面抖动（统一在此处管理） ====================
+// Element Plus弹窗会给body添加 .el-popup-parent--hidden class
+// Element Plus CSS 中定义了 .el-popup-parent--hidden { overflow: hidden }
+// 同时 JS 中 useLockscreen 会设置 body.style.width = calc(100% - 滚动条宽度px)
+// 两者共同导致：滚动条消失 + body宽度缩小 → 内容左移 → 画面抖动
+//
+// Element Plus弹窗打开时的滚动条处理
+// body.el-popup-parent--hidden 已在上方body规则中处理
+// 此处不再重复定义，避免规则冲突
+
+/* 对话框滚动策略：
+ * 修复方案已移至 _element-overrides.scss
+ * 核心思路：.el-dialog__body 使用 overflow:visible 不裁剪 popper，
+ * .el-overlay-dialog 允许滚动，header/footer 使用 position:sticky
+ * 详见 _element-overrides.scss 中的注释说明
+ */
+
+/* ECharts tooltip 动画禁用 - 防止首次显示时从右上角滑到鼠标位置 */
+div[id^="ec_tooltip"] {
+  transition: none !important;
+  animation: none !important;
+}

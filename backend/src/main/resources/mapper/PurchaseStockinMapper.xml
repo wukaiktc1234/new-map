@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.PurchaseStockinMapper">
+    
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.PurchaseStockin">
+        <id property="id" column="id" />
+        <result property="stockinNo" column="stockin_no" />
+        <result property="orderNo" column="order_no" />
+        <result property="supplierId" column="supplier_id" />
+        <result property="supplierName" column="supplier_name" />
+        <result property="productId" column="product_id" />
+        <result property="productName" column="product_name" />
+        <result property="productCode" column="product_code" />
+        <result property="quantity" column="quantity" />
+        <result property="unit" column="unit" />
+        <result property="unitPrice" column="unit_price" />
+        <result property="totalAmount" column="total_amount" />
+        <result property="warehouseLocation" column="warehouse_location" />
+        <result property="qualityCheck" column="quality_check" />
+        <result property="stockinDate" column="stockin_date" />
+        <result property="batchNo" column="batch_no" />
+        <result property="inventoryCode" column="inventory_code" />
+        <result property="status" column="status" />
+        <result property="remark" column="remark" />
+        <result property="storeId" column="store_id" />
+        <result property="createdBy" column="created_by" />
+        <result property="updatedBy" column="updated_by" />
+    </resultMap>
+    
+    <select id="selectPurchaseStockinPage" resultMap="BaseResultMap">
+        SELECT * FROM purchase_stockin
+        WHERE deleted = 0
+        <if test="stockinNo != null and stockinNo != ''">
+            AND stockin_no LIKE CONCAT('%', #{stockinNo}, '%')
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="supplierId != null">
+            AND supplier_id = #{supplierId}
+        </if>
+        <if test="productName != null and productName != ''">
+            AND product_name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startDate != null">
+            AND stockin_date >= #{startDate, jdbcType=TIMESTAMP}
+        </if>
+        <if test="endDate != null">
+            AND stockin_date &lt;= #{endDate, jdbcType=TIMESTAMP}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+</mapper>

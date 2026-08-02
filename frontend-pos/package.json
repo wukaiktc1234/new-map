@@ -1,0 +1,29 @@
+{
+  "name": "frontend-pos",
+  "version": "1.0.0",
+  "description": "收银终端 - 食品溯源系统",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3001",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@stomp/stompjs": "^7.0.0",
+    "axios": "^1.6.2",
+    "element-plus": "^2.13.2",
+    "html5-qrcode": "^2.3.8",
+    "pinia": "^2.1.7",
+    "qrcode.vue": "^3.8.0",
+    "sockjs-client": "^1.5.1",
+    "vue": "^3.3.8",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0",
+    "vue-tsc": "^3.2.6"
+  }
+}

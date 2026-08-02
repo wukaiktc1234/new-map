@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.TrainingCertificateMapper">
+
+    <!-- 分页查询证书（支持课程、员工、状态、关键字筛选） -->
+    <select id="selectCertificatePage" resultType="com.foodtraceability.entity.TrainingCertificate">
+        SELECT * FROM training_certificate
+        WHERE deleted = 0
+        <if test="courseId != null and courseId != ''">
+            AND course_id = #{courseId}
+        </if>
+        <if test="employeeId != null and employeeId != ''">
+            AND employee_id = #{employeeId}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (LOWER(employee_name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                 OR LOWER(course_title) LIKE CONCAT('%', LOWER(#{keyword}), '%'))
+        </if>
+        ORDER BY issue_date DESC
+    </select>
+
+    <!-- 统计即将到期证书数量 -->
+    <select id="countExpiringCertificates" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM training_certificate
+        WHERE deleted = 0 AND status = 'expiring'
+    </select>
+
+</mapper>

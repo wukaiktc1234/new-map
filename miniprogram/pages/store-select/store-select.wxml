@@ -1,0 +1,46 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">选择门店</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="store-list">
+    <view class="store-card {{item.isCurrent ? 'current' : ''}}" 
+          wx:for="{{stores}}" 
+          wx:key="id"
+          bindtap="selectStore"
+          data-id="{{item.id}}">
+      <view class="store-header">
+        <view class="store-name">{{item.name}}</view>
+        <view class="store-status {{item.status === '营业中' ? 'open' : 'closed'}}">{{item.status}}</view>
+      </view>
+      <view class="store-address">
+        <view class="address-icon"></view>
+        <text>{{item.address}}</text>
+      </view>
+      <view class="store-info-row">
+        <view class="store-distance">
+          <view class="distance-icon"></view>
+          <text>距您{{item.distance}}m</text>
+        </view>
+        <view class="store-hours">
+          <view class="hours-icon"></view>
+          <text>{{item.businessHours}}</text>
+        </view>
+      </view>
+      <view class="current-badge" wx:if="{{item.isCurrent}}">
+        <view class="check-icon"></view>
+        <text>当前门店</text>
+      </view>
+    </view>
+  </view>
+</view>

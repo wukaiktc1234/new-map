@@ -1,0 +1,167 @@
+@import "/styles/design-system.wxss";
+
+.page-container {
+  min-height: 100vh;
+  background: var(--bg-cream);
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fixed-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-card);
+}
+
+.header-placeholder {
+  flex-shrink: 0;
+}
+
+.status-bar {
+  background: var(--bg-card);
+}
+
+.header-bar {
+  background: var(--bg-card);
+  padding: 24rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid var(--border-light);
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+}
+
+.back-btn {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  width: 44rpx;
+  height: 44rpx;
+  background: var(--text-primary);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.header-center {
+  text-align: center;
+}
+
+.header-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Noto Serif SC', serif;
+}
+
+.record-list {
+  padding: 24rpx 32rpx;
+}
+
+.record-item {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+  border: 1rpx solid var(--border-light);
+}
+
+.record-item.status-used,
+.record-item.status-expired {
+  background: rgba(0, 0, 0, 0.02);
+  opacity: 0.7;
+}
+
+.record-item.status-used .record-name,
+.record-item.status-expired .record-name {
+  color: var(--text-muted);
+}
+
+.record-info {
+  flex: 1;
+}
+
+.record-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8rpx;
+}
+
+.record-date {
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
+
+.record-right {
+  text-align: right;
+}
+
+.record-points {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--accent);
+  margin-bottom: 8rpx;
+}
+
+.record-status {
+  font-size: 22rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 4rpx;
+}
+
+.status-unused {
+  background: rgba(82, 196, 26, 0.1);
+  color: #52C41A;
+}
+
+.status-used {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-muted);
+}
+
+.status-expired {
+  background: rgba(255, 77, 79, 0.1);
+  color: #FF4D4F;
+}
+
+.status-received {
+  background: rgba(201, 169, 98, 0.1);
+  color: var(--accent-gold);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100rpx 0;
+}
+
+.empty-icon {
+  width: 160rpx;
+  height: 160rpx;
+  background: var(--bg-warm);
+  border-radius: 50%;
+  margin-bottom: 32rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: var(--text-muted);
+}

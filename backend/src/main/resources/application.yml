@@ -1,0 +1,353 @@
+# ====================================================================
+# 配置说明
+# ====================================================================
+# 所有密钥/密码必须通过环境变量注入，禁止硬编码
+# 参考 backend/.env.example 文件
+# 生产环境（application-prod.yml）所有密钥均无默认值，必须强制注入
+# 开发环境此处保留 dev-only 默认值，仅用于本地启动，不可用于生产
+# ====================================================================
+app:
+  security:
+    enabled: true
+  encryption:
+    # AES加密密钥（至少16字符，生产环境必须通过 APP_ENCRYPTION_KEY 环境变量注入强随机密钥）
+    # 生成命令: openssl rand -base64 32
+    # 注意: 默认值仅用于本地开发，AesEncryptionUtil 会校验弱密钥
+    key: ${APP_ENCRYPTION_KEY:dev-only-not-for-production-use-32chars-min}
+
+# 系统配置加密密钥（SystemConfigServiceImpl 使用，加密数据库中的敏感配置）
+config:
+  encrypt:
+    key: ${CONFIG_ENCRYPT_KEY:dev-only-not-for-production-use-32chars-min}
+
+# 百度智能云 TTS 配置（密钥由后端持有，禁止前端通过请求体传入）
+baidu:
+  tts:
+    api-key: ${BAIDU_TTS_API_KEY:}
+    api-secret: ${BAIDU_TTS_API_SECRET:}
+
+file:
+  upload:
+    path: ${FILE_UPLOAD_PATH:./uploads/voucher}
+    max-size: ${FILE_UPLOAD_MAX_SIZE:10485760}
+
+spring:
+  profiles:
+    active: pg
+  main:
+    allow-circular-references: true
+    allow-bean-definition-overriding: true
+  threads:
+    virtual:
+      # Windows + JDK21 开发环境下虚拟线程存在 STATUS_ACCESS_VIOLATION 崩溃风险，先禁用
+      enabled: false
+
+  mybatis-plus:
+    mapper-locations: classpath:mapper/**/*.xml
+    type-aliases-package: com.foodtraceability.entity
+    configuration:
+      # 驼峰命名转换
+      map-underscore-to-camel-case: true
+      # 延迟加载
+      lazy-loading-enabled: true
+      aggressive-lazy-loading: false
+      # 缓存配置
+      local-cache-scope: STATEMENT
+      # 日志实现，生产环境使用SLF4J
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      banner: false
+      db-config:
+        id-type: ASSIGN_ID
+        field-strategy: NOT_EMPTY
+        logic-delete-field: deleted
+        logic-delete-value: 1
+        logic-not-delete-value: 0
+
+  # Flyway数据库迁移配置（全面启用，所有环境通过 Flyway 管理表结构与种子数据）
+  flyway:
+    enabled: true
+    
+  cache:
+    type: none
+  
+  web:
+    resources:
+      add-mappings: false
+  
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write_dates_as_timestamps: false
+      write-dates-as-timestamps: false
+    deserialization:
+      fail_on_unknown_properties: false
+  
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+  
+  mail:
+    # SMTP默认使用示例域名，生产环境必须通过 MAIL_HOST 环境变量指定实际 SMTP 服务器
+    # 注意: smtp.gmail.com 在中国大陆无法直连，请使用国内 SMTP 服务
+    host: ${MAIL_HOST:smtp.example.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  # 安全配置
+  security:
+    rate-limit:
+      enabled: true
+
+# 接口限流配置（顶层策略，供 RateLimitFilter/RateLimitInterceptor/RateLimitAspect 使用）
+# 登录/注册/短信验证码接口必须严格限流，防止暴力破解和短信轰炸
+rate-limit:
+  enabled: true
+  # 默认限流策略（按 IP+URI 维度）
+  default:
+    qps: 100    # 每秒最多 100 次
+    burst: 200  # 突发最多 200 次
+  # 特殊接口限流（覆盖默认策略）
+  paths:
+    /api/v1/auth/login:
+      qps: 5    # 每秒最多 5 次登录尝试
+      burst: 10
+    /api/v1/auth/register:
+      qps: 2    # 每秒最多 2 次注册
+      burst: 5
+    /api/v1/auth/sms:
+      qps: 1    # 短信验证码每秒最多 1 次
+      burst: 3
+
+# 链路追踪与管理配置
+management:
+  tracing:
+    sampling:
+      probability: 0.0 # 默认禁用采样，避免Zipkin连接错误
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+    enabled: false # 显式禁用Zipkin发送器
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+    mail:
+      enabled: false
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# OCR服务配置 - 双引擎架构（精简版）
+# 主引擎: PaddleOCR HTTP服务 - 准确率高，智能解析
+# 备用引擎: Pattern OCR - 正则表达式兜底
+ocr:
+  primary-engine: paddle
+  fallback-enabled: true
+  rapid:
+    enabled: false
+    onnx:
+      enabled: false
+      modelPath: ocr-models
+  pattern:
+    enabled: true
+  paddle:
+    enabled: true
+    base-url: http://localhost:8110
+    timeout: 120000
+    max-file-size: 52428800
+
+# 发票验真配置 - RPA自动化
+invoice:
+  verify:
+    rpa:
+      enabled: true
+      headless: true
+      timeout: 30
+
+# 电子凭证验真配置
+# ================================
+# 税务平台API配置说明：
+# 1. 申请接入：访问国家税务总局发票查验平台申请API接入权限
+# 2. 获取密钥：申请通过后获取app-key和app-secret
+# 3. 配置环境变量：
+#    - VERIFY_TAX_PLATFORM_APP_KEY=您的API密钥
+#    - VERIFY_TAX_PLATFORM_APP_SECRET=您的API密钥
+# 4. 未配置时系统使用本地验证模式（签名验证+数据完整性验证）
+# ================================
+verify:
+  tax-platform:
+    enabled: ${VERIFY_TAX_PLATFORM_ENABLED:true}
+    url: ${VERIFY_TAX_PLATFORM_URL:https://inv-veri.chinatax.gov.cn}
+    app-key: ${VERIFY_TAX_PLATFORM_APP_KEY:}
+    app-secret: ${VERIFY_TAX_PLATFORM_APP_SECRET:}
+    timeout: ${VERIFY_TAX_PLATFORM_TIMEOUT:30000}
+  signature:
+    enabled: ${VERIFY_SIGNATURE_ENABLED:true}
+    check-certificate-chain: ${VERIFY_CHECK_CERT_CHAIN:true}
+    check-certificate-revocation: ${VERIFY_CHECK_CERT_REVOCATION:true}
+  toolkit:
+    enabled: ${VERIFY_TOOLKIT_ENABLED:true}
+    version: V1.0
+
+# 数据备份与恢复配置
+# ================================
+# PostgreSQL数据库备份系统配置
+# 支持自动定时备份、手动备份、数据恢复等功能
+# ================================
+backup:
+  # 存储配置
+  storage:
+    path: ${BACKUP_STORAGE_PATH:./backups}  # 备份文件存储根目录
+
+  # PostgreSQL客户端工具配置（用于pg_dump/pg_restore命令）
+  pg:
+    bin:
+      path: ${BACKUP_PG_BIN_PATH:}  # PostgreSQL bin目录路径（Windows下通常需要指定，如 C:/Program Files/PostgreSQL/16/bin）
+    dump:
+      timeout: ${BACKUP_PG_DUMP_TIMEOUT:1800000}  # pg_dump超时时间（毫秒），默认30分钟
+    restore:
+      timeout: ${BACKUP_PG_RESTORE_TIMEOUT:3600000}  # pg_restore超时时间（毫秒），默认60分钟
+
+  # 自动备份调度器配置
+  auto:
+    enabled: ${BACKUP_AUTO_ENABLED:false}  # 是否启用自动定时备份（默认关闭）
+    retention-count: ${BACKUP_RETENTION_COUNT:10}  # 自动保留最近N份备份数量
+    backup-name-prefix: ${BACKUP_NAME_PREFIX:auto_backup}  # 自动备份名称前缀
+
+  # 健康检查配置
+  health:
+    max-backup-age-hours: ${BACKUP_MAX_AGE_HOURS:24}  # 备份最大允许年龄（小时），超过此时间告警
+    min-disk-space-percent: ${BACKUP_MIN_DISK_PERCENT:10.0}  # 最小磁盘可用空间百分比
+    check-recent-count: ${BACKUP_CHECK_RECENT_COUNT:10}  # 检查的最近备份数量（用于成功率统计）
+
+# JWT配置（使用环境变量）
+# ⚠️ 安全警告：禁止在配置文件中硬编码JWT密钥！
+# 生产环境必须通过环境变量传递：
+#   export JWT_SECRET=your-very-long-random-secret-key-at-least-64-bytes
+# 如果未设置环境变量，应用将启动失败并提示配置错误
+# 注意: 此处默认值仅用于本地开发，生产环境在 application-prod.yml 中无默认值
+jwt:
+  secret: ${JWT_SECRET:dev-only-not-for-production-use-this-key-must-be-at-least-64-bytes-long-for-hs512-algorithm-security}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:28800000}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}
+  refresh-window: ${JWT_REFRESH_WINDOW:3600000}
+  header: Authorization
+  prefix: Bearer
+
+# Jasypt加密配置
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD:}
+    iv-generator-classname: org.jasypt.iv.NoIvGenerator
+
+logging:
+  level:
+    root: INFO
+    com.foodtraceability: INFO
+    org.springframework.web: WARN
+    org.springframework.security: INFO
+    org.mybatis: INFO
+    org.hibernate: WARN
+    org.apache.catalina: WARN
+    org.apache.tomcat: WARN
+  file:
+    name: ./logs/food-traceability.log
+    max-size: 100MB
+    max-history: 30
+    total-size-cap: 1GB
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  config: classpath:logback-spring.xml
+
+# 服务器配置
+server:
+  port: 8081
+  ssl:
+    enabled: false
+  address: 0.0.0.0
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+    session:
+      cookie:
+        secure: false
+        http-only: true
+        same-site: lax
+      timeout: 1800
+    context-path: /api
+  tomcat:
+    uri-encoding: UTF-8
+    max-connections: 16384
+    accept-count: 200
+    threads:
+      max: 400
+      min-spare: 20
+    connection-timeout: 15000
+    max-http-form-post-size: 52428800
+    relaxed-query-chars:
+      - '['
+      - ']'
+      - '|'
+      - '{'
+      - '}'
+      - '^'
+      - '&'
+      - '#'
+      - '@'
+      - '`'
+      - '~'
+  # 安全头部配置
+  # 注意：CSP由SecurityConfig统一配置（含WebSocket支持），此处不再重复设置
+  # 以下头部由SecurityHeaderFilter在Filter链最前端设置
+  headers:
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: DENY
+    X-XSS-Protection: 1; mode=block
+    Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# 企业微信集成配置
+wecom:
+  corpId: ${WECOM_CORP_ID:wwxxxxxxxx}
+  agent:
+    agentId: ${WECOM_AGENT_ID:1000001}
+    secret: ${WECOM_AGENT_SECRET:your_agent_secret_here}
+    callbackUrl: ${WECOM_CALLBACK_URL:https://your-domain.com/api/v1/wecom/callback}
+  token: ${WECOM_TOKEN:your_random_token_here}
+  encodingAesKey: ${WECOM_ENCODING_AES_KEY:your_base43_encoded_aes_key_here}
+
+# YOLO 商品识别配置（POS 端辅助收银）
+yolo:
+  product:
+    # 是否启用 YOLO 商品识别服务
+    enabled: ${YOLO_PRODUCT_ENABLED:false}
+    # Mock 模式（不调用真实推理服务，返回模拟数据，用于前端联调）
+    mock-enabled: ${YOLO_PRODUCT_MOCK_ENABLED:false}
+    # 推理服务 URL（启用真实推理时必填）
+    inference-url: ${YOLO_PRODUCT_INFERENCE_URL:}
+    # 置信度阈值（低于此值的检测框将被过滤）
+    confidence-threshold: ${YOLO_PRODUCT_CONFIDENCE_THRESHOLD:0.5}

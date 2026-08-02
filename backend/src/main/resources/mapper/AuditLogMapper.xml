@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.AuditLogMapper">
+
+    <!--
+        审计日志查询说明：
+        审计日志仅允许 INSERT，禁止 UPDATE 和 DELETE（会计法/网络安全法要求）。
+        因此本 Mapper 不再包含 deleted = 0 条件，所有记录均为不可篡改的完整日志。
+    -->
+
+    <select id="selectAuditLogPage" resultType="com.foodtraceability.entity.AuditLog">
+        SELECT * FROM audit_log
+        <where>
+            <if test="userId != null and userId != ''">
+                AND user_id = #{userId}
+            </if>
+            <if test="username != null and username != ''">
+                AND username LIKE CONCAT('%', #{username}, '%')
+            </if>
+            <if test="operationType != null and operationType != ''">
+                AND operation_type = #{operationType}
+            </if>
+            <if test="module != null and module != ''">
+                AND module LIKE CONCAT('%', #{module}, '%')
+            </if>
+            <if test="riskLevel != null and riskLevel != ''">
+                AND risk_level = #{riskLevel}
+            </if>
+            <if test="ip != null and ip != ''">
+                AND ip LIKE CONCAT('%', #{ip}, '%')
+            </if>
+            <if test="sensitiveFlag != null">
+                AND sensitive_flag = #{sensitiveFlag}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!--
+        归档审计日志：INSERT 到 audit_log_archive 表（仅拷贝，不修改原表）。
+        使用 ON CONFLICT DO NOTHING 保证幂等：重复归档不会因主键冲突而失败。
+        审计日志禁止 UPDATE/DELETE，归档不修改原表任何数据。
+    -->
+    <insert id="archiveLogsBeforeDate">
+        INSERT INTO audit_log_archive (id, tenant_id, request_id, user_id, username, operation, module,
+            operation_type, ip, user_agent, request_url, request_method, request_params,
+            response_status, response_body, error_message, execution_time, business_key,
+            risk_level, sensitive_flag, before_value, after_value, session_id, create_time)
+        SELECT id, tenant_id, request_id, user_id, username, operation, module,
+            operation_type, ip, user_agent, request_url, request_method, request_params,
+            response_status, response_body, error_message, execution_time, business_key,
+            risk_level, sensitive_flag, before_value, after_value, session_id, create_time
+        FROM audit_log
+        WHERE create_time &lt; #{date}
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <select id="countByRiskLevel" resultType="long">
+        SELECT COUNT(*) FROM audit_log
+        WHERE risk_level = #{riskLevel}
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+    </select>
+
+</mapper>

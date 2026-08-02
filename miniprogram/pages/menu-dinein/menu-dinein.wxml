@@ -1,0 +1,82 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">一碗好饭</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="store-info">
+    <view class="store-name">
+      <view class="location-icon-sm"></view>
+      <text>一碗好饭（天河店）</text>
+    </view>
+    <view class="store-detail">桌号：{{tableNo}}</view>
+  </view>
+  
+  <view class="menu-content">
+    <scroll-view class="category-sidebar" scroll-y>
+      <view 
+        class="category-item {{currentCategory === item.id ? 'active' : ''}}" 
+        wx:for="{{categories}}" 
+        wx:key="id"
+        bindtap="selectCategory"
+        data-id="{{item.id}}"
+      >
+        <view class="category-name">{{item.name}}</view>
+      </view>
+    </scroll-view>
+    
+    <scroll-view class="product-list" scroll-y>
+      <view class="product-section">
+        <view class="section-header">
+          <view class="section-title">{{currentCategoryName}}</view>
+          <view class="section-count">{{products.length}}款</view>
+        </view>
+        
+        <view class="product-card" wx:for="{{products}}" wx:key="id">
+          <image class="product-image" src="{{item.image}}" mode="aspectFill" lazy-load />
+          <view class="product-info">
+            <view class="product-name">{{item.name}}</view>
+            <view class="product-desc">{{item.desc}}</view>
+            <view class="product-footer">
+              <view class="product-price">¥{{item.price}}</view>
+              <view class="product-add">
+                <view class="qty-btn minus" wx:if="{{item.quantity > 0}}" bindtap="decreaseQuantity" data-id="{{item.id}}">
+                  <view class="minus-icon"></view>
+                </view>
+                <text class="qty-num" wx:if="{{item.quantity > 0}}">{{item.quantity}}</text>
+                <view class="qty-btn plus" bindtap="increaseQuantity" data-id="{{item.id}}">
+                  <view class="plus-icon"></view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  
+  <view class="cart-bar">
+    <view class="cart-icon-wrap" bindtap="goToCart">
+      <view class="cart-icon"></view>
+      <view class="cart-badge" wx:if="{{cartCount > 0}}">{{cartCount}}</view>
+    </view>
+    <view class="cart-info">
+      <view class="cart-price">¥{{cartTotal}}</view>
+      <view class="cart-count" wx:if="{{cartCount > 0}}">共{{cartCount}}件</view>
+    </view>
+    <view class="checkout-btn {{cartCount > 0 ? 'active' : ''}}" bindtap="goToConfirm">
+      <text>去结算</text>
+    </view>
+  </view>
+  
+  <tab-bar active="1" />
+</view>

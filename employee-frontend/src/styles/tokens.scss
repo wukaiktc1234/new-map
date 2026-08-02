@@ -1,0 +1,865 @@
+// ========== 员工端 CSS 变量（macOS 原生设计体系） ==========
+
+// ============================================
+// 全局 CSS 重置（确保移动端全屏铺满）
+// ============================================
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+    background: transparent !important;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  height: 100%;
+  font-family: var(--fts-font-family);
+  font-size: var(--fts-font-size-base);
+  line-height: var(--fts-line-height-normal);
+  color: var(--fts-text-primary);
+  background-color: var(--fts-bg-page);
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+    background: transparent !important;
+  }
+}
+
+#app {
+  height: 100%;
+}
+
+// 安全区域变量（供全项目使用）
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+}
+
+// ============================================
+// 设计令牌（Design Tokens）
+// ============================================
+
+:root {
+  // 主色系 — macOS系统蓝
+  --fts-primary: #007AFF;
+  --fts-primary-light: #E5F1FF;
+  --fts-primary-lighter: #F0F7FF;
+  --fts-primary-rgb: 0, 122, 255;
+
+  // 功能色 — macOS系统色彩
+  --fts-success: #34C759;
+  --fts-success-light: #E8F8EC;
+  --fts-success-rgb: 52, 199, 89;
+
+  --fts-warning: #FF9500;
+  --fts-warning-light: #FFF4E5;
+  --fts-warning-rgb: 255, 149, 0;
+
+  --fts-error: #FF3B30;
+  --fts-error-light: #FFECEA;
+  --fts-error-rgb: 255, 59, 48;
+
+  --fts-info: #8E8E93;
+  --fts-info-light: #F2F2F7;
+  --fts-info-rgb: 142, 142, 147;
+
+  --fts-gray: #9CA3AF;
+  --fts-gray-rgb: 156, 163, 175;
+
+  // 文本色 — macOS文字层次（高对比度）
+  --fts-text-primary: #1D1D1F;       // 主文字（纯黑）
+  --fts-text-secondary: #515154;     // 次要文字（深灰）
+  --fts-text-tertiary: #86868B;      // 辅助文字（中灰）
+  --fts-text-quaternary: #AEAEB2;   // 占位符/提示（浅灰）
+
+  // 背景色 — macOS纯净层次
+  --fts-bg-page: #F5F5F7;           // 页面底色（极浅灰）
+  --fts-bg-card: #FFFFFF;            // 卡片背景（纯白）
+  --fts-bg-white: #FFFFFF;          // 纯白背景（语义别名，与card同值）
+  --fts-bg-secondary: #FAFAFC;       // 次级背景（几乎白）
+  --fts-bg-tertiary: #EFEFF4;        // 三级背景（浅灰）
+  --fts-bg-hover: rgba(0, 0, 0, 0.04); // hover状态
+
+  // 文本色 — 补充
+  --fts-text-placeholder: #C7C7CC;   // 占位符文字（iOS灰）
+
+  // 危险色（语义别名，与error区分业务含义）
+  --fts-danger: #FF3B30;
+  --fts-danger-rgb: 255, 59, 48;
+
+  // 更浅的功能色变体（用于hover/轻度背景）
+  --fts-error-lighter: #FFF0F0;
+  --fts-warning-lighter: #FFF8E8;
+
+  // 字体族
+  --fts-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'PingFang SC', 'Noto Sans SC', sans-serif;
+
+  // Z-Index 补充
+  --fts-z-notification: 350;
+
+  // 过渡函数别名（兼容不同命名习惯）
+  --fts-ease-in: cubic-bezier(0.4, 0.0, 1, 1);
+  --fts-ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+
+  // 毛玻璃效果（Glassmorphism）
+  --fts-bg-glass: rgba(255, 255, 255, 0.72);
+  --fts-border-glass: rgba(0, 0, 0, 0.08);
+  --fts-bg-glass-dark: rgba(28, 28, 30, 0.85);
+  --fts-border-glass-dark: rgba(255, 255, 255, 0.08);
+
+  // 遮罩层
+  --fts-overlay-backdrop: rgba(0, 0, 0, 0.3);
+
+  // TabBar阴影
+  --fts-shadow-tabbar: 0 -1px 8px rgba(0, 0, 0, 0.04), 0 -0.5px 0.5px rgba(0, 0, 0, 0.02);
+  --fts-shadow-tabbar-dark: 0 -1px 8px rgba(0, 0, 0, 0.2), 0 -0.5px 0.5px rgba(0, 0, 0, 0.1);
+
+  // 覆盖层语义色（用于渐变卡片、半透明遮罩等）
+  --fts-text-on-primary: #FFFFFF;          // 主色上的白色文字
+  --fts-primary-dark: #0051D5;             // 主色加深（渐变终点/悬停态）
+  --fts-gradient-primary-deep: #0051D5;     // 主色渐变深端
+  --fts-overlay-light: rgba(255, 255, 255, 0.15);   // 轻度覆盖
+  --fts-overlay-medium: rgba(255, 255, 255, 0.2);   // 中度覆盖
+  --fts-overlay-heavy: rgba(255, 255, 255, 0.7);    // 重度覆盖
+
+  // 搜索框宽度
+  --fts-search-width: 220px;
+  --fts-search-width-mobile: 160px;
+
+  // 边框 — macOS细腻分割线
+  --fts-border-primary: rgba(60, 60, 67, 0.12);
+  --fts-border-secondary: rgba(60, 60, 67, 0.08);
+  --fts-border-hover: rgba(0, 122, 255, 0.3);
+
+  // 圆角 — macOS大圆角（核心视觉特征）
+  --fts-radius-xs: 10px;
+  --fts-radius-sm: 12px;
+  --fts-radius-md: 14px;
+  --fts-radius-lg: 16px;
+  --fts-radius-xl: 20px;
+  --fts-radius-2xl: 24px;
+  --fts-radius-full: 9999px;
+
+  // 字号 — 飞书式阶梯（拉开层次差距，解决清晰度问题）
+  // 微型文字（角标/版本号）
+  --fts-font-size-2xs: 10px;
+  // 说明文字（占位提示/时间戳）
+  --fts-font-size-xs: 12px;
+  // 辅助文字（日期/标签/图例）— 原sm，用于次要信息
+  --fts-font-size-sm: 13px;
+  // 标准正文（列表项/表单/按钮文字）
+  --fts-font-size-base: 14px;
+  // 强调正文（重要数据值/卡片内容）
+  --fts-font-size-md: 15px;
+  // 卡片标题（列表项标题/小区块标题）— 原17px→升级到16px更规范
+  --fts-font-size-lg: 16px;
+  // 区块标题（页面内大分区标题）— 原22px保持
+  --fts-font-size-xl: 20px;
+  // 页面主标题（唯一H1级）— 原28px保持
+  --fts-font-size-2xl: 24px;
+
+  // 语义化字号别名（推荐在组件中使用这些）
+  --fts-font-size-display: var(--fts-font-size-2xl);   // 页面标题 24px
+  --fts-font-size-h1: var(--fts-font-size-xl);         // 区块标题 20px
+  --fts-font-size-h2: var(--fts-font-size-lg);          // 卡片标题 16px
+  --fts-font-size-body: var(--fts-font-size-base);      // 正文 14px
+  --fts-font-size-caption: var(--fts-font-size-xs);     // 说明 12px
+
+  // 字重
+  --fts-font-weight-normal: 400;
+  --fts-font-weight-medium: 500;
+  --fts-font-weight-semibold: 600;
+  --fts-font-weight-bold: 700;
+
+  // 行高
+  --fts-line-height-tight: 1.25;
+  --fts-line-height-normal: 1.5;
+  --fts-line-height-relaxed: 1.75;
+
+  // 间距
+  --fts-space-1: 4px;
+  --fts-space-2: 8px;
+  --fts-space-3: 12px;
+  --fts-space-4: 16px;
+  --fts-space-5: 20px;
+  --fts-space-6: 24px;
+  --fts-space-7: 32px;   // 区块间呼吸空间（PC端）
+  --fts-space-8: 32px;
+  --fts-space-10: 40px;
+  --fts-space-12: 48px;
+
+  // 内容区内边距（页面水平padding）
+  --fts-content-padding: var(--fts-space-6);
+
+  // 区块间距（飞书设计规范 — 页面内大区块之间的间隔）
+  --fts-space-section-gap: 32px;        // PC端区块间距
+  --fts-space-section-gap-mobile: 24px; // 移动端区块间距
+
+  // 卡片统一
+  --fts-card-padding: 20px;
+  --fts-card-padding-lg: 24px;
+
+  // 区块标题
+  --fts-section-title-size: 15px;
+  --fts-section-title-weight: 600;
+
+  // 阴影 — macOS柔和羽毛阴影（多层次、极淡）
+  --fts-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.02);
+  --fts-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.03);
+  --fts-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.04);
+  --fts-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --fts-shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.08);
+
+  // 渐变 — macOS品牌渐变（更鲜艳）
+  --fts-gradient-primary: linear-gradient(135deg, #007AFF 0%, #5AC8FA 100%);
+  --fts-gradient-success: linear-gradient(135deg, #34C759 0%, #30D158 100%);
+  --fts-gradient-warning: linear-gradient(135deg, #FF9500 0%, #FFB340 100%);
+  --fts-gradient-error: linear-gradient(135deg, #FF3B30 0%, #FF6961 100%);
+  --fts-gradient-page: linear-gradient(180deg, #FAFAFC 0%, #F5F5F7 100%);
+  --fts-gradient-card-hover: linear-gradient(180deg, #FFFFFF 0%, #F8FAFF 100%);
+
+  // 动画 — 飞书式流畅曲线
+  --fts-duration-instant: 100ms;
+  --fts-duration-fast: 150ms;
+  --fts-duration-normal: 250ms;
+  --fts-duration-slow: 350ms;
+  --fts-duration-slower: 500ms;
+  --fts-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --fts-easing-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --fts-easing-in: cubic-bezier(0.4, 0.0, 1, 1);
+  --fts-easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --fts-easing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --fts-easing-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  // 过渡预设（组合使用）
+  --fts-transition-all: all var(--fts-duration-normal) var(--fts-easing-default);
+  --fts-transition-colors: color, background-color, border-color var(--fts-duration-fast) var(--fts-easing-default);
+  --fts-transition-transform: transform var(--fts-duration-fast) var(--fts-easing-spring);
+  --fts-transition-shadow: box-shadow var(--fts-duration-normal) var(--fts-easing-default);
+  --fts-transition-opacity: opacity var(--fts-duration-fast) var(--fts-easing-default);
+
+  // TabBar 交互动效
+  --fts-tab-icon-size: 24px;
+  --fts-tab-label-size: 10px;
+  --fts-tab-active-scale: 1.15;
+  --fts-tab-transition-duration: 300ms;
+  --fts-tab-transition-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  // 触控反馈
+  --fts-touch-scale-active: 0.96;
+  --fts-touch-duration-press: 100ms;
+  --fts-touch-duration-release: 150ms;
+  --fts-hover-translate-y: -2px;
+  --fts-hover-duration: 200ms;
+
+  // 卡片交互
+  --fts-card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --fts-card-active-bg: rgba(0, 0, 0, 0.04);
+
+  // 页面转场（增强版 — 多模式支持）
+  --fts-page-enter-duration: 280ms;
+  --fts-page-leave-duration: 180ms;
+  --fts-page-enter-translate-y: 12px;
+  --fts-page-leave-translate-y: -6px;
+  --fts-page-enter-scale: 1;
+  --fts-page-leave-scale: 0.98;
+  --fts-page-enter-opacity-start: 0;
+  --fts-page-leave-opacity-end: 0;
+  --fts-page-easing-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --fts-page-easing-leave: cubic-bezier(0.55, 0, 1, 0.45);
+
+  // 列表交错动画
+  --fts-stagger-delay-base: 50ms;
+  --fts-stagger-max-items: 10;
+
+  // ========== 第一阶段新增：高端交互动画变量 ==========
+  
+  // 涟漪效果（Ripple）
+  --fts-ripple-color: rgba(var(--fts-primary-rgb), 0.15);
+  --fts-ripple-duration: 600ms;
+  --fts-ripple-easing: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  
+  // 卡片增强交互（多层次阴影+光晕）
+  --fts-card-hover-translate-y: -3px;
+  --fts-card-hover-shadow: 0 8px 30px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --fts-card-hover-border-glow: rgba(var(--fts-primary-rgb), 0.2);
+  --fts-card-active-translate-y: 0;
+  --fts-card-active-scale: 0.98;
+  --fts-card-active-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  --fts-card-transition: transform var(--fts-duration-normal) var(--fts-easing-spring),
+                   box-shadow var(--fts-duration-normal) var(--fts-easing-default),
+                   border-color var(--fts-duration-normal) var(--fts-easing-default);
+  
+  // 骨架屏增强（脉冲呼吸 + 渐显入场）
+  --fts-shimmer-duration: 1.5s;
+  --fts-shimmer-pulse-opacity-min: 0.4;
+  --fts-skeleton-fade-in-duration: 400ms;
+  
+  // 自定义滚动条（浅色模式）
+  --fts-scrollbar-width: 6px;
+  --fts-scrollbar-thumb-color: rgba(var(--fts-primary-rgb), 0.2);
+  --fts-scrollbar-thumb-hover-color: rgba(var(--fts-primary-rgb), 0.35);
+  --fts-scrollbar-track-color: transparent;
+  
+  // 自定义滚动条（暗色模式 — 深色轨道 + 浅色滑块，确保可见性）
+  --fts-scrollbar-width: 6px;
+  --fts-scrollbar-thumb-color: rgba(255, 255, 255, 0.15);
+  --fts-scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.28);
+  --fts-scrollbar-track-color: rgba(0, 0, 0, 0.2);
+
+  // focus-visible 统一环样式
+  --fts-focus-ring-width: 2px;
+  --fts-focus-ring-offset: 2px;
+  --fts-focus-ring-color: rgba(var(--fts-primary-rgb), 0.4);
+  
+  // 文字选择高亮色
+  --fts-selection-bg: rgba(var(--fts-primary-rgb), 0.2);
+  --fts-selection-text: var(--fts-text-primary);
+  
+  // 搜索框focus呼吸灯
+  --fts-search-focus-glow: 0 0 0 3px rgba(var(--fts-primary-rgb), 0.1),
+                           0 0 20px rgba(var(--fts-primary-rgb), 0.08);
+  --fts-search-focus-border-color: var(--fts-primary);
+  
+  // 操作成功动画（checkmark）
+  --fts-success-checkmark-duration: 500ms;
+  --fts-success-checkmark-color: var(--fts-success);
+  
+  // 下拉面板弹性弹出
+  --fts-dropdown-enter-duration: 250ms;
+  --fts-dropdown-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  // 功能图标（圆形背景）
+  --fts-app-icon-size: 40px;
+  --fts-app-icon-radius: 12px;
+
+  // 角标（Badge）
+  --fts-badge-dot-size: 8px;
+  --fts-badge-count-min-width: 16px;
+  --fts-badge-count-height: 16px;
+  --fts-badge-font-size: 10px;
+  --fts-badge-offset-top: -2px;
+  --fts-badge-offset-right: -2px;
+
+  // 安全区域
+  --fts-tabbar-height: 56px;
+  --fts-tabbar-height-safe: calc(56px + env(safe-area-inset-bottom));
+  --fts-mobile-header-height: 48px;
+  --fts-mobile-header-height-safe: calc(48px + env(safe-area-inset-top));
+
+  // Z-Index 层级体系（避免层级混乱）
+  --fts-z-normal: 1;
+  --fts-z-sticky: 10;
+  --fts-z-dropdown: 100;
+  --fts-z-fixed: 200;
+  --fts-z-overlay: 300;
+  --fts-z-modal: 400;
+  --fts-z-popover: 500;
+  --fts-z-tooltip: 600;
+
+  // 补充字号层级（H2 = 18px，介于xl和lg之间）
+  --fts-font-size-h1-sub: 18px;
+
+  // 骨架屏动画
+  --fts-shimmer-gradient: linear-gradient(
+    90deg,
+    var(--fts-bg-tertiary) 25%,
+    var(--fts-bg-secondary) 37%,
+    var(--fts-bg-tertiary) 63%
+  );
+
+  // 班次色彩（语义化，支持暗色模式切换）
+  --fts-shift-morning-bg: #ECF5FF;
+  --fts-shift-morning-text: #409EFF;
+  --fts-shift-morning-dot: #409EFF;
+
+  --fts-shift-afternoon-bg: #FDF6EC;
+  --fts-shift-afternoon-text: #E6A23C;
+  --fts-shift-afternoon-dot: #E6A23C;
+
+  --fts-shift-evening-bg: #F0F9EB;
+  --fts-shift-evening-text: #67C23A;
+  --fts-shift-evening-dot: #67C23A;
+
+  --fts-shift-rest-bg: #F4F4F5;
+  --fts-shift-rest-text: #909399;
+  --fts-shift-rest-dot: #C0C4CC;
+
+  // 通知类型色彩
+  --fts-notice-info-bg: #409EFF;
+  --fts-notice-success-bg: #67C23A;
+  --fts-notice-warning-bg: #E6A23C;
+  --fts-notice-default-bg: #909399;
+
+  // ========== 字体大小全局控制类 ==========
+  // 通过覆盖CSS变量实现全局缩放效果
+  // ProfilePage 的 setFontSize() 函数会切换这些class
+  // 缩放比例：small=0.9 / medium=1.0(基准) / large=1.1
+}
+
+// 字体大小控制：小号（所有字号缩小为默认的90%）
+.font-size-small {
+  --fts-font-size-2xs: 9px;    // 原10px * 0.9
+  --fts-font-size-xs: 11px;     // 原12px * 0.9
+  --fts-font-size-sm: 12px;     // 原13px * 0.9
+  --fts-font-size-base: 13px;   // 原14px * 0.9
+  --fts-font-size-md: 14px;     // 原15px * 0.9
+  --fts-font-size-lg: 14px;     // 原16px * 0.9
+  --fts-font-size-xl: 18px;     // 原20px * 0.9
+  --fts-font-size-2xl: 22px;    // 原24px * 0.9
+  --fts-font-size-h1-sub: 16px; // 原18px * 0.9
+}
+
+// 字体大小控制：中号（默认基准值，不覆盖任何变量）
+// .font-size-medium { /* 空声明，使用 :root 默认值 */ }
+
+// 字体大小控制：大号（所有字号放大为默认的110%）
+.font-size-large {
+  --fts-font-size-2xs: 11px;   // 原10px * 1.1
+  --fts-font-size-xs: 13px;     // 原12px * 1.1
+  --fts-font-size-sm: 14px;     // 原13px * 1.1
+  --fts-font-size-base: 15px;   // 原14px * 1.1
+  --fts-font-size-md: 17px;     // 原15px * 1.1
+  --fts-font-size-lg: 18px;     // 原16px * 1.1
+  --fts-font-size-xl: 22px;     // 原20px * 1.1
+  --fts-font-size-2xl: 26px;    // 原24px * 1.1
+  --fts-font-size-h1-sub: 20px; // 原18px * 1.1
+}
+
+// ========== 暗色模式变量定义（macOS深色主题） ==========
+@mixin dark-theme-vars {
+  --fts-primary: #0A84FF;
+  --fts-primary-light: #1C3E6B;
+  --fts-primary-lighter: #0F1D38;
+  --fts-primary-rgb: 10, 132, 255;
+
+  --fts-success: #30D158;
+  --fts-success-light: #0D291C;
+  --fts-success-rgb: 48, 209, 88;
+
+  --fts-warning: #FF9F0A;
+  --fts-warning-light: #2E220F;
+  --fts-warning-rgb: 255, 159, 10;
+
+  --fts-error: #FF453A;
+  --fts-error-light: #2E1514;
+  --fts-error-rgb: 255, 69, 58;
+
+  --fts-info: #98989D;
+  --fts-info-light: #23262E;
+  --fts-info-rgb: 152, 152, 157;
+
+  --fts-gray: #7A7A80;
+  --fts-gray-rgb: 122, 122, 128;
+
+  --fts-text-primary: #F5F5F7;       // macOS亮白文字
+  --fts-text-secondary: #EBEBF0;     // 次要文字（略灰）
+  --fts-text-tertiary: #B0B0B5;      // 辅助文字（提升可读性）
+  --fts-text-quaternary: #8E8E93;    // 极辅助文字（iOS标准三级标签色，确保可读）
+  --fts-text-placeholder: #48484A;    // 占位符文字（深灰）
+
+  // 危险色（暗色模式）
+  --fts-danger: #FF453A;
+  --fts-danger-rgb: 255, 69, 58;
+
+  // 更浅的功能色变体（暗色模式）
+  --fts-error-lighter: #2E1514;
+  --fts-warning-lighter: #2E220F;
+
+  // 字体族（暗色模式不变）
+  --fts-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'PingFang SC', 'Noto Sans SC', sans-serif;
+
+  // Z-Index 补充（暗色模式不变）
+  --fts-z-notification: 350;
+
+  // 过渡函数别名（暗色模式不变）
+  --fts-ease-in: cubic-bezier(0.4, 0.0, 1, 1);
+  --fts-ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+
+  --fts-bg-page: #0A0A0C;            // 页面底色（深灰非纯黑，参考macOS深色模式）
+  --fts-bg-card: #1C1C1E;            // 卡片深灰
+  --fts-bg-white: #1C1C1E;          // 纯白背景（深色下同card）
+  --fts-bg-secondary: #121214;       // 次级更深
+  --fts-bg-tertiary: #2C2C2E;        // 三级浅灰
+  --fts-bg-hover: rgba(255, 255, 255, 0.06);
+
+  // 毛玻璃效果（深色模式 — macOS深色毛玻璃）
+  --fts-bg-glass: rgba(28, 28, 30, 0.85);
+  --fts-border-glass: rgba(255, 255, 255, 0.08);
+
+  // 遮罩层
+  --fts-overlay-backdrop: rgba(0, 0, 0, 0.6);
+
+  // TabBar阴影（深色模式）
+  --fts-shadow-tabbar: 0 -1px 8px rgba(0, 0, 0, 0.2), 0 -0.5px 0.5px rgba(0, 0, 0, 0.1);
+  --fts-border-secondary: rgba(255, 255, 255, 0.08);
+  --fts-border-hover: rgba(10, 132, 255, 0.4);
+
+  --fts-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --fts-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.30);
+  --fts-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --fts-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --fts-shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.50);
+
+  --fts-gradient-primary: linear-gradient(135deg, #0A84FF 0%, #409CFF 100%);
+  --fts-gradient-page: linear-gradient(180deg, #121214 0%, #000000 100%);
+  --fts-gradient-card-hover: linear-gradient(180deg, #1C1C1E 0%, #202224 100%);
+
+  --fts-shimmer-gradient: linear-gradient(
+    90deg,
+    var(--fts-bg-tertiary) 25%,
+    var(--fts-bg-secondary) 37%,
+    var(--fts-bg-tertiary) 63%
+  );
+
+  // 班次色彩（暗色模式）
+  --fts-shift-morning-bg: #162B57;
+  --fts-shift-morning-text: #5B8FFF;
+  --fts-shift-morning-dot: #5B8FFF;
+
+  --fts-shift-afternoon-bg: #2E220F;
+  --fts-shift-afternoon-text: #FFB84D;
+  --fts-shift-afternoon-dot: #FFB84D;
+
+  --fts-shift-evening-bg: #0D291C;
+  --fts-shift-evening-text: #34D399;
+  --fts-shift-evening-dot: #34D399;
+
+  --fts-shift-rest-bg: #23252C;
+  --fts-shift-rest-text: #8E97A7;
+  --fts-shift-rest-dot: #555B66;
+
+  // 通知类型色彩（暗色模式）
+  --fts-notice-info-bg: #3388FF;
+  --fts-notice-success-bg: #34D399;
+  --fts-notice-warning-bg: #FFB84D;
+  --fts-notice-default-bg: #8E97A7;
+
+  // 覆盖层语义色（暗色模式）
+  --fts-text-on-primary: #FFFFFF;
+  --fts-primary-dark: #0040A0;             // 主色加深（渐变终点/悬停态）
+  --fts-gradient-primary-deep: #0040A0;
+  --fts-overlay-light: rgba(255, 255, 255, 0.10);
+  --fts-overlay-medium: rgba(255, 255, 255, 0.15);
+  --fts-overlay-heavy: rgba(255, 255, 255, 0.55);
+
+  // 搜索框宽度（暗色模式不变）
+  --fts-search-width: 220px;
+  --fts-search-width-mobile: 160px;
+}
+
+// 方式1：跟随系统偏好
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    @include dark-theme-vars;
+  }
+}
+
+// 方式2：手动切换（通过 .dark 类或 data-theme 属性）
+:root.dark,
+:root[data-theme='dark'] {
+  @include dark-theme-vars;
+}
+
+// ========== 全局重置 ==========
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'PingFang SC', 'Noto Sans SC', sans-serif;
+  font-size: var(--fts-font-size-base);
+  line-height: var(--fts-line-height-normal);
+  color: var(--fts-text-primary);
+  background-color: var(--fts-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+// ========== 飞书式全局微交互 ==========
+button {
+  cursor: pointer;
+  transition: transform var(--fts-duration-fast) var(--fts-easing-spring),
+              box-shadow var(--fts-duration-fast) var(--fts-easing-default),
+              background-color var(--fts-duration-fast) var(--fts-easing-default);
+
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+}
+
+input, textarea, select {
+  transition: border-color var(--fts-duration-fast) var(--fts-easing-default),
+              box-shadow var(--fts-duration-fast) var(--fts-easing-default);
+}
+
+// ========== 骨架屏 shimmer 动画 ==========
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: var(--fts-shimmer-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--fts-radius-sm);
+}
+
+// ========== 页面过渡动画 ==========
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter-active {
+  animation: page-fade-in var(--fts-duration-slow) var(--fts-easing-smooth);
+}
+
+// ========== 移动端微交互动画（SDD Phase 4 新增） ==========
+
+/* 列表交错入场动画 */
+@keyframes stagger-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 未读蓝点弹跳 */
+@keyframes dot-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+}
+
+/* Tab 图标弹性缩放 */
+@keyframes tab-icon-bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(var(--fts-tab-active-scale)); }
+  100% { transform: scale(1); }
+}
+
+// ========== 第一阶段新增：高端交互动画关键帧 ==========
+
+/* 涟漪扩散效果（Ripple） */
+@keyframes ripple-spread {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* 骨架屏脉冲呼吸（替代纯shimmer的柔和变体） */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: var(--fts-shimmer-pulse-opacity-min, 0.4);
+  }
+}
+
+/* 操作成功 checkmark 描边动画 */
+@keyframes checkmark-draw {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 操作成功圆圈缩放 */
+@keyframes checkmark-circle-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 徽章脉冲（未读提示） */
+@keyframes badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(var(--fts-error-rgb), 0.4);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 6px rgba(var(--fts-error-rgb), 0);
+  }
+}
+
+/* 下拉面板弹性进入 */
+@keyframes dropdown-bounce-in {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.9) translateY(-8px);
+    transform-origin: top center;
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+    transform-origin: top center;
+  }
+}
+
+// ========== 全局基础体验增强 ==========
+
+/* 文字选择高亮色（适配深色模式） */
+::selection {
+  background-color: var(--fts-selection-bg, rgba(var(--fts-primary-rgb), 0.2));
+  color: var(--fts-selection-text, var(--fts-text-primary));
+}
+
+/* 全局隐藏滚动条（跨浏览器兼容） */
+::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent !important;
+}
+
+/* Firefox 隐藏滚动条 */
+* {
+  scrollbar-width: none !important;
+}
+
+/* focus-visible 统一环样式（无障碍 + 品牌一致性） */
+:focus-visible {
+  outline: var(--fts-focus-ring-width, 2px) solid var(--fts-focus-ring-color, rgba(var(--fts-primary-rgb), 0.4));
+  outline-offset: var(--fts-focus-ring-offset, 2px);
+}
+
+/* 移除默认 focus 样式（由:focus-visible接管） */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 骨架屏增强：使用CSS变量控制shimmer */
+.skeleton-shimmer {
+  background: var(--fts-shimmer-gradient);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer var(--fts-shimmer-duration, 1.5s) ease-in-out infinite;
+  border-radius: var(--fts-radius-sm);
+}
+
+/* 骨架屏脉冲变体（更柔和，适用于卡片级骨架） */
+.skeleton-pulse {
+  animation: skeleton-pulse 2s ease-in-out infinite;
+  background: var(--fts-bg-tertiary);
+  border-radius: var(--fts-radius-sm);
+}
+
+/* 卡片增强交互基础类（供各页面复用） */
+.card-enhanced {
+  transition: var(--fts-card-transition);
+
+  &:hover {
+    transform: translateY(var(--fts-card-hover-translate-y, -3px));
+    box-shadow: var(--fts-card-hover-shadow);
+    border-color: var(--fts-card-hover-border-glow);
+  }
+
+  &:active {
+    transform: translateY(var(--fts-card-active-translate-y, 0)) scale(var(--fts-card-active-scale, 0.98));
+    box-shadow: var(--fts-card-active-shadow);
+  }
+}
+
+// ========== prefers-reduced-motion 无障碍降级 ==========
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* 径向展开面板 + 新建按钮 — 用户交互触发的重要视觉反馈，保留动画 */
+  .action-panel-overlay,
+  .action-panel-overlay *,
+  .action-panel-overlay.is-active,
+  .create-btn,
+  .create-btn * {
+    transition-duration: 0.5s !important;
+    animation-duration: 0.5s !important;
+  }
+
+  .el-tab--active .el-tab__icon,
+  .app-item:hover {
+    transform: none !important;
+  }
+}

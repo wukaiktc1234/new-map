@@ -1,0 +1,42 @@
+<view class="login-modal {{show ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+  <view class="modal-mask" bindtap="onMaskTap"></view>
+  
+  <view class="modal-content">
+    <view class="close-btn" bindtap="onClose">
+      <view class="close-icon"></view>
+    </view>
+    
+    <view class="modal-header">
+      <view class="logo-wrap">
+        <image class="logo-image" src="/images/logo.png" mode="aspectFit" />
+      </view>
+      <view class="welcome-title">欢迎加入一碗好饭会员</view>
+      <view class="welcome-desc">注册会员后提供更好的服务体验</view>
+    </view>
+    
+    <view class="modal-body">
+      <view class="agreement-row">
+        <view class="checkbox-wrap" bindtap="toggleAgree">
+          <view class="checkbox {{agreed ? 'checked' : ''}}">
+            <view class="check-icon" wx:if="{{agreed}}"></view>
+          </view>
+          <view class="agreement-tip" wx:if="{{!agreed}}">请阅读并同意</view>
+        </view>
+        <view class="agreement-text">
+          <text>我已阅读并同意</text>
+          <text class="link" catchtap="viewAgreement" data-type="member">《会员服务协议》</text>
+          <text class="link" catchtap="viewAgreement" data-type="privacy">《隐私政策》</text>
+          <text class="link" catchtap="viewAgreement" data-type="childPrivacy">《未成年人隐私政策》</text>
+        </view>
+      </view>
+      
+      <button class="login-btn" style="width: calc(100% - 32rpx); margin: 0 16rpx 16rpx 16rpx; height: 110rpx; background: linear-gradient(135deg, #F5D78E 0%, #E8C55A 100%); border-radius: 55rpx; border: none; padding: 0;" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
+        <text style="font-size: 32rpx; font-weight: 500; color: #1A1A1A;">手机号一键登录</text>
+      </button>
+      
+      <view class="skip-btn" bindtap="onClose">
+        <text>暂不登录</text>
+      </view>
+    </view>
+  </view>
+</view>

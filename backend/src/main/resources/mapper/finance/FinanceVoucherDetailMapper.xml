@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.FinanceVoucherDetailMapper">
+
+    <!-- 根据凭证ID查询明细列表 -->
+    <select id="selectByVoucherId" resultType="com.foodtraceability.entity.finance.FinanceVoucherDetail">
+        SELECT * FROM finance_voucher_details
+        WHERE deleted = 0
+          AND voucher_id = #{voucherId}
+        ORDER BY sort_order ASC, detail_id ASC
+    </select>
+
+    <!-- 根据凭证ID删除所有明细 -->
+    <update id="deleteByVoucherId">
+        UPDATE finance_voucher_details
+        SET deleted = 1,
+            update_time = CURRENT_TIMESTAMP
+        WHERE deleted = 0
+          AND voucher_id = #{voucherId}
+    </update>
+
+</mapper>

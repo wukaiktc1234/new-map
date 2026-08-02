@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.TaskExecutionLogMapper">
+
+    <!-- 分页查询执行日志（支持多条件过滤） -->
+    <select id="selectLogPage" resultType="com.foodtraceability.entity.TaskExecutionLog">
+        SELECT * FROM task_execution_log
+        <where>
+            <if test="taskId != null">
+                AND task_id = #{taskId}
+            </if>
+            <if test="taskName != null and taskName != ''">
+                AND task_name LIKE CONCAT('%', #{taskName}, '%')
+            </if>
+            <if test="taskCode != null and taskCode != ''">
+                AND task_code LIKE CONCAT('%', #{taskCode}, '%')
+            </if>
+            <if test="triggerType != null">
+                AND trigger_type = #{triggerType}
+            </if>
+            <if test="executionStatus != null">
+                AND execution_status = #{executionStatus}
+            </if>
+            <if test="startTime != null">
+                AND start_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND start_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY start_time DESC
+    </select>
+
+    <!-- 按执行状态统计日志数量 -->
+    <select id="selectLogStat" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS totalLogs,
+            SUM(CASE WHEN execution_status = 0 THEN 1 ELSE 0 END) AS runningCount,
+            SUM(CASE WHEN execution_status = 1 THEN 1 ELSE 0 END) AS successCount,
+            SUM(CASE WHEN execution_status = 2 THEN 1 ELSE 0 END) AS failedCount,
+            SUM(CASE WHEN execution_status = 3 THEN 1 ELSE 0 END) AS timeoutCount,
+            SUM(CASE WHEN execution_status = 4 THEN 1 ELSE 0 END) AS cancelledCount,
+            COALESCE(AVG(duration_ms), 0) AS avgDurationMs
+        FROM task_execution_log
+        <where>
+            <if test="taskId != null">
+                AND task_id = #{taskId}
+            </if>
+        </where>
+    </select>
+
+</mapper>

@@ -1,0 +1,209 @@
+@import "/styles/design-system.wxss";
+
+.login-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  visibility: hidden;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.login-modal.show {
+  visibility: visible;
+  opacity: 1;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(112rpx + env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-radius: 24rpx 24rpx 0 0;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+}
+
+.login-modal.show .modal-content {
+  transform: translateY(0);
+}
+
+.close-btn {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  background: var(--bg-disabled);
+  border-radius: 50%;
+}
+
+.close-icon {
+  width: 40rpx;
+  height: 40rpx;
+  background: var(--text-secondary);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.modal-header {
+  padding: 48rpx 40rpx 24rpx;
+  text-align: center;
+}
+
+.logo-wrap {
+  width: 120rpx;
+  height: 120rpx;
+  margin: 0 auto 24rpx;
+  background: linear-gradient(135deg, var(--accent-gold-light) 0%, var(--accent-gold) 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-image {
+  width: 64rpx;
+  height: 64rpx;
+}
+
+.welcome-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--primary-dark);
+  margin-bottom: 8rpx;
+}
+
+.welcome-desc {
+  font-size: 26rpx;
+  color: var(--primary-dark);
+}
+
+.modal-body {
+  padding: 0;
+}
+
+.agreement-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 16rpx 24rpx 36rpx;
+}
+
+.checkbox-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 12rpx;
+}
+
+.checkbox {
+  width: 40rpx;
+  height: 40rpx;
+  border: 3rpx solid var(--accent-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  background: var(--bg-card);
+  position: relative;
+}
+
+.checkbox::before {
+  content: '';
+  position: absolute;
+  top: -20rpx;
+  left: -20rpx;
+  right: -20rpx;
+  bottom: -20rpx;
+}
+
+.checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.check-icon {
+  width: 22rpx;
+  height: 22rpx;
+  background: var(--bg-card);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.agreement-tip {
+  position: absolute;
+  top: -52rpx;
+  left: 16rpx;
+  background: var(--primary);
+  color: var(--bg-card);
+  font-size: 20rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 6rpx;
+  white-space: nowrap;
+}
+
+.agreement-tip::after {
+  content: '';
+  position: absolute;
+  bottom: -10rpx;
+  left: 16rpx;
+  border-left: 8rpx solid transparent;
+  border-right: 8rpx solid transparent;
+  border-top: 10rpx solid var(--primary);
+}
+
+.agreement-text {
+  flex: 1;
+  font-size: 28rpx;
+  color: var(--primary-dark);
+  line-height: 1.8;
+  text-align: left;
+  padding-top: 4rpx;
+}
+
+.agreement-text .link {
+  color: var(--accent);
+}
+
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-btn::after {
+  border: none;
+}
+
+.skip-btn {
+  width: 100%;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.skip-btn text {
+  font-size: 28rpx;
+  color: var(--primary-dark);
+}

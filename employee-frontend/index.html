@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- PWA / APP 打包基础配置 -->
+    <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="员工门户" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+
+    <!-- CSP：放宽限制以兼容 Capacitor https:// scheme 和 HTTP API 请求 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; connect-src * http: https:; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com;" />
+
+    <!-- iOS PWA 图标 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="//fonts.googleapis.com" />
+
+    <title>员工自助门户 - 食品溯源系统</title>
+
+    <!--
+      空白页面自愈脚本（同步执行，在模块脚本之前）
+      解决：旧 Service Worker 缓存了有 bug 的页面，导致首次加载空白
+      机制：3秒后检测 #app 是否为空，如果为空则清除 SW 缓存并强制刷新
+    -->
+    <script>
+      window.__blankHealAttempted = false;
+      setTimeout(function() {
+        var app = document.getElementById('app');
+        if (app && app.innerHTML.length < 50 && !window.__blankHealAttempted) {
+          window.__blankHealAttempted = true;
+          console.warn('[SelfHeal] 检测到空白页面，正在清除缓存并重载...');
+          // 清除所有 Service Worker
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              var promises = [];
+              for (var i = 0; i < regs.length; i++) {
+                promises.push(regs[i].unregister());
+              }
+              // 同时清除所有 Cache Storage
+              if ('caches' in window) {
+                caches.keys().then(function(names) {
+                  for (var j = 0; j < names.length; j++) {
+                    caches.delete(names[j]);
+                  }
+                });
+              }
+              Promise.all(promises).then(function() {
+                console.warn('[SelfHeal] SW 已卸载，缓存已清除，正在重载...');
+                window.location.reload();
+              });
+            });
+          } else {
+            window.location.reload();
+          }
+        }
+      }, 3000);
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!-- Vue 应用入口 -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

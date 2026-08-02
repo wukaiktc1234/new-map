@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.FinanceVoucherMapper">
+
+    <!-- 分页查询凭证 -->
+    <select id="selectVoucherPage" resultType="com.foodtraceability.entity.finance.FinanceVoucher">
+        SELECT * FROM finance_vouchers
+        <where>
+            deleted = 0
+            <if test="voucherNo != null and voucherNo != ''">
+                AND voucher_no LIKE CONCAT('%', #{voucherNo}, '%')
+            </if>
+            <if test="startDate != null">
+                AND voucher_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND voucher_date &lt;= #{endDate}
+            </if>
+            <if test="voucherType != null">
+                AND voucher_type = #{voucherType}
+            </if>
+            <if test="voucherStatus != null">
+                AND voucher_status = #{voucherStatus}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据来源单据查询凭证 -->
+    <select id="selectBySource" resultType="com.foodtraceability.entity.finance.FinanceVoucher">
+        SELECT * FROM finance_vouchers
+        WHERE deleted = 0
+          AND source_type = #{sourceType}
+          AND source_id = #{sourceId}
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -1,0 +1,38 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3002",
+      "localStorage": [
+        {
+          "name": "token",
+          "value": "eyJhbGciOiJIUzUxMiJ9.eyJ0b2tlbklkIjoiYzA5Y2QxMDQtMTg3OC00OTk0LWI2YWEtZTQ3MjA3OGEyNzI1IiwicGVybWlzc2lvbnMiOlsiKiJdLCJyb2xlcyI6WyJhZG1pbiIsInVzZXIiXSwibWZhRW5hYmxlZCI6ZmFsc2UsIm1mYVZlcmlmaWVkIjpmYWxzZSwidXNlcklkIjoiMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJzdWIiOiJhZG1pbiIsImlzcyI6ImZvb2QtdHJhY2VhYmlsaXR5LXN5c3RlbSIsImlhdCI6MTc4NTY0MjM5MiwiZXhwIjoxNzg1NjQ5NTkyLCJqdGkiOiI3ZTQ3NDdkZS0wZTE4LTRkZGUtYWZlOC1kMWRjMTZjMzhiNTMifQ.r6JBiqmjZpDGKP4XIaV9XmorZ5MrwkbUSMj0OcRoNNOT94X3W8XVqU_eYprg6ucXDHEv5-uUHV4uLwmzx6UhRw"
+        },
+        {
+          "name": "permissions",
+          "value": "[\"*\"]"
+        },
+        {
+          "name": "user_id",
+          "value": "1"
+        },
+        {
+          "name": "username",
+          "value": "admin"
+        },
+        {
+          "name": "refresh_token",
+          "value": "eyJhbGciOiJIUzUxMiJ9.eyJ0b2tlbklkIjoiNTA0MDk4MmQtMmJjNi00NWFlLWJjOTMtOTcyYjgxZTVhMTkxIiwidHlwZSI6InJlZnJlc2giLCJ1c2VySWQiOiIxIiwidXNlcm5hbWUiOiJhZG1pbiIsInN1YiI6ImFkbWluIiwiaXNzIjoiZm9vZC10cmFjZWFiaWxpdHktc3lzdGVtIiwiaWF0IjoxNzg1NjQyMzkyLCJleHAiOjE3ODgyMzQzOTIsImp0aSI6IjBiZGI1YTcyLTdlMTMtNDQ3Mi1iMzc4LTVjMzViNTg2OGZiMSJ9.RR5gLf07J-YFQnifIxNs72sXR5j0Ai27DK-iY5QIU254EWfN4vWGec8-0mhhpwg-Q3r0aqM4dLxlDi2RYRvf8g"
+        },
+        {
+          "name": "menu-template",
+          "value": "standard-chain"
+        },
+        {
+          "name": "roles",
+          "value": "[\"admin\",\"employee\"]"
+        }
+      ]
+    }
+  ]
+}

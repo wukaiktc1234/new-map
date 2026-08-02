@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.CertificateManagementMapper">
+
+    <resultMap id="certResultMap" type="com.foodtraceability.entity.CertificateManagement">
+        <id column="cert_id" property="certId"/>
+        <result column="cert_no" property="certNo"/>
+        <result column="cert_type" property="certType"/>
+        <result column="supplier_id" property="supplierId"/>
+        <result column="supplier_name" property="supplierName"/>
+        <result column="cert_name" property="certName"/>
+        <result column="issue_date" property="issueDate"/>
+        <result column="expiry_date" property="expiryDate"/>
+        <result column="issuing_authority" property="issuingAuthority"/>
+        <result column="cert_image_url" property="certImageUrl"/>
+        <result column="cert_status" property="certStatus"/>
+        <result column="reminder_days" property="reminderDays"/>
+        <result column="related_ledger_ids" property="relatedLedgerIds"
+                typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectBySupplierId" resultMap="certResultMap">
+        SELECT * FROM certificate_managements
+        WHERE supplier_id = #{supplierId}
+        ORDER BY expiry_date ASC
+    </select>
+
+    <select id="selectByCertType" resultMap="certResultMap">
+        SELECT * FROM certificate_managements
+        WHERE cert_type = #{certType}
+        ORDER BY expiry_date ASC
+    </select>
+
+    <select id="selectExpiringWithinDays" resultMap="certResultMap">
+        SELECT * FROM certificate_managements
+        WHERE cert_status IN (1, 2)
+          AND expiry_date IS NOT NULL
+          AND expiry_date BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '#{days}' DAY)
+        ORDER BY expiry_date ASC
+    </select>
+
+    <select id="selectExpired" resultMap="certResultMap">
+        SELECT * FROM certificate_managements
+        WHERE cert_status IN (1, 2)
+          AND expiry_date IS NOT NULL
+          AND expiry_date &lt; #{currentDate}
+        ORDER BY expiry_date ASC
+    </select>
+
+    <select id="selectNeedReminder" resultMap="certResultMap">
+        SELECT * FROM certificate_managements
+        WHERE cert_status = 1
+          AND expiry_date IS NOT NULL
+          AND expiry_date - COALESCE(reminder_days, 30) &lt;= #{currentDate}
+        ORDER BY expiry_date ASC
+    </select>
+</mapper>

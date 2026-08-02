@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.schedule.NotificationLogMapper">
+
+    <!-- 基础结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.schedule.NotificationLog">
+        <id column="log_id" property="logId"/>
+        <result column="business_type" property="businessType"/>
+        <result column="business_id" property="businessId"/>
+        <result column="title" property="title"/>
+        <result column="content" property="content"/>
+        <result column="receiver_ids" property="receiverIds"/>
+        <result column="receiver_names" property="receiverNames"/>
+        <result column="channel" property="channel"/>
+        <result column="send_status" property="sendStatus"/>
+        <result column="send_time" property="sendTime"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        log_id, business_type, business_id, title, content, receiver_ids, receiver_names,
+        channel, send_status, send_time, retry_count, error_message,
+        create_time, update_time, deleted
+    </sql>
+
+    <!-- 按业务查询 -->
+    <select id="selectByBusiness" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM notification_logs
+        WHERE business_type = #{businessType} AND business_id = #{businessId} AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询发送失败的通知（用于重试） -->
+    <select id="selectFailedForRetry" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM notification_logs
+        WHERE send_status = 'failed' AND deleted = 0
+        AND retry_count &lt; #{maxRetryCount}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 按发送状态统计 -->
+    <select id="countBySendStatus" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM notification_logs
+        WHERE deleted = 0
+        <if test="businessType != null and businessType != ''">
+            AND business_type = #{businessType}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 按时间范围查询 -->
+    <select id="selectByTimeRange" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM notification_logs
+        WHERE deleted = 0
+        AND create_time &gt;= #{startTime}
+        AND create_time &lt;= #{endTime}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 更新发送状态 -->
+    <update id="updateSendStatus">
+        UPDATE notification_logs
+        SET send_status = #{sendStatus},
+            send_time = #{sendTime},
+            error_message = #{errorMessage},
+            update_time = CURRENT_TIMESTAMP
+        WHERE log_id = #{logId} AND deleted = 0
+    </update>
+
+    <!-- 增加重试次数 -->
+    <update id="incrementRetryCount">
+        UPDATE notification_logs
+        SET retry_count = retry_count + 1,
+            update_time = CURRENT_TIMESTAMP
+        WHERE log_id = #{logId} AND deleted = 0
+    </update>
+
+    <!-- 分页查询通知日志 -->
+    <select id="selectNotificationPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM notification_logs
+        WHERE deleted = 0
+        <if test="channel != null and channel != ''">
+            AND channel = #{channel}
+        </if>
+        <if test="businessType != null and businessType != ''">
+            AND business_type = #{businessType}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND create_time &gt;= TO_TIMESTAMP(#{startDate} || ' 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND create_time &lt;= TO_TIMESTAMP(#{endDate} || ' 23:59:59', 'YYYY-MM-DD HH24:MI:SS')
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 统计通知发送情况 -->
+    <select id="selectStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN send_status = 'success' THEN 1 ELSE 0 END) AS success,
+            SUM(CASE WHEN send_status = 'failed' THEN 1 ELSE 0 END) AS failed,
+            SUM(CASE WHEN send_status = 'pending' THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN send_status = 'sending' THEN 1 ELSE 0 END) AS sending
+        FROM notification_logs
+        WHERE deleted = 0
+    </select>
+
+</mapper>

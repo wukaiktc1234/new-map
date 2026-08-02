@@ -1,0 +1,21 @@
+<view class="page-container">
+  <view class="loading-content">
+    <view class="simple-bowl">
+      <view class="steam">
+        <view class="steam-line"></view>
+        <view class="steam-line"></view>
+        <view class="steam-line"></view>
+      </view>
+      <view class="bowl-rim"></view>
+      <view class="bowl-shape"></view>
+    </view>
+    
+    <view class="loading-dots">
+      <view class="loading-dot"></view>
+      <view class="loading-dot"></view>
+      <view class="loading-dot"></view>
+    </view>
+    
+    <view class="loading-text">正在加载<text class="loading-dots-text">...</text></view>
+  </view>
+</view>

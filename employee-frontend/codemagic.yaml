@@ -1,0 +1,101 @@
+# Codemagic CI/CD 配置 — 员工门户 iOS 自动构建
+#
+# 使用方法:
+#   1. 注册 https://codemagic.io/ (免费账号)
+#   2. Fork 项目到 GitHub
+#   3. Codemagic 新建 Project → 选择仓库
+#   4. 选择 "Codemagic.yaml" 作为构建配置
+#   5. 首次运行需在 Codemagic 网站上传证书和描述文件
+#
+# 免费额度: 每月 500 分钟构建时间（足够日常使用)
+
+workflows:
+  ios-build:
+    name: 员工门户 iOS IPA 构建
+    environment:
+      xcode: latest
+      cocoapods: default
+      node: 18
+      vars:
+        # 以下变量需在 Codemagic 网站的 "Environment variables" 中设置
+        # APP_STORE_CONNECT_API_KEY: (从 App Store Connect 生成)
+        # CM_CERTIFICATE: (你的 .p12 证书，Base64 编码)
+        # CM_PROVISIONING_PROFILE: (你的 .mobileprovision 文件)
+        BUNDLE_ID: "com.foodtrace.employee"
+        APP_NAME: "员工门户"
+    scripts:
+      # ---- 1. 安装依赖 ----
+      - name: 安装 Node.js 依赖
+        script: |
+          cd $CM_BUILD_DIR/employee-frontend
+          npm ci
+
+      # ---- 2. 构建 Web 资源 ----
+      - name: 构建生产环境 Web 资源
+        script: |
+          cd $CM_BUILD_DIR/employee-frontend
+          npm run build:app
+
+      # ---- 3. 同步到 iOS 工程 ----
+      - name: 同步 Capacitor iOS 资源
+        script: |
+          cd $CM_BUILD_DIR/employee-frontend
+          npx cap sync ios
+
+      # ---- 4. 设置签名 ----
+      - name: 设置代码签名
+        script: |
+          echo "设置证书和描述文件..."
+          keychain initialize
+          # Codemagic 会自动使用环境变量中的证书
+
+      # ---- 5. 构建 Archive ----
+      - name: Xcode Archive
+        script: |
+          cd $CM_BUILD_DIR/employee-frontend/ios/App
+          xcodeproject build-xcode-project \
+            --project App.xcodeproj \
+            --scheme App \
+            --configuration Release \
+            --archive-path build/App.xcarchive
+
+      # ---- 6. 导出 IPA ----
+      - name: 导出 IPA 文件
+        script: |
+          cd $CM_BUILD_DIR/employee-frontend/ios/App
+          xcodeproject export-ad-hoc-or-enterprise \
+            --archive-path build/App.xcarchive \
+            --export-options-pth exportOptions.plist \
+            --export-path $CM_BUILD_DIR/output/
+
+      # ---- 7. 上传到分发服务（可选）----
+      - name: 发布产物信息
+        script: |
+          echo "=========================================="
+          echo "  IPA 构建完成！"
+          echo "=========================================="
+          echo ""
+          echo "文件位置: $CM_BUILD_DIR/output/"
+          ls -la $CM_BUILD_DIR/output/
+          echo ""
+          echo "下载方式:"
+          echo "  1. Codemagic Dashboard → Builds → 对应构建"
+          echo "  2. Artifacts 区域下载 .ipa 文件"
+          echo ""
+          echo "安装方式 (Sideloadly):"
+          echo "  1. 下载 .ipa 到 Windows"
+          echo "  2. 打开 Sideloadly"
+          echo "  3. 连接 iPhone"
+          echo "  4. 拖入 .ipa → 输入 Apple ID → Start"
+
+    artifacts:
+      - output/**/*.ipa
+      - output/**/*.dSYM.zip
+
+    publishing:
+      email:
+        recipients:
+          - user@example.com  # 替换为你的邮箱
+        notify:
+          success: true
+          failure: true

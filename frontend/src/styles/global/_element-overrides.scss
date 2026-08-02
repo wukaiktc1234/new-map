@@ -1,0 +1,540 @@
+// ========================================
+//  ITCSS Layer 3: Elements — Element Plus 组件样式覆盖
+//  所有第三方组件库样式统一在此配置
+// ========================================
+
+.el-tabs {
+  --el-tabs-header-height: 40px;
+
+  & > .el-tabs__header {
+    margin-bottom: 0;
+    padding: 0;
+    background-color: var(--fts-bg-secondary);
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-lg)) var(--fts-dynamic-radius, var(--fts-radius-lg)) 0 0;
+    border-bottom: 1px solid var(--fts-border-primary);
+  }
+
+  .el-tabs__nav-wrap {
+    padding: 0;
+    margin: 0;
+
+    &::after {
+      display: none;
+    }
+
+    &.is-scrollable {
+      padding: 0;
+    }
+  }
+
+  .el-tabs__nav-scroll {
+    padding: 0;
+    margin: 0;
+  }
+
+  .el-tabs__nav {
+    gap: var(--fts-space-1);
+    padding: var(--fts-space-2) var(--fts-space-4) 0;
+    margin: 0;
+  }
+
+  .el-tabs__item {
+    height: var(--el-tabs-header-height);
+    line-height: var(--el-tabs-header-height);
+    padding: 0 var(--fts-space-5);
+    font-size: var(--fts-font-size-sm);
+    font-weight: var(--fts-font-weight-medium);
+    color: var(--fts-text-secondary);
+    text-align: center;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) var(--fts-dynamic-radius, var(--fts-radius-md)) 0 0;
+    transition:
+      color var(--fts-duration-fast) cubic-bezier(0.4, 0, 0.2, 1),
+      background-color var(--fts-duration-fast) cubic-bezier(0.4, 0, 0.2, 1),
+      border-color var(--fts-duration-fast) cubic-bezier(0.4, 0, 0.2, 1),
+      font-weight var(--fts-duration-fast) cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+
+    &:hover {
+      color: var(--fts-text-primary);
+      background-color: var(--fts-bg-hover);
+    }
+
+    &.is-active {
+      color: var(--fts-primary);
+      font-weight: var(--fts-font-weight-semibold);
+      background-color: var(--fts-bg-card);
+      border-color: var(--fts-border-primary);
+      border-bottom-color: transparent;
+      box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.03);
+    }
+
+    &.is-focus:not(.is-active) {
+      box-shadow: 0 0 0 2px var(--fts-primary-bg);
+    }
+  }
+
+  & > .el-tabs__header {
+    .el-tabs__item:nth-child(2) {
+      padding-left: var(--fts-space-5);
+    }
+
+    .el-tabs__item:last-child {
+      padding-right: var(--fts-space-5);
+    }
+  }
+
+  .el-tabs__active-bar {
+    display: none;
+  }
+
+  .el-tabs__content {
+    padding: var(--fts-space-5) 0 0;
+    background-color: var(--fts-bg-card);
+  }
+}
+
+.el-radio {
+  --el-radio-input-height: 18px;
+  --el-radio-input-width: 18px;
+
+  .el-radio__inner {
+    width: var(--el-radio-input-width);
+    height: var(--el-radio-input-height);
+  }
+
+  .el-radio__label {
+    font-size: var(--fts-font-size-sm);
+  }
+}
+
+.el-checkbox {
+  --el-checkbox-input-height: 18px;
+  --el-checkbox-input-width: 18px;
+
+  .el-checkbox__inner {
+    width: var(--el-checkbox-input-width);
+    height: var(--el-checkbox-input-height);
+  }
+
+  .el-checkbox__label {
+    font-size: var(--fts-font-size-sm);
+  }
+}
+
+.el-button {
+  &.is-loading {
+    justify-content: center;
+
+    .el-icon.is-loading + span {
+      margin-left: 4px;
+    }
+  }
+
+  &.is-link {
+    font-size: var(--fts-font-size-sm);
+
+    &.el-button--small {
+      font-size: 13px;
+    }
+  }
+}
+
+.el-tabs--card {
+  & > .el-tabs__header {
+    border-bottom: 1px solid var(--fts-border-primary);
+    background-color: var(--fts-bg-secondary);
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-lg)) var(--fts-dynamic-radius, var(--fts-radius-lg)) 0 0;
+    padding: 0;
+  }
+
+  .el-tabs__nav-wrap::after {
+    display: none;
+  }
+
+  .el-tabs__item {
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) var(--fts-dynamic-radius, var(--fts-radius-md)) 0 0;
+
+    &.is-active {
+      background-color: var(--fts-bg-card);
+      border-color: var(--fts-border-primary);
+      border-bottom-color: transparent;
+      box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.03);
+    }
+  }
+
+  & > .el-tabs__header {
+    .el-tabs__item:nth-child(2) {
+      padding-left: var(--fts-space-5);
+    }
+
+    .el-tabs__item:last-child {
+      padding-right: var(--fts-space-5);
+    }
+  }
+}
+
+.el-tabs--border-card {
+  border: 1px solid var(--fts-border-primary);
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-lg));
+  overflow: hidden;
+
+  & > .el-tabs__header {
+    background-color: var(--fts-bg-secondary);
+    border-bottom: 1px solid var(--fts-border-primary);
+    padding: 0;
+  }
+
+  .el-tabs__item {
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-md)) var(--fts-dynamic-radius, var(--fts-radius-md)) 0 0;
+
+    &.is-active {
+      background-color: var(--fts-bg-card);
+      border-color: var(--fts-border-primary);
+      border-bottom-color: transparent;
+      box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.03);
+    }
+  }
+}
+
+// 统一的页面级 Tab 样式（参考库存报表）
+// 用法：<el-tabs class="page-tabs">
+.page-tabs {
+  & > .el-tabs__header {
+    padding: 0 var(--fts-space-6);
+    background-color: var(--fts-bg-card);
+    border-bottom: 1px solid var(--fts-border-secondary);
+  }
+}
+
+.el-descriptions {
+  --el-descriptions-table-border: none;
+
+  .el-descriptions__header {
+    margin-bottom: var(--fts-space-4);
+  }
+
+  .el-descriptions__title {
+    font-size: var(--fts-font-size-lg);
+    font-weight: var(--fts-font-weight-semibold);
+    color: var(--fts-text-primary);
+  }
+
+  .el-descriptions__body {
+    background-color: transparent;
+    border-radius: var(--fts-dynamic-radius, var(--fts-radius-lg));
+    overflow: hidden;
+  }
+
+  .el-descriptions__table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .el-descriptions__cell {
+    padding: var(--fts-space-3) var(--fts-space-4);
+    border: none;
+    border-bottom: 1px solid var(--fts-border-secondary);
+  }
+
+  .el-descriptions__label {
+    background-color: var(--fts-bg-secondary);
+    color: var(--fts-text-secondary);
+    font-weight: var(--fts-font-weight-medium);
+    font-size: var(--fts-font-size-sm);
+    width: 140px;
+    white-space: nowrap;
+  }
+
+  .el-descriptions__content {
+    background-color: var(--fts-bg-card);
+    color: var(--fts-text-primary);
+    font-size: var(--fts-font-size-sm);
+  }
+
+  tr:last-child .el-descriptions__cell {
+    border-bottom: none;
+  }
+}
+
+.el-drawer {
+  border-radius: var(--fts-dynamic-radius, var(--fts-radius-lg)) 0 0 var(--fts-dynamic-radius, var(--fts-radius-lg)) !important;
+
+  .el-drawer__header {
+    padding: var(--fts-space-5) var(--fts-space-6);
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--fts-border-primary);
+    background-color: var(--fts-bg-secondary);
+    color: var(--fts-text-primary);
+  }
+
+  .el-drawer__body {
+    padding: var(--fts-space-6);
+  }
+
+  .el-drawer__close-btn {
+    color: var(--fts-text-tertiary);
+
+    &:hover {
+      color: var(--fts-text-primary);
+      background-color: var(--fts-bg-hover);
+      border-radius: var(--fts-radius-sm);
+    }
+  }
+}
+
+.el-select {
+  .el-select__wrapper {
+    min-width: 120px;
+  }
+}
+
+.search-panel,
+.search-toolbar {
+  .el-select {
+    .el-select__wrapper {
+      width: 100%;
+      min-width: 140px;
+      max-width: 200px;
+    }
+  }
+}
+
+// ========================================
+//  对话框滚动策略：overlay 滚动 + sticky header/footer
+//  修复 el-select/el-date-picker 下拉菜单被截断问题
+//
+//  问题根因：
+//  原方案在 .el-dialog__body 上设置 overflow-y:auto，导致 teleported=false
+//  的 popper（el-select/el-date-picker 下拉面板）被对话框 body 裁剪，
+//  当对话框较小时下拉内容被截断。
+//
+//  解决方案：
+//  1. .el-dialog__body 改为 overflow:visible，不再裁剪 popper
+//  2. .el-overlay-dialog 允许纵向滚动，禁止横向滚动（防止水平滚动条闪烁）
+//  3. header/footer 使用 position:sticky 保持可见
+//  4. .el-dialog 不再限制 max-height，允许自然增长
+// ========================================
+
+// 允许 overlay-dialog 纵向滚动，禁止横向滚动
+.el-overlay-dialog {
+  overflow-y: auto;
+  overflow-x: hidden; /* 防止下拉菜单弹出时水平滚动条闪烁 */
+  scrollbar-gutter: stable; /* 始终为滚动条预留空间，避免滚动条出现/消失导致对话框水平偏移 */
+}
+
+// 对话框使用 flex 布局
+.el-dialog {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px !important;
+  margin-bottom: 20px !important;
+
+  .el-dialog__header {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--fts-bg-card);
+  }
+
+  .el-dialog__body {
+    overflow: visible; /* 不裁剪 popper，修复下拉菜单截断问题 */
+    flex: 1;
+    min-height: 0;
+    position: relative; /* 为 teleported=false 的 popper 提供正确的定位上下文 */
+  }
+
+  .el-dialog__footer {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background-color: var(--fts-bg-card);
+  }
+}
+
+// align-center 模式下的兼容处理
+.el-overlay-dialog:has(> .el-dialog--center) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.el-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--fts-space-3);
+
+  .el-button {
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--fts-space-3);
+  width: 100%;
+
+  .el-button {
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--fts-space-3);
+  padding-left: var(--fts-space-3);
+  margin-bottom: var(--fts-space-3);
+  font-weight: var(--fts-font-weight-semibold);
+  font-size: var(--fts-font-size-base);
+  color: var(--fts-text-primary);
+  border-left: 3px solid var(--fts-primary);
+}
+
+.actions-column .cell {
+  .el-button.is-link {
+    font-weight: var(--fts-font-weight-medium);
+
+    &:hover {
+      opacity: 0.85;
+    }
+  }
+}
+
+// ========================================
+//  数据密集型对话框宽度规范
+//  解决 HR/采购/库存等模块中含表格/多区块对话框过窄的问题
+// ========================================
+
+/** 标准对话框宽度类（与 Element Plus width 属性配合使用）
+ *  设计原则：
+ *  - sm：轻量确认/简单表单，<= 2 个字段
+ *  - md：标准表单，3-6 个字段
+ *  - lg：含明细表格或 2-3 个信息区块（采购订单、库存详情等）
+ *  - xl：复杂详情/多表格/审批流（合同、电子合同、采购追溯等）
+ */
+.fts-dialog--sm {
+  --el-dialog-width: 480px;
+  width: 480px;
+}
+
+.fts-dialog--md {
+  --el-dialog-width: 680px;
+  width: 680px;
+}
+
+.fts-dialog--lg {
+  --el-dialog-width: 960px;
+  width: 960px;
+}
+
+.fts-dialog--xl {
+  --el-dialog-width: 1200px;
+  width: 1200px;
+}
+
+/* 加宽对话框（1100px）：明细/字段较多的表单使用 */
+.fts-dialog--wide {
+  --el-dialog-width: 1100px;
+  width: 1100px;
+  max-width: calc(100vw - 48px);
+}
+
+/* 大内容对话框：header 不再使用 Element 默认 padding，改用详情 header 组件承担 */
+.fts-dialog--lg,
+.fts-dialog--xl {
+  .el-dialog__header {
+    padding: 0;
+    border-bottom: none;
+    background: transparent;
+  }
+
+  .el-dialog__body {
+    padding: var(--fts-space-4) var(--fts-space-5) var(--fts-space-5);
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* 自定义细滚动条，适配浅色/深色主题 */
+    scrollbar-width: thin;
+    scrollbar-color: var(--fts-border-secondary) transparent;
+
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--fts-border-secondary);
+      border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
+
+  .el-dialog__footer {
+    padding: var(--fts-space-3) var(--fts-space-5) var(--fts-space-5);
+    border-top: 1px solid var(--fts-border-secondary);
+    background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fts-bg-card) 60%, var(--fts-bg-secondary)) 40%);
+    backdrop-filter: blur(4px);
+  }
+}
+
+/* 响应式：小屏下所有宽对话框不低于 90vw */
+@media (max-width: 1280px) {
+  .fts-dialog--lg,
+  .fts-dialog--xl {
+    width: 92vw !important;
+    max-width: 1200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .fts-dialog--md,
+  .fts-dialog--lg,
+  .fts-dialog--xl {
+    width: 96vw !important;
+  }
+}
+
+/* 对话框内 el-tabs 分区内容（详情分区 Tab）样式优化 */
+.fts-dialog--lg,
+.fts-dialog--xl {
+  .el-tabs--border-card {
+    border-radius: var(--fts-radius-md);
+    overflow: hidden;
+    border: 1px solid var(--fts-border-secondary);
+
+    > .el-tabs__header {
+      background: var(--fts-bg-secondary);
+      padding: 0 var(--fts-space-3);
+    }
+
+    .el-tabs__content {
+      padding: var(--fts-space-4);
+    }
+  }
+}
+
+/* 对话框内部表格统一处理：避免横向滚动条被截断 */
+.el-dialog__body {
+  .el-table {
+    --el-table-border-color: var(--fts-border-secondary);
+  }
+}
+
+// ========================================
+//  Element Plus 组件样式覆盖结束
+// ========================================

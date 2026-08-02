@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>采购订单详情状态表达设计方案</title>
+  <style>
+    :root {
+      --fts-primary: #1a5fb4;
+      --fts-primary-rgb: 26, 95, 180;
+      --fts-success: #34a853;
+      --fts-warning: #f9ab00;
+      --fts-error: #ea4335;
+      --fts-info: #5f6368;
+      --fts-bg-page: #f5f7fa;
+      --fts-bg-card: #ffffff;
+      --fts-bg-hover: #e8f4fd;
+      --fts-text-primary: #1f2937;
+      --fts-text-secondary: #4b5563;
+      --fts-text-tertiary: #9ca3af;
+      --fts-border-primary: #e5e7eb;
+      --fts-border-secondary: #f3f4f6;
+      --fts-radius-md: 8px;
+      --fts-radius-lg: 12px;
+      --fts-radius-full: 999px;
+      --fts-space-1: 4px;
+      --fts-space-2: 8px;
+      --fts-space-3: 12px;
+      --fts-space-4: 16px;
+      --fts-space-5: 20px;
+      --fts-space-6: 24px;
+      --fts-font-size-sm: 13px;
+      --fts-font-size-base: 14px;
+      --fts-font-size-lg: 16px;
+      --fts-font-size-xl: 20px;
+      --fts-font-weight-medium: 500;
+      --fts-font-weight-semibold: 600;
+      --fts-font-weight-bold: 700;
+    }
+
+    [data-theme="dark"] {
+      --fts-primary: #4a9eff;
+      --fts-primary-rgb: 74, 158, 255;
+      --fts-success: #5bc87a;
+      --fts-warning: #ffcc4d;
+      --fts-error: #ff7b6b;
+      --fts-info: #a0a6ad;
+      --fts-bg-page: #0a0a0a;
+      --fts-bg-card: #141414;
+      --fts-bg-hover: #1f2937;
+      --fts-text-primary: #f3f4f6;
+      --fts-text-secondary: #d1d5db;
+      --fts-text-tertiary: #9ca3af;
+      --fts-border-primary: #2d2d2d;
+      --fts-border-secondary: #1f1f1f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--fts-bg-page);
+      color: var(--fts-text-primary);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      color: var(--fts-text-secondary);
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .theme-toggle {
+      padding: 10px 20px;
+      border: 1px solid var(--fts-border-primary);
+      background: var(--fts-bg-card);
+      color: var(--fts-text-primary);
+      border-radius: var(--fts-radius-md);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--fts-bg-hover);
+    }
+
+    .scheme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+      gap: 24px;
+    }
+
+    .scheme-card {
+      background: var(--fts-bg-card);
+      border: 1px solid var(--fts-border-primary);
+      border-radius: var(--fts-radius-lg);
+      padding: var(--fts-space-5);
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    .scheme-label {
+      font-size: 12px;
+      color: var(--fts-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: var(--fts-space-3);
+      font-weight: var(--fts-font-weight-semibold);
+    }
+
+    .scheme-title {
+      font-size: var(--fts-font-size-lg);
+      font-weight: var(--fts-font-weight-bold);
+      margin-bottom: 4px;
+    }
+
+    .scheme-desc {
+      font-size: var(--fts-font-size-sm);
+      color: var(--fts-text-secondary);
+      margin-bottom: var(--fts-space-4);
+    }
+
+    /* 模拟对话框 */
+    .dialog-mock {
+      border: 1px solid var(--fts-border-primary);
+      border-radius: var(--fts-radius-lg);
+      overflow: hidden;
+      background: var(--fts-bg-card);
+    }
+
+    .dialog-mock-header {
+      padding: var(--fts-space-4) var(--fts-space-5);
+      border-bottom: 1px solid var(--fts-border-primary);
+      font-weight: var(--fts-font-weight-semibold);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dialog-mock-body {
+      padding: var(--fts-space-5);
+    }
+
+    .mock-close {
+      color: var(--fts-text-tertiary);
+      font-size: 18px;
+    }
+
+    /* 通用组件 */
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: var(--fts-radius-full);
+      font-size: var(--fts-font-size-sm);
+      font-weight: var(--fts-font-weight-medium);
+    }
+
+    .status-tag--warning {
+      background: rgba(249, 171, 0, 0.12);
+      color: var(--fts-warning);
+      border: 1px solid rgba(249, 171, 0, 0.25);
+    }
+
+    [data-theme="dark"] .status-tag--warning {
+      background: rgba(255, 204, 77, 0.12);
+      border-color: rgba(255, 204, 77, 0.35);
+    }
+
+    .status-tag--primary {
+      background: rgba(26, 95, 180, 0.12);
+      color: var(--fts-primary);
+      border: 1px solid rgba(26, 95, 180, 0.25);
+    }
+
+    [data-theme="dark"] .status-tag--primary {
+      background: rgba(74, 158, 255, 0.12);
+      border-color: rgba(74, 158, 255, 0.35);
+    }
+
+    .desc-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--fts-font-size-sm);
+      margin-top: var(--fts-space-4);
+    }
+
+    .desc-table td {
+      border: 1px solid var(--fts-border-primary);
+      padding: 10px 12px;
+      color: var(--fts-text-primary);
+    }
+
+    .desc-table td:first-child {
+      width: 120px;
+      background: var(--fts-bg-page);
+      color: var(--fts-text-secondary);
+      font-weight: var(--fts-font-weight-medium);
+    }
+
+    [data-theme="dark"] .desc-table td:first-child {
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ===== 方案 A：图章为主 ===== */
+    .scheme-a .status-banner {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--fts-space-4) var(--fts-space-5);
+      margin-bottom: var(--fts-space-4);
+      border-radius: var(--fts-radius-md);
+      background: var(--fts-bg-page);
+      border: 1px solid var(--fts-border-primary);
+    }
+
+    .scheme-a .banner-left {
+      display: flex;
+      flex-direction: column;
+      gap: var(--fts-space-1);
+    }
+
+    .scheme-a .order-no {
+      font-size: var(--fts-font-size-xl);
+      font-weight: var(--fts-font-weight-bold);
+      color: var(--fts-text-primary);
+    }
+
+    .scheme-a .order-meta {
+      font-size: var(--fts-font-size-sm);
+      color: var(--fts-text-secondary);
+    }
+
+    .scheme-a .order-stamp {
+      position: absolute;
+      top: 12px;
+      right: 20px;
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--fts-font-size-base);
+      font-weight: var(--fts-font-weight-bold);
+      letter-spacing: 2px;
+      color: var(--stamp-color);
+      border: 3px solid var(--stamp-color);
+      background: rgba(249, 171, 0, 0.08);
+      transform: rotate(18deg);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    [data-theme="dark"] .scheme-a .order-stamp {
+      background: rgba(255, 204, 77, 0.08);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+
+    .scheme-a .order-stamp::before {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 1px solid var(--stamp-color);
+      opacity: 0.6;
+    }
+
+    .scheme-a .order-stamp {
+      --stamp-color: var(--fts-warning);
+    }
+
+    /* ===== 方案 B：状态 Header 条 ===== */
+    .scheme-b .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--fts-space-4) var(--fts-space-5);
+      margin-bottom: var(--fts-space-4);
+      border-radius: var(--fts-radius-md);
+      background: rgba(249, 171, 0, 0.12);
+      border: 1px solid rgba(249, 171, 0, 0.3);
+    }
+
+    [data-theme="dark"] .scheme-b .status-header {
+      background: rgba(255, 204, 77, 0.12);
+      border-color: rgba(255, 204, 77, 0.35);
+    }
+
+    .scheme-b .header-main {
+      display: flex;
+      align-items: center;
+      gap: var(--fts-space-4);
+    }
+
+    .scheme-b .header-no {
+      font-size: var(--fts-font-size-lg);
+      font-weight: var(--fts-font-weight-bold);
+      color: var(--fts-text-primary);
+    }
+
+    .scheme-b .header-actions {
+      display: flex;
+      gap: var(--fts-space-2);
+    }
+
+    .scheme-b .btn {
+      padding: 6px 14px;
+      border-radius: var(--fts-radius-md);
+      font-size: var(--fts-font-size-sm);
+      border: none;
+      cursor: pointer;
+      font-weight: var(--fts-font-weight-medium);
+    }
+
+    .scheme-b .btn-primary {
+      background: var(--fts-primary);
+      color: white;
+    }
+
+    .scheme-b .btn-default {
+      background: var(--fts-bg-card);
+      color: var(--fts-text-primary);
+      border: 1px solid var(--fts-border-primary);
+    }
+
+    /* ===== 方案 C：左侧状态边条 ===== */
+    .scheme-c .dialog-with-edge {
+      display: flex;
+      border: 1px solid var(--fts-border-primary);
+      border-radius: var(--fts-radius-lg);
+      overflow: hidden;
+    }
+
+    .scheme-c .edge-bar {
+      width: 6px;
+      background: var(--fts-warning);
+      flex-shrink: 0;
+    }
+
+    .scheme-c .edge-content {
+      flex: 1;
+      padding: var(--fts-space-5);
+    }
+
+    .scheme-c .edge-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--fts-space-4);
+    }
+
+    .scheme-c .edge-title {
+      display: flex;
+      align-items: center;
+      gap: var(--fts-space-3);
+    }
+
+    .scheme-c .edge-order-no {
+      font-size: var(--fts-font-size-lg);
+      font-weight: var(--fts-font-weight-bold);
+    }
+
+    /* ===== 方案 D：状态胶囊 + 步骤条 ===== */
+    .scheme-d .status-step-header {
+      padding: var(--fts-space-4);
+      margin-bottom: var(--fts-space-4);
+      border-radius: var(--fts-radius-md);
+      background: var(--fts-bg-page);
+      border: 1px solid var(--fts-border-primary);
+    }
+
+    .scheme-d .top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--fts-space-4);
+    }
+
+    .scheme-d .steps {
+      display: flex;
+      align-items: center;
+      gap: var(--fts-space-1);
+    }
+
+    .scheme-d .step {
+      padding: 6px 14px;
+      border-radius: var(--fts-radius-full);
+      font-size: 12px;
+      font-weight: var(--fts-font-weight-medium);
+      color: var(--fts-text-tertiary);
+      background: var(--fts-bg-card);
+      border: 1px solid var(--fts-border-primary);
+    }
+
+    .scheme-d .step.active {
+      background: rgba(249, 171, 0, 0.15);
+      color: var(--fts-warning);
+      border-color: rgba(249, 171, 0, 0.4);
+    }
+
+    [data-theme="dark"] .scheme-d .step.active {
+      background: rgba(255, 204, 77, 0.15);
+      border-color: rgba(255, 204, 77, 0.45);
+    }
+
+    .scheme-d .step.completed {
+      background: rgba(52, 168, 83, 0.12);
+      color: var(--fts-success);
+      border-color: rgba(52, 168, 83, 0.35);
+    }
+
+    /* ===== 方案 E：状态卡片 ===== */
+    .scheme-e .status-card {
+      display: flex;
+      align-items: center;
+      gap: var(--fts-space-4);
+      padding: var(--fts-space-4);
+      margin-bottom: var(--fts-space-4);
+      border-radius: var(--fts-radius-md);
+      background: rgba(249, 171, 0, 0.1);
+      border: 1px solid rgba(249, 171, 0, 0.25);
+    }
+
+    [data-theme="dark"] .scheme-e .status-card {
+      background: rgba(255, 204, 77, 0.1);
+      border-color: rgba(255, 204, 77, 0.3);
+    }
+
+    .scheme-e .status-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(249, 171, 0, 0.2);
+      color: var(--fts-warning);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    [data-theme="dark"] .scheme-e .status-icon {
+      background: rgba(255, 204, 77, 0.18);
+    }
+
+    .scheme-e .status-card-main {
+      flex: 1;
+    }
+
+    .scheme-e .status-card-title {
+      font-size: var(--fts-font-size-lg);
+      font-weight: var(--fts-font-weight-bold);
+      color: var(--fts-text-primary);
+    }
+
+    .scheme-e .status-card-desc {
+      font-size: var(--fts-font-size-sm);
+      color: var(--fts-text-secondary);
+      margin-top: 2px;
+    }
+
+    .scheme-e .status-card-meta {
+      font-size: var(--fts-font-size-sm);
+      color: var(--fts-text-tertiary);
+      text-align: right;
+    }
+
+    /* ===== 方案 F：极简 Stripe 风 ===== */
+    .scheme-f .minimal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: var(--fts-space-4);
+      margin-bottom: var(--fts-space-4);
+      border-bottom: 1px solid var(--fts-border-primary);
+    }
+
+    .scheme-f .minimal-left {
+      display: flex;
+      align-items: center;
+      gap: var(--fts-space-3);
+    }
+
+    .scheme-f .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--fts-warning);
+    }
+
+    .scheme-f .status-name {
+      font-weight: var(--fts-font-weight-semibold);
+      color: var(--fts-text-primary);
+    }
+
+    .scheme-f .order-no-minimal {
+      font-size: var(--fts-font-size-sm);
+      color: var(--fts-text-secondary);
+    }
+
+    .note {
+      margin-top: 40px;
+      padding: 16px;
+      background: var(--fts-bg-card);
+      border: 1px solid var(--fts-border-primary);
+      border-radius: var(--fts-radius-md);
+      font-size: 14px;
+      color: var(--fts-text-secondary);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div>
+      <h1>采购订单详情 — 状态表达设计方案</h1>
+      <div class="subtitle">共 6 种方案，点击右上角切换浅色 / 深色模式查看效果</div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()">切换浅色 / 深色模式</button>
+  </div>
+
+  <div class="scheme-grid">
+    <!-- 方案 A -->
+    <div class="scheme-card scheme-a">
+      <div class="scheme-label">方案 A · 推荐</div>
+      <div class="scheme-title">图章为主，去横条标签</div>
+      <div class="scheme-desc">保留右上角圆形图章作为视觉焦点；横条只承载单号与元信息；下方描述列表保留状态字段。避免 StatusTag 与图章重复。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body">
+          <div class="status-banner">
+            <div class="banner-left">
+              <div class="order-no">PO-20260725-001</div>
+              <div class="order-meta">供应商：XX食品有限公司 · 总金额 ¥12,580.00 · 下单日期 2026-07-25</div>
+            </div>
+            <div class="order-stamp">待审核</div>
+          </div>
+          <table class="desc-table">
+            <tr><td>订单状态</td><td><span class="status-tag status-tag--warning">● 待审核</span></td></tr>
+            <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+            <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 B -->
+    <div class="scheme-card scheme-b">
+      <div class="scheme-label">方案 B · Ant Design / Figma 风</div>
+      <div class="scheme-title">状态 Header 条</div>
+      <div class="scheme-desc">顶部一整条彩色状态栏，大 StatusTag + 单号 + 快捷操作。状态语义强烈，适合流程型系统。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body">
+          <div class="status-header">
+            <div class="header-main">
+              <span class="status-tag status-tag--warning">● 待审核</span>
+              <span class="header-no">PO-20260725-001</span>
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-primary">审批通过</button>
+              <button class="btn btn-default">驳回</button>
+            </div>
+          </div>
+          <table class="desc-table">
+            <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+            <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+            <tr><td>总金额</td><td>¥12,580.00</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 C -->
+    <div class="scheme-card scheme-c">
+      <div class="scheme-label">方案 C · Linear / Notion 风</div>
+      <div class="scheme-title">左侧状态边条</div>
+      <div class="scheme-desc">对话框左侧用一条彩色竖线表达状态，顶部标题与状态胶囊并排。极简、低饱和度，适合高密度信息页面。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body" style="padding: 0;">
+          <div class="dialog-with-edge">
+            <div class="edge-bar"></div>
+            <div class="edge-content">
+              <div class="edge-header">
+                <div class="edge-title">
+                  <span class="status-tag status-tag--warning">● 待审核</span>
+                  <span class="edge-order-no">PO-20260725-001</span>
+                </div>
+              </div>
+              <table class="desc-table" style="margin-top: 0;">
+                <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+                <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+                <tr><td>总金额</td><td>¥12,580.00</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 D -->
+    <div class="scheme-card scheme-d">
+      <div class="scheme-label">方案 D · Salesforce / HubSpot 风</div>
+      <div class="scheme-title">状态胶囊 + 步骤条</div>
+      <div class="scheme-desc">顶部展示当前状态胶囊，下方用步骤条显示完整流程（申请→订单→收货→入库）。强调单据在流程中的位置。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body">
+          <div class="status-step-header">
+            <div class="top-row">
+              <span class="status-tag status-tag--warning">● 待审核</span>
+              <span style="font-size: var(--fts-font-size-sm); color: var(--fts-text-secondary);">PO-20260725-001</span>
+            </div>
+            <div class="steps">
+              <span class="step completed">申请</span>
+              <span class="step active">订单</span>
+              <span class="step">收货</span>
+              <span class="step">入库</span>
+              <span class="step">结算</span>
+            </div>
+          </div>
+          <table class="desc-table">
+            <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+            <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+            <tr><td>总金额</td><td>¥12,580.00</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 E -->
+    <div class="scheme-card scheme-e">
+      <div class="scheme-label">方案 E · Microsoft Dynamics 风</div>
+      <div class="scheme-title">状态卡片</div>
+      <div class="scheme-desc">顶部使用带大图标的状态卡片，状态名+描述+元信息。视觉冲击力强，适合 ERP 风格的复杂表单。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body">
+          <div class="status-card">
+            <div class="status-icon">⏳</div>
+            <div class="status-card-main">
+              <div class="status-card-title">待审核</div>
+              <div class="status-card-desc">等待上级审批通过后进入下单环节</div>
+            </div>
+            <div class="status-card-meta">
+              <div>PO-20260725-001</div>
+              <div>¥12,580.00</div>
+            </div>
+          </div>
+          <table class="desc-table">
+            <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+            <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+            <tr><td>下单日期</td><td>2026-07-25</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方案 F -->
+    <div class="scheme-card scheme-f">
+      <div class="scheme-label">方案 F · Stripe / Linear 极简风</div>
+      <div class="scheme-title">极简状态行</div>
+      <div class="scheme-desc">无图章、无横幅，仅一行状态点+状态名+单号。下方直接是描述列表。最克制，信息密度最高。</div>
+      <div class="dialog-mock">
+        <div class="dialog-mock-header">
+          <span>订单详情</span>
+          <span class="mock-close">×</span>
+        </div>
+        <div class="dialog-mock-body">
+          <div class="minimal-header">
+            <div class="minimal-left">
+              <span class="status-dot"></span>
+              <span class="status-name">待审核</span>
+              <span class="order-no-minimal">PO-20260725-001</span>
+            </div>
+            <span class="order-no-minimal">¥12,580.00</span>
+          </div>
+          <table class="desc-table">
+            <tr><td>付款状态</td><td><span class="status-tag status-tag--primary">● 未付款</span></td></tr>
+            <tr><td>供应商</td><td>XX食品有限公司</td></tr>
+            <tr><td>总金额</td><td>¥12,580.00</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>说明：</strong><br>
+    1. 所有方案均遵循项目规范：使用 --fts-* CSS 变量、StatusTag 组件语义、深色模式适配。<br>
+    2. 深色模式下状态背景已改用半透明主题色，避免灰黑一片。<br>
+    3. 当前代码（PurchaseOrder.vue）同时存在横条 StatusTag + 图章 + 描述列表 StatusTag 三处状态表达，建议根据本样图选择一种方案后统一调整。<br>
+    4. 选择后我将按选定方案修改 PurchaseOrder.vue，并同步调整深色模式下的状态横幅样式。
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const html = document.documentElement;
+      if (html.getAttribute('data-theme') === 'dark') {
+        html.removeAttribute('data-theme');
+      } else {
+        html.setAttribute('data-theme', 'dark');
+      }
+    }
+  </script>
+</body>
+</html>

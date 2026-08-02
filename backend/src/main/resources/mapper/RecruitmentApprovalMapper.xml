@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.RecruitmentApprovalMapper">
+
+    <!-- 招聘审批记录结果映射 -->
+    <resultMap id="RecruitmentApprovalResultMap" type="com.foodtraceability.entity.RecruitmentApproval">
+        <id column="approval_id" property="approvalId"/>
+        <result column="post_id" property="postId"/>
+        <result column="applicant_name" property="applicantName"/>
+        <result column="phone" property="phone"/>
+        <result column="proposed_salary" property="proposedSalary"/>
+        <result column="interview_score" property="interviewScore"/>
+        <result column="interviewer_id" property="interviewerId"/>
+        <result column="interviewer_comment" property="interviewerComment"/>
+        <result column="current_level" property="currentLevel"/>
+        <result column="approver_id" property="approverId"/>
+        <result column="approval_status" property="approvalStatus"/>
+        <result column="rejection_reason" property="rejectionReason"/>
+        <result column="approved_at" property="approvedAt"/>
+        <result column="final_decision" property="finalDecision"/>
+        <result column="hired_at" property="hiredAt"/>
+        <result column="employee_id" property="employeeId"/>
+        <result column="version" property="version"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 查询列片段 -->
+    <sql id="selectApprovalColumns">
+        approval_id, post_id, applicant_name, phone, proposed_salary,
+        interview_score, interviewer_id, interviewer_comment, current_level,
+        approver_id, approval_status, rejection_reason, approved_at,
+        final_decision, hired_at, employee_id,
+        version, deleted, create_time, update_time
+    </sql>
+
+    <!-- 查询条件片段 -->
+    <sql id="queryCondition">
+        <where>
+            <if test="query.postId != null and query.postId != ''">
+                AND post_id = #{query.postId}
+            </if>
+            <if test="query.approvalStatus != null and query.approvalStatus != ''">
+                AND approval_status = #{query.approvalStatus}
+            </if>
+            <if test="query.approverId != null and query.approverId != ''">
+                AND approver_id = #{query.approverId}
+            </if>
+            <if test="query.currentLevel != null">
+                AND current_level = #{query.currentLevel}
+            </if>
+            <if test="query.applicantName != null and query.applicantName != ''">
+                AND applicant_name LIKE CONCAT('%', #{query.applicantName}, '%')
+            </if>
+            <if test="query.startDate != null">
+                AND create_time &gt;= #{query.startDate}
+            </if>
+            <if test="query.endDate != null">
+                AND create_time &lt;= #{query.endDate}
+            </if>
+        </where>
+    </sql>
+
+    <!--
+        分页查询招聘审批记录
+        支持按岗位、状态、审批人等条件筛选，按创建时间降序排序
+    -->
+    <select id="selectApprovalPage" resultMap="RecruitmentApprovalResultMap">
+        SELECT <include refid="selectApprovalColumns"/>
+        FROM recruitment_approvals
+        <include refid="queryCondition"/>
+        ORDER BY create_time DESC
+    </select>
+
+    <!--
+        查询指定审批人的待审批记录
+        待审批：审批状态为pending且当前审批人为指定用户
+        按创建时间升序（先提交先审批）
+    -->
+    <select id="selectPendingApprovals" resultMap="RecruitmentApprovalResultMap">
+        SELECT <include refid="selectApprovalColumns"/>
+        FROM recruitment_approvals
+        WHERE approver_id = #{approverId}
+          AND approval_status = 'pending'
+        ORDER BY create_time ASC
+    </select>
+
+    <!--
+        根据招聘岗位ID查询所有关联的审批记录
+        用于查看某个岗位的所有应聘者审批情况
+        按创建时间降序（最新的在前）
+    -->
+    <select id="selectByPostId" resultMap="RecruitmentApprovalResultMap">
+        SELECT <include refid="selectApprovalColumns"/>
+        FROM recruitment_approvals
+        WHERE post_id = #{postId}
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

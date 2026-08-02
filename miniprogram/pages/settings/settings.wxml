@@ -1,0 +1,105 @@
+<view class="settings-page">
+  <view class="settings-section">
+    <view class="section-title">账号与安全</view>
+    <view class="settings-item" bindtap="goToAccount">
+      <view class="item-left">
+        <view class="item-icon account-icon"></view>
+        <text class="item-text">账号管理</text>
+      </view>
+      <view class="item-right">
+        <text class="item-value">{{userInfo.phone || '未绑定'}}</text>
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+    <view class="settings-item" bindtap="goToPassword">
+      <view class="item-left">
+        <view class="item-icon password-icon"></view>
+        <text class="item-text">修改密码</text>
+      </view>
+      <view class="item-right">
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="settings-section">
+    <view class="section-title">通用设置</view>
+    <view class="settings-item">
+      <view class="item-left">
+        <view class="item-icon notification-icon"></view>
+        <text class="item-text">消息通知</text>
+      </view>
+      <view class="item-right">
+        <switch checked="{{notificationEnabled}}" bindchange="toggleNotification" color="#C9A962" />
+      </view>
+    </view>
+    <view class="settings-item">
+      <view class="item-left">
+        <view class="item-icon sound-icon"></view>
+        <text class="item-text">声音提醒</text>
+      </view>
+      <view class="item-right">
+        <switch checked="{{soundEnabled}}" bindchange="toggleSound" color="#C9A962" />
+      </view>
+    </view>
+  </view>
+
+  <view class="settings-section">
+    <view class="section-title">隐私与安全</view>
+    <view class="settings-item">
+      <view class="item-left">
+        <view class="item-icon privacy-icon"></view>
+        <text class="item-text">隐私政策</text>
+      </view>
+      <view class="item-right">
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+    <view class="settings-item" bindtap="goToAgreement">
+      <view class="item-left">
+        <view class="item-icon agreement-icon"></view>
+        <text class="item-text">用户协议</text>
+      </view>
+      <view class="item-right">
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="settings-section">
+    <view class="section-title">其他</view>
+    <view class="settings-item" bindtap="clearCache">
+      <view class="item-left">
+        <view class="item-icon cache-icon"></view>
+        <text class="item-text">清除缓存</text>
+      </view>
+      <view class="item-right">
+        <text class="item-value">{{cacheSize}}</text>
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+    <view class="settings-item" bindtap="goToAbout">
+      <view class="item-left">
+        <view class="item-icon about-icon"></view>
+        <text class="item-text">关于我们</text>
+      </view>
+      <view class="item-right">
+        <text class="item-value">v1.0.0</text>
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+    <view class="settings-item" bindtap="checkUpdate">
+      <view class="item-left">
+        <view class="item-icon update-icon"></view>
+        <text class="item-text">检查更新</text>
+      </view>
+      <view class="item-right">
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="logout-btn" bindtap="logout" wx:if="{{isLoggedIn}}">
+    <text>退出登录</text>
+  </view>
+</view>

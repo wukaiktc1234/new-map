@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.foodtraceability.mapper.InventorySummaryMapper">
+
+    <select id="selectSummaryPage" resultType="com.foodtraceability.entity.InventorySummary">
+        SELECT
+            COALESCE(t.product_id, 0) AS productId,
+            MAX(t.product_name) AS productName,
+            MAX(t.unit) AS unit,
+            CASE WHEN COALESCE(SUM(t.total_stock), 0) > 0
+                 THEN COALESCE(SUM(t.total_value), 0) / SUM(t.total_stock)
+                 ELSE 0
+            END AS costPrice,
+            COALESCE(SUM(t.warehouse_stock), 0) AS warehouseStock,
+            COALESCE(SUM(t.store_stock), 0) AS storeStock,
+            COALESCE(SUM(t.total_stock), 0) AS totalStock,
+            COALESCE(SUM(t.total_value), 0) AS totalValue,
+            COALESCE(MAX(t.store_count), 0) AS storeCount
+        FROM (
+            -- 仓库库存汇总
+            SELECT
+                i.material_id AS product_id,
+                MAX(i.material_name) AS product_name,
+                MAX(i.unit) AS unit,
+                COALESCE(SUM(i.current_stock), 0) AS warehouse_stock,
+                0 AS store_stock,
+                COALESCE(SUM(i.current_stock), 0) AS total_stock,
+                COALESCE(SUM(i.total_cost), 0) AS total_value,
+                0 AS store_count
+            FROM inventory i
+            WHERE i.deleted = 0
+            <if test="productName != null and productName != ''">
+                AND i.material_name LIKE CONCAT('%', #{productName}, '%')
+            </if>
+            GROUP BY i.material_id
+
+            UNION ALL
+
+            -- 门店库存汇总
+            SELECT
+                si.material_id AS product_id,
+                MAX(si.material_name) AS product_name,
+                MAX(si.unit) AS unit,
+                0 AS warehouse_stock,
+                COALESCE(SUM(si.current_stock), 0) AS store_stock,
+                COALESCE(SUM(si.current_stock), 0) AS total_stock,
+                COALESCE(SUM(si.total_cost), 0) AS total_value,
+                COUNT(DISTINCT si.store_id) AS store_count
+            FROM store_inventory si
+            WHERE si.deleted = 0
+            <if test="productName != null and productName != ''">
+                AND si.material_name LIKE CONCAT('%', #{productName}, '%')
+            </if>
+            GROUP BY si.material_id
+        ) t
+        GROUP BY t.product_id
+        ORDER BY totalStock DESC
+    </select>
+
+</mapper>

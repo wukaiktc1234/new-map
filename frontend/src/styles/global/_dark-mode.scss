@@ -1,0 +1,582 @@
+// ========================================
+//  ITCSS Layer 6: Trumps — 主题模式覆盖（深色/色弱）
+//  统一管理所有 html.dark / html.color-weak 覆盖
+//  包括：CSS变量覆盖 + Element Plus组件覆盖
+//  禁止在其他文件或组件中编写 html.dark 覆盖块
+// ========================================
+
+html.dark {
+  --fts-primary: #5a8fc7;
+  --fts-primary-rgb: 90, 143, 199;
+  --fts-primary-hover: #7aa8d9;
+  --fts-primary-active: #4a7fb7;
+  --fts-primary-light: #1e2d3d;
+  --fts-primary-bg: #1a2430;
+
+  --fts-success: #5cb85c;
+  --fts-success-hover: #6cc76c;
+  --fts-success-active: #4ca84c;
+  --fts-success-light: #1a2e1a;
+  --fts-success-bg: #1a2a1a;
+
+  --fts-warning: #d4a03a;
+  --fts-warning-hover: #e4b04a;
+  --fts-warning-active: #c4902a;
+  --fts-warning-light: #2e2718;
+  --fts-warning-bg: #2e2718;
+
+  --fts-error: #c9544b;
+  --fts-error-hover: #d9645b;
+  --fts-error-active: #b9443b;
+  --fts-error-light: #2e1a1a;
+  --fts-error-bg: #2e1a1a;
+
+  --fts-info: #7a8088;
+  --fts-info-hover: #8a9098;
+  --fts-info-active: #6a7078;
+  --fts-info-light: #222222;
+  --fts-info-bg: #222222;
+
+  --fts-bg-page: #101014;
+  --fts-bg-card: #16161a;
+  --fts-bg-hover: #26262b;
+  --fts-bg-selected: #202024;
+  --fts-bg-secondary: #1b1b1f;
+  --fts-bg-tertiary: #202024;
+
+  --fts-text-primary: #e8e8e8;
+  --fts-text-secondary: #a0a0a0;
+  --fts-text-tertiary: #707070;
+  --fts-text-placeholder: #505050;
+  --fts-text-disabled: #505050;
+  --fts-text-inverse: #0a0a0a;
+  --fts-text-link: #5a8fc7;
+
+  --fts-border-primary: #333333;
+  --fts-border-secondary: #222222;
+  --fts-border-hover: #555555;
+  --fts-border-focus: #5a8fc7;
+
+  --el-color-primary: var(--fts-primary);
+  --el-color-primary-light-3: var(--fts-primary-hover);
+  --el-color-primary-light-5: var(--fts-primary-light);
+  --el-color-primary-light-7: var(--fts-primary-bg);
+  --el-color-primary-light-8: var(--fts-primary-bg);
+  --el-color-primary-light-9: var(--fts-primary-bg);
+  --el-color-primary-dark-2: var(--fts-primary-active);
+
+  --el-color-success: var(--fts-success);
+  --el-color-success-light-3: var(--fts-success-hover);
+  --el-color-success-light-5: var(--fts-success-light);
+  --el-color-success-light-7: var(--fts-success-bg);
+  --el-color-success-light-8: var(--fts-success-bg);
+  --el-color-success-light-9: var(--fts-success-bg);
+  --el-color-success-dark-2: var(--fts-success-active);
+
+  --el-color-warning: var(--fts-warning);
+  --el-color-warning-light-3: var(--fts-warning-hover);
+  --el-color-warning-light-5: var(--fts-warning-light);
+  --el-color-warning-light-7: var(--fts-warning-bg);
+  --el-color-warning-light-8: var(--fts-warning-bg);
+  --el-color-warning-light-9: var(--fts-warning-bg);
+  --el-color-warning-dark-2: var(--fts-warning-active);
+
+  --el-color-danger: var(--fts-error);
+  --el-color-danger-light-3: var(--fts-error-hover);
+  --el-color-danger-light-5: var(--fts-error-light);
+  --el-color-danger-light-7: var(--fts-error-bg);
+  --el-color-danger-light-8: var(--fts-error-bg);
+  --el-color-danger-light-9: var(--fts-error-bg);
+  --el-color-danger-dark-2: var(--fts-error-active);
+
+  --el-color-info: var(--fts-info);
+  --el-color-info-light-3: var(--fts-info-hover);
+  --el-color-info-light-5: var(--fts-info-light);
+  --el-color-info-light-7: var(--fts-info-bg);
+  --el-color-info-light-8: var(--fts-info-bg);
+  --el-color-info-light-9: var(--fts-info-bg);
+  --el-color-info-dark-2: var(--fts-info-active);
+
+  --el-bg-color: var(--fts-bg-card);
+  --el-bg-color-page: var(--fts-bg-page);
+  --el-bg-color-overlay: var(--fts-bg-card);
+
+  --fts-status-default-color: #9e9e9e;
+  --fts-status-default-bg: #26262b;
+  --fts-status-default-border: transparent;
+  --fts-status-active-color: #81c784;
+  --fts-status-active-bg: #0d2810;
+  --fts-status-inactive-color: #b0bec5;
+  --fts-status-inactive-bg: #1e1e1e;
+  --fts-status-probation-color: #ffd54f;
+  --fts-status-probation-bg: #2a2008;
+  --fts-status-pending-color: #64b5f6;
+  --fts-status-pending-bg: #152238;
+  --fts-status-success-color: #81c784;
+  --fts-status-success-bg: #0d2810;
+  --fts-status-error-color: #ef5350;
+  --fts-status-error-bg: #2a1515;
+  --fts-status-orange-color: #ffab6e;
+  --fts-status-orange-bg: #331f14;
+  --fts-status-orange-border: transparent;
+  --fts-status-warning-color: #ffd54f;
+  --fts-status-warning-bg: #2a2008;
+  --fts-status-info-color: #7aa2c4;
+  --fts-status-primary-color: #64b5f6;
+  --fts-status-primary-bg: #152238;
+  --fts-status-primary-border: transparent;
+  --fts-status-danger-color: #ef5350;
+  --fts-status-danger-bg: #2a1515;
+  --fts-status-danger-border: transparent;
+  --fts-status-info-bg: #1e1e1e;
+
+  --fts-status-active-border: #2e5a2e;
+  --fts-status-inactive-border: #3a3a3a;
+  --fts-status-probation-border: #5a4a1a;
+  --fts-status-pending-border: #2a3a5a;
+  --fts-status-success-border: #2e5a2e;
+  --fts-status-error-border: #5a2a2a;
+  --fts-status-warning-border: #5a4a1a;
+  --fts-status-info-border: #3a3a3a;
+
+  --fts-category-department-color: #90caf9;
+  --fts-category-department-bg: #0a1929;
+  --fts-category-department-border: #153050;
+  --fts-category-position-color: #90caf9;
+  --fts-category-position-bg: #0a1929;
+  --fts-category-position-border: #153050;
+  --fts-category-type-color: #bcaaa4;
+  --fts-category-type-bg: #161310;
+  --fts-category-type-border: #2e2520;
+  --fts-category-location-color: #ffcc80;
+  --fts-category-location-bg: #2a1800;
+  --fts-category-location-border: #4a2800;
+  --fts-category-device-color: #90a4ae;
+  --fts-category-device-bg: #131a1d;
+  --fts-category-device-border: #243340;
+  --fts-category-connection-color: #a5d6a7;
+  --fts-category-connection-bg: #0a1a0d;
+  --fts-category-connection-border: #1a3a20;
+  --fts-category-document-color: #90caf9;
+  --fts-category-document-bg: #0a1929;
+  --fts-category-document-border: #153050;
+  --fts-category-tag-color: #bcaaa4;
+  --fts-category-tag-bg: #161310;
+  --fts-category-tag-border: #2e2520;
+  --fts-category-config-color: #ffcc80;
+  --fts-category-config-bg: #2a1800;
+  --fts-category-config-border: #4a2800;
+
+  /* category tag 视觉增强 - 深色模式 */
+  --fts-category-tag-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.12);
+  --fts-category-tag-icon-bg: rgba(255, 255, 255, 0.08);
+  --fts-category-tag-icon-border: rgba(255, 255, 255, 0.15);
+  --fts-category-tag-icon-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05);
+  --fts-category-tag-text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+
+  --fts-salary-high: #ff8a80;
+  --fts-salary-medium: #ffd54f;
+  --fts-salary-low: #81c784;
+
+  --fts-chart-color-1: var(--fts-primary);
+  --fts-chart-color-2: var(--fts-success);
+  --fts-chart-color-3: var(--fts-warning);
+  --fts-chart-color-4: var(--fts-error);
+  --fts-chart-color-5: #a78bfa;
+  --fts-chart-color-6: #f472b6;
+  --fts-chart-color-7: #2dd4bf;
+  --fts-chart-color-8: #fb923c;
+
+  --el-text-color-primary: var(--fts-text-primary);
+  --el-text-color-regular: var(--fts-text-secondary);
+  --el-text-color-secondary: var(--fts-text-tertiary);
+  --el-text-color-placeholder: var(--fts-text-placeholder);
+  --el-text-color-disabled: var(--fts-text-disabled);
+
+  --el-border-color: var(--fts-border-primary);
+  --el-border-color-light: var(--fts-border-secondary);
+  --el-border-color-lighter: var(--fts-border-secondary);
+  --el-border-color-extra-light: var(--fts-border-secondary);
+  --el-border-color-hover: var(--fts-border-hover);
+
+  --el-fill-color: var(--fts-bg-secondary);
+  --el-fill-color-light: var(--fts-bg-hover);
+  --el-fill-color-lighter: var(--fts-bg-tertiary);
+  --el-fill-color-extra-light: var(--fts-bg-page);
+  --el-fill-color-blank: var(--fts-bg-card);
+  --el-fill-color-dark: var(--fts-bg-secondary);
+
+  --el-mask-color: rgba(0, 0, 0, 0.5);
+  --el-mask-color-extra-light: rgba(0, 0, 0, 0.3);
+
+  .el-button {
+    --el-button-bg-color: var(--fts-bg-card);
+    --el-button-text-color: var(--fts-text-primary);
+    --el-button-border-color: var(--fts-border-primary);
+    --el-button-hover-bg-color: var(--fts-bg-hover);
+    --el-button-hover-text-color: var(--fts-primary);
+    --el-button-hover-border-color: var(--fts-primary);
+    --el-button-active-bg-color: var(--fts-bg-selected);
+    --el-button-active-text-color: var(--fts-primary);
+    --el-button-active-border-color: var(--fts-primary);
+    --el-button-disabled-text-color: var(--fts-text-disabled);
+    --el-button-disabled-bg-color: var(--fts-bg-secondary);
+    --el-button-disabled-border-color: var(--fts-border-secondary);
+
+    &--primary {
+      --el-button-bg-color: var(--fts-primary);
+      --el-button-text-color: #ffffff;
+      --el-button-border-color: var(--fts-primary);
+      --el-button-hover-bg-color: var(--fts-primary-hover);
+      --el-button-hover-text-color: #ffffff;
+      --el-button-hover-border-color: var(--fts-primary-hover);
+      --el-button-active-bg-color: var(--fts-primary-active);
+      --el-button-active-text-color: #ffffff;
+      --el-button-active-border-color: var(--fts-primary-active);
+
+      &.is-link,
+      &.is-text {
+        color: #7db8e8 !important;
+        font-weight: var(--fts-font-weight-medium, 500);
+
+        &:hover,
+        &:focus {
+          color: #a8d4f5 !important;
+          background-color: rgba(125, 184, 232, 0.12) !important;
+        }
+
+        &:active {
+          color: #ccecff !important;
+          background-color: rgba(125, 184, 232, 0.2) !important;
+        }
+      }
+    }
+
+    &--danger {
+      &.is-link,
+      &.is-text {
+        color: #e07060 !important;
+        font-weight: var(--fts-font-weight-medium, 500);
+
+        &:hover,
+        &:focus {
+          color: #ef9085 !important;
+          background-color: rgba(224, 112, 96, 0.12) !important;
+        }
+
+        &:active {
+          color: #ffb0a8 !important;
+          background-color: rgba(224, 112, 96, 0.2) !important;
+        }
+      }
+    }
+
+    &--success {
+      &.is-link,
+      &.is-text {
+        color: #65c77a !important;
+        font-weight: var(--fts-font-weight-medium, 500);
+
+        &:hover,
+        &:focus {
+          color: #8dda9e !important;
+          background-color: rgba(101, 199, 122, 0.12) !important;
+        }
+
+        &:active {
+          color: #b0f0be !important;
+          background-color: rgba(101, 199, 122, 0.2) !important;
+        }
+      }
+    }
+
+    &--warning {
+      &.is-link,
+      &.is-text {
+        color: #e8b346 !important;
+        font-weight: var(--fts-font-weight-medium, 500);
+
+        &:hover,
+        &:focus {
+          color: #f0cc6e !important;
+          background-color: rgba(232, 179, 70, 0.12) !important;
+        }
+
+        &:active {
+          color: #ffe0a0 !important;
+          background-color: rgba(232, 179, 70, 0.2) !important;
+        }
+      }
+    }
+
+    &--info {
+      &.is-link,
+      &.is-text {
+        color: #8babcc !important;
+        font-weight: var(--fts-font-weight-medium, 500);
+
+        &:hover,
+        &:focus {
+          color: #aac4e0 !important;
+          background-color: rgba(139, 171, 204, 0.12) !important;
+        }
+
+        &:active {
+          color: #c8ddf5 !important;
+          background-color: rgba(139, 171, 204, 0.2) !important;
+        }
+      }
+    }
+
+    &.is-link,
+    &.is-text {
+      --el-button-text-color: var(--fts-text-tertiary);
+      --el-button-hover-text-color: var(--fts-text-secondary);
+      --el-button-active-text-color: var(--fts-text-primary);
+      transition: color 0.2s ease, background-color 0.2s ease;
+    }
+  }
+
+  .el-input {
+    --el-input-bg-color: var(--fts-bg-card);
+    --el-input-text-color: var(--fts-text-primary);
+    --el-input-border-color: var(--fts-border-primary);
+    --el-input-hover-border-color: var(--fts-border-hover);
+    --el-input-focus-border-color: var(--fts-primary);
+    --el-input-placeholder-color: var(--fts-text-placeholder);
+
+    .el-input__wrapper {
+      background-color: var(--fts-bg-card);
+      box-shadow: 0 0 0 1px var(--fts-border-primary) inset;
+    }
+  }
+
+  .el-table {
+    --el-table-bg-color: var(--fts-bg-card);
+    --el-table-tr-bg-color: var(--fts-bg-card);
+    --el-table-header-bg-color: var(--fts-bg-card);
+    --el-table-header-text-color: rgba(255, 255, 255, 0.82);
+    --el-table-row-hover-bg-color: var(--fts-bg-hover);
+    --el-table-border-color: var(--fts-border-primary);
+  }
+
+  .el-drawer {
+    background-color: var(--fts-bg-card);
+
+    .el-drawer__header {
+      color: var(--fts-text-primary);
+      border-bottom: 1px solid var(--fts-border-primary);
+    }
+
+    .el-drawer__body {
+      background-color: var(--fts-bg-card);
+      color: var(--fts-text-primary);
+    }
+  }
+
+  .el-dialog {
+    --el-dialog-bg-color: var(--fts-bg-card);
+    --el-dialog-box-shadow: 0 12px 32px 4px rgba(0, 0, 0, 0.36);
+
+    .el-dialog__title {
+      color: var(--fts-text-primary);
+      font-weight: var(--fts-font-weight-semibold);
+    }
+  }
+
+  .el-dropdown__menu {
+    background-color: var(--fts-bg-card);
+    border: 1px solid var(--fts-border-primary);
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .el-select-dropdown {
+    background-color: var(--fts-bg-card);
+    border: 1px solid var(--fts-border-primary);
+  }
+
+  .el-tag {
+    --el-tag-bg-color: #1a1a1a;
+    --el-tag-border-color: #333333;
+    --el-tag-text-color: #b0b0b0;
+
+    &--primary {
+      --el-tag-bg-color: #0d1929;
+      --el-tag-border-color: #1a3a5c;
+      --el-tag-text-color: #90caf9;
+    }
+
+    &--success {
+      --el-tag-bg-color: #0d2810;
+      --el-tag-border-color: #1b4a20;
+      --el-tag-text-color: #81c784;
+    }
+
+    &--warning {
+      --el-tag-bg-color: #2a2008;
+      --el-tag-border-color: #5a4a1a;
+      --el-tag-text-color: #ffd54f;
+    }
+
+    &--danger {
+      --el-tag-bg-color: #2a1515;
+      --el-tag-border-color: #5a2a2a;
+      --el-tag-text-color: #ef5350;
+    }
+
+    &--info {
+      --el-tag-bg-color: #1e1e1e;
+      --el-tag-border-color: #3a3a3a;
+      --el-tag-text-color: #90a4ae;
+    }
+  }
+
+  .el-pagination {
+    --el-pagination-bg-color: var(--fts-bg-card);
+    --el-pagination-text-color: var(--fts-text-primary);
+    --el-pagination-border-color: var(--fts-border-primary);
+    --el-pagination-hover-color: var(--fts-primary);
+  }
+
+  .el-checkbox {
+    --el-checkbox-text-color: var(--fts-text-primary);
+    --el-checkbox-input-border-color: var(--fts-border-primary);
+    --el-checkbox-input-bg-color: var(--fts-bg-card);
+  }
+
+  .stat-card {
+    border-color: var(--fts-border-primary);
+
+    &:hover {
+      border-color: var(--fts-border-hover);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    &.stat-card--color-primary {
+      border-left: 3px solid var(--fts-primary);
+
+      .stat-card__icon {
+        background-color: var(--fts-primary-bg);
+        color: #7db8e8;
+      }
+
+      .stat-card__value {
+        color: #7db8e8;
+      }
+    }
+
+    &.stat-card--color-success {
+      border-left: 3px solid var(--fts-success);
+
+      .stat-card__icon-box {
+        background-color: var(--fts-success-bg);
+        color: #7bce79;
+      }
+
+      .stat-card__value {
+        color: #7bce79;
+      }
+    }
+
+    &.stat-card--color-warning {
+      border-left: 3px solid var(--fts-warning);
+
+      .stat-card__icon {
+        color: #f5c542;
+      }
+
+      .stat-card__icon-box {
+        background-color: #2e2510;
+        color: #f5c542;
+      }
+
+      .stat-card__value {
+        color: #f5c542;
+      }
+    }
+
+    &.stat-card--color-error {
+      border-left: 3px solid var(--fts-error);
+
+      .stat-card__icon {
+        color: #f08080;
+      }
+
+      .stat-card__icon-box {
+        background-color: #2a1515;
+        color: #f08080;
+      }
+
+      .stat-card__value {
+        color: #f08080;
+      }
+    }
+
+    &.stat-card--color-info {
+      border-left: 3px solid var(--fts-info);
+
+      .stat-card__icon {
+        color: #c0c0c0;
+      }
+
+      .stat-card__icon-box {
+        background-color: #1a1a1a;
+        color: #c0c0c0;
+      }
+
+      .stat-card__value {
+        color: #c0c0c0;
+      }
+    }
+  }
+
+  // 采购订单状态横幅深色模式
+  .status-banner {
+    &.status-banner--draft { background: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; }
+    &.status-banner--pending { background: rgba(230, 162, 60, 0.15) !important; border-color: rgba(230, 162, 60, 0.3) !important; }
+    &.status-banner--approved { background: rgba(144, 147, 153, 0.15) !important; border-color: rgba(144, 147, 153, 0.3) !important; }
+    &.status-banner--ordered { background: rgba(64, 158, 255, 0.15) !important; border-color: rgba(64, 158, 255, 0.3) !important; }
+    &.status-banner--shipped { background: rgba(64, 158, 255, 0.15) !important; border-color: rgba(64, 158, 255, 0.3) !important; }
+    &.status-banner--received { background: rgba(144, 147, 153, 0.15) !important; border-color: rgba(144, 147, 153, 0.3) !important; }
+    &.status-banner--rejected { background: rgba(245, 108, 108, 0.15) !important; border-color: rgba(245, 108, 108, 0.3) !important; }
+    &.status-banner--terminated { background: rgba(245, 108, 108, 0.15) !important; border-color: rgba(245, 108, 108, 0.3) !important; }
+    &.status-banner--completed { background: rgba(103, 194, 58, 0.15) !important; border-color: rgba(103, 194, 58, 0.3) !important; }
+    &.status-banner--partial_received { background: rgba(230, 162, 60, 0.15) !important; border-color: rgba(230, 162, 60, 0.3) !important; }
+    &.status-banner--cancelled { background: rgba(144, 147, 153, 0.15) !important; border-color: rgba(144, 147, 153, 0.3) !important; }
+    &.status-banner__order-no { color: rgba(255,255,255,0.7) !important; }
+  }
+
+  // 电子合同签署/作废步骤内容深色模式
+  .sign-step-content.sign-step-content {
+    background-color: transparent !important;
+    color: var(--fts-text-primary, #e0e0e0) !important;
+  }
+
+  // el-alert浅色变体深色模式
+  .el-alert.is-light {
+    &.el-alert--error.el-alert--error {
+      background-color: rgba(245, 108, 108, 0.15) !important;
+      color: #f56c6c !important;
+    }
+    &.el-alert--warning.el-alert--warning {
+      background-color: rgba(230, 162, 60, 0.15) !important;
+      color: #e6a23c !important;
+    }
+    &.el-alert--info.el-alert--info {
+      background-color: rgba(64, 158, 255, 0.15) !important;
+      color: #409eff !important;
+    }
+    &.el-alert--success.el-alert--success {
+      background-color: rgba(103, 194, 58, 0.15) !important;
+      color: #67c23a !important;
+    }
+  }
+
+  // el-steps深色模式
+  .el-step__title {
+    color: var(--fts-text-primary, #e0e0e0) !important;
+  }
+  .el-step__description {
+    color: var(--fts-text-secondary, #a0a0a0) !important;
+  }
+}

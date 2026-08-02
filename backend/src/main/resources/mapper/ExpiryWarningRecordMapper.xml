@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.ExpiryWarningRecordMapper">
+
+    <resultMap id="recordResultMap" type="com.foodtraceability.entity.ExpiryWarningRecord">
+        <id column="record_id" property="recordId"/>
+        <result column="rule_id" property="ruleId"/>
+        <result column="target_type" property="targetType"/>
+        <result column="target_id" property="targetId"/>
+        <result column="target_name" property="targetName"/>
+        <result column="expiry_date" property="expiryDate"/>
+        <result column="days_remaining" property="daysRemaining"/>
+        <result column="warning_level" property="warningLevel"/>
+        <result column="message" property="message"/>
+        <result column="is_handled" property="isHandled"/>
+        <result column="handle_time" property="handleTime"/>
+        <result column="handle_result" property="handleResult"/>
+        <result column="notify_time" property="notifyTime"/>
+        <result column="create_time" property="createTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <select id="selectByRuleId" resultMap="recordResultMap">
+        SELECT * FROM expiry_warning_records
+        WHERE rule_id = #{ruleId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByTarget" resultMap="recordResultMap">
+        SELECT * FROM expiry_warning_records
+        WHERE target_type = #{targetType} AND target_id = #{targetId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectUnhandled" resultMap="recordResultMap">
+        SELECT * FROM expiry_warning_records
+        WHERE is_handled = false
+        ORDER BY warning_level DESC, create_time DESC
+    </select>
+
+    <select id="countUnhandledByLevel" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM expiry_warning_records
+        WHERE is_handled = false AND warning_level >= #{warningLevel}
+    </select>
+
+    <select id="selectByDateRange" resultMap="recordResultMap">
+        SELECT * FROM expiry_warning_records
+        WHERE create_time::date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY warning_level DESC, create_time DESC
+    </select>
+</mapper>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.OrderMapper">
+
+    <!--
+        按支付方式聚合订单数据
+        支付方式：0=微信(wechat), 1=支付宝(alipay), 2=现金(cash), 4=会员余额(memberBalance)
+        返回每种支付方式的实际支付金额总和（分）和订单数
+        只统计已支付/已完成订单（ORDER_STATUS IN (1, 4)）
+    -->
+    <select id="aggregateByPaymentMethod" resultType="java.util.HashMap">
+        SELECT
+            PAYMENT_METHOD AS payment_method,
+            COALESCE(SUM(CAST(ACTUAL_AMOUNT * 100 AS BIGINT)), 0) AS total_amount,
+            COUNT(*) AS order_count
+        FROM orders_legacy
+        WHERE MERCHANT_ID = #{storeId}
+          AND CREATE_TIME &gt;= #{startTime}
+          AND CREATE_TIME &lt; #{endTime}
+          AND ORDER_STATUS IN (1, 4)
+          AND DELETED = 0
+        GROUP BY PAYMENT_METHOD
+        ORDER BY PAYMENT_METHOD
+    </select>
+
+    <!--
+        汇总优惠金额
+        计算指定时间范围内所有有效订单的DISCOUNT_AMOUNT总和（转换为分）
+    -->
+    <select id="sumDiscountAmount" resultType="java.lang.Long">
+        SELECT COALESCE(SUM(CAST(DISCOUNT_AMOUNT * 100 AS BIGINT)), 0)
+        FROM orders_legacy
+        WHERE MERCHANT_ID = #{storeId}
+          AND CREATE_TIME &gt;= #{startTime}
+          AND CREATE_TIME &lt; #{endTime}
+          AND ORDER_STATUS IN (1, 4)
+          AND DELETED = 0
+    </select>
+
+    <!--
+        聚合退款数据
+        统计已退款订单（ORDER_STATUS=7）的退款总金额（分）和笔数
+    -->
+    <select id="aggregateRefunds" resultType="java.util.HashMap">
+        SELECT
+            COALESCE(SUM(CAST(REFUND_AMOUNT * 100 AS BIGINT)), 0) AS total_refund_amount,
+            COUNT(*) AS refund_count
+        FROM orders_legacy
+        WHERE MERCHANT_ID = #{storeId}
+          AND CREATE_TIME &gt;= #{startTime}
+          AND CREATE_TIME &lt; #{endTime}
+          AND ORDER_STATUS = 7
+          AND DELETED = 0
+    </select>
+
+    <!--
+        聚合作废订单数据
+        统计已作废订单（ORDER_STATUS=5）的订单总金额（分）和笔数
+    -->
+    <select id="aggregateCancelled" resultType="java.util.HashMap">
+        SELECT
+            COALESCE(SUM(CAST(ORDER_AMOUNT * 100 AS BIGINT)), 0) AS total_cancelled_amount,
+            COUNT(*) AS cancelled_count
+        FROM orders_legacy
+        WHERE MERCHANT_ID = #{storeId}
+          AND CREATE_TIME &gt;= #{startTime}
+          AND CREATE_TIME &lt; #{endTime}
+          AND ORDER_STATUS = 5
+          AND DELETED = 0
+    </select>
+
+</mapper>

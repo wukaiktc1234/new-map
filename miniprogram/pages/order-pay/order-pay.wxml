@@ -1,0 +1,145 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">订单支付</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="pay-content">
+    <view class="countdown-card">
+      <view class="countdown-title">请在规定时间内完成支付</view>
+      <view class="countdown-time">{{countdown}}</view>
+      <view class="countdown-unit">后订单将自动取消</view>
+    </view>
+    
+    <view class="amount-card">
+      <view class="amount-label">支付金额</view>
+      <view class="amount-value">¥{{total}}</view>
+    </view>
+    
+    <view class="methods-card">
+      <view class="methods-title">选择支付方式</view>
+      <view class="method-item" bindtap="selectPayment" data-method="wechat">
+        <image class="method-icon-img" src="/images/wechat-pay.png" mode="aspectFit" />
+        <view class="method-name">微信支付</view>
+        <view class="method-radio {{paymentMethod === 'wechat' ? 'checked' : ''}}">
+          <view class="radio-check" wx:if="{{paymentMethod === 'wechat'}}"></view>
+        </view>
+      </view>
+      <view class="method-item {{isLoggedIn ? '' : 'disabled'}}" bindtap="selectPayment" data-method="balance">
+        <image class="method-icon-img" src="/images/balance-pay.png" mode="aspectFit" />
+        <view class="method-name">
+          <text>余额支付</text>
+          <text class="balance-info" wx:if="{{isLoggedIn}}">（余额：¥{{userBalance}}）</text>
+          <text class="balance-info login-tip" wx:else>（请先登录）</text>
+        </view>
+        <view class="method-radio {{paymentMethod === 'balance' ? 'checked' : ''}}" wx:if="{{isLoggedIn}}">
+          <view class="radio-check" wx:if="{{paymentMethod === 'balance'}}"></view>
+        </view>
+        <view class="method-radio disabled-radio" wx:else></view>
+      </view>
+    </view>
+    
+    <view class="order-info-card">
+      <view class="order-info-title">订单信息</view>
+      <view class="order-info-row">
+        <text class="info-label">订单编号</text>
+        <text class="info-value">{{orderNo}}</text>
+      </view>
+      <view class="order-info-row" wx:if="{{orderData}}">
+        <text class="info-label">订单类型</text>
+        <text class="info-value">{{orderData.orderType === 'dinein' ? '堂食' : orderData.orderType === 'pickup' ? '自提' : '外卖配送'}}</text>
+      </view>
+      <view class="order-info-row" wx:if="{{orderData && orderData.tableNo}}">
+        <text class="info-label">桌号</text>
+        <text class="info-value">{{orderData.tableNo}}</text>
+      </view>
+      <view class="order-info-row" wx:if="{{orderData && orderData.totalCount}}">
+        <text class="info-label">商品数量</text>
+        <text class="info-value">共{{orderData.totalCount}}件</text>
+      </view>
+    </view>
+  </view>
+  
+  <view class="bottom-bar">
+    <view class="cancel-btn" bindtap="cancelOrder">取消订单</view>
+    <view class="confirm-btn" bindtap="confirmPay">确认支付</view>
+  </view>
+  
+  <view class="modal-mask" wx:if="{{showSuccess}}" catchtouchmove="preventTouchMove"></view>
+  <view class="success-modal {{showSuccess ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="success-content">
+      <view class="success-icon">
+        <view class="check-icon"></view>
+      </view>
+      <view class="success-title">支付成功</view>
+      <view class="success-amount">¥{{total}}</view>
+      <view class="success-info">
+        <view class="info-row">
+          <text class="info-label">订单编号</text>
+          <text class="info-value">{{orderNo}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">支付方式</text>
+          <text class="info-value">{{paymentMethod === 'wechat' ? '微信支付' : '余额支付'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">支付时间</text>
+          <text class="info-value">{{payTime}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="order-status-card">
+      <view class="status-icon"></view>
+      <view class="status-info">
+        <view class="status-title">商家正在备餐中</view>
+        <view class="status-desc">预计15分钟后可取餐</view>
+      </view>
+    </view>
+    <view class="action-buttons">
+      <view class="action-btn secondary" bindtap="goToOrderDetail">查看订单</view>
+      <view class="action-btn primary" bindtap="goToHome">返回首页</view>
+    </view>
+  </view>
+  
+  <view class="modal-mask" wx:if="{{showFail}}" catchtouchmove="preventTouchMove"></view>
+  <view class="fail-modal {{showFail ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="fail-content">
+      <view class="fail-icon">
+        <view class="close-icon"></view>
+      </view>
+      <view class="fail-title">支付失败</view>
+      <view class="fail-reason">{{failReason}}</view>
+      <view class="fail-info">
+        <view class="info-row">
+          <text class="info-label">订单编号</text>
+          <text class="info-value">{{orderNo}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">订单金额</text>
+          <text class="info-value">¥{{total}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">失败原因</text>
+          <text class="info-value">{{failReason}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">下单时间</text>
+          <text class="info-value">{{createTime}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="action-buttons">
+      <view class="action-btn secondary" bindtap="goToOrderList">查看订单</view>
+      <view class="action-btn primary" bindtap="retryPay">重新支付</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,349 @@
+/**
+ * 后厨触摸优化样式 - Kitchen Touch Optimization Styles
+ *
+ * 针对厨房环境的特殊优化：
+ * - 大按钮适合油手/湿手操作
+ * - 明显的按压反馈
+ * - 防误触设计
+ * - 禁用不必要的hover效果
+ */
+
+/* ========== 触摸检测媒体查询 ========== */
+@media (hover: none) and (pointer: coarse) {
+  /* 触摸设备：禁用所有hover效果 */
+  .kitchen-touch-optimized *:hover {
+    transform: none !important;
+    box-shadow: none !important;
+    background: inherit !important;
+  }
+}
+
+/* ========== 后厨触摸基础类 ========== */
+.kitchen-touch-optimized {
+  /* 全局触摸优化设置 */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* 文字渲染优化 */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========== 可点击元素最小尺寸 ========== */
+.kitchen-touch-optimized button,
+.kitchen-touch-optimized [role="button"],
+.kitchen-touch-optimized .clickable,
+.kitchen-touch-optimized .touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  position: relative;
+}
+
+/* ========== 按钮间距防误触 ========== */
+.kitchen-touch-optimized .btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kitchen-touch-optimized .btn-group > * + * {
+  margin-left: 8px;
+}
+
+/* ========== 按压反馈效果 ========== */
+.kitchen-touch-optimized button:active,
+.kitchen-touch-optimized [role="button"]:active,
+.kitchen-touch-optimized .clickable:active,
+.kitchen-touch-optimized .touch-target:active {
+  transform: scale(0.95) !important;
+  transition: transform 0.1s ease-out !important;
+  opacity: 0.9;
+}
+
+/* ========== 重要操作按钮（更大更醒目） ========== */
+.kitchen-touch-optimized .btn-primary-action {
+  min-height: 56px;
+  min-width: 120px;
+  padding: 12px 24px;
+  font-size: 18px;
+  font-weight: 700;
+  border-radius: 12px;
+  background: var(--pos-primary-gradient);
+  color: white;
+  box-shadow:
+    0 4px 16px rgba(249, 115, 22, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.kitchen-touch-optimized .btn-primary-action::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.kitchen-touch-optimized .btn-primary-action:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+.kitchen-touch-optimized .btn-primary-action:active {
+  transform: scale(0.96) !important;
+  box-shadow:
+    0 2px 8px rgba(249, 115, 22, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 危险操作按钮（红色醒目） */
+.kitchen-touch-optimized .btn-danger-action {
+  min-height: 56px;
+  min-width: 120px;
+  padding: 12px 24px;
+  font-size: 18px;
+  font-weight: 700;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+  color: white;
+  box-shadow:
+    0 4px 16px rgba(239, 68, 68, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  animation: pulse-danger 2s ease-in-out infinite;
+}
+
+@keyframes pulse-danger {
+  0%, 100% {
+    box-shadow:
+      0 4px 16px rgba(239, 68, 68, 0.3),
+      0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 6px 24px rgba(239, 68, 68, 0.5),
+      0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* 成功操作按钮（绿色） */
+.kitchen-touch-optimized .btn-success-action {
+  min-height: 52px;
+  min-width: 110px;
+  padding: 10px 20px;
+  font-size: 17px;
+  font-weight: 600;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+}
+
+/* ========== 订单卡片触摸优化 ========== */
+.kitchen-touch-optimized .order-card {
+  min-height: 80px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease-out;
+  border-radius: 12px;
+  background: white;
+  border: 2px solid transparent;
+}
+
+.kitchen-touch-optimized .order-card:active {
+  transform: scale(0.98);
+  border-color: var(--pos-primary);
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.15);
+}
+
+/* 订单卡片选中状态 */
+.kitchen-touch-optimized .order-card.is-selected {
+  border-color: var(--pos-primary);
+  background: rgba(249, 115, 22, 0.05);
+  box-shadow: 0 4px 20px rgba(249, 115, 22, 0.2);
+}
+
+/* 超时订单脉冲动画 */
+.kitchen-touch-optimized .order-card.is-urgent {
+  animation: urgent-pulse 1.5s ease-in-out infinite;
+  border-color: #ef4444;
+}
+
+@keyframes urgent-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(239, 68, 68, 0);
+  }
+}
+
+/* ========== Checkbox触摸优化 ========== */
+.kitchen-touch-optimized .el-checkbox {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kitchen-touch-optimized .el-checkbox__input {
+  width: 28px;
+  height: 28px;
+}
+
+.kitchen-touch-optimized .el-checkbox__inner {
+  width: 28px;
+  height: 28px;
+  border-width: 2px;
+  border-radius: 8px;
+}
+
+.kitchen-touch-optimized .el-checkbox__inner::after {
+  width: 10px;
+  height: 16px;
+  left: 9px;
+  top: 3px;
+}
+
+/* ========== 列表项触摸优化 ========== */
+.kitchen-touch-optimized .list-item {
+  min-height: 48px;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  transition: all 0.15s ease-out;
+}
+
+.kitchen-touch-optimized .list-item:active {
+  background: var(--pos-bg-hover);
+  transform: scale(0.98);
+}
+
+/* ========== 输入框触摸优化 ========== */
+.kitchen-touch-optimized input[type="text"],
+.kitchen-touch-optimized input[type="number"],
+.kitchen-touch-optimized input[type="search"],
+.kitchen-touch-optimized textarea,
+.kitchen-touch-optimized .el-input__inner {
+  min-height: 48px;
+  font-size: 17px; /* iOS防止自动缩放 */
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+
+/* ========== 开关/切换组件触摸优化 ========== */
+.kitchen-touch-optimized .el-switch {
+  height: 36px;
+}
+
+.kitchen-touch-optimized .el-switch__core {
+  width: 60px;
+  height: 32px;
+  border-radius: 16px;
+}
+
+.kitchen-touch-optimized .el-switch__core .el-switch__button {
+  width: 26px;
+  height: 26px;
+}
+
+/* ========== 表格行触摸优化 ========== */
+.kitchen-touch-optimized .el-table__row {
+  min-height: 52px;
+}
+
+.kitchen-touch-optimized .el-table__row td {
+  padding: 14px 12px;
+}
+
+/* ========== 标签页触摸优化 ========== */
+.kitchen-touch-optimized .el-tabs__item {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 15px;
+}
+
+/* ========== 下拉菜单触摸优化 ========== */
+.kitchen-touch-optimized .el-select-dropdown__item {
+  min-height: 48px;
+  line-height: 48px;
+  padding: 0 16px;
+  font-size: 15px;
+}
+
+/* ========== 对话框按钮触摸优化 ========== */
+.kitchen-touch-optimized .el-dialog__footer button {
+  min-height: 48px;
+  min-width: 100px;
+  font-size: 16px;
+  padding: 12px 24px;
+}
+
+/* ========== 消息提示触摸优化 ========== */
+.kitchen-touch-optimized .el-message {
+  min-height: 48px;
+  padding: 12px 20px;
+  font-size: 15px;
+}
+
+/* ========== 工具提示触摸优化 ========== */
+.kitchen-touch-optimized .el-tooltip__trigger {
+  min-height: 40px;
+  min-width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ========== 滚动容器触摸优化 ========== */
+.kitchen-touch-optimized .scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ========== 防止长按选中文本 ========== */
+.kitchen-touch-optimized .no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ========== 安全区域适配（刘海屏等） ========== */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .kitchen-touch-optimized.safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .kitchen-touch-optimized.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .kitchen-touch-optimized.safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .kitchen-touch-optimized.safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ========== 打印样式隐藏（厨房可能需要打印） ========== */
+@media print {
+  .kitchen-touch-optimized .no-print {
+    display: none !important;
+  }
+}

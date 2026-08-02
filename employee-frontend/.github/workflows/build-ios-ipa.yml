@@ -1,0 +1,104 @@
+# GitHub Actions — macOS 云端构建 iOS IPA（未签名版）
+#
+# 构建流程：
+#   1. 将项目推送到 GitHub 公开仓库
+#   2. 到 Actions 页面手动触发 "Build iOS IPA"
+#   3. 构建完成后在 Artifacts 中下载 .ipa 文件
+#   4. 用 Sideloadly（Windows）签名并安装到 iPhone
+#
+# 前置条件：
+#   - GitHub 公开仓库（免费 macOS runner 每月 2000 分钟）
+#   - 无需 Apple Developer 账号（Sideloadly 用免费 Apple ID 签名）
+#   - Windows 电脑 + Sideloadly + USB 数据线
+#
+# 7天签名说明：
+#   - 免费 Apple ID 签名的 APP 有效期 7 天
+#   - 到期后需重新用 Sideloadly 签名安装
+#   - 同一 Apple ID 最多同时签名 3 个 APP
+
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: 构建 iOS IPA（未签名）
+    runs-on: macos-14
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '21'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: 安装依赖
+        run: npm ci --legacy-peer-deps
+
+      - name: 构建 Web 资源
+        run: npm run build:app
+
+      - name: 同步 Capacitor iOS
+        run: |
+          npx cap add ios || true
+          npx cap sync ios
+
+      - name: 安装 CocoaPods 依赖
+        run: |
+          cd ios/App
+          pod install
+
+      - name: 构建 IPA（未签名）
+        run: |
+          cd ios/App
+          # 不签名构建（CODE_SIGNING_ALLOWED=NO）
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcpretty || true
+
+          # 创建未签名 IPA
+          mkdir -p build/ipa/Payload
+          cp -r build/Build/Products/Debug-iphoneos/App.app build/ipa/Payload/
+          cd build/ipa
+          zip -r ../../../employee-portal-unsigned.ipa Payload/
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: employee-portal-unsigned-ipa
+          path: employee-portal-unsigned.ipa
+          retention-days: 7
+
+      - name: 构建完成
+        run: |
+          echo "=========================================="
+          echo "  iOS IPA 构建完成（未签名）"
+          echo "=========================================="
+          echo ""
+          echo "下载: Actions → Artifacts → employee-portal-unsigned-ipa"
+          echo ""
+          echo "安装步骤:"
+          echo "  1. 下载 .ipa 到 Windows 电脑"
+          echo "  2. 安装 Sideloadly: https://sideloadly.io"
+          echo "  3. 连接 iPhone（USB + 信任此电脑）"
+          echo "  4. Sideloadly 中拖入 .ipa 文件"
+          echo "  5. 输入 Apple ID（免费账号即可）"
+          echo "  6. 点击 Start"
+          echo "  7. iPhone: 设置 → 通用 → VPN与设备管理 → 信任开发者"
+          echo "  8. 打开 APP"
+          echo ""
+          echo "注意: 免费签名有效期 7 天"
+          echo "=========================================="

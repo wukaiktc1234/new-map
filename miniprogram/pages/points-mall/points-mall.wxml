@@ -1,0 +1,53 @@
+<view class="page-container">
+  <view class="fixed-header">
+    <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+    
+    <view class="header-bar">
+      <view class="header-left">
+        <view class="back-btn" bindtap="goBack">
+          <view class="back-icon"></view>
+        </view>
+      </view>
+      <view class="header-center">
+        <view class="header-title">积分商城</view>
+      </view>
+      <view class="header-right"></view>
+    </view>
+  </view>
+  
+  <view class="header-placeholder" style="height: calc({{statusBarHeight}}px + 112rpx);"></view>
+  
+  <view class="points-header">
+    <view class="points-value">{{points}}</view>
+    <view class="points-label">我的积分</view>
+    <view class="history-link" bindtap="viewHistory">
+      <text>兑换记录</text>
+      <view class="arrow-icon"></view>
+    </view>
+  </view>
+  
+  <view class="goods-section">
+    <view class="section-title">热门兑换</view>
+    <view class="goods-grid">
+      <view class="goods-card" wx:for="{{goods}}" wx:key="id" bindtap="exchangeGoods" data-item="{{item}}">
+        <view class="goods-image">
+          <view class="goods-placeholder"></view>
+        </view>
+        <view class="goods-info">
+          <view class="goods-name">{{item.name}}</view>
+          <view class="goods-points">
+            <text>{{item.points}}</text>
+            <text class="points-unit">积分</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="empty-state" wx:if="{{goods.length === 0}}">
+      <view class="empty-icon"></view>
+      <view class="empty-text">暂无商品</view>
+    </view>
+  </view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+</view>

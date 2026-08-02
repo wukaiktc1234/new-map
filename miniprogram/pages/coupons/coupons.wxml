@@ -1,0 +1,48 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">优惠券</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  <view class="tab-bar">
+    <view class="tab-item {{currentTab === 'available' ? 'active' : ''}}" bindtap="switchTab" data-tab="available">可用({{availableCount}})</view>
+    <view class="tab-item {{currentTab === 'used' ? 'active' : ''}}" bindtap="switchTab" data-tab="used">已使用</view>
+    <view class="tab-item {{currentTab === 'expired' ? 'active' : ''}}" bindtap="switchTab" data-tab="expired">已过期</view>
+  </view>
+  
+  <scroll-view class="coupon-list" scroll-y>
+    <view class="coupon-card {{currentTab === 'used' || currentTab === 'expired' ? 'disabled' : ''}}" wx:for="{{coupons}}" wx:key="id">
+      <view class="coupon-left {{currentTab === 'used' || currentTab === 'expired' ? 'disabled' : ''}}">
+        <view class="coupon-value">
+          <text class="currency">¥</text>
+          <text class="amount">{{item.value}}</text>
+        </view>
+        <view class="coupon-condition">满{{item.minSpend}}可用</view>
+      </view>
+      <view class="coupon-divider"></view>
+      <view class="coupon-right">
+        <view class="coupon-name">{{item.name}}</view>
+        <view class="coupon-valid">有效期至 {{item.validUntil}}</view>
+        <view class="coupon-expiring" wx:if="{{currentTab === 'available' && item.expiring}}">即将到期</view>
+        <view class="coupon-btn" wx:if="{{currentTab === 'available'}}" bindtap="useCoupon" data-id="{{item.id}}">去使用</view>
+      </view>
+      
+      <view class="coupon-stamp used" wx:if="{{currentTab === 'used'}}">已使用</view>
+      <view class="coupon-stamp expired" wx:if="{{currentTab === 'expired'}}">已过期</view>
+    </view>
+    
+    <view class="empty-state" wx:if="{{coupons.length === 0}}">
+      <view class="empty-icon"></view>
+      <view class="empty-text">暂无优惠券</view>
+    </view>
+  </scroll-view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+</view>

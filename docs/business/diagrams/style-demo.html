@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食品溯源系统 - 设计规范演示</title>
+    <style>
+        /* ============================================
+           CSS 变量系统 - Design Tokens
+           ============================================ */
+        :root {
+            --fts-color-primary: #2563eb;
+            --fts-color-primary-hover: #1d4ed8;
+            --fts-color-primary-active: #1e40af;
+            --fts-color-primary-light: #dbeafe;
+            --fts-color-success: #16a34a;
+            --fts-color-success-hover: #15803d;
+            --fts-color-success-light: #dcfce7;
+            --fts-color-warning: #d97706;
+            --fts-color-warning-hover: #b45309;
+            --fts-color-warning-light: #fef3c7;
+            --fts-color-error: #dc2626;
+            --fts-color-error-hover: #b91c1c;
+            --fts-color-error-light: #fee2e2;
+            --fts-color-info: #0891b2;
+            --fts-color-info-hover: #0e7490;
+            --fts-color-info-light: #cffafe;
+            --fts-text-primary: #1f2937;
+            --fts-text-secondary: #64748b;
+            --fts-text-tertiary: #94a3b8;
+            --fts-text-disabled: #cbd5e1;
+            --fts-text-inverse: #ffffff;
+            --fts-bg-white: #ffffff;
+            --fts-bg-page: #f8fafc;
+            --fts-bg-secondary: #f1f5f9;
+            --fts-bg-tertiary: #e2e8f0;
+            --fts-bg-overlay: rgba(0, 0, 0, 0.5);
+            --fts-border-primary: #e2e8f0;
+            --fts-border-strong: #cbd5e1;
+            --fts-border-focus: #2563eb;
+            --fts-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            --fts-font-size-xs: 12px;
+            --fts-font-size-sm: 13px;
+            --fts-font-size-base: 14px;
+            --fts-font-size-md: 15px;
+            --fts-font-size-lg: 16px;
+            --fts-font-size-xl: 18px;
+            --fts-font-size-2xl: 20px;
+            --fts-font-size-3xl: 24px;
+            --fts-font-size-4xl: 30px;
+            --fts-font-weight-normal: 400;
+            --fts-font-weight-medium: 500;
+            --fts-font-weight-semibold: 600;
+            --fts-font-weight-bold: 700;
+            --fts-line-height-normal: 1.5;
+            --fts-space-1: 4px; --fts-space-2: 8px; --fts-space-3: 12px; --fts-space-4: 16px;
+            --fts-space-5: 20px; --fts-space-6: 24px; --fts-space-8: 32px; --fts-space-10: 40px;
+            --fts-space-12: 48px; --fts-space-16: 64px;
+            --fts-radius-sm: 4px; --fts-radius-md: 6px; --fts-radius-card: 8px;
+            --fts-radius-lg: 12px; --fts-radius-xl: 16px; --fts-radius-full: 9999px;
+            --fts-shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --fts-shadow-card: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --fts-shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+            --fts-shadow-lg: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05);
+            --fts-shadow-xl: 0 20px 25px rgba(0,0,0,0.1), 0 8px 10px rgba(0,0,0,0.04);
+            --fts-transition-fast: 150ms ease;
+            --fts-transition-normal: 250ms ease;
+            --fts-sidebar-width-expanded: 260px;
+            --fts-sidebar-width-collapsed: 64px;
+            --fts-topbar-height: 56px;
+            --fts-dialog-sm: 480px;
+            --fts-dialog-md: 640px;
+            --fts-dialog-lg: 800px;
+            --fts-dialog-xl: 960px;
+        }
+        body.dark {
+            --fts-text-primary: #f1f5f9; --fts-text-secondary: #94a3b8; --fts-text-tertiary: #64748b;
+            --fts-text-disabled: #475569; --fts-text-inverse: #0f172a;
+            --fts-bg-white: #1e293b; --fts-bg-page: #0f172a; --fts-bg-secondary: #1e293b;
+            --fts-bg-tertiary: #334155; --fts-bg-overlay: rgba(0,0,0,0.75);
+            --fts-border-primary: #334155; --fts-border-strong: #475569; --fts-border-focus: #3b82f6;
+            --fts-color-primary-light: #1e3a5f; --fts-color-success-light: #14532d;
+            --fts-color-warning-light: #451a03; --fts-color-error-light: #450a0a; --fts-color-info-light: #083344;
+            --fts-shadow-sm: 0 1px 2px rgba(0,0,0,0.35); --fts-shadow-card: 0 1px 3px rgba(0,0,0,0.45);
+            --fts-shadow-md: 0 4px 6px rgba(0,0,0,0.45); --fts-shadow-lg: 0 10px 15px rgba(0,0,0,0.45);
+            --fts-shadow-xl: 0 20px 25px rgba(0,0,0,0.45);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--fts-font-family); font-size: var(--fts-font-size-base); line-height: var(--fts-line-height-normal); color: var(--fts-text-primary); background-color: var(--fts-bg-page); transition: background-color var(--fts-transition-normal), color var(--fts-transition-normal); }
+
+        .demo-container { max-width: 1400px; margin: 0 auto; padding: var(--fts-space-6); }
+        .demo-header { background: linear-gradient(135deg, var(--fts-color-primary) 0%, #1e40af 100%); color: white; padding: var(--fts-space-10) var(--fts-space-6); border-radius: var(--fts-radius-lg); margin-bottom: var(--fts-space-8); display: flex; justify-content: space-between; align-items: center; box-shadow: var(--fts-shadow-lg); flex-wrap: wrap; gap: var(--fts-space-4); }
+        .demo-header h1 { font-size: var(--fts-font-size-3xl); font-weight: var(--fts-font-weight-bold); margin-bottom: var(--fts-space-2); }
+        .demo-header p { opacity: 0.9; font-size: var(--fts-font-size-md); }
+        .theme-toggle { display: flex; align-items: center; gap: var(--fts-space-2); background: rgba(255,255,255,0.2); padding: var(--fts-space-2) var(--fts-space-4); border-radius: var(--fts-radius-full); cursor: pointer; transition: all var(--fts-transition-fast); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: var(--fts-font-size-sm); white-space: nowrap; }
+        .theme-toggle:hover { background: rgba(255,255,255,0.3); }
+        .viewport-indicator { position: fixed; top: var(--fts-space-4); right: var(--fts-space-4); background: var(--fts-bg-white); padding: var(--fts-space-2) var(--fts-space-3); border-radius: var(--fts-radius-md); font-size: var(--fts-font-size-xs); color: var(--fts-text-secondary); box-shadow: var(--fts-shadow-card); z-index: 1000; font-family: monospace; border: 1px solid var(--fts-border-primary); }
+
+        .module { background: var(--fts-bg-white); border-radius: var(--fts-radius-card); padding: var(--fts-space-6); margin-bottom: var(--fts-space-6); box-shadow: var(--fts-shadow-card); border: 1px solid var(--fts-border-primary); transition: all var(--fts-transition-normal); }
+        .module-title { font-size: var(--fts-font-size-xl); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); margin-bottom: var(--fts-space-4); padding-bottom: var(--fts-space-3); border-bottom: 2px solid var(--fts-color-primary); display: inline-block; }
+        .module-subtitle { font-size: var(--fts-font-size-md); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-secondary); margin-top: var(--fts-space-6); margin-bottom: var(--fts-space-3); }
+        .component-row { display: flex; flex-wrap: wrap; gap: var(--fts-space-3); align-items: center; margin-bottom: var(--fts-space-4); }
+        .component-label { font-size: var(--fts-font-size-xs); color: var(--fts-text-tertiary); margin-bottom: var(--fts-space-2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: var(--fts-font-weight-medium); }
+
+        /* 颜色色块 */
+        .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--fts-space-3); margin-bottom: var(--fts-space-6); }
+        .color-swatch { border-radius: var(--fts-radius-md); overflow: hidden; box-shadow: var(--fts-shadow-sm); border: 1px solid var(--fts-border-primary); transition: transform var(--fts-transition-fast), box-shadow var(--fts-transition-fast); }
+        .color-swatch:hover { transform: translateY(-2px); box-shadow: var(--fts-shadow-md); }
+        .color-preview { height: 80px; width: 100%; }
+        .color-info { padding: var(--fts-space-2) var(--fts-space-3); background: var(--fts-bg-secondary); }
+        .color-name { font-size: var(--fts-font-size-xs); font-weight: var(--fts-font-weight-medium); color: var(--fts-text-primary); }
+        .color-value { font-size: var(--fts-font-size-xs); color: var(--fts-text-secondary); font-family: monospace; }
+
+        /* 字体 */
+        .font-scale { display: flex; flex-direction: column; gap: var(--fts-space-4); }
+        .font-item { display: flex; align-items: baseline; gap: var(--fts-space-4); padding: var(--fts-space-3); border-left: 3px solid var(--fts-color-primary); background: var(--fts-bg-secondary); border-radius: 0 var(--fts-radius-sm) var(--fts-radius-sm) 0; }
+        .font-sample { flex: 1; }
+        .font-meta { font-size: var(--fts-font-size-xs); color: var(--fts-text-tertiary); min-width: 180px; text-align: right; font-family: monospace; }
+        .weight-demo { display: flex; gap: var(--fts-space-6); flex-wrap: wrap; }
+        .weight-item { padding: var(--fts-space-3); background: var(--fts-bg-secondary); border-radius: var(--fts-radius-sm); }
+
+        /* 间距 */
+        .space-grid { display: flex; flex-wrap: wrap; gap: var(--fts-space-3); align-items: flex-end; }
+        .space-item { display: flex; flex-direction: column; align-items: center; gap: var(--fts-space-2); }
+        .space-block { background: var(--fts-color-primary); border-radius: var(--fts-radius-sm); }
+        .space-label { font-size: var(--fts-font-size-xs); color: var(--fts-text-secondary); font-family: monospace; }
+
+        /* 圆角 */
+        .radius-grid { display: flex; flex-wrap: wrap; gap: var(--fts-space-4); align-items: flex-end; }
+        .radius-item { display: flex; flex-direction: column; align-items: center; gap: var(--fts-space-2); }
+        .radius-block { width: 80px; height: 80px; background: var(--fts-color-primary); border: 2px solid var(--fts-color-primary-hover); transition: all var(--fts-transition-fast); }
+        .radius-label { font-size: var(--fts-font-size-xs); color: var(--fts-text-secondary); font-family: monospace; }
+
+        /* 阴影 */
+        .shadow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--fts-space-4); }
+        .shadow-item { padding: var(--fts-space-6); background: var(--fts-bg-white); border-radius: var(--fts-radius-card); display: flex; flex-direction: column; align-items: center; gap: var(--fts-space-3); border: 1px solid var(--fts-border-primary); }
+        .shadow-label { font-size: var(--fts-font-size-xs); color: var(--fts-text-secondary); font-family: monospace; }
+
+        /* 按钮 */
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--fts-space-2); padding: var(--fts-space-2) var(--fts-space-4); font-size: var(--fts-font-size-base); font-weight: var(--fts-font-weight-medium); line-height: 1.5; border: 1px solid transparent; border-radius: var(--fts-radius-md); cursor: pointer; transition: all var(--fts-transition-fast); text-decoration: none; white-space: nowrap; user-select: none; font-family: inherit; }
+        .btn:focus-visible { outline: 2px solid var(--fts-color-primary); outline-offset: 2px; }
+        .btn-sm { padding: var(--fts-space-1) var(--fts-space-3); font-size: var(--fts-font-size-sm); }
+        .btn-md { padding: var(--fts-space-2) var(--fts-space-5); font-size: var(--fts-font-size-base); }
+        .btn-lg { padding: var(--fts-space-3) var(--fts-space-6); font-size: var(--fts-font-size-lg); }
+        .btn-primary { background: var(--fts-color-primary); color: white; border-color: var(--fts-color-primary); } .btn-primary:hover { background: var(--fts-color-primary-hover); border-color: var(--fts-color-primary-hover); }
+        .btn-success { background: var(--fts-color-success); color: white; border-color: var(--fts-color-success); } .btn-success:hover { background: var(--fts-color-success-hover); }
+        .btn-warning { background: var(--fts-color-warning); color: white; border-color: var(--fts-color-warning); } .btn-warning:hover { background: var(--fts-color-warning-hover); }
+        .btn-danger { background: var(--fts-color-error); color: white; border-color: var(--fts-color-error); } .btn-danger:hover { background: var(--fts-color-error-hover); }
+        .btn-info { background: var(--fts-color-info); color: white; border-color: var(--fts-color-info); } .btn-info:hover { background: var(--fts-color-info-hover); }
+        .btn-text { background: transparent; color: var(--fts-color-primary); border-color: transparent; } .btn-text:hover { background: var(--fts-color-primary-light); }
+        .btn-ghost { background: transparent; color: var(--fts-text-primary); border-color: var(--fts-border-strong); } .btn-ghost:hover { background: var(--fts-bg-secondary); }
+        .btn-link { background: transparent; color: var(--fts-color-primary); border-color: transparent; padding: 0; text-decoration: underline; } .btn-link:hover { color: var(--fts-color-primary-hover); }
+        .btn-disabled, .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        .btn-loading { position: relative; color: transparent !important; }
+        .btn-loading::after { content: ''; position: absolute; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; color: white; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* TopBar */
+        .topbar-demo { background: var(--fts-bg-white); height: var(--fts-topbar-height); border-radius: var(--fts-radius-card); box-shadow: var(--fts-shadow-md); display: flex; align-items: center; padding: 0 var(--fts-space-5); border: 1px solid var(--fts-border-primary); overflow: hidden; }
+        .topbar-logo { display: flex; align-items: center; gap: var(--fts-space-3); margin-right: var(--fts-space-6); }
+        .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--fts-color-primary), #1e40af); border-radius: var(--fts-radius-md); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: var(--fts-font-size-lg); }
+        .logo-text { font-size: var(--fts-font-size-lg); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); }
+        .topbar-nav { display: flex; gap: var(--fts-space-1); flex: 1; }
+        .topbar-nav-item { padding: var(--fts-space-2) var(--fts-space-4); border-radius: var(--fts-radius-md); color: var(--fts-text-secondary); cursor: pointer; transition: all var(--fts-transition-fast); font-size: var(--fts-font-size-sm); font-weight: var(--fts-font-weight-medium); }
+        .topbar-nav-item:hover { background: var(--fts-bg-secondary); color: var(--fts-text-primary); }
+        .topbar-nav-item.active { background: var(--fts-color-primary-light); color: var(--fts-color-primary); }
+        .topbar-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--fts-color-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: var(--fts-font-size-sm); font-weight: var(--fts-font-weight-medium); cursor: pointer; }
+
+        /* Sidebar */
+        .sidebar-demo-wrapper { display: flex; gap: var(--fts-space-6); flex-wrap: wrap; }
+        .sidebar-demo { width: var(--fts-sidebar-width-expanded); background: var(--fts-bg-white); border-radius: var(--fts-radius-card); box-shadow: var(--fts-shadow-card); border: 1px solid var(--fts-border-primary); overflow: hidden; height: 480px; display: flex; flex-direction: column; }
+        .sidebar-demo.collapsed { width: var(--fts-sidebar-width-collapsed); }
+        .sidebar-header { padding: var(--fts-space-4); border-bottom: 1px solid var(--fts-border-primary); display: flex; align-items: center; gap: var(--fts-space-3); height: var(--fts-topbar-height); }
+        .sidebar-menu { flex: 1; overflow-y: auto; padding: var(--fts-space-3); }
+        .menu-group { margin-bottom: var(--fts-space-4); }
+        .menu-group-title { font-size: var(--fts-font-size-xs); color: var(--fts-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; padding: var(--fts-space-2) var(--fts-space-3); font-weight: var(--fts-font-weight-semibold); }
+        .menu-item { display: flex; align-items: center; gap: var(--fts-space-3); padding: var(--fts-space-2) var(--fts-space-3); border-radius: var(--fts-radius-md); cursor: pointer; transition: all var(--fts-transition-fast); color: var(--fts-text-secondary); font-size: var(--fts-font-size-sm); margin-bottom: 2px; }
+        .menu-item:hover { background: var(--fts-bg-secondary); color: var(--fts-text-primary); }
+        .menu-item.active { background: var(--fts-color-primary-light); color: var(--fts-color-primary); font-weight: var(--fts-font-weight-medium); }
+        .menu-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .submenu { margin-left: var(--fts-space-5); margin-top: 2px; }
+
+        /* Breadcrumb & Tab */
+        .breadcrumb { display: flex; align-items: center; gap: var(--fts-space-2); font-size: var(--fts-font-size-sm); color: var(--fts-text-secondary); }
+        .breadcrumb-item { color: var(--fts-text-secondary); text-decoration: none; transition: color var(--fts-transition-fast); }
+        .breadcrumb-item:hover { color: var(--fts-color-primary); }
+        .breadcrumb-separator { color: var(--fts-text-tertiary); }
+        .breadcrumb-item.current { color: var(--fts-text-primary); font-weight: var(--fts-font-weight-medium); }
+        .tabbar { display: flex; border-bottom: 2px solid var(--fts-border-primary); gap: var(--fts-space-1); }
+        .tab-item { padding: var(--fts-space-3) var(--fts-space-5); cursor: pointer; color: var(--fts-text-secondary); font-size: var(--fts-font-size-base); font-weight: var(--fts-font-weight-medium); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all var(--fts-transition-fast); }
+        .tab-item:hover { color: var(--fts-text-primary); }
+        .tab-item.active { color: var(--fts-color-primary); border-bottom-color: var(--fts-color-primary); }
+
+        /* Table */
+        .table-wrapper { overflow-x: auto; border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); background: var(--fts-bg-white); }
+        .pro-table { width: 100%; border-collapse: collapse; font-size: var(--fts-font-size-sm); }
+        .pro-table th { background: var(--fts-bg-secondary); padding: var(--fts-space-3) var(--fts-space-4); text-align: left; font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); border-bottom: 2px solid var(--fts-border-primary); white-space: nowrap; }
+        .pro-table td { padding: var(--fts-space-3) var(--fts-space-4); border-bottom: 1px solid var(--fts-border-primary); color: var(--fts-text-primary); }
+        .pro-table tbody tr:hover { background: var(--fts-bg-secondary); }
+        .pro-table tbody tr.selected { background: var(--fts-color-primary-light); }
+        .pro-table tbody tr:last-child td { border-bottom: none; }
+
+        /* StatCard */
+        .stat-cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--fts-space-4); }
+        @media (max-width: 1024px) { .stat-cards-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 640px) { .stat-cards-grid { grid-template-columns: 1fr; } }
+        .stat-card { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); padding: var(--fts-space-5); box-shadow: var(--fts-shadow-sm); transition: all var(--fts-transition-fast); }
+        .stat-card:hover { box-shadow: var(--fts-shadow-md); transform: translateY(-2px); }
+        .stat-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--fts-space-3); }
+        .stat-card-title { font-size: var(--fts-font-size-sm); color: var(--fts-text-secondary); }
+        .stat-card-icon { width: 40px; height: 40px; border-radius: var(--fts-radius-md); display: flex; align-items: center; justify-content: center; font-size: var(--fts-font-size-xl); }
+        .stat-card-icon.primary { background: var(--fts-color-primary-light); color: var(--fts-color-primary); }
+        .stat-card-icon.success { background: var(--fts-color-success-light); color: var(--fts-color-success); }
+        .stat-card-icon.warning { background: var(--fts-color-warning-light); color: var(--fts-color-warning); }
+        .stat-card-icon.error { background: var(--fts-color-error-light); color: var(--fts-color-error); }
+        .stat-card-value { font-size: var(--fts-font-size-3xl); font-weight: var(--fts-font-weight-bold); color: var(--fts-text-primary); line-height: 1; margin-bottom: var(--fts-space-2); }
+        .stat-card-footer { display: flex; align-items: center; gap: var(--fts-space-2); font-size: var(--fts-font-size-xs); }
+        .trend-up { color: var(--fts-color-success); }
+        .trend-down { color: var(--fts-color-error); }
+
+        /* ListItem, Empty, Skeleton */
+        .list-item { display: flex; align-items: center; gap: var(--fts-space-4); padding: var(--fts-space-4); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-md); margin-bottom: var(--fts-space-2); cursor: pointer; transition: all var(--fts-transition-fast); background: var(--fts-bg-white); }
+        .list-item:hover { border-color: var(--fts-color-primary); box-shadow: var(--fts-shadow-sm); background: var(--fts-bg-secondary); }
+        .list-item-avatar { width: 44px; height: 44px; border-radius: var(--fts-radius-card); background: var(--fts-color-primary-light); color: var(--fts-color-primary); display: flex; align-items: center; justify-content: center; font-weight: var(--fts-font-weight-semibold); flex-shrink: 0; }
+        .list-item-content { flex: 1; }
+        .list-item-title { font-weight: var(--fts-font-weight-medium); color: var(--fts-text-primary); margin-bottom: var(--fts-space-1); }
+        .list-item-desc { font-size: var(--fts-font-size-sm); color: var(--fts-text-secondary); }
+        .empty-state { text-align: center; padding: var(--fts-space-12) var(--fts-space-6); color: var(--fts-text-secondary); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); }
+        .empty-icon { font-size: 64px; margin-bottom: var(--fts-space-4); opacity: 0.3; }
+        .empty-text { font-size: var(--fts-font-size-lg); margin-bottom: var(--fts-space-2); }
+        .empty-desc { font-size: var(--fts-font-size-sm); color: var(--fts-text-tertiary); }
+        .skeleton { background: linear-gradient(90deg, var(--fts-bg-secondary) 25%, var(--fts-bg-tertiary) 50%, var(--fts-bg-secondary) 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: var(--fts-radius-sm); }
+        @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .skeleton-row { display: flex; gap: var(--fts-space-4); padding: var(--fts-space-4); border-bottom: 1px solid var(--fts-border-primary); }
+        .skeleton-circle { border-radius: 50%; }
+
+        /* Form */
+        .form-group { margin-bottom: var(--fts-space-5); }
+        .form-label { display: block; font-size: var(--fts-font-size-sm); font-weight: var(--fts-font-weight-medium); color: var(--fts-text-primary); margin-bottom: var(--fts-space-2); }
+        .form-label-required::after { content: '*'; color: var(--fts-color-error); margin-left: var(--fts-space-1); }
+        .input-wrapper { position: relative; display: flex; align-items: center; }
+        .input { width: 100%; padding: var(--fts-space-2) var(--fts-space-3); font-size: var(--fts-font-size-base); font-family: inherit; color: var(--fts-text-primary); background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-md); outline: none; transition: all var(--fts-transition-fast); }
+        .input:focus { border-color: var(--fts-border-focus); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .input:hover:not(:focus):not(:disabled) { border-color: var(--fts-border-strong); }
+        .input-error { border-color: var(--fts-color-error); }
+        .input-error:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.1); }
+        .input:disabled { background: var(--fts-bg-secondary); cursor: not-allowed; color: var(--fts-text-disabled); }
+        .input-sm { padding: var(--fts-space-1) var(--fts-space-2); font-size: var(--fts-font-size-sm); }
+        .input-lg { padding: var(--fts-space-3) var(--fts-space-4); font-size: var(--fts-font-size-lg); }
+        .input-prefix, .input-suffix { display: flex; align-items: center; padding: 0 var(--fts-space-2); color: var(--fts-text-secondary); background: var(--fts-bg-secondary); border: 1px solid var(--fts-border-primary); font-size: var(--fts-font-size-sm); }
+        .input-prefix { border-right: none; border-radius: var(--fts-radius-md) 0 0 var(--fts-radius-md); }
+        .input-suffix { border-left: none; border-radius: 0 var(--fts-radius-md) var(--fts-radius-md) 0; }
+        .input-prefix + .input { border-radius: 0 var(--fts-radius-md) var(--fts-radius-md) 0; }
+        .input + .input-suffix { border-radius: var(--fts-radius-md) 0 0 var(--fts-radius-md); }
+        .form-hint { font-size: var(--fts-font-size-xs); margin-top: var(--fts-space-1); display: flex; align-items: center; gap: var(--fts-space-1); }
+        .form-hint-error { color: var(--fts-color-error); }
+        .form-hint-success { color: var(--fts-color-success); }
+        .form-hint-info { color: var(--fts-text-secondary); }
+        .select-wrapper { position: relative; }
+        .select { appearance: none; width: 100%; padding: var(--fts-space-2) var(--fts-space-8) var(--fts-space-2) var(--fts-space-3); font-size: var(--fts-font-size-base); font-family: inherit; color: var(--fts-text-primary); background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-md); cursor: pointer; outline: none; transition: all var(--fts-transition-fast); }
+        .select:focus { border-color: var(--fts-border-focus); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .select-arrow { position: absolute; right: var(--fts-space-3); top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--fts-text-tertiary); font-size: var(--fts-font-size-xs); }
+        .switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; gap: var(--fts-space-2); }
+        .switch-track { width: 44px; height: 24px; background: var(--fts-bg-tertiary); border-radius: var(--fts-radius-full); transition: background-color var(--fts-transition-fast); position: relative; }
+        .switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform var(--fts-transition-fast); box-shadow: var(--fts-shadow-sm); }
+        .switch.checked .switch-track { background: var(--fts-color-primary); }
+        .switch.checked .switch-thumb { transform: translateX(20px); }
+        .switch.disabled { opacity: 0.5; cursor: not-allowed; }
+        .switch-label { font-size: var(--fts-font-size-sm); color: var(--fts-text-primary); }
+
+        /* Dialog */
+        .dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--fts-bg-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; visibility: hidden; transition: all var(--fts-transition-normal); }
+        .dialog-overlay.show { opacity: 1; visibility: visible; }
+        .dialog { background: var(--fts-bg-white); border-radius: var(--fts-radius-lg); box-shadow: var(--fts-shadow-xl); max-height: 90vh; display: flex; flex-direction: column; transform: scale(0.95) translateY(10px); transition: transform var(--fts-transition-normal); border: 1px solid var(--fts-border-primary); }
+        .dialog-overlay.show .dialog { transform: scale(1) translateY(0); }
+        .dialog-sm { width: var(--fts-dialog-sm); }
+        .dialog-md { width: var(--fts-dialog-md); }
+        .dialog-lg { width: var(--fts-dialog-lg); }
+        .dialog-xl { width: var(--fts-dialog-xl); }
+        .dialog-header { display: flex; align-items: center; justify-content: space-between; padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); }
+        .dialog-title { font-size: var(--fts-font-size-lg); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); }
+        .dialog-close { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--fts-radius-sm); cursor: pointer; color: var(--fts-text-tertiary); transition: all var(--fts-transition-fast); border: none; background: transparent; font-size: var(--fts-font-size-lg); }
+        .dialog-close:hover { background: var(--fts-bg-secondary); color: var(--fts-text-primary); }
+        .dialog-body { padding: var(--fts-space-5); overflow-y: auto; flex: 1; color: var(--fts-text-secondary); font-size: var(--fts-font-size-sm); line-height: 1.6; }
+        .dialog-footer { display: flex; justify-content: flex-end; gap: var(--fts-space-3); padding: var(--fts-space-4) var(--fts-space-5); border-top: 1px solid var(--fts-border-primary); }
+        .dialog-demo-inline { position: relative; background: var(--fts-bg-page); border-radius: var(--fts-radius-card); padding: var(--fts-space-6); min-height: 300px; display: flex; align-items: center; justify-content: center; }
+        .dialog-inline { position: relative; background: var(--fts-bg-white); border-radius: var(--fts-radius-lg); box-shadow: var(--fts-shadow-xl); border: 1px solid var(--fts-border-primary); overflow: hidden; }
+
+        /* Message */
+        .message { display: flex; align-items: flex-start; gap: var(--fts-space-3); padding: var(--fts-space-3) var(--fts-space-4); border-radius: var(--fts-radius-md); margin-bottom: var(--fts-space-2); font-size: var(--fts-font-size-sm); border: 1px solid; animation: message-in 0.3s ease; }
+        @keyframes message-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .message-success { background: var(--fts-color-success-light); border-color: var(--fts-color-success); color: #14532d; }
+        body.dark .message-success { color: #bbf7d0; }
+        .message-warning { background: var(--fts-color-warning-light); border-color: var(--fts-color-warning); color: #78350f; }
+        body.dark .message-warning { color: #fef08a; }
+        .message-error { background: var(--fts-color-error-light); border-color: var(--fts-color-error); color: #7f1d1d; }
+        body.dark .message-error { color: #fecaca; }
+        .message-info { background: var(--fts-color-info-light); border-color: var(--fts-color-info); color: #155e75; }
+        body.dark .message-info { color: #a5f3fc; }
+        .message-icon { flex-shrink: 0; font-size: var(--fts-font-size-lg); line-height: 1; }
+        .message-content { flex: 1; }
+        .message-title { font-weight: var(--fts-font-weight-semibold); margin-bottom: 2px; }
+
+        /* Drawer */
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--fts-bg-overlay); z-index: 1000; opacity: 0; visibility: hidden; transition: all var(--fts-transition-normal); }
+        .drawer-overlay.show { opacity: 1; visibility: visible; }
+        .drawer { position: fixed; top: 0; right: 0; height: 100%; width: 420px; background: var(--fts-bg-white); box-shadow: var(--fts-shadow-xl); transform: translateX(100%); transition: transform var(--fts-transition-slow); display: flex; flex-direction: column; z-index: 1001; border-left: 1px solid var(--fts-border-primary); }
+        .drawer-overlay.show .drawer { transform: translateX(0); }
+        .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); }
+        .drawer-body { padding: var(--fts-space-5); overflow-y: auto; flex: 1; }
+        .drawer-demo-inline { position: relative; background: var(--fts-bg-page); border-radius: var(--fts-radius-card); padding: var(--fts-space-4); min-height: 350px; display: flex; justify-content: flex-end; overflow: hidden; }
+        .drawer-inline { position: relative; width: 320px; height: 100%; background: var(--fts-bg-white); box-shadow: var(--fts-shadow-xl); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; }
+
+        /* Loading */
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--fts-bg-tertiary); border-top-color: var(--fts-color-primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--fts-bg-overlay); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: var(--fts-space-3); z-index: 100; border-radius: inherit; }
+        .loading-text { color: var(--fts-text-inverse); font-size: var(--fts-font-size-sm); }
+
+        /* Progress */
+        .progress-wrapper { margin-bottom: var(--fts-space-4); }
+        .progress-header { display: flex; justify-content: space-between; margin-bottom: var(--fts-space-2); font-size: var(--fts-font-size-sm); }
+        .progress-bar { height: 8px; background: var(--fts-bg-tertiary); border-radius: var(--fts-radius-full); overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--fts-color-primary); border-radius: var(--fts-radius-full); transition: width var(--fts-transition-slow); }
+        .progress-fill.success { background: var(--fts-color-success); }
+        .progress-fill.warning { background: var(--fts-color-warning); }
+        .progress-fill.error { background: var(--fts-color-error); }
+
+        /* Tag / Badge */
+        .tag { display: inline-flex; align-items: center; gap: var(--fts-space-1); padding: 2px var(--fts-space-2); font-size: var(--fts-font-size-xs); font-weight: var(--fts-font-weight-medium); border-radius: var(--fts-radius-sm); border: 1px solid transparent; line-height: 1.5; }
+        .tag-primary { background: var(--fts-color-primary-light); color: var(--fts-color-primary); border-color: var(--fts-color-primary); }
+        .tag-success { background: var(--fts-color-success-light); color: var(--fts-color-success); border-color: var(--fts-color-success); }
+        .tag-warning { background: var(--fts-color-warning-light); color: var(--fts-color-warning); border-color: var(--fts-color-warning); }
+        .tag-danger { background: var(--fts-color-error-light); color: var(--fts-color-error); border-color: var(--fts-color-error); }
+        .tag-info { background: var(--fts-color-info-light); color: var(--fts-color-info); border-color: var(--fts-color-info); }
+        .tag-default { background: var(--fts-bg-secondary); color: var(--fts-text-secondary); border-color: var(--fts-border-primary); }
+        .tag-pill { border-radius: var(--fts-radius-full); }
+        .tag-close { cursor: pointer; opacity: 0.6; transition: opacity var(--fts-transition-fast); font-size: 14px; line-height: 1; }
+        .tag-close:hover { opacity: 1; }
+        .badge-wrapper { position: relative; display: inline-block; }
+        .badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; background: var(--fts-color-error); color: white; font-size: 11px; font-weight: var(--fts-font-weight-bold); border-radius: var(--fts-radius-full); display: flex; align-items: center; justify-content: center; border: 2px solid var(--fts-bg-white); }
+        .badge-dot { width: 8px; height: 8px; min-width: 8px; padding: 0; border-radius: 50%; }
+
+        /* Avatar */
+        .avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--fts-color-primary); color: white; font-weight: var(--fts-font-weight-medium); flex-shrink: 0; overflow: hidden; }
+        .avatar-xs { width: 24px; height: 24px; font-size: 10px; }
+        .avatar-sm { width: 32px; height: 32px; font-size: var(--fts-font-size-xs); }
+        .avatar-md { width: 40px; height: 40px; font-size: var(--fts-font-size-sm); }
+        .avatar-lg { width: 48px; height: 48px; font-size: var(--fts-font-size-base); }
+        .avatar-xl { width: 64px; height: 64px; font-size: var(--fts-font-size-lg); }
+        .avatar-group { display: flex; }
+        .avatar-group .avatar { border: 2px solid var(--fts-bg-white); margin-left: -10px; }
+        .avatar-group .avatar:first-child { margin-left: 0; }
+        .avatar-status { position: relative; }
+        .avatar-status::after { content: ''; position: absolute; bottom: 1px; right: 1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--fts-bg-white); }
+        .avatar-status.online::after { background: var(--fts-color-success); }
+        .avatar-status.offline::after { background: var(--fts-text-tertiary); }
+        .avatar-status.busy::after { background: var(--fts-color-error); }
+
+        /* Card */
+        .card { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; transition: all var(--fts-transition-fast); }
+        .card:hover { box-shadow: var(--fts-shadow-md); }
+        .card-header { padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; align-items: center; justify-content: space-between; }
+        .card-title { font-size: var(--fts-font-size-lg); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); }
+        .card-body { padding: var(--fts-space-5); color: var(--fts-text-secondary); font-size: var(--fts-font-size-sm); line-height: 1.6; }
+        .card-footer { padding: var(--fts-space-3) var(--fts-space-5); border-top: 1px solid var(--fts-border-primary); background: var(--fts-bg-secondary); display: flex; justify-content: flex-end; gap: var(--fts-space-2); }
+
+        /* Pagination */
+        .pagination { display: flex; align-items: center; gap: var(--fts-space-1); }
+        .pagination-btn { min-width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-sm); background: var(--fts-bg-white); color: var(--fts-text-primary); cursor: pointer; font-size: var(--fts-font-size-sm); transition: all var(--fts-transition-fast); padding: 0 var(--fts-space-2); }
+        .pagination-btn:hover:not(:disabled):not(.active) { border-color: var(--fts-color-primary); color: var(--fts-color-primary); }
+        .pagination-btn.active { background: var(--fts-color-primary); color: white; border-color: var(--fts-color-primary); }
+        .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination-ellipsis { color: var(--fts-text-tertiary); padding: 0 var(--fts-space-1); }
+        .pagination-info { margin-left: var(--fts-space-4); font-size: var(--fts-font-size-sm); color: var(--fts-text-secondary); }
+
+        /* Page Layout Mocks */
+        .page-layout-mock { background: var(--fts-bg-page); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; }
+        .mock-page-header { background: var(--fts-bg-white); padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; align-items: center; justify-content: space-between; }
+        .mock-page-title { font-size: var(--fts-font-size-lg); font-weight: var(--fts-font-weight-semibold); }
+        .mock-filter-bar { background: var(--fts-bg-white); padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; gap: var(--fts-space-3); flex-wrap: wrap; align-items: center; }
+        .mock-toolbar { background: var(--fts-bg-white); padding: var(--fts-space-3) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; justify-content: space-between; align-items: center; }
+        .mock-pagination-area { background: var(--fts-bg-white); padding: var(--fts-space-3) var(--fts-space-5); display: flex; justify-content: flex-end; border-top: 1px solid var(--fts-border-primary); }
+        .form-page-mock { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; }
+        .form-page-header { padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; align-items: center; justify-content: space-between; }
+        .form-page-body { padding: var(--fts-space-6); max-width: 800px; }
+        .form-section { margin-bottom: var(--fts-space-6); }
+        .form-section-title { font-size: var(--fts-font-size-md); font-weight: var(--fts-font-weight-semibold); color: var(--fts-text-primary); margin-bottom: var(--fts-space-4); padding-bottom: var(--fts-space-2); border-bottom: 1px solid var(--fts-border-primary); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--fts-space-4); }
+        .form-page-footer { padding: var(--fts-space-4) var(--fts-space-5); border-top: 1px solid var(--fts-border-primary); background: var(--fts-bg-secondary); display: flex; justify-content: flex-end; gap: var(--fts-space-3); }
+        .detail-page-mock { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; }
+        .detail-page-header { padding: var(--fts-space-4) var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); display: flex; align-items: center; justify-content: space-between; }
+        .detail-page-body { padding: var(--fts-space-6); }
+        .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--fts-space-4); }
+        .detail-item { display: flex; flex-direction: column; gap: var(--fts-space-1); }
+        .detail-label { font-size: var(--fts-font-size-xs); color: var(--fts-text-tertiary); }
+        .detail-value { font-size: var(--fts-font-size-sm); color: var(--fts-text-primary); font-weight: var(--fts-font-weight-medium); }
+        .dashboard-mock { background: var(--fts-bg-page); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); overflow: hidden; }
+        .dashboard-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--fts-space-4); padding: var(--fts-space-5); border-bottom: 1px solid var(--fts-border-primary); background: var(--fts-bg-white); }
+        .dashboard-content { display: grid; grid-template-columns: 2fr 1fr; gap: var(--fts-space-4); padding: var(--fts-space-5); }
+        .chart-placeholder { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); padding: var(--fts-space-5); min-height: 280px; display: flex; align-items: center; justify-content: center; color: var(--fts-text-tertiary); }
+        .quick-actions { background: var(--fts-bg-white); border: 1px solid var(--fts-border-primary); border-radius: var(--fts-radius-card); padding: var(--fts-space-5); }
+        .quick-action-list { display: flex; flex-direction: column; gap: var(--fts-space-2); }
+        .quick-action-item { display: flex; align-items: center; gap: var(--fts-space-3); padding: var(--fts-space-3); border-radius: var(--fts-radius-md); cursor: pointer; transition: all var(--fts-transition-fast); color: var(--fts-text-secondary); }
+        .quick-action-item:hover { background: var(--fts-bg-secondary); color: var(--fts-text-primary); }
+        .quick-action-icon { width: 36px; height: 36px; border-radius: var(--fts-radius-md); display: flex; align-items: center; justify-content: center; font-size: var(--fts-font-size-lg); background: var(--fts-bg-secondary); }
+
+        /* Utils */
+        .text-center { text-align: center; }
+        .text-muted { color: var(--fts-text-secondary); }
+        .mt-2 { margin-top: var(--fts-space-2); }
+        .mt-4 { margin-top: var(--fts-space-4); }
+        .mb-2 { margin-bottom: var(--fts-space-2); }
+        .mb-4 { margin-bottom: var(--fts-space-4); }
+        .flex { display: flex; }
+        .gap-2 { gap: var(--fts-space-2); }
+        .gap-3 { gap: var(--fts-space-3); }
+        .items-center { align-items: center; }
+        .w-full { width: 100%; }
+        .grid-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--fts-space-4); }
+        .grid-cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--fts-space-4); }
+
+        @media (max-width: 768px) {
+            .demo-container { padding: var(--fts-space-3); }
+            .demo-header { flex-direction: column; text-align: center; }
+            .form-row { grid-template-columns: 1fr; }
+            .detail-grid { grid-template-columns: 1fr 1fr; }
+            .dashboard-stats { grid-template-columns: 1fr 1fr; }
+            .dashboard-content { grid-template-columns: 1fr; }
+            .sidebar-demo-wrapper { flex-direction: column; }
+            .grid-cols-2, .grid-cols-3 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="viewport-indicator" id="viewportIndicator">视口: --</div>
+
+    <div class="demo-container">
+        <!-- 页面头部 -->
+        <header class="demo-header">
+            <div><h1>食品溯源系统 - UI 设计规范</h1><p>Design System Style Guide v1.0 | 完整组件视觉审核定稿</p></div>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeToggleBtn"><span id="themeIcon">&#9790;</span><span id="themeText">切换深色模式</span></button>
+        </header>
+
+        <!-- ========== 模块1: 设计令牌 ========== -->
+        <section class="module" id="tokens">
+            <h2 class="module-title">模块一：设计令牌 (Design Tokens)</h2>
+
+            <h3 class="module-subtitle">颜色系统 (Color System)</h3>
+            <p class="component-label mb-4">品牌色与功能语义色</p>
+            <div class="color-grid">
+                <div class="color-swatch"><div class="color-preview" style="background:#2563eb;"></div><div class="color-info"><div class="color-name">Primary</div><div class="color-value">#2563eb</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#1d4ed8;"></div><div class="color-info"><div class="color-name">Primary Hover</div><div class="color-value">#1d4ed8</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#dbeafe;"></div><div class="color-info"><div class="color-name">Primary Light</div><div class="color-value">#dbeafe</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#16a34a;"></div><div class="color-info"><div class="color-name">Success</div><div class="color-value">#16a34a</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#15803d;"></div><div class="color-info"><div class="color-name">Success Hover</div><div class="color-value">#15803d</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#dcfce7;"></div><div class="color-info"><div class="color-name">Success Light</div><div class="color-value">#dcfce7</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#d97706;"></div><div class="color-info"><div class="color-name">Warning</div><div class="color-value">#d97706</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#b45309;"></div><div class="color-info"><div class="color-name">Warning Hover</div><div class="color-value">#b45309</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#fef3c7;"></div><div class="color-info"><div class="color-name">Warning Light</div><div class="color-value">#fef3c7</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#dc2626;"></div><div class="color-info"><div class="color-name">Error / Danger</div><div class="color-value">#dc2626</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#b91c1c;"></div><div class="color-info"><div class="color-name">Error Hover</div><div class="color-value">#b91c1c</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#fee2e2;"></div><div class="color-info"><div class="color-name">Error Light</div><div class="color-value">#fee2e2</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#0891b2;"></div><div class="color-info"><div class="color-name">Info</div><div class="color-value">#0891b2</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#cffafe;"></div><div class="color-info"><div class="color-name">Info Light</div><div class="color-value">#cffafe</div></div></div>
+            </div>
+
+            <p class="component-label mb-4 mt-4">中性文字色</p>
+            <div class="color-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
+                <div class="color-swatch"><div class="color-preview" style="background:#1f2937;"></div><div class="color-info"><div class="color-name">Text Primary</div><div class="color-value">#1f2937</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#64748b;"></div><div class="color-info"><div class="color-name">Text Secondary</div><div class="color-value">#64748b</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#94a3b8;"></div><div class="color-info"><div class="color-name">Text Tertiary</div><div class="color-value">#94a3b8</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#cbd5e1;"></div><div class="color-info"><div class="color-name">Text Disabled</div><div class="color-value">#cbd5e1</div></div></div>
+            </div>
+
+            <p class="component-label mb-4 mt-4">中性背景色</p>
+            <div class="color-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
+                <div class="color-swatch"><div class="color-preview" style="background:#ffffff;border:1px solid #e2e8f0;"></div><div class="color-info"><div class="color-name">BG White</div><div class="color-value">#ffffff</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#f8fafc;"></div><div class="color-info"><div class="color-name">BG Page</div><div class="color-value">#f8fafc</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#f1f5f9;"></div><div class="color-info"><div class="color-name">BG Secondary</div><div class="color-value">#f1f5f9</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#e2e8f0;"></div><div class="color-info"><div class="color-name">BG Tertiary</div><div class="color-value">#e2e8f0</div></div></div>
+            </div>
+
+            <p class="component-label mb-4 mt-4">边框色</p>
+            <div class="color-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
+                <div class="color-swatch"><div class="color-preview" style="background:#e2e8f0;"></div><div class="color-info"><div class="color-name">Border Primary</div><div class="color-value">#e2e8f0</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#cbd5e1;"></div><div class="color-info"><div class="color-name">Border Strong</div><div class="color-value">#cbd5e1</div></div></div>
+                <div class="color-swatch"><div class="color-preview" style="background:#2563eb;"></div><div class="color-info"><div class="color-name">Border Focus</div><div class="color-value">#2563eb</div></div></div>
+            </div>
+
+            <h3 class="module-subtitle">字体系统 (Typography)</h3>
+            <p class="component-label mb-4">字号阶梯 (Font Size Scale)</p>
+            <div class="font-scale">
+                <div class="font-item"><span class="font-sample" style="font-size:12px;">正文辅助文字 AaBbCc</span><span class="font-meta">xs: 12px | font-size-xs</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:13px;">次要文字内容 AaBbCc</span><span class="font-meta">sm: 13px | font-size-sm</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:14px;">默认正文字号 AaBbCc</span><span class="font-meta">base: 14px | font-size-base</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:15px;">中等强调文字 AaBbCc</span><span class="font-meta">md: 15px | font-size-md</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:16px;">大号正文文字 AaBbCc</span><span class="font-meta">lg: 16px | font-size-lg</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:18px;">小标题文字 AaBbCc</span><span class="font-meta">xl: 18px | font-size-xl</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:20px;">中标题文字 AaBbCc</span><span class="font-meta">2xl: 20px | font-size-2xl</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:24px;">大标题文字 AaBbCc</span><span class="font-meta">3xl: 24px | font-size-3xl</span></div>
+                <div class="font-item"><span class="font-sample" style="font-size:30px;">展示性标题 AaBbCc</span><span class="font-meta">4xl: 30px | font-size-4xl</span></div>
+            </div>
+            <p class="component-label mt-4 mb-4">字重对比 (Font Weight)</p>
+            <div class="weight-demo">
+                <div class="weight-item"><div style="font-weight:400;">Normal 400 - 常规字体</div></div>
+                <div class="weight-item"><div style="font-weight:500;">Medium 500 - 中等字重</div></div>
+                <div class="weight-item"><div style="font-weight:600;">Semibold 600 - 半粗体</div></div>
+                <div class="weight-item"><div style="font-weight:700;">Bold 700 - 粗体</div></div>
+            </div>
+
+            <h3 class="module-subtitle">间距系统 (Spacing - 4px Grid)</h3>
+            <div class="space-grid">
+                <div class="space-item"><div class="space-block" style="width:0;height:40px;"></div><span class="space-label">0<br>0px</span></div>
+                <div class="space-item"><div class="space-block" style="width:4px;height:40px;"></div><span class="space-label">1<br>4px</span></div>
+                <div class="space-item"><div class="space-block" style="width:8px;height:40px;"></div><span class="space-label">2<br>8px</span></div>
+                <div class="space-item"><div class="space-block" style="width:12px;height:40px;"></div><span class="space-label">3<br>12px</span></div>
+                <div class="space-item"><div class="space-block" style="width:16px;height:40px;"></div><span class="space-label">4<br>16px</span></div>
+                <div class="space-item"><div class="space-block" style="width:20px;height:40px;"></div><span class="space-label">5<br>20px</span></div>
+                <div class="space-item"><div class="space-block" style="width:24px;height:40px;"></div><span class="space-label">6<br>24px</span></div>
+                <div class="space-item"><div class="space-block" style="width:32px;height:40px;"></div><span class="space-label">8<br>32px</span></div>
+                <div class="space-item"><div class="space-block" style="width:40px;height:40px;"></div><span class="space-label">10<br>40px</span></div>
+                <div class="space-item"><div class="space-block" style="width:48px;height:40px;"></div><span class="space-label">12<br>48px</span></div>
+                <div class="space-item"><div class="space-block" style="width:64px;height:40px;"></div><span class="space-label">16<br>64px</span></div>
+            </div>
+
+            <h3 class="module-subtitle">圆角系统 (Border Radius)</h3>
+            <div class="radius-grid">
+                <div class="radius-item"><div class="radius-block" style="border-radius:0;"></div><span class="radius-label">none<br>0px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:4px;"></div><span class="radius-label">sm<br>4px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:6px;"></div><span class="radius-label">md<br>6px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:8px;"></div><span class="radius-label">card<br>8px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:12px;"></div><span class="radius-label">lg<br>12px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:16px;"></div><span class="radius-label">xl<br>16px</span></div>
+                <div class="radius-item"><div class="radius-block" style="border-radius:9999px;"></div><span class="radius-label">full<br>9999px</span></div>
+            </div>
+
+            <h3 class="module-subtitle">阴影系统 (Shadows)</h3>
+            <div class="shadow-grid">
+                <div class="shadow-item" style="box-shadow:none;"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">none - 无阴影</span></div>
+                <div class="shadow-item" style="box-shadow:0 1px 2px rgba(0,0,0,0.05);"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">sm - 小阴影</span></div>
+                <div class="shadow-item" style="box-shadow:0 1px 3px rgba(0,0,0,0.1),0 1px 2px rgba(0,0,0,0.06);"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">card - 卡片阴影</span></div>
+                <div class="shadow-item" style="box-shadow:0 4px 6px rgba(0,0,0,0.07),0 2px 4px rgba(0,0,0,0.06);"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">md - 中等阴影</span></div>
+                <div class="shadow-item" style="box-shadow:0 10px 15px rgba(0,0,0,0.1),0 4px 6px rgba(0,0,0,0.05);"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">lg - 大阴影</span></div>
+                <div class="shadow-item" style="box-shadow:0 20px 25px rgba(0,0,0,0.1),0 8px 10px rgba(0,0,0,0.04);"><span style="font-size:24px;">&#9633;</span><span class="shadow-label">xl - 超大阴影</span></div>
+            </div>
+        </section>
+
+        <!-- ========== 模块2: 导航组件 ========== -->
+        <section class="module" id="navigation">
+            <h2 class="module-title">模块二：导航组件 (Navigation)</h2>
+
+            <h3 class="module-subtitle">按钮 (Button)</h3>
+            <p class="component-label">主要按钮变体 x 尺寸</p>
+            <div class="component-row"><button class="btn btn-primary btn-sm">小按钮 Sm</button><button class="btn btn-primary btn-md">默认按钮 Md</button><button class="btn btn-primary btn-lg">大按钮 Lg</button></div>
+            <p class="component-label mt-4">所有变体 (Primary / Success / Warning / Danger / Info / Text / Ghost / Link)</p>
+            <div class="component-row"><button class="btn btn-primary">Primary 主要</button><button class="btn btn-success">Success 成功</button><button class="btn btn-warning">Warning 警告</button><button class="btn btn-danger">Danger 危险</button><button class="btn btn-info">Info 信息</button><button class="btn btn-text">Text 文字</button><button class="btn btn-ghost">Ghost 幽灵</button><button class="btn btn-link">Link 链接</button></div>
+            <p class="component-label mt-4">特殊状态 (Disabled 禁用 / Loading 加载中)</p>
+            <div class="component-row"><button class="btn btn-primary" disabled>Disabled 禁用</button><button class="btn btn-success" disabled>禁用状态</button><button class="btn btn-danger btn-loading">Loading...</button><button class="btn btn-primary btn-loading btn-lg">加载中...</button></div>
+
+            <h3 class="module-subtitle">顶部导航栏 (TopBar)</h3>
+            <div class="topbar-demo">
+                <div class="topbar-logo"><div class="logo-icon">食</div><span class="logo-text">食品溯源系统</span></div>
+                <nav class="topbar-nav"><div class="topbar-nav-item active">工作台</div><div class="topbar-nav-item">溯源管理</div><div class="topbar-nav-item">供应商</div><div class="topbar-nav-item">产品库</div><div class="topbar-nav-item">报表中心</div></nav>
+                <div class="topbar-actions"><div class="topbar-avatar">管</div></div>
+            </div>
+
+            <h3 class="module-subtitle">侧边栏菜单 (Sidebar)</h3>
+            <div class="sidebar-demo-wrapper">
+                <div class="sidebar-demo">
+                    <div class="sidebar-header"><div class="logo-icon" style="width:28px;height:28px;font-size:14px;">食</div><span class="logo-text" style="font-size:var(--fts-font-size-base);">食品溯源</span></div>
+                    <div class="sidebar-menu">
+                        <div class="menu-group"><div class="menu-group-title">主菜单</div>
+                            <div class="menu-item active"><span class="menu-icon">&#9632;</span><span>工作台</span></div>
+                            <div class="menu-item"><span class="menu-icon">&#9783;</span><span>溯源管理</span></div>
+                            <div class="menu-item"><span class="menu-icon">&#9733;</span><span>供应商管理</span></div>
+                            <div class="submenu"><div class="menu-item"><span>供应商列表</span></div><div class="menu-item"><span>资质审核</span></div></div>
+                            <div class="menu-item"><span class="menu-icon">&#9830;</span><span>产品管理</span></div>
+                        </div>
+                        <div class="menu-group"><div class="menu-group-title">数据中心</div>
+                            <div class="menu-item"><span class="menu-icon">&#9788;</span><span>报表分析</span></div>
+                            <div class="menu-item"><span class="menu-icon">&#9881;</span><span>系统设置</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-demo collapsed">
+                    <div class="sidebar-header" style="justify-content:center;"><div class="logo-icon" style="width:28px;height:28px;font-size:14px;">食</div></div>
+                    <div class="sidebar-menu" style="padding:var(--fts-space-2);">
+                        <div class="menu-item" style="justify-content:center;" title="工作台"><span class="menu-icon">&#9632;</span></div>
+                        <div class="menu-item" style="justify-content:center;" title="溯源管理"><span class="menu-icon">&#9783;</span></div>
+                        <div class="menu-item" style="justify-content:center;" title="供应商"><span class="menu-icon">&#9733;</span></div>
+                        <div class="menu-item" style="justify-content:center;" title="产品"><span class="menu-icon">&#9830;</span></div>
+                        <div class="menu-item" style="justify-content:center;" title="报表"><span class="menu-icon">&#9788;</span></div>
+                        <div class="menu-item" style="justify-content:center;" title="设置"><span class="menu-icon">&#9881;</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="module-subtitle">面包屑导航 (Breadcrumb)</h3>
+            <div class="breadcrumb"><a href="#" class="breadcrumb-item">首页</a><span class="breadcrumb-separator">/</span><a href="#" class="breadcrumb-item">溯源管理</a><span class="breadcrumb-separator">/</span><a href="#" class="breadcrumb-item">批次列表</a><span class="breadcrumb-separator">/</span><span class="breadcrumb-item current">批次详情</span></div>
+
+            <h3 class="module-subtitle">标签页切换 (TabBar)</h3>
+            <div class="tabbar"><div class="tab-item active" onclick="switchTab(this)">基本信息</div><div class="tab-item" onclick="switchTab(this)">溯源链条</div><div class="tab-item" onclick="switchTab(this)">质检报告</div><div class="tab-item" onclick="switchTab(this)">操作日志</div></div>
+        </section>
+
+        <!-- ========== 模块3: 数据展示组件 ========== -->
+        <section class="module" id="data-display">
+            <h2 class="module-title">模块三：数据展示组件 (Data Display)</h2>
+
+            <h3 class="module-subtitle">数据表格 (ProTable)</h3>
+            <div class="table-wrapper">
+                <table class="pro-table">
+                    <thead><tr><th style="width:50px;"><input type="checkbox"></th><th>批次编号</th><th>产品名称</th><th>供应商</th><th>生产日期</th><th>状态</th><th>操作</th></tr></thead>
+                    <tbody>
+                        <tr class="selected"><td><input type="checkbox" checked></td><td>BT20240115001</td><td>有机蔬菜礼盒</td><td>绿源农场</td><td>2024-01-15</td><td><span class="tag tag-success">已入库</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                        <tr><td><input type="checkbox"></td><td>BT20240114002</td><td>散养土鸡蛋</td><td>阳光牧业</td><td>2024-01-14</td><td><span class="tag tag-warning">运输中</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                        <tr><td><input type="checkbox"></td><td>BT20240113003</td><td>东北五常大米</td><td>稻香合作社</td><td>2024-01-13</td><td><span class="tag tag-primary">质检中</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                        <tr><td><input type="checkbox"></td><td>BT20240112004</td><td>冷鲜牛肉</td><td>草原牧场</td><td>2024-01-12</td><td><span class="tag tag-danger">已过期</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4"><div class="pagination"><button class="pagination-btn" disabled>&laquo;</button><button class="pagination-btn" disabled>&lsaquo;</button><button class="pagination-btn active">1</button><button class="pagination-btn">2</button><button class="pagination-btn">3</button><span class="pagination-ellipsis">...</span><button class="pagination-btn">10</button><button class="pagination-btn">&rsaquo;</button><button class="pagination-btn">&raquo;</button><span class="pagination-info">共 98 条记录</span></div></div>
+
+            <h3 class="module-subtitle">统计卡片 (StatCard)</h3>
+            <div class="stat-cards-grid">
+                <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">今日入库批次</span><div class="stat-card-icon primary">&#128230;</div></div><div class="stat-card-value">128</div><div class="stat-card-footer"><span class="trend-up">&#9650; 12.5%</span><span class="text-muted">较昨日</span></div></div>
+                <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">待处理预警</span><div class="stat-card-icon warning">&#9888;</div></div><div class="stat-card-value">7</div><div class="stat-card-footer"><span class="trend-down">&#9660; 22.2%</span><span class="text-muted">较昨日</span></div></div>
+                <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">合格率</span><div class="stat-card-icon success">&#10004;</div></div><div class="stat-card-value">98.6%</div><div class="stat-card-footer"><span class="trend-up">&#9650; 0.3%</span><span class="text-muted">较上月</span></div></div>
+                <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">活跃供应商</span><div class="stat-card-icon error">&#129309;</div></div><div class="stat-card-value">56</div><div class="stat-card-footer"><span class="trend-up">&#9650; 5</span><span class="text-muted">本月新增</span></div></div>
+            </div>
+
+            <h3 class="module-subtitle">列表项 (ListItem)</h3>
+            <div class="list-item"><div class="list-item-avatar">有</div><div class="list-item-content"><div class="list-item-title">有机蔬菜礼盒 - BT20240115001</div><div class="list-item-desc">供应商：绿源农场 | 数量：500份 | 入库时间：2024-01-15 09:30</div></div><span class="tag tag-success">已入库</span></div>
+            <div class="list-item"><div class="list-item-avatar" style="background:var(--fts-color-warning-light);color:var(--fts-color-warning);">蛋</div><div class="list-item-content"><div class="list-item-title">散养土鸡蛋 - BT20240114002</div><div class="list-item-desc">供应商：阳光牧业 | 数量：1200枚 | 运输中</div></div><span class="tag tag-warning">运输中</span></div>
+            <div class="list-item"><div class="list-item-avatar" style="background:var(--fts-color-info-light);color:var(--fts-color-info);">米</div><div class="list-item-content"><div class="list-item-title">东北五常大米 - BT20240113003</div><div class="list-item-desc">供应商：稻香合作社 | 数量：2000kg | 质检中</div></div><span class="tag tag-primary">质检中</span></div>
+
+            <h3 class="module-subtitle">空状态 (Empty State)</h3>
+            <div class="empty-state"><div class="empty-icon">&#128270;</div><div class="empty-text">暂无数据</div><div class="empty-desc">当前条件下没有找到相关数据，请尝试更换筛选条件</div><div class="mt-4"><button class="btn btn-primary btn-sm">新建批次</button></div></div>
+
+            <h3 class="module-subtitle">骨架屏 (Skeleton Loading)</h3>
+            <div style="border:1px solid var(--fts-border-primary);border-radius:var(--fts-radius-card);overflow:hidden;">
+                <div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:44px;height:44px;flex-shrink:0;"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div class="skeleton" style="width:60%;height:16px;"></div><div class="skeleton" style="width:40%;height:12px;"></div></div></div>
+                <div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:44px;height:44px;flex-shrink:0;"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div class="skeleton" style="width:70%;height:16px;"></div><div class="skeleton" style="width:50%;height:12px;"></div></div></div>
+                <div class="skeleton-row"><div class="skeleton skeleton-circle" style="width:44px;height:44px;flex-shrink:0;"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div class="skeleton" style="width:55%;height:16px;"></div><div class="skeleton" style="width:35%;height:12px;"></div></div></div>
+            </div>
+        </section>
+
+        <!-- ========== 模块4: 表单组件 ========== -->
+        <section class="module" id="forms">
+            <h2 class="module-title">模块四：表单组件 (Form Components)</h2>
+
+            <h3 class="module-subtitle">输入框 (Input)</h3>
+            <div class="grid-cols-2">
+                <div>
+                    <p class="component-label">三种尺寸 (Sm / Md / Lg)</p>
+                    <div class="form-group"><label class="form-label">小型输入框</label><input type="text" class="input input-sm" placeholder="请输入..."></div>
+                    <div class="form-group"><label class="form-label">默认输入框</label><input type="text" class="input" placeholder="请输入内容..."></div>
+                    <div class="form-group"><label class="form-label">大型输入框</label><input type="text" class="input input-lg" placeholder="请输入内容..."></div>
+                </div>
+                <div>
+                    <p class="component-label">多种状态</p>
+                    <div class="form-group"><label class="form-label">默认状态 Default</label><input type="text" class="input" placeholder="请输入..."></div>
+                    <div class="form-group"><label class="form-label">聚焦状态 Focus (点击查看效果)</label><input type="text" class="input" value="聚焦状态的输入框"></div>
+                    <div class="form-group"><label class="form-label">错误状态 Error</label><input type="text" class="input input-error" value="错误的值"><div class="form-hint form-hint-error">&#10007; 批次编号格式不正确，请检查</div></div>
+                    <div class="form-group"><label class="form-label">禁用状态 Disabled</label><input type="text" class="input" value="禁用的输入框" disabled></div>
+                </div>
+            </div>
+
+            <p class="component-label mt-4">带前后缀图标</p>
+            <div class="grid-cols-2">
+                <div class="form-group"><label class="form-label">带前缀</label><div class="input-wrapper"><span class="input-prefix">&#128269;</span><input type="text" class="input" placeholder="搜索..."></div></div>
+                <div class="form-group"><label class="form-label">带后缀</label><div class="input-wrapper"><input type="text" class="input" placeholder="请选择日期"><span class="input-suffix">&#128197;</span></div></div>
+            </div>
+
+            <h3 class="module-subtitle">选择器 (Select)</h3>
+            <div class="grid-cols-2">
+                <div class="form-group"><label class="form-label">下拉选择器</label><div class="select-wrapper"><select class="select"><option value="">请选择供应商</option><option value="1">绿源农场</option><option value="2">阳光牧业</option><option value="3">草原牧场</option></select><span class="select-arrow">&#9662;</span></div></div>
+                <div class="form-group"><label class="form-label">带验证的选择器</label><div class="select-wrapper"><select class="select"><option value="">请选择产品类别</option><option value="1">蔬菜类</option><option value="2">肉类</option><option value="3">粮食类</option></select><span class="select-arrow">&#9662;</span></div><div class="form-hint form-hint-success">&#10004; 已选择有效选项</div></div>
+            </div>
+
+            <h3 class="module-subtitle">开关 (Switch)</h3>
+            <div class="component-row">
+                <div class="switch checked" onclick="this.classList.toggle('checked')"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label">开启状态</span></div>
+                <div class="switch" onclick="this.classList.toggle('checked')"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label">关闭状态</span></div>
+                <div class="switch disabled"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label">禁用状态</span></div>
+                <div class="switch checked disabled"><span class="switch-track"><span class="switch-thumb"></span></span><span class="switch-label">禁用开启</span></div>
+            </div>
+
+            <h3 class="module-subtitle">标准表单布局 (Form Layout)</h3>
+            <div class="form-page-mock">
+                <div class="form-page-header"><span class="mock-page-title">新建溯源批次</span><button class="btn btn-text btn-sm">&#10005; 关闭</button></div>
+                <div class="form-page-body">
+                    <div class="form-section"><div class="form-section-title">基本信息</div>
+                        <div class="form-row"><div class="form-group"><label class="form-label form-label-required">批次编号</label><input type="text" class="input" placeholder="系统自动生成或手动输入"></div><div class="form-group"><label class="form-label form-label-required">产品名称</label><input type="text" class="input" placeholder="请输入产品名称"></div></div>
+                        <div class="form-row"><div class="form-group"><label class="form-label form-label-required">供应商</label><div class="select-wrapper"><select class="select"><option value="">请选择供应商</option><option>绿源农场</option><option>阳光牧业</option></select><span class="select-arrow">&#9662;</span></div></div><div class="form-group"><label class="form-label form-label-required">生产日期</label><input type="date" class="input"></div></div>
+                        <div class="form-group"><label class="form-label">备注说明</label><textarea class="input" rows="3" placeholder="请输入备注信息..." style="resize:vertical;"></textarea></div>
+                    </div>
+                </div>
+                <div class="form-page-footer"><button class="btn btn-ghost">取消</button><button class="btn btn-primary">保存草稿</button><button class="btn btn-primary">提交审核</button></div>
+            </div>
+
+            <h3 class="module-subtitle">表单验证提示 (Validation Feedback)</h3>
+            <div style="display:flex;flex-direction:column;gap:var(--fts-space-4);max-width:400px;">
+                <div class="form-group"><label class="form-label">错误提示</label><input type="text" class="input input-error" value="无效的输入"><div class="form-hint form-hint-error">&#10007; 此字段为必填项，且格式不正确</div></div>
+                <div class="form-group"><label class="form-label">成功提示</label><input type="text" class="input" value="有效的输入" style="border-color:var(--fts-color-success);"><div class="form-hint form-hint-success">&#10004; 输入格式正确</div></div>
+                <div class="form-group"><label class="form-label">信息提示</label><input type="text" class="input" placeholder="可选填字段"><div class="form-hint form-hint-info">&#8505; 此字段为选填，建议填写以便追溯</div></div>
+            </div>
+        </section>
+
+        <!-- ========== 模块5: 反馈组件 ========== -->
+        <section class="module" id="feedback">
+            <h2 class="module-title">模块五：反馈组件 (Feedback)</h2>
+
+            <h3 class="module-subtitle">对话框 (Dialog)</h3>
+            <p class="component-label mb-4">四种尺寸内嵌展示 (Sm 480px / Md 640px / Lg 800px / Xl 960px)</p>
+            <div class="grid-cols-2">
+                <div class="dialog-demo-inline"><div class="dialog-inline dialog-sm"><div class="dialog-header"><span class="dialog-title">确认删除</span><button class="dialog-close">&times;</button></div><div class="dialog-body"><p>确定要删除该溯源批次吗？此操作不可恢复。</p></div><div class="dialog-footer"><button class="btn btn-ghost btn-sm">取消</button><button class="btn btn-danger btn-sm">确认删除</button></div></div></div>
+                <div class="dialog-demo-inline"><div class="dialog-inline dialog-md" style="width:90%;max-width:420px;"><div class="dialog-header"><span class="dialog-title">编辑产品信息</span><button class="dialog-close">&times;</button></div><div class="dialog-body"><div class="form-group"><label class="form-label">产品名称</label><input type="text" class="input" value="有机蔬菜礼盒"></div><div class="form-group"><label class="form-label">规格</label><input type="text" class="input" value="500g/盒"></div></div><div class="dialog-footer"><button class="btn btn-ghost btn-sm">取消</button><button class="btn btn-primary btn-sm">保存</button></div></div></div>
+            </div>
+            <p class="component-label mt-4 mb-2">可交互对话框演示（点击按钮打开）</p>
+            <div class="component-row"><button class="btn btn-primary btn-sm" onclick="openDialog('demoDialogSm')">Small Dialog</button><button class="btn btn-primary btn-sm" onclick="openDialog('demoDialogMd')">Medium Dialog</button><button class="btn btn-primary btn-sm" onclick="openDialog('demoDialogLg')">Large Dialog</button></div>
+
+            <h3 class="module-subtitle">消息提示 (Message)</h3>
+            <div style="display:flex;flex-direction:column;gap:var(--fts-space-2);max-width:450px;">
+                <div class="message message-success"><span class="message-icon">&#10004;</span><div class="message-content"><div class="message-title">操作成功</div><div>溯源批次创建成功，批次号为 BT20240115001</div></div></div>
+                <div class="message message-warning"><span class="message-icon">&#9888;</span><div class="message-content"><div class="message-title">警告提醒</div><div>该产品即将过期，请注意及时处理库存</div></div></div>
+                <div class="message message-error"><span class="message-icon">&#10007;</span><div class="message-content"><div class="message-title">操作失败</div><div>网络连接异常，请稍后重试或联系管理员</div></div></div>
+                <div class="message message-info"><span class="message-icon">&#8505;</span><div class="message-content"><div class="message-title">提示信息</div><div>系统将于今晚 23:00 进行例行维护，届时服务将暂停约 30 分钟</div></div></div>
+            </div>
+
+            <h3 class="module-subtitle">抽屉 (Drawer)</h3>
+            <p class="component-label mb-2">右侧滑出抽屉内嵌展示</p>
+            <div class="drawer-demo-inline"><div class="drawer-inline"><div class="drawer-header"><span class="dialog-title">批次详情</span><button class="dialog-close">&times;</button></div><div class="drawer-body"><div class="form-group"><label class="form-label">批次编号</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">BT20240115001</div></div><div class="form-group"><label class="form-label">产品名称</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">有机蔬菜礼盒</div></div><div class="form-group"><label class="form-label">供应商</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">绿源农场</div></div><div class="form-group"><label class="form-label">状态</label><span class="tag tag-success">已入库</span></div><div class="form-group"><label class="form-label">溯源链路</label><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);line-height:1.8;">种植 &#8594; 采摘 &#8594; 分拣 &#8594; 包装 &#8594; 出库 &#8594; 运输 &#8594; 入库</div></div></div></div></div>
+            <p class="component-label mt-4 mb-2">可交互抽屉（点击按钮打开）</p>
+            <button class="btn btn-primary btn-sm" onclick="openDrawer()">打开抽屉</button>
+
+            <h3 class="module-subtitle">加载状态 (Loading)</h3>
+            <div class="grid-cols-3">
+                <div style="text-align:center;padding:var(--fts-space-6);border:1px solid var(--fts-border-primary);border-radius:var(--fts-radius-card);"><p class="component-label">Spinner 旋转加载</p><div class="spinner" style="margin:var(--fts-space-4) auto 0;"></div></div>
+                <div style="position:relative;border:1px solid var(--fts-border-primary);border-radius:var(--fts-radius-card);overflow:hidden;"><div style="padding:var(--fts-space-5);"><p class="component-label">全屏加载遮罩</p><p class="text-muted" style="font-size:var(--fts-font-size-sm);">这是被遮挡的内容区域</p></div><div class="loading-overlay"><div class="spinner"></div><span class="loading-text">正在加载数据...</span></div></div>
+                <div style="text-align:center;padding:var(--fts-space-6);border:1px solid var(--fts-border-primary);border-radius:var(--fts-radius-card);"><p class="component-label">按钮加载态</p><div class="mt-4" style="display:flex;flex-direction:column;gap:var(--fts-space-2);align-items:center;"><button class="btn btn-primary btn-loading">提交中...</button><button class="btn btn-success btn-loading btn-sm">处理中</button></div></div>
+            </div>
+
+            <h3 class="module-subtitle">进度条 (Progress)</h3>
+            <div style="max-width:600px;">
+                <div class="progress-wrapper"><div class="progress-header"><span>文件上传进度</span><span>75%</span></div><div class="progress-bar"><div class="progress-fill" style="width:75%;"></div></div></div>
+                <div class="progress-wrapper"><div class="progress-header"><span>数据处理完成</span><span>100%</span></div><div class="progress-bar"><div class="progress-fill success" style="width:100%;"></div></div></div>
+                <div class="progress-wrapper"><div class="progress-header"><span>存储空间使用</span><span>85% - 警告</span></div><div class="progress-bar"><div class="progress-fill warning" style="width:85%;"></div></div></div>
+                <div class="progress-wrapper"><div class="progress-header"><span>错误率监控</span><span>5% - 异常</span></div><div class="progress-bar"><div class="progress-fill error" style="width:5%;"></div></div></div>
+            </div>
+        </section>
+
+        <!-- ========== 模块6: 展示组件 ========== -->
+        <section class="module" id="display">
+            <h2 class="module-title">模块六：展示组件 (Display Components)</h2>
+
+            <h3 class="module-subtitle">标签 (Tag / Badge)</h3>
+            <p class="component-label">颜色变体</p>
+            <div class="component-row"><span class="tag tag-primary">Primary</span><span class="tag tag-success">Success 成功</span><span class="tag tag-warning">Warning 警告</span><span class="tag tag-danger">Danger 危险</span><span class="tag tag-info">Info 信息</span><span class="tag tag-default">Default 默认</span></div>
+            <p class="component-label mt-4">Pill 圆角形 + 可关闭</p>
+            <div class="component-row"><span class="tag tag-primary tag-pill">已审核 <span class="tag-close">&times;</span></span><span class="tag tag-success tag-pill">已完成 <span class="tag-close">&times;</span></span><span class="tag tag-warning tag-pill">待处理 <span class="tag-close">&times;</span></span><span class="tag tag-danger tag-pill">已拒绝 <span class="tag-close">&times;</span></span></div>
+            <p class="component-label mt-4">Badge 数字角标</p>
+            <div class="component-row" style="align-items:flex-start;">
+                <div class="badge-wrapper"><button class="btn btn-primary">消息</button><span class="badge">12</span></div>
+                <div class="badge-wrapper"><button class="btn btn-ghost">通知</button><span class="badge">99+</span></div>
+                <div class="badge-wrapper"><button class="btn btn-ghost">购物车</button><span class="badge badge-dot"></span></div>
+                <div class="badge-wrapper"><div class="avatar avatar-md">管</div><span class="badge badge-dot" style="background:var(--fts-color-success);"></span></div>
+            </div>
+
+            <h3 class="module-subtitle">头像 (Avatar)</h3>
+            <p class="component-label">五种尺寸</p>
+            <div class="component-row" style="align-items:flex-end;"><div class="avatar avatar-xs">XS</div><div class="avatar avatar-sm">SM</div><div class="avatar avatar-md">MD</div><div class="avatar avatar-lg">LG</div><div class="avatar avatar-xl">XL</div></div>
+            <p class="component-label mt-4">状态指示点</p>
+            <div class="component-row" style="align-items:flex-end;"><div class="avatar avatar-lg avatar-status online">在线</div><div class="avatar avatar-lg avatar-status offline">离线</div><div class="avatar avatar-lg avatar-status busy">忙碌</div></div>
+            <p class="component-label mt-4">组合头像组</p>
+            <div class="avatar-group"><div class="avatar avatar-md" style="background:#2563eb;">张</div><div class="avatar avatar-md" style="background:#16a34a;">李</div><div class="avatar avatar-md" style="background:#d97706;">王</div><div class="avatar avatar-md" style="background:#dc2626;">赵</div><div class="avatar avatar-md" style="background:#64748b;">+5</div></div>
+
+            <h3 class="module-subtitle">卡片 (Card)</h3>
+            <div class="grid-cols-2">
+                <div class="card"><div class="card-header"><span class="card-title">产品信息卡片</span><span class="tag tag-primary">新品</span></div><div class="card-body"><p>这是一张标准的卡片组件，用于展示产品的基本信息。卡片支持 Header、Body 和 Footer 三段式结构。</p><p class="mt-2">Hover 此卡片可看到阴影变化效果。</p></div><div class="card-footer"><button class="btn btn-ghost btn-sm">详情</button><button class="btn btn-primary btn-sm">操作</button></div></div>
+                <div class="card"><div class="card-header"><span class="card-title">供应商资质</span></div><div class="card-body"><div class="detail-grid" style="grid-template-columns:1fr 1fr;"><div class="detail-item"><span class="detail-label">企业名称</span><span class="detail-value">绿源农场有限公司</span></div><div class="detail-item"><span class="detail-label">认证等级</span><span class="detail-value"><span class="tag tag-success">AAA级</span></span></div><div class="detail-item"><span class="detail-label">合作时长</span><span class="detail-value">3年</span></div><div class="detail-item"><span class="detail-label">信用评分</span><span class="detail-value">98分</span></div></div></div></div>
+            </div>
+
+            <h3 class="module-subtitle">分页 (Pagination)</h3>
+            <div class="pagination"><button class="pagination-btn" disabled>&laquo;</button><button class="pagination-btn" disabled>&lsaquo;</button><button class="pagination-btn active">1</button><button class="pagination-btn">2</button><button class="pagination-btn">3</button><button class="pagination-btn">4</button><button class="pagination-btn">5</button><span class="pagination-ellipsis">...</span><button class="pagination-btn">20</button><button class="pagination-btn">&rsaquo;</button><button class="pagination-btn">&raquo;</button><span class="pagination-info">第 1-10 条，共 198 条</span></div>
+        </section>
+
+        <!-- ========== 模块7: 页面布局 ========== -->
+        <section class="module" id="layouts">
+            <h2 class="module-title">模块七：页面布局 (Page Layouts)</h2>
+
+            <h3 class="module-subtitle">列表页布局 (List Page)</h3>
+            <div class="page-layout-mock">
+                <div class="mock-page-header"><span class="mock-page-title">溯源批次管理</span><button class="btn btn-primary btn-sm">+ 新建批次</button></div>
+                <div class="mock-filter-bar">
+                    <div class="input-wrapper" style="flex:1;max-width:240px;"><span class="input-prefix">&#128269;</span><input type="text" class="input input-sm" placeholder="搜索批次编号/产品名"></div>
+                    <div class="select-wrapper" style="max-width:160px;"><select class="select input-sm"><option value="">全部状态</option><option>已入库</option><option>运输中</option><option>质检中</option></select><span class="select-arrow">&#9662;</span></div>
+                    <div class="select-wrapper" style="max-width:160px;"><select class="select input-sm"><option value="">全部供应商</option><option>绿源农场</option><option>阳光牧业</option></select><span class="select-arrow">&#9662;</span></div>
+                    <button class="btn btn-primary btn-sm">查询</button><button class="btn btn-ghost btn-sm">重置</button>
+                </div>
+                <div class="mock-toolbar"><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-secondary);">已选择 <strong style="color:var(--fts-color-primary);">1</strong> 项</div><div style="display:flex;gap:var(--fts-space-2);"><button class="btn btn-ghost btn-sm">批量导出</button><button class="btn btn-danger btn-sm">批量删除</button></div></div>
+                <div style="min-height:180px;padding:var(--fts-space-4);background:var(--fts-bg-white);">
+                    <div class="table-wrapper" style="box-shadow:none;border:none;"><table class="pro-table"><thead><tr><th style="width:40px;"><input type="checkbox" checked></th><th>批次编号</th><th>产品名称</th><th>供应商</th><th>状态</th><th>操作</th></tr></thead><tbody>
+                        <tr class="selected"><td><input type="checkbox" checked></td><td>BT20240115001</td><td>有机蔬菜礼盒</td><td>绿源农场</td><td><span class="tag tag-success">已入库</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                        <tr><td><input type="checkbox"></td><td>BT20240114002</td><td>散养土鸡蛋</td><td>阳光牧业</td><td><span class="tag tag-warning">运输中</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                        <tr><td><input type="checkbox"></td><td>BT20240113003</td><td>东北五常大米</td><td>稻香合作社</td><td><span class="tag tag-primary">质检中</span></td><td><button class="btn btn-text btn-sm">查看</button></td></tr>
+                    </tbody></table></div>
+                </div>
+                <div class="mock-pagination-area"><div class="pagination"><button class="pagination-btn" disabled>&laquo;</button><button class="pagination-btn" disabled>&lsaquo;</button><button class="pagination-btn active">1</button><button class="pagination-btn">2</button><button class="pagination-btn">3</button><button class="pagination-btn">&rsaquo;</button><button class="pagination-btn">&raquo;</button><span class="pagination-info">共 98 条</span></div></div>
+            </div>
+
+            <h3 class="module-subtitle">表单页布局 (Form Page)</h3>
+            <div class="form-page-mock">
+                <div class="form-page-header"><div style="display:flex;align-items:center;gap:var(--fts-space-3);"><span class="mock-page-title">新建溯源批次</span></div><div style="display:flex;gap:var(--fts-space-2);"><button class="btn btn-ghost btn-sm">取消</button><button class="btn btn-primary btn-sm">保存并提交</button></div></div>
+                <div class="form-page-body">
+                    <div class="form-section"><div class="form-section-title">基本信息</div>
+                        <div class="form-row"><div class="form-group"><label class="form-label form-label-required">批次编号</label><input type="text" class="input" placeholder="自动生成或手动输入"></div><div class="form-group"><label class="form-label form-label-required">产品名称</label><input type="text" class="input" placeholder="请输入产品名称"></div></div>
+                        <div class="form-row"><div class="form-group"><label class="form-label form-label-required">供应商</label><div class="select-wrapper"><select class="select"><option value="">请选择供应商</option><option>绿源农场</option><option>阳光牧业</option></select><span class="select-arrow">&#9662;</span></div></div><div class="form-group"><label class="form-label form-label-required">产品类别</label><div class="select-wrapper"><select class="select"><option value="">请选择类别</option><option>蔬菜类</option><option>肉类</option><option>粮食类</option></select><span class="select-arrow">&#9662;</span></div></div></div>
+                        <div class="form-row"><div class="form-group"><label class="form-label form-label-required">生产日期</label><input type="text" class="input" placeholder="YYYY-MM-DD"></div><div class="form-group"><label class="form-label">保质期至</label><input type="text" class="input" placeholder="YYYY-MM-DD"></div></div>
+                        <div class="form-group"><label class="form-label">备注</label><textarea class="input" rows="3" placeholder="请输入备注信息..."></textarea></div>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="module-subtitle">详情页布局 (Detail Page)</h3>
+            <div class="detail-page-mock">
+                <div class="detail-page-header"><div style="display:flex;align-items:center;gap:var(--fts-space-4);"><span class="mock-page-title">批次详情 - BT20240115001</span><span class="tag tag-success">已入库</span></div><div style="display:flex;gap:var(--fts-space-2);"><button class="btn btn-ghost btn-sm">编辑</button><button class="btn btn-primary btn-sm">打印溯源码</button></div></div>
+                <div class="detail-page-body">
+                    <div class="form-section"><div class="form-section-title">基本信息</div><div class="detail-grid">
+                        <div class="detail-item"><span class="detail-label">批次编号</span><span class="detail-value">BT20240115001</span></div>
+                        <div class="detail-item"><span class="detail-label">产品名称</span><span class="detail-value">有机蔬菜礼盒</span></div>
+                        <div class="detail-item"><span class="detail-label">产品类别</span><span class="detail-value">蔬菜类</span></div>
+                        <div class="detail-item"><span class="detail-label">供应商</span><span class="detail-value">绿源农场</span></div>
+                        <div class="detail-item"><span class="detail-label">生产日期</span><span class="detail-value">2024-01-15</span></div>
+                        <div class="detail-item"><span class="detail-label">入库时间</span><span class="detail-value">2024-01-15 09:30:00</span></div>
+                        <div class="detail-item"><span class="detail-label">数量</span><span class="detail-value">500 份</span></div>
+                        <div class="detail-item"><span class="detail-label">规格</span><span class="detail-value">500g/盒</span></div>
+                        <div class="detail-item"><span class="detail-label">质检结果</span><span class="detail-value"><span class="tag tag-success">合格</span></span></div>
+                    </div></div>
+                    <div class="form-section"><div class="form-section-title">溯源链路</div><div style="display:flex;align-items:center;gap:var(--fts-space-2);flex-wrap:wrap;padding:var(--fts-space-4);background:var(--fts-bg-secondary);border-radius:var(--fts-radius-md);">
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-success-light);color:var(--fts-color-success);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">种</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">种植</div></div>
+                        <span style="color:var(--fts-text-tertiary);">&#8594;</span>
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-success-light);color:var(--fts-color-success);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">采</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">采摘</div></div>
+                        <span style="color:var(--fts-text-tertiary);">&#8594;</span>
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-success-light);color:var(--fts-color-success);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">分</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">分拣</div></div>
+                        <span style="color:var(--fts-text-tertiary);">&#8594;</span>
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-success-light);color:var(--fts-color-success);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">包</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">包装</div></div>
+                        <span style="color:var(--fts-text-tertiary);">&#8594;</span>
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-success-light);color:var(--fts-color-success);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">运</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">运输</div></div>
+                        <span style="color:var(--fts-text-tertiary);">&#8594;</span>
+                        <div style="text-align:center;"><div style="width:48px;height:48px;border-radius:50%;background:var(--fts-color-primary-light);color:var(--fts-color-primary);display:flex;align-items:center;justify-content:center;font-weight:bold;margin:0 auto var(--fts-space-1);">入</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);">入库</div></div>
+                    </div></div>
+                </div>
+            </div>
+
+            <h3 class="module-subtitle">仪表盘布局 (Dashboard)</h3>
+            <div class="dashboard-mock">
+                <div class="dashboard-stats">
+                    <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">今日入库</span><div class="stat-card-icon primary">&#128230;</div></div><div class="stat-card-value">128</div><div class="stat-card-footer"><span class="trend-up">&#9650; 12.5%</span><span class="text-muted">较昨日</span></div></div>
+                    <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">待处理预警</span><div class="stat-card-icon warning">&#9888;</div></div><div class="stat-card-value">7</div><div class="stat-card-footer"><span class="trend-down">&#9660; 22.2%</span><span class="text-muted">较昨日</span></div></div>
+                    <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">合格率</span><div class="stat-card-icon success">&#10004;</div></div><div class="stat-card-value">98.6%</div><div class="stat-card-footer"><span class="trend-up">&#9650; 0.3%</span><span class="text-muted">较上月</span></div></div>
+                    <div class="stat-card"><div class="stat-card-header"><span class="stat-card-title">活跃供应商</span><div class="stat-card-icon error">&#129309;</div></div><div class="stat-card-value">56</div><div class="stat-card-footer"><span class="trend-up">&#9650; 5</span><span class="text-muted">本月新增</span></div></div>
+                </div>
+                <div class="dashboard-content">
+                    <div class="chart-placeholder"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:var(--fts-space-3);opacity:0.3;">&#128200;</div><div style="font-size:var(--fts-font-size-md);color:var(--fts-text-secondary);">图表区域占位</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-tertiary);margin-top:var(--fts-space-2);">此处可集成 ECharts 等图表库</div></div></div>
+                    <div class="quick-actions"><h4 style="font-size:var(--fts-font-size-md);font-weight:var(--fts-font-weight-semibold);margin-bottom:var(--fts-space-3);color:var(--fts-text-primary);">快捷入口</h4><div class="quick-action-list">
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-color-primary);background:var(--fts-color-primary-light);">+</div><span>新建批次</span></div>
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-color-success);background:var(--fts-color-success-light);">&#128269;</div><span>扫码溯源</span></div>
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-color-warning);background:var(--fts-color-warning-light);">&#9888;</div><span>预警管理</span></div>
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-color-info);background:var(--fts-color-info-light);">&#128196;</div><span>生成报告</span></div>
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-color-error);background:var(--fts-color-error-light);">&#128274;</div><span>权限设置</span></div>
+                        <div class="quick-action-item"><div class="quick-action-icon" style="color:var(--fts-text-secondary);background:var(--fts-bg-secondary);">&#9881;</div><span>系统配置</span></div>
+                    </div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 页脚 -->
+        <footer style="text-align:center;padding:var(--fts-space-8) 0;color:var(--fts-text-tertiary);font-size:var(--fts-font-size-sm);border-top:1px solid var(--fts-border-primary);margin-top:var(--fts-space-6);">
+            <p>食品溯源系统 Design System v1.0 &copy; 2024 | 本页面为静态设计规范演示，可直接在浏览器中打开预览</p>
+        </footer>
+    </div>
+
+    <!-- 对话框遮罩层（可交互） -->
+    <div class="dialog-overlay" id="demoDialogSm" onclick="closeDialogOnOverlay(event,'demoDialogSm')"><div class="dialog dialog-sm" onclick="event.stopPropagation()"><div class="dialog-header"><span class="dialog-title">确认删除</span><button class="dialog-close" onclick="closeDialog('demoDialogSm')">&times;</button></div><div class="dialog-body"><p>确定要删除该溯源批次吗？此操作不可恢复。删除后相关联的溯源链路数据也将被清除。</p></div><div class="dialog-footer"><button class="btn btn-ghost btn-sm" onclick="closeDialog('demoDialogSm')">取消</button><button class="btn btn-danger btn-sm" onclick="closeDialog('demoDialogSm')">确认删除</button></div></div></div>
+
+    <div class="dialog-overlay" id="demoDialogMd" onclick="closeDialogOnOverlay(event,'demoDialogMd')"><div class="dialog dialog-md" onclick="event.stopPropagation()"><div class="dialog-header"><span class="dialog-title">编辑产品信息</span><button class="dialog-close" onclick="closeDialog('demoDialogMd')">&times;</button></div><div class="dialog-body"><div class="form-group"><label class="form-label form-label-required">产品名称</label><input type="text" class="input" value="有机蔬菜礼盒"></div><div class="form-group"><label class="form-label form-label-required">规格型号</label><input type="text" class="input" value="500g/盒"></div><div class="form-group"><label class="form-label">产品描述</label><textarea class="input" rows="3" placeholder="请输入产品详细描述...">精选当季有机蔬菜，包含西兰花、胡萝卜、番茄等6种时令蔬菜。</textarea></div><div class="form-row"><div class="form-group"><label class="form-label">保质期（天）</label><input type="text" class="input" value="7"></div><div class="form-group"><label class="form-label">存储温度</label><input type="text" class="input" value="0-4°C"></div></div></div><div class="dialog-footer"><button class="btn btn-ghost btn-sm" onclick="closeDialog('demoDialogMd')">取消</button><button class="btn btn-primary btn-sm" onclick="closeDialog('demoDialogMd')">保存修改</button></div></div></div>
+
+    <div class="dialog-overlay" id="demoDialogLg" onclick="closeDialogOnOverlay(event,'demoDialogLg')"><div class="dialog dialog-lg" onclick="event.stopPropagation()"><div class="dialog-header"><span class="dialog-title">溯源链路详情</span><button class="dialog-close" onclick="closeDialog('demoDialogLg')">&times;</button></div><div class="dialog-body">
+        <div class="form-section" style="margin-bottom:var(--fts-space-4);"><div class="form-section-title">批次基本信息</div><div class="detail-grid">
+            <div class="detail-item"><span class="detail-label">批次编号</span><span class="detail-value">BT20240115001</span></div>
+            <div class="detail-item"><span class="detail-label">产品名称</span><span class="detail-value">有机蔬菜礼盒</span></div>
+            <div class="detail-item"><span class="detail-label">状态</span><span class="detail-value"><span class="tag tag-success">已入库</span></span></div>
+            <div class="detail-item"><span class="detail-label">供应商</span><span class="detail-value">绿源农场</span></div>
+            <div class="detail-item"><span class="detail-label">生产日期</span><span class="detail-value">2024-01-15</span></div>
+            <div class="detail-item"><span class="detail-label">数量</span><span class="detail-value">500份</span></div>
+        </div></div>
+        <div class="form-section"><div class="form-section-title">完整溯源链路时间线</div><div style="padding:var(--fts-space-4);background:var(--fts-bg-secondary);border-radius:var(--fts-radius-md);"><div style="display:flex;flex-direction:column;gap:var(--fts-space-4);">
+            <div style="display:flex;gap:var(--fts-space-3);align-items:flex-start;"><div style="width:32px;height:32px;border-radius:50%;background:var(--fts-color-success);color:white;display:flex;align-items:center;justify-content:center;font-size:var(--fts-font-size-xs);font-weight:bold;flex-shrink:0;">1</div><div style="flex:1;"><div style="font-weight:var(--fts-font-weight-medium);">种植阶段</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);margin-top:2px;">地点：绿源农场A区大棚 | 时间：2024-01-10 06:00 | 操作人：张三</div></div><span class="tag tag-success">完成</span></div>
+            <div style="display:flex;gap:var(--fts-space-3);align-items:flex-start;"><div style="width:32px;height:32px;border-radius:50%;background:var(--fts-color-success);color:white;display:flex;align-items:center;justify-content:center;font-size:var(--fts-font-size-xs);font-weight:bold;flex-shrink:0;">2</div><div style="flex:1;"><div style="font-weight:var(--fts-font-weight-medium);">采摘阶段</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);margin-top:2px;">时间：2024-01-14 05:30 | 操作人：李四 | 质量：A级</div></div><span class="tag tag-success">完成</span></div>
+            <div style="display:flex;gap:var(--fts-space-3);align-items:flex-start;"><div style="width:32px;height:32px;border-radius:50%;background:var(--fts-color-success);color:white;display:flex;align-items:center;justify-content:center;font-size:var(--fts-font-size-xs);font-weight:bold;flex-shrink:0;">3</div><div style="flex:1;"><div style="font-weight:var(--fts-font-weight-medium);">分拣包装</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);margin-top:2px;">时间：2024-01-14 08:00 | 包装方式：真空包装 | 操作人：王五</div></div><span class="tag tag-success">完成</span></div>
+            <div style="display:flex;gap:var(--fts-space-3);align-items:flex-start;"><div style="width:32px;height:32px;border-radius:50%;background:var(--fts-color-success);color:white;display:flex;align-items:center;justify-content:center;font-size:var(--fts-font-size-xs);font-weight:bold;flex-shrink:0;">4</div><div style="flex:1;"><div style="font-weight:var(--fts-font-weight-medium);">出库运输</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);margin-top:2px;">车辆：京A12345 | 司机：赵六 | 温度全程监控</div></div><span class="tag tag-success">完成</span></div>
+            <div style="display:flex;gap:var(--fts-space-3);align-items:flex-start;"><div style="width:32px;height:32px;border-radius:50%;background:var(--fts-color-primary);color:white;display:flex;align-items:center;justify-content:center;font-size:var(--fts-font-size-xs);font-weight:bold;flex-shrink:0;">5</div><div style="flex:1;"><div style="font-weight:var(--fts-font-weight-medium);">入库验收</div><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);margin-top:2px;">时间：2024-01-15 09:30 | 验收人：钱七 | 结果：合格</div></div><span class="tag tag-primary">当前</span></div>
+        </div></div></div>
+        </div><div class="dialog-footer"><button class="btn btn-ghost btn-sm" onclick="closeDialog('demoDialogLg')">关闭</button><button class="btn btn-primary btn-sm">打印溯源码</button><button class="btn btn-primary btn-sm">导出报告</button></div></div></div>
+
+    <!-- 抽屉遮罩层（可交互） -->
+    <div class="drawer-overlay" id="demoDrawer" onclick="closeDrawerOnOverlay(event)">
+        <div class="drawer" onclick="event.stopPropagation()">
+            <div class="drawer-header"><span class="dialog-title">批次详情面板</span><button class="dialog-close" onclick="closeDrawer()">&times;</button></div>
+            <div class="drawer-body">
+                <div class="form-group"><label class="form-label">批次编号</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);font-weight:var(--fts-font-weight-medium);">BT20240115001</div></div>
+                <div class="form-group"><label class="form-label">产品名称</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">有机蔬菜礼盒</div></div>
+                <div class="form-group"><label class="form-label">供应商</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">绿源农场有限公司</div></div>
+                <div class="form-group"><label class="form-label">当前状态</label><span class="tag tag-success">已入库</span></div>
+                <div class="form-group"><label class="form-label">数量</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">500 份 (250kg)</div></div>
+                <div class="form-group"><label class="form-label">生产日期</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">2024-01-15</div></div>
+                <div class="form-group"><label class="form-label">保质期至</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">2024-01-22</div></div>
+                <div class="form-group"><label class="form-label">存储位置</label><div style="font-size:var(--fts-font-size-sm);color:var(--fts-text-primary);">A区冷库 3号货架</div></div>
+                <div class="form-group"><label class="form-label">质检结果</label><span class="tag tag-success">合格</span></div>
+                <hr style="border:none;border-top:1px solid var(--fts-border-primary);margin:var(--fts-space-4) 0;">
+                <div class="form-group"><label class="form-label">操作记录</label><div style="font-size:var(--fts-font-size-xs);color:var(--fts-text-secondary);line-height:1.8;">
+                    2024-01-14 08:00 分拣员王五 完成分拣包装<br>
+                    2024-01-14 05:30 采摘员李四 完成采摘作业<br>
+                    2024-01-10 06:00 种植员张三 开始种植记录
+                </div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript: 交互功能 -->
+    <script>
+        // ===== 1. 深色模式切换 =====
+        function toggleTheme() {
+            const body = document.body;
+            const isDark = body.classList.toggle('dark');
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+
+            if (isDark) {
+                themeIcon.innerHTML = '&#9788;';
+                themeText.textContent = '切换浅色模式';
+            } else {
+                themeIcon.innerHTML = '&#9790;';
+                themeText.textContent = '切换深色模式';
+            }
+
+            // 保存用户偏好
+            localStorage.setItem('fts-theme', isDark ? 'dark' : 'light');
+        }
+
+        // 页面加载时恢复主题偏好
+        (function () {
+            const savedTheme = localStorage.getItem('fts-theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark');
+                const themeIcon = document.getElementById('themeIcon');
+                const themeText = document.getElementById('themeText');
+                if (themeIcon) themeIcon.innerHTML = '&#9788;';
+                if (themeText) themeText.textContent = '切换浅色模式';
+            }
+        })();
+
+        // ===== 2. 标签页切换 =====
+        function switchTab(el) {
+            // 移除同组所有 active 状态
+            const tabbar = el.parentElement;
+            if (!tabbar) return;
+            const tabs = tabbar.querySelectorAll('.tab-item');
+            tabs.forEach(function (tab) { tab.classList.remove('active'); });
+            // 激活当前点击的标签
+            el.classList.add('active');
+        }
+
+        // ===== 3. 对话框控制 =====
+        function openDialog(id) {
+            var overlay = document.getElementById(id);
+            if (overlay) {
+                overlay.classList.add('show');
+                document.body.style.overflow = 'hidden'; // 防止背景滚动
+            }
+        }
+
+        function closeDialog(id) {
+            var overlay = document.getElementById(id);
+            if (overlay) {
+                overlay.classList.remove('show');
+                document.body.style.overflow = ''; // 恢复背景滚动
+            }
+        }
+
+        function closeDialogOnOverlay(event, id) {
+            // 只有点击遮罩层本身才关闭（不包含对话框内容区域）
+            if (event.target === event.currentTarget) {
+                closeDialog(id);
+            }
+        }
+
+        // ESC 键关闭对话框
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                var dialogs = document.querySelectorAll('.dialog-overlay.show');
+                dialogs.forEach(function (dialog) {
+                    dialog.classList.remove('show');
+                });
+                document.body.style.overflow = '';
+
+                // 同时关闭抽屉
+                var drawers = document.querySelectorAll('.drawer-overlay.show');
+                drawers.forEach(function (drawer) {
+                    drawer.classList.remove('show');
+                });
+            }
+        });
+
+        // ===== 4. 抽屉控制 =====
+        function openDrawer() {
+            var overlay = document.getElementById('demoDrawer');
+            if (overlay) {
+                overlay.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeDrawer() {
+            var overlay = document.getElementById('demoDrawer');
+            if (overlay) {
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        }
+
+        function closeDrawerOnOverlay(event) {
+            if (event.target === event.currentTarget) {
+                closeDrawer();
+            }
+        }
+
+        // ===== 5. 视口宽度指示器更新 =====
+        function updateViewportIndicator() {
+            var indicator = document.getElementById('viewportIndicator');
+            if (!indicator) return;
+
+            var width = window.innerWidth;
+            var label = '';
+            var breakpoint = '';
+
+            if (width < 640) {
+                label = 'XS';
+                breakpoint = '< 640px (手机)';
+            } else if (width < 768) {
+                label = 'SM';
+                breakpoint = '640-767px (大屏手机)';
+            } else if (width < 1024) {
+                label = 'MD';
+                breakpoint = '768-1023px (平板)';
+            } else if (width < 1280) {
+                label = 'LG';
+                breakpoint = '1024-1279px (笔记本)';
+            } else if (width < 1536) {
+                label = 'XL';
+                breakpoint = '1280-1535px (桌面)';
+            } else {
+                label = '2XL';
+                breakpoint = '>= 1536px (大屏桌面)';
+            }
+
+            indicator.textContent = width + 'px | ' + label + ' | ' + breakpoint;
+        }
+
+        // 初始化并监听窗口变化
+        updateViewportIndicator();
+        window.addEventListener('resize', updateViewportIndicator);
+
+        // ===== 6. 开关组件增强（已通过 onclick 内联实现） =====
+        // Switch 组件已在 HTML 中使用 onclick="this.classList.toggle('checked')" 实现
+
+        console.log('%c 食品溯源系统 Design System v1.0 ', 'background:#2563eb;color:white;font-size:16px;padding:8px 12px;border-radius:4px;');
+        console.log('%c 设计规范演示页面已加载完成 ', 'color:#16a34a;font-size:12px;');
+    </script>
+</body>
+</html>

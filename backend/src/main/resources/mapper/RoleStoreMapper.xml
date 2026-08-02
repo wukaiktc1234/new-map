@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.RoleStoreMapper">
+
+    <!-- 批量插入角色门店关联 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO role_stores (role_id, store_id, create_time, created_by)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.roleId}, #{item.storeId}, NOW(), #{item.createdBy})
+        </foreach>
+    </insert>
+
+</mapper>

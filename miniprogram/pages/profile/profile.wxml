@@ -1,0 +1,131 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="page-scroll">
+    <view class="header-bg">
+      <view class="user-card">
+        <view class="avatar-wrap">
+          <image class="avatar" src="{{isLoggedIn ? userInfo.avatar : '/images/default-avatar.png'}}" mode="aspectFill" />
+        </view>
+        <view class="user-info">
+          <view class="user-name">{{isLoggedIn ? userInfo.name : '未登录'}}</view>
+          <view class="vip-badge" wx:if="{{isLoggedIn && userInfo.vipLevel}}">
+            <text>{{userInfo.vipLevel}}</text>
+          </view>
+          <view class="login-tip" wx:if="{{!isLoggedIn}}" bindtap="goToLogin">
+            <text>点击登录</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="order-nav">
+      <view class="order-nav-title">
+        <text>我的订单</text>
+        <view class="more" bindtap="goToOrders">
+          <text>全部订单</text>
+          <view class="arrow-icon"></view>
+        </view>
+      </view>
+      <view class="order-nav-items">
+        <view class="order-nav-item" bindtap="goToOrders" data-type="pending">
+          <view class="order-nav-icon">
+            <view class="icon-pending"></view>
+          </view>
+          <view class="order-nav-text">待支付</view>
+          <view class="order-nav-badge" wx:if="{{orderBadge.pending > 0}}">{{orderBadge.pending}}</view>
+        </view>
+        <view class="order-nav-item" bindtap="goToOrders" data-type="processing">
+          <view class="order-nav-icon">
+            <view class="icon-processing"></view>
+          </view>
+          <view class="order-nav-text">进行中</view>
+          <view class="order-nav-badge" wx:if="{{orderBadge.processing > 0}}">{{orderBadge.processing}}</view>
+        </view>
+        <view class="order-nav-item" bindtap="goToOrders" data-type="completed">
+          <view class="order-nav-icon">
+            <view class="icon-completed"></view>
+          </view>
+          <view class="order-nav-text">已完成</view>
+        </view>
+        <view class="order-nav-item" bindtap="goToOrders" data-type="refund">
+          <view class="order-nav-icon">
+            <view class="icon-refund"></view>
+          </view>
+          <view class="order-nav-text">退款/售后</view>
+        </view>
+        <view class="order-nav-item" bindtap="goToCoupons">
+          <view class="order-nav-icon">
+            <view class="icon-coupon"></view>
+          </view>
+          <view class="order-nav-text">优惠券</view>
+          <view class="order-nav-badge" wx:if="{{stats.coupons > 0}}">{{stats.coupons}}</view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="menu-section">
+      <view class="menu-item" bindtap="goToProfileEdit" wx:if="{{isLoggedIn}}">
+        <view class="menu-icon edit-icon"></view>
+        <view class="menu-text">编辑资料</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="goToBindPhone" wx:if="{{isLoggedIn && !userInfo.phone}}">
+        <view class="menu-icon phone-icon"></view>
+        <view class="menu-text">绑定手机</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="goToMember">
+        <view class="menu-icon member-icon"></view>
+        <view class="menu-text">会员中心</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="goToAddress">
+        <view class="menu-icon address-icon"></view>
+        <view class="menu-text">收货地址</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="goToPoints">
+        <view class="menu-icon points-icon"></view>
+        <view class="menu-text">积分商城</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="showFeedbackModal">
+        <view class="menu-icon feedback-icon"></view>
+        <view class="menu-text">意见反馈</view>
+        <view class="menu-arrow"></view>
+      </view>
+      <view class="menu-item" bindtap="goToSettings">
+        <view class="menu-icon settings-icon"></view>
+        <view class="menu-text">设置</view>
+        <view class="menu-arrow"></view>
+      </view>
+    </view>
+    
+    <view class="logout-btn" bindtap="showLogoutModal" wx:if="{{isLoggedIn}}">
+      <text>退出登录</text>
+    </view>
+    
+    <view class="login-btn" bindtap="goToLogin" wx:if="{{!isLoggedIn}}">
+      <text>登录 / 注册</text>
+    </view>
+  </view>
+  
+  <view class="modal-mask" wx:if="{{showModal}}" bindtap="hideModal" catchtouchmove="preventTouchMove"></view>
+  <view class="custom-modal {{showModal ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="modal-header">
+      <view class="modal-title">{{modalTitle}}</view>
+    </view>
+    <view class="modal-body">
+      <view class="modal-content">{{modalContent}}</view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn cancel" wx:if="{{modalType !== 'feedback'}}" bindtap="hideModal">取消</view>
+      <view class="modal-btn confirm" bindtap="confirmModal">{{modalType === 'feedback' ? '我知道了' : '确定'}}</view>
+    </view>
+  </view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+  
+  <tab-bar active="3" />
+</view>

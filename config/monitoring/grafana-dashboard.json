@@ -1,0 +1,154 @@
+{
+  "dashboard": {
+    "title": "食品溯源系统监控面板",
+    "tags": ["food-traceability", "security", "business"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "panels": [
+      {
+        "title": "API请求速率",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(http_server_requests_seconds_count[5m])",
+            "legendFormat": "{{method}} {{uri}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "API响应时间 (P95)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m]))",
+            "legendFormat": "P95",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "登录失败率",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "rate(http_server_requests_seconds_count{uri=\"/api/v1/auth/login\",status=~\"4..\"}[5m])",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 5},
+                {"color": "red", "value": 10}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "活跃会话数",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(active_sessions_total) or vector(0)",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "限流触发次数",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "rate(http_server_requests_seconds_count{status=\"429\"}[5m])",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "JVM堆内存使用",
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "jvm_memory_used_bytes{area=\"heap\"}",
+            "legendFormat": "Used",
+            "refId": "A"
+          },
+          {
+            "expr": "jvm_memory_max_bytes{area=\"heap\"}",
+            "legendFormat": "Max",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "title": "HTTP状态码分布",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 12, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by (status) (rate(http_server_requests_seconds_count[5m]))",
+            "legendFormat": "{{status}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "数据库连接池状态",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 12, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "hikaricp_connections_active",
+            "legendFormat": "Active",
+            "refId": "A"
+          },
+          {
+            "expr": "hikaricp_connections_idle",
+            "legendFormat": "Idle",
+            "refId": "B"
+          },
+          {
+            "expr": "hikaricp_connections_max",
+            "legendFormat": "Max",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "title": "安全事件",
+        "type": "table",
+        "gridPos": {"x": 16, "y": 12, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "ALERTS{category=\"security\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  }
+}

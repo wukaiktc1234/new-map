@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.AttendanceRecordMapper">
+
+    <!-- 查询员工在指定日期范围内的考勤记录 -->
+    <select id="selectByEmployeeAndDateRange" resultType="com.foodtraceability.entity.AttendanceRecord">
+        SELECT * FROM attendance_record
+        WHERE employee_id = #{employeeId}
+          AND attendance_date BETWEEN #{startDate} AND #{endDate}
+          AND deleted = 0
+        ORDER BY attendance_date DESC
+    </select>
+
+    <!-- 统计员工月度考勤汇总 -->
+    <select id="selectMonthlySummary" resultType="java.util.Map">
+        SELECT
+            #{employeeId} AS employee_id,
+            #{yearMonth} AS year_month,
+            COUNT(*) AS total_days,
+            SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS normal_days,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS late_days,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS early_leave_days,
+            SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END) AS absent_days,
+            SUM(CASE WHEN status = 5 THEN 1 ELSE 0 END) AS overtime_days,
+            SUM(CASE WHEN status = 6 THEN 1 ELSE 0 END) AS on_leave_days,
+            COALESCE(SUM(work_hours), 0) AS total_work_hours,
+            COALESCE(SUM(overtime_hours), 0) AS total_overtime_hours,
+            COALESCE(SUM(late_minutes), 0) AS total_late_minutes,
+            COALESCE(SUM(early_leave_minutes), 0) AS total_early_leave_minutes
+        FROM attendance_record
+        WHERE employee_id = #{employeeId}
+          AND TO_CHAR(attendance_date, 'YYYY-MM') = #{yearMonth}
+          AND deleted = 0
+    </select>
+
+    <!-- 批量查询员工某日的考勤记录 -->
+    <select id="selectByEmployeesAndDate" resultType="com.foodtraceability.entity.AttendanceRecord">
+        SELECT * FROM attendance_record
+        WHERE employee_id IN
+            <foreach collection="employeeIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+          AND attendance_date = #{date}
+          AND deleted = 0
+    </select>
+
+    <!-- 检查员工某日是否已有考勤记录 -->
+    <select id="countByEmployeeAndDate" resultType="int">
+        SELECT COUNT(*) FROM attendance_record
+        WHERE employee_id = #{employeeId}
+          AND attendance_date = #{date}
+          AND deleted = 0
+    </select>
+
+</mapper>

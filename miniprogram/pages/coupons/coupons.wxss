@@ -1,0 +1,261 @@
+@import "/styles/design-system.wxss";
+
+.page-container {
+  height: 100vh;
+  background: var(--bg-cream);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.status-bar {
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.header-bar {
+  background: var(--bg-card);
+  padding: 24rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+}
+
+.back-btn {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  width: 44rpx;
+  height: 44rpx;
+  background: var(--text-primary);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E") center/contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M19 12H5M12 19l-7-7 7-7'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+.header-center {
+  text-align: center;
+}
+
+.header-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Noto Serif SC', serif;
+}
+
+.tab-bar {
+  display: flex;
+  background: var(--bg-card);
+  padding: 0 32rpx;
+  border-bottom: 1rpx solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.tab-item {
+  flex: 1;
+  padding: 24rpx 0;
+  text-align: center;
+  font-size: 28rpx;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.tab-item.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48rpx;
+  height: 6rpx;
+  background: var(--accent);
+  border-radius: 3rpx;
+}
+
+.coupon-list {
+  flex: 1;
+  padding: 24rpx 32rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.coupon-card {
+  display: flex;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20rpx;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1rpx solid var(--border-light);
+  position: relative;
+}
+
+.coupon-card.disabled {
+  opacity: 0.6;
+}
+
+.coupon-card.disabled .coupon-name {
+  color: var(--text-muted);
+}
+
+.coupon-left {
+  width: 200rpx;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+  padding: 32rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.coupon-card.disabled .coupon-left {
+  background: linear-gradient(135deg, #ccc 0%, #e0e0e0 100%);
+}
+
+.coupon-value {
+  display: flex;
+  align-items: baseline;
+  color: #FFFFFF;
+}
+
+.currency {
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+.amount {
+  font-size: 56rpx;
+  font-weight: 700;
+}
+
+.coupon-condition {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 8rpx;
+}
+
+.coupon-divider {
+  width: 1rpx;
+  background: var(--border-light);
+}
+
+.coupon-right {
+  flex: 1;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.coupon-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8rpx;
+}
+
+.coupon-valid {
+  font-size: 22rpx;
+  color: var(--text-muted);
+  margin-bottom: 12rpx;
+}
+
+.coupon-expiring {
+  font-size: 22rpx;
+  color: #FF4D4F;
+  margin-bottom: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.coupon-expiring::before {
+  content: '';
+  width: 12rpx;
+  height: 12rpx;
+  background: #FF4D4F;
+  border-radius: 50%;
+}
+
+.coupon-btn {
+  align-self: flex-start;
+  padding: 12rpx 32rpx;
+  background: var(--accent);
+  color: #FFFFFF;
+  font-size: 24rpx;
+  border-radius: 24rpx;
+}
+
+.coupon-stamp {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+  width: 90rpx;
+  height: 90rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+  border: 5rpx dashed;
+  transform: rotate(-20deg);
+  box-shadow: inset 0 0 0 4rpx currentColor;
+}
+
+.coupon-stamp.used {
+  color: #999;
+  border-color: #999;
+  background: rgba(153, 153, 153, 0.05);
+}
+
+.coupon-stamp.expired {
+  color: #FF4D4F;
+  border-color: #FF4D4F;
+  background: rgba(255, 77, 79, 0.05);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100rpx 0;
+}
+
+.empty-icon {
+  width: 160rpx;
+  height: 160rpx;
+  background: var(--bg-warm);
+  border-radius: 50%;
+  margin-bottom: 32rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: var(--text-muted);
+}

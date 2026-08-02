@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DeviceTemplateMapper">
+
+    <select id="selectByDeviceId" resultType="com.foodtraceability.entity.DeviceTemplate">
+        SELECT * FROM device_template
+        WHERE device_id = #{deviceId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByDeviceIdAndType" resultType="com.foodtraceability.entity.DeviceTemplate">
+        SELECT * FROM device_template
+        WHERE device_id = #{deviceId}
+        AND template_type = #{templateType}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectDefaultTemplate" resultType="com.foodtraceability.entity.DeviceTemplate">
+        SELECT * FROM device_template
+        WHERE device_id = #{deviceId}
+        AND template_type = #{templateType}
+        AND is_default = 1
+        LIMIT 1
+    </select>
+
+    <update id="updateDefaultTemplate">
+        UPDATE device_template
+        SET is_default = CASE
+            WHEN id = #{id} THEN 1
+            ELSE 0
+        END
+        WHERE device_id = #{deviceId}
+        AND template_type = #{templateType}
+    </update>
+
+</mapper>

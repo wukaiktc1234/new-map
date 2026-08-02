@@ -1,0 +1,82 @@
+// ========================================
+//  ITCSS Layer 4: Objects — 布局模式与容器
+//  圆角层级体系:
+//  - 顶层容器(.modern-page): 四角圆角（定义在 _modern-page.scss）
+//  - 头部组件(PageHeader): 仅顶部两角
+//  - 中间层(AdvancedSearchPanel等): 仅顶部两角
+//  - 内容区(table-section): 四角或无圆角
+//  - 底部组件(Footer): 仅底部两角
+// ========================================
+
+.fts-page-container {
+  padding: var(--fts-space-6);
+  min-height: 100vh;
+  background-color: var(--fts-bg-page);
+}
+
+.fts-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--fts-space-5);
+  margin-bottom: var(--fts-space-6);
+}
+
+@media (max-width: 1280px) {
+  .fts-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .fts-stats-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fts-filter-section {
+  background: var(--fts-bg-card);
+  border-radius: var(--fts-radius-lg);
+  padding: var(--fts-space-5);
+  margin-bottom: var(--fts-space-5);
+  box-shadow: var(--fts-shadow-sm);
+  border: 1px solid var(--fts-border-secondary);
+}
+
+.fts-table-card {
+  background: var(--fts-bg-card);
+  border-radius: var(--fts-radius-lg);
+  box-shadow: var(--fts-shadow-sm);
+  border: 1px solid var(--fts-border-secondary);
+  overflow: hidden;
+}
+
+.fts-table-card__header {
+  padding: var(--fts-space-4) var(--fts-space-5);
+  border-bottom: 1px solid var(--fts-border-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fts-table-card__body {
+  padding: var(--fts-space-4);
+}
+
+.fts-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--fts-space-4) 0;
+}
+
+.fts-toolbar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--fts-space-3);
+}
+
+.fts-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--fts-space-2);
+}

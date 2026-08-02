@@ -1,0 +1,129 @@
+/* ==================== POS对话框公共样式 ==================== */
+
+/* Dialog容器通用样式 */
+.fastfood-pos .el-dialog {
+  border-radius: var(--pos-radius-lg) !important;
+  background-color: var(--pos-bg-primary) !important;
+  border: 1px solid var(--pos-border-light) !important;
+  box-shadow: var(--pos-shadow-lg) !important;
+  overflow: hidden;
+}
+
+/* Dialog头部样式 */
+.fastfood-pos .el-dialog__header {
+  padding: 20px 24px 16px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid var(--pos-border-light) !important;
+  background-color: var(--pos-bg-secondary) !important;
+}
+
+.fastfood-pos .el-dialog__title {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  color: var(--pos-text-primary) !important;
+  line-height: 1.4 !important;
+}
+
+.fastfood-pos .el-dialog__headerbtn {
+  top: 18px !important;
+  right: 18px !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: var(--pos-radius-sm) !important;
+  transition: background-color var(--pos-transition-fast) !important;
+}
+
+.fastfood-pos .el-dialog__headerbtn:hover {
+  background-color: var(--pos-bg-hover) !important;
+}
+
+.fastfood-pos .el-dialog__close {
+  font-size: 18px !important;
+  color: var(--pos-text-secondary) !important;
+}
+
+/* Dialog内容区域 */
+.fastfood-pos .el-dialog__body {
+  padding: 24px !important;
+  color: var(--pos-text-primary) !important;
+  line-height: 1.6 !important;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Dialog底部操作区 */
+.fastfood-pos .el-dialog__footer {
+  padding: 16px 24px 20px !important;
+  border-top: 1px solid var(--pos-border-light) !important;
+  background-color: var(--pos-bg-secondary) !important;
+  text-align: right !important;
+}
+
+/* Dialog中的按钮样式 */
+.fastfood-pos .el-dialog__footer .el-button {
+  min-width: 80px;
+  padding: 10px 20px !important;
+  border-radius: var(--pos-radius-sm) !important;
+  font-weight: 500 !important;
+  transition: all var(--pos-transition-fast) !important;
+}
+
+.fastfood-pos .el-dialog__footer .el-button--primary {
+  background-color: var(--pos-primary) !important;
+  border-color: var(--pos-primary) !important;
+}
+
+.fastfood-pos .el-dialog__footer .el-button--primary:hover {
+  background-color: var(--pos-primary-dark) !important;
+  border-color: var(--pos-primary-dark) !important;
+}
+
+.fastfood-pos .el-dialog__footer .el-button--default {
+  background-color: var(--pos-bg-primary) !important;
+  border-color: var(--pos-border-color) !important;
+  color: var(--pos-text-primary) !important;
+}
+
+.fastfood-pos .el-dialog__footer .el-button--default:hover {
+  border-color: var(--pos-primary) !important;
+  color: var(--pos-primary) !important;
+}
+
+/* Dialog中的输入框样式 */
+.fastfood-pos .el-dialog .el-input__wrapper {
+  border-radius: var(--pos-radius-sm) !important;
+  box-shadow: 0 0 0 1px var(--pos-border-color) inset !important;
+  transition: box-shadow var(--pos-transition-fast) !important;
+}
+
+.fastfood-pos .el-dialog .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--pos-text-muted) inset !important;
+}
+
+.fastfood-pos .el-dialog .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--pos-primary) inset !important;
+}
+
+/* Dialog中的表单项标签 */
+.fastfood-pos .el-dialog .el-form-item__label {
+  color: var(--pos-text-secondary) !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  padding-right: 12px !important;
+}
+
+/* Dialog遮罩层 */
+.fastfood-pos .el-overlay {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+}
+
+/* ========== 暗色模式弹窗增强 ========== */
+[data-theme="dark"] .fastfood-pos .el-overlay {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+}
+
+[data-theme="dark"] .fastfood-pos .el-dialog {
+  border: 1px solid var(--pos-border-color) !important;
+}

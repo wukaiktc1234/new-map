@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.KnowledgeArticleMapper">
+
+    <!-- 分页查询知识库文章（支持分类、状态、关键词筛选） -->
+    <select id="selectArticlePage" resultType="com.foodtraceability.entity.KnowledgeArticle">
+        SELECT * FROM knowledge_article
+        WHERE deleted = 0
+        <if test="category != null and category != ''">
+            AND category = #{category}
+        </if>
+        <if test="publishStatus != null and publishStatus != ''">
+            AND publish_status = #{publishStatus}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (LOWER(title) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                 OR LOWER(summary) LIKE CONCAT('%', LOWER(#{keyword}), '%'))
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 分类统计：按 category 分组，统计总数与已发布数 -->
+    <select id="selectCategoryStats" resultType="java.util.Map">
+        SELECT
+            category,
+            COUNT(*) AS count,
+            SUM(CASE WHEN publish_status = 'published' THEN 1 ELSE 0 END) AS publishedCount
+        FROM knowledge_article
+        WHERE deleted = 0
+        GROUP BY category
+    </select>
+
+</mapper>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.ScheduledTaskMapper">
+
+    <!-- 分页查询定时任务（支持多条件过滤） -->
+    <select id="selectTaskPage" resultType="com.foodtraceability.entity.ScheduledTask">
+        SELECT * FROM scheduled_task
+        <where>
+            deleted = 0
+            <if test="taskName != null and taskName != ''">
+                AND task_name LIKE CONCAT('%', #{taskName}, '%')
+            </if>
+            <if test="taskCode != null and taskCode != ''">
+                AND task_code LIKE CONCAT('%', #{taskCode}, '%')
+            </if>
+            <if test="taskGroup != null and taskGroup != ''">
+                AND task_group = #{taskGroup}
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="taskType != null">
+                AND task_type = #{taskType}
+            </if>
+            <if test="isBuiltin != null">
+                AND is_builtin = #{isBuiltin}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询任务统计信息 -->
+    <select id="selectTaskStat" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS totalCount,
+            SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS enabledCount,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS pausedCount,
+            SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END) AS errorCount,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS disabledCount,
+            SUM(CASE WHEN execution_status = 2 THEN 1 ELSE 0 END) AS runningCount,
+            SUM(CASE WHEN is_builtin = 1 THEN 1 ELSE 0 END) AS builtinCount
+        FROM scheduled_task
+        WHERE deleted = 0
+    </select>
+
+    <!-- 查询所有任务分组列表（去重） -->
+    <select id="selectTaskGroups" resultType="java.lang.String">
+        SELECT DISTINCT task_group
+        FROM scheduled_task
+        WHERE deleted = 0 AND task_group IS NOT NULL AND task_group != ''
+        ORDER BY task_group ASC
+    </select>
+
+    <!-- 根据任务编码查询任务 -->
+    <select id="selectByTaskCode" resultType="com.foodtraceability.entity.ScheduledTask">
+        SELECT * FROM scheduled_task
+        WHERE task_code = #{taskCode} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <!-- 查询所有内置任务 -->
+    <select id="selectBuiltinTasks" resultType="com.foodtraceability.entity.ScheduledTask">
+        SELECT * FROM scheduled_task
+        WHERE is_builtin = 1 AND deleted = 0
+        ORDER BY task_id ASC
+    </select>
+
+</mapper>

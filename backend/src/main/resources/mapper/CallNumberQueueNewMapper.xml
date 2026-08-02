@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.CallNumberQueueNewMapper">
+
+    <!-- 根据门店ID分页查询排队记录，支持状态、类型、关键词和日期范围过滤 -->
+    <select id="selectByStoreId" resultType="com.foodtraceability.entity.CallNumberQueueNew">
+        SELECT * FROM call_number_queues
+        WHERE deleted = 0
+          AND store_id = #{storeId}
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="queueType != null">
+            AND queue_type = #{queueType}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND ticket_number LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND create_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND create_time &lt;= #{endDate}
+        </if>
+        ORDER BY queue_id ASC
+    </select>
+
+</mapper>

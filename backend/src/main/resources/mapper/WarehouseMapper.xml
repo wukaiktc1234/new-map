@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.WarehouseMapper">
+
+    <!-- 仓库结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.Warehouse">
+        <id column="warehouse_id" property="warehouseId"/>
+        <result column="warehouse_code" property="warehouseCode"/>
+        <result column="warehouse_name" property="warehouseName"/>
+        <result column="warehouse_type" property="warehouseType"/>
+        <result column="address" property="address"/>
+        <result column="manager_id" property="managerId"/>
+        <result column="phone" property="phone"/>
+        <result column="capacity" property="capacity"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 分页查询仓库列表 -->
+    <select id="selectWarehousePage" resultMap="BaseResultMap">
+        SELECT warehouse_id, warehouse_code, warehouse_name, warehouse_type, address,
+               manager_id, phone, capacity, status, remark, create_time, update_time
+        FROM warehouses
+        WHERE deleted = 0
+        <if test="warehouseName != null and warehouseName != ''">
+            AND warehouse_name LIKE CONCAT('%', #{warehouseName}, '%')
+        </if>
+        <if test="warehouseCode != null and warehouseCode != ''">
+            AND warehouse_code LIKE CONCAT('%', #{warehouseCode}, '%')
+        </if>
+        <if test="warehouseType != null">
+            AND warehouse_type = #{warehouseType}
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

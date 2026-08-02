@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.ArticleReviewRecordMapper">
+
+    <!-- 根据文章ID查询审核记录列表（按操作时间正序） -->
+    <select id="selectByArticleId" resultType="com.foodtraceability.entity.ArticleReviewRecord">
+        SELECT * FROM article_review_record
+        WHERE deleted = 0
+          AND article_id = #{articleId}
+        ORDER BY create_time ASC
+    </select>
+
+</mapper>

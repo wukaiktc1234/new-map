@@ -1,0 +1,52 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">个人资料</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="form-section">
+    <view class="form-item">
+      <view class="form-label">头像</view>
+      <view class="form-value avatar-value">
+        <view class="avatar-preview"></view>
+        <view class="form-arrow"></view>
+      </view>
+    </view>
+    
+    <view class="form-item">
+      <view class="form-label">昵称</view>
+      <input class="form-input" value="{{userInfo.name}}" bindinput="onNameInput" placeholder="请输入昵称" />
+    </view>
+    
+    <view class="form-item">
+      <view class="form-label">性别</view>
+      <picker mode="selector" range="{{genderOptions}}" range-key="label" bindchange="onGenderChange">
+        <view class="form-value">
+          <text>{{genderOptions[userInfo.gender].label}}</text>
+          <view class="form-arrow"></view>
+        </view>
+      </picker>
+    </view>
+    
+    <view class="form-item">
+      <view class="form-label">生日</view>
+      <picker mode="date" value="{{userInfo.birthday}}" bindchange="onBirthdayChange">
+        <view class="form-value">
+          <text>{{userInfo.birthday || '请选择'}}</text>
+          <view class="form-arrow"></view>
+        </view>
+      </picker>
+    </view>
+  </view>
+  
+  <view class="save-btn" bindtap="saveProfile">保存</view>
+</view>

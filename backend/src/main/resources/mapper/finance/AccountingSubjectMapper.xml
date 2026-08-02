@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.AccountingSubjectMapper">
+
+    <!-- 根据父科目ID查询子科目列表 -->
+    <select id="selectByParentId" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT * FROM accounting_subjects
+        WHERE deleted = 0 AND parent_id = #{parentId}
+        ORDER BY subject_code ASC
+    </select>
+
+    <!-- 根据科目类型查询科目列表 -->
+    <select id="selectBySubjectType" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT * FROM accounting_subjects
+        WHERE deleted = 0 AND subject_type = #{subjectType}
+        ORDER BY subject_code ASC
+    </select>
+
+    <!-- 模糊搜索科目（根据编码或名称） -->
+    <select id="selectByKeyword" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT * FROM accounting_subjects
+        WHERE deleted = 0
+          AND (subject_code LIKE CONCAT('%', #{keyword}, '%')
+               OR subject_name LIKE CONCAT('%', #{keyword}, '%'))
+        ORDER BY subject_code ASC
+        LIMIT 20
+    </select>
+
+    <!-- 查询一级科目（父ID为空） -->
+    <select id="selectFirstLevelSubjects" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT * FROM accounting_subjects
+        WHERE deleted = 0 AND parent_id IS NULL
+        ORDER BY subject_code ASC
+    </select>
+
+    <!-- 根据科目编码查询 -->
+    <select id="selectByCode" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT * FROM accounting_subjects
+        WHERE deleted = 0 AND subject_code = #{subjectCode}
+        LIMIT 1
+    </select>
+
+    <!-- 查询所有叶子科目（没有子科目的科目） -->
+    <select id="selectLeafSubjects" resultType="com.foodtraceability.entity.finance.AccountingSubject">
+        SELECT a.* FROM accounting_subjects a
+        WHERE a.deleted = 0
+          AND a.status = 1
+          AND NOT EXISTS (
+              SELECT 1 FROM accounting_subjects b
+              WHERE b.deleted = 0 AND b.parent_id = a.subject_id
+          )
+        ORDER BY a.subject_code ASC
+    </select>
+
+</mapper>

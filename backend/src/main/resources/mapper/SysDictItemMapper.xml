@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.SysDictItemMapper">
+
+    <!-- 分页查询字典项列表 -->
+    <select id="selectItemPage" resultType="com.foodtraceability.entity.SysDictItem">
+        SELECT * FROM sys_dict_item
+        <where>
+            deleted = 0
+            <if test="dictId != null">
+                AND dict_id = #{dictId}
+            </if>
+            <if test="itemLabel != null and itemLabel != ''">
+                AND item_label ILIKE CONCAT('%', #{itemLabel}, '%')
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY sort_order ASC, create_time DESC
+    </select>
+
+    <!-- 根据字典ID查询所有启用的字典项（按排序序号升序） -->
+    <select id="selectEnabledItemsByDictId" resultType="com.foodtraceability.entity.SysDictItem">
+        SELECT * FROM sys_dict_item
+        WHERE dict_id = #{dictId}
+          AND status = 1
+          AND deleted = 0
+        ORDER BY sort_order ASC, item_id ASC
+    </select>
+
+    <!-- 根据字典编码查询所有启用的字典项（关联查询） -->
+    <select id="selectEnabledItemsByDictCode" resultType="com.foodtraceability.entity.SysDictItem">
+        SELECT i.* FROM sys_dict_item i
+        INNER JOIN sys_dict d ON i.dict_id = d.dict_id
+        WHERE d.dict_code = #{dictCode}
+          AND d.status = 1
+          AND d.deleted = 0
+          AND i.status = 1
+          AND i.deleted = 0
+        ORDER BY i.sort_order ASC, i.item_id ASC
+    </select>
+
+</mapper>

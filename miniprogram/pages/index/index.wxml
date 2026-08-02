@@ -1,0 +1,143 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="page-scroll">
+    <view class="hero-section">
+      <view class="brand-logo">
+        <image class="logo-image" src="/images/logo.png" mode="aspectFit" />
+        <view class="brand-name">一碗好饭</view>
+        <view class="brand-slogan">用心烹饪 · 品味生活</view>
+      </view>
+    </view>
+    
+    <view class="mode-section">
+      <view class="mode-card" hover-class="mode-card-hover" bindtap="goToDinein">
+        <view class="mode-icon dinein-icon"></view>
+        <view class="mode-title">堂食</view>
+        <view class="mode-subtitle">扫码点单</view>
+      </view>
+      
+      <view class="mode-card" hover-class="mode-card-hover" bindtap="goToPickup">
+        <view class="mode-icon pickup-icon"></view>
+        <view class="mode-title">自提</view>
+        <view class="mode-subtitle">到店自提</view>
+      </view>
+      
+      <view class="mode-card" hover-class="mode-card-hover" bindtap="goToTakeout">
+        <view class="mode-icon takeout-icon"></view>
+        <view class="mode-title">外卖</view>
+        <view class="mode-subtitle">配送到家</view>
+      </view>
+    </view>
+    
+    <view class="order-progress-card" wx:if="{{currentOrder}}">
+      <view class="progress-main">
+        <view class="progress-left">
+          <view class="progress-status">
+            <view class="status-dot {{currentOrder.status}}"></view>
+            <text class="status-text status-{{currentOrder.status}}">{{currentOrder.statusText}}</text>
+          </view>
+          <view class="progress-info-compact">
+            <text class="progress-store-compact">{{currentOrder.storeName || '一碗好饭'}}</text>
+            <text class="progress-type-compact">{{currentOrder.typeText}}</text>
+          </view>
+        </view>
+        <view class="progress-right">
+          <view class="pickup-badge" wx:if="{{currentOrder.pickupNumber && currentOrder.status === 'ready'}}">
+            <text class="pickup-label">取餐号</text>
+            <text class="pickup-value">{{currentOrder.pickupNumber}}</text>
+          </view>
+          <view class="processing-indicator" wx:if="{{currentOrder.status === 'processing'}}">
+            <view class="processing-icon"></view>
+            <text class="processing-text">制作中...</text>
+          </view>
+          <view class="completed-badge" wx:if="{{currentOrder.status === 'completed'}}">
+            <view class="completed-icon"></view>
+            <text class="completed-text">已完成</text>
+          </view>
+          <view class="pending-badge" wx:if="{{currentOrder.status === 'pending'}}">
+            <text class="pending-text">待支付</text>
+          </view>
+          <view class="view-detail-btn" bindtap="goToOrderDetail">查看详情</view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="empty-order-card" wx:else>
+      <view class="empty-order-icon"></view>
+      <view class="empty-order-text">暂无进行中的订单</view>
+      <view class="empty-order-tip">快去选择心仪的美食吧~</view>
+    </view>
+    
+    <view class="user-section">
+      <view class="user-header">
+        <view class="user-info" bindtap="goToMember">
+          <image class="user-avatar" src="{{isLoggedIn ? (userInfo.avatar || '/images/default-avatar.png') : '/images/default-avatar.png'}}" mode="aspectFill" />
+          <view class="user-text">
+            <view class="greeting" bindtap="showLoginModal" wx:if="{{!isLoggedIn}}">Hi, 点击登录</view>
+            <view class="greeting" wx:else>Hi, {{userInfo.name || '美食爱好者'}}</view>
+          </view>
+        </view>
+        <view class="user-actions">
+          <view class="stat-item-mini" bindtap="goToPoints">
+            <text class="stat-value-mini">{{isLoggedIn ? (userInfo.points || 0) : '-'}}</text>
+            <text class="stat-label-mini">积分</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="stat-item-mini" bindtap="goToCoupons">
+            <text class="stat-value-mini">{{isLoggedIn ? (userInfo.coupons || 0) : '-'}}</text>
+            <text class="stat-label-mini">优惠券</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="member-code" hover-class="member-code-hover" bindtap="showMemberCode">
+            <view class="member-code-icon"></view>
+            <text>会员码</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="promo-section">
+      <view class="stamp-card" bindtap="claimNewUserCoupon" wx:if="{{!isLoggedIn}}">
+        <view class="promo-info">
+          <view class="promo-title">新会员首单立减20元</view>
+          <view class="promo-desc">注册即享新人专属优惠</view>
+        </view>
+        <view class="promo-btn" hover-class="promo-btn-hover">立即领取</view>
+      </view>
+      <view class="member-benefit-card" wx:else bindtap="goToCoupons">
+        <view class="benefit-info">
+          <view class="benefit-title">会员专属优惠</view>
+          <view class="benefit-desc">查看您的专属福利和优惠券</view>
+        </view>
+        <view class="benefit-arrow"></view>
+      </view>
+    </view>
+    
+    <view class="feature-grid">
+      <view class="feature-card" hover-class="feature-card-hover" bindtap="goToPoints">
+        <view class="feature-title">积分商城</view>
+        <view class="feature-desc">积分兑好礼</view>
+      </view>
+      <view class="feature-card" hover-class="feature-card-hover" bindtap="goToRecharge">
+        <view class="feature-title">充值中心</view>
+        <view class="feature-desc">会员专属福利</view>
+      </view>
+    </view>
+  </view>
+  
+  <tab-bar active="0" />
+  
+  <login-modal 
+    show="{{showLoginModal}}" 
+    bind:success="onLoginSuccess" 
+    bind:close="handleCloseLoginModal" 
+  />
+  
+  <store-selector 
+    show="{{showStoreSelector}}" 
+    order-type="{{pendingOrderType}}"
+    bind:confirm="onStoreConfirm"
+    bind:close="onStoreSelectorClose"
+  />
+</view>

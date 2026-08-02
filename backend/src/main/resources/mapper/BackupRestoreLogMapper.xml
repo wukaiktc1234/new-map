@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.BackupRestoreLogMapper">
+
+    <!-- 分页查询恢复日志（支持多条件过滤） -->
+    <select id="selectRestoreLogPage" resultType="com.foodtraceability.entity.BackupRestoreLog">
+        SELECT * FROM backup_restore_log
+        <where>
+            <if test="backupId != null">
+                AND backup_id = #{backupId}
+            </if>
+            <if test="restoreStatus != null">
+                AND restore_status = #{restoreStatus}
+            </if>
+            <if test="restoreMode != null">
+                AND restore_mode = #{restoreMode}
+            </if>
+            <if test="createUserId != null">
+                AND create_user_id = #{createUserId}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据备份ID查询恢复历史 -->
+    <select id="selectByBackupId" resultType="com.foodtraceability.entity.BackupRestoreLog">
+        SELECT * FROM backup_restore_log
+        WHERE backup_id = #{backupId} AND deleted = 0
+        ORDER BY create_time DESC
+        LIMIT 50
+    </select>
+
+    <!-- 按恢复状态统计数量 -->
+    <select id="selectRestoreStatusCount" resultType="java.util.HashMap">
+        SELECT
+            COALESCE(SUM(CASE WHEN restore_status = 0 THEN 1 ELSE 0 END), 0) AS pendingCount,
+            COALESCE(SUM(CASE WHEN restore_status = 1 THEN 1 ELSE 0 END), 0) AS inProgressCount,
+            COALESCE(SUM(CASE WHEN restore_status = 2 THEN 1 ELSE 0 END), 0) AS successCount,
+            COALESCE(SUM(CASE WHEN restore_status = 3 THEN 1 ELSE 0 END), 0) AS failedCount,
+            COALESCE(SUM(CASE WHEN restore_status = 4 THEN 1 ELSE 0 END), 0) AS rolledBackCount
+        FROM backup_restore_log
+        WHERE deleted = 0
+    </select>
+
+    <!-- 查询恢复日志统计信息 -->
+    <select id="selectRestoreLogStatistics" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS totalCount,
+            SUM(CASE WHEN restore_status = 2 THEN 1 ELSE 0 END) AS successCount,
+            SUM(CASE WHEN restore_status = 3 THEN 1 ELSE 0 END) AS failedCount,
+            SUM(CASE WHEN restore_status = 4 THEN 1 ELSE 0 END) AS rolledBackCount,
+            SUM(CASE WHEN restore_status = 0 THEN 1 ELSE 0 END) AS pendingCount,
+            SUM(CASE WHEN restore_status = 1 THEN 1 ELSE 0 END) AS inProgressCount,
+            COALESCE(AVG(duration_ms), 0) AS avgDurationMs,
+            MAX(create_time) AS latestRestoreTime
+        FROM backup_restore_log
+        WHERE deleted = 0
+    </select>
+
+    <!-- 查询最近的恢复操作记录 -->
+    <select id="selectLatestRestoreLogs" resultType="com.foodtraceability.entity.BackupRestoreLog">
+        SELECT * FROM backup_restore_log
+        WHERE deleted = 0
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

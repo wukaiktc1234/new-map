@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DailySettlementShiftMapper">
+
+    <!-- 班次明细结果映射 -->
+    <resultMap id="DailySettlementShiftResultMap" type="com.foodtraceability.entity.DailySettlementShift">
+        <id column="shift_id" property="shiftId"/>
+        <result column="settlement_id" property="settlementId"/>
+        <result column="shift_type" property="shiftType"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="revenue" property="revenue"/>
+        <result column="order_count" property="orderCount"/>
+        <result column="cashier_id" property="cashierId"/>
+        <result column="cashier_name" property="cashierName"/>
+        <result column="version" property="version"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 查询列片段 -->
+    <sql id="selectShiftColumns">
+        shift_id, settlement_id, shift_type, start_time, end_time,
+        revenue, order_count, cashier_id, cashier_name,
+        version, deleted, create_time, update_time
+    </sql>
+
+    <!--
+        根据结算主表ID查询关联的班次列表
+        按班次类型排序（早班->晚班->夜班）
+    -->
+    <select id="selectBySettlementId" resultMap="DailySettlementShiftResultMap">
+        SELECT <include refid="selectShiftColumns"/>
+        FROM daily_settlement_shifts
+        WHERE settlement_id = #{settlementId}
+        ORDER BY
+            CASE shift_type
+                WHEN 'morning' THEN 1
+                WHEN 'evening' THEN 2
+                WHEN 'overnight' THEN 3
+                ELSE 4
+            END,
+            start_time ASC
+    </select>
+
+</mapper>

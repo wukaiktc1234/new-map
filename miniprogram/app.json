@@ -1,0 +1,40 @@
+{
+  "pages": [
+    "pages/loading/loading",
+    "pages/index/index",
+    "pages/menu-dinein/menu-dinein",
+    "pages/menu-pickup/menu-pickup",
+    "pages/menu-takeout/menu-takeout",
+    "pages/cart/cart",
+    "pages/order-confirm/order-confirm",
+    "pages/order-pay/order-pay",
+    "pages/order-detail/order-detail",
+    "pages/order-list/order-list",
+    "pages/profile/profile",
+    "pages/profile-edit/profile-edit",
+    "pages/bind-phone/bind-phone",
+    "pages/member/member",
+    "pages/member-code/member-code",
+    "pages/coupons/coupons",
+    "pages/recharge/recharge",
+    "pages/points-mall/points-mall",
+    "pages/exchange-history/exchange-history",
+    "pages/address/address",
+    "pages/store-select/store-select",
+    "pages/settings/settings",
+    "pages/agreement/agreement"
+  ],
+  "window": {
+    "navigationBarTitleText": "一碗好饭",
+    "navigationBarBackgroundColor": "#FAF8F5",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#FAF8F5",
+    "backgroundTextStyle": "dark"
+  },
+  "usingComponents": {
+    "global-loading": "/components/global-loading/global-loading",
+    "empty-state": "/components/empty-state/empty-state"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

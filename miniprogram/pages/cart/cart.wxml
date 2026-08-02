@@ -1,0 +1,96 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">购物车</view>
+    </view>
+    <view class="header-right">
+      <view class="clear-btn" bindtap="clearCart" wx:if="{{cartItems.length > 0}}">清空</view>
+    </view>
+  </view>
+  
+  <view class="cart-empty" wx:if="{{cartItems.length === 0}}">
+    <view class="empty-icon"></view>
+    <view class="empty-text">购物车空空如也</view>
+    <view class="empty-btn" bindtap="goToMenu">去点餐</view>
+  </view>
+  
+  <scroll-view class="cart-scroll" scroll-y wx:else>
+    <view class="cart-item" wx:for="{{cartItems}}" wx:key="id">
+      <view class="item-check {{item.checked ? 'checked' : ''}}" bindtap="toggleCheck" data-id="{{item.id}}">
+        <view class="check-icon" wx:if="{{item.checked}}"></view>
+      </view>
+      <image class="item-image" src="{{item.image}}" mode="aspectFill" />
+      <view class="item-info">
+        <view class="item-name">{{item.name}}</view>
+        <view class="item-spec">{{item.desc}}</view>
+        <view class="item-bottom">
+          <view class="item-price">¥{{item.price}}</view>
+          <view class="qty-control">
+            <view class="qty-btn minus" bindtap="decreaseQuantity" data-id="{{item.id}}">
+              <view class="minus-icon"></view>
+            </view>
+            <text class="qty-num">{{item.quantity}}</text>
+            <view class="qty-btn plus" bindtap="increaseQuantity" data-id="{{item.id}}">
+              <view class="plus-icon"></view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="recommend-section">
+      <view class="recommend-title">
+        <view class="recommend-icon"></view>
+        <text>为你推荐</text>
+      </view>
+      <scroll-view class="recommend-list" scroll-x>
+        <view class="recommend-item" wx:for="{{recommendItems}}" wx:key="id">
+          <image class="recommend-image" src="{{item.image}}" mode="aspectFill" />
+          <view class="recommend-name">{{item.name}}</view>
+          <view class="recommend-price">¥{{item.price}}</view>
+          <view class="recommend-add" bindtap="addToCart" data-item="{{item}}">添加</view>
+        </view>
+      </scroll-view>
+    </view>
+    
+    <view class="fee-section">
+      <view class="fee-row">
+        <text class="fee-label">商品金额</text>
+        <text class="fee-value">¥{{subtotal}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{orderType === 'dinein'}}">
+        <text class="fee-label">餐具费</text>
+        <text class="fee-value">¥{{packFee}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{orderType === 'takeout'}}">
+        <text class="fee-label">配送费</text>
+        <text class="fee-value">¥{{deliveryFee}}</text>
+      </view>
+      <view class="fee-row total">
+        <text class="fee-label">合计</text>
+        <text class="fee-value">¥{{total}}</text>
+      </view>
+    </view>
+  </scroll-view>
+  
+  <view class="bottom-bar" wx:if="{{cartItems.length > 0}}">
+    <view class="select-all" bindtap="toggleSelectAll">
+      <view class="item-check {{selectAll ? 'checked' : ''}}">
+        <view class="check-icon" wx:if="{{selectAll}}"></view>
+      </view>
+      <text>全选</text>
+    </view>
+    <view class="bar-total">
+      <text class="price">¥{{total}}</text>
+    </view>
+    <view class="submit-btn" bindtap="goToConfirm">
+      <text>去结算({{selectedCount}})</text>
+    </view>
+  </view>
+</view>

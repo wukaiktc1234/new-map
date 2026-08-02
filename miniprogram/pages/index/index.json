@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "tab-bar": "/components/tab-bar/tab-bar",
+    "login-modal": "/components/login-modal/login-modal",
+    "store-selector": "/components/store-selector/store-selector"
+  }
+}

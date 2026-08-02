@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.InventoryLossMapper">
+    <select id="selectInventoryLossPage" resultType="com.foodtraceability.entity.InventoryLoss">
+        SELECT * FROM inventory_losses
+        WHERE deleted = 0
+        <if test="lossNo != null and lossNo != ''">
+            AND loss_code LIKE CONCAT('%', #{lossNo}, '%')
+        </if>
+        <if test="warehouseId != null">
+            AND warehouse_id = #{warehouseId}
+        </if>
+        <if test="status != null and status != ''">
+            AND loss_status = #{status}
+        </if>
+        <if test="applyTimeStart != null and applyTimeStart != ''">
+            AND create_time &gt;= #{applyTimeStart}
+        </if>
+        <if test="applyTimeEnd != null and applyTimeEnd != ''">
+            AND create_time &lt;= #{applyTimeEnd}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+</mapper>

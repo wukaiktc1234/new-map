@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.schedule.ScheduleAttendanceSyncMapper">
+
+    <!-- 基础结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.schedule.ScheduleAttendanceSync">
+        <id column="sync_id" property="syncId"/>
+        <result column="plan_id" property="planId"/>
+        <result column="sync_status" property="syncStatus"/>
+        <result column="sync_time" property="syncTime"/>
+        <result column="total_entries" property="totalEntries"/>
+        <result column="synced_entries" property="syncedEntries"/>
+        <result column="failed_entries" property="failedEntries"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        sync_id, plan_id, sync_status, sync_time, total_entries, synced_entries,
+        failed_entries, error_message, operator_id, operator_name,
+        create_time, update_time, deleted
+    </sql>
+
+    <!-- 按方案ID查询最新同步记录 -->
+    <select id="selectLatestByPlanId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM schedule_attendance_syncs
+        WHERE plan_id = #{planId} AND deleted = 0
+        ORDER BY sync_time DESC, create_time DESC
+        LIMIT 1
+    </select>
+
+</mapper>

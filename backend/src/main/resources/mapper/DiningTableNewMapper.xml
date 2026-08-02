@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DiningTableNewMapper">
+
+    <!-- 根据门店ID分页查询桌台，支持状态、类型和关键词过滤 -->
+    <select id="selectByStoreId" resultType="com.foodtraceability.entity.DiningTableNew">
+        SELECT * FROM dining_tables
+        WHERE deleted = 0
+          AND store_id = #{storeId}
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="tableType != null">
+            AND table_type = #{tableType}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (table_code LIKE CONCAT('%', #{keyword}, '%')
+                 OR table_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY sort_order ASC, table_id ASC
+    </select>
+
+</mapper>

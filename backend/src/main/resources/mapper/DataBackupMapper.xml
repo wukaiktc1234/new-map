@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DataBackupMapper">
+
+    <!-- 分页查询备份记录（支持多条件过滤） -->
+    <select id="selectBackupPage" resultType="com.foodtraceability.entity.DataBackupRecord">
+        SELECT * FROM data_backup_record
+        <where>
+            <if test="backupName != null and backupName != ''">
+                AND backup_name LIKE CONCAT('%', #{backupName}, '%')
+            </if>
+            <if test="backupType != null">
+                AND backup_type = #{backupType}
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="storageLocation != null and storageLocation != ''">
+                AND storage_location = #{storageLocation}
+            </if>
+            <if test="triggeredBy != null and triggeredBy != ''">
+                AND triggered_by = #{triggeredBy}
+            </if>
+            <if test="startTime != null">
+                AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND create_time &lt;= #{endTime}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询备份统计信息 -->
+    <select id="selectBackupStatistics" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS totalCount,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS successCount,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS failedCount,
+            SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS pendingCount,
+            SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END) AS expiredCount,
+            COALESCE(SUM(file_size_bytes), 0) AS totalSizeBytes,
+            COALESCE(AVG(duration_ms), 0) AS avgDurationMs,
+            MAX(create_time) AS latestBackupTime
+        FROM data_backup_record
+        WHERE deleted = 0
+    </select>
+
+    <!-- 查询存储使用情况 -->
+    <select id="selectStorageUsage" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS totalBackups,
+            COALESCE(SUM(file_size_bytes), 0) AS totalSizeBytes,
+            COALESCE(SUM(CASE WHEN status = 2 THEN file_size_bytes ELSE 0 END), 0) AS availableSizeBytes,
+            CASE
+                WHEN COUNT(*) = 0 THEN 0
+                ELSE ROUND(COALESCE(SUM(file_size_bytes), 0) / NULLIF(
+                    (SELECT setting_value FROM sys_setting WHERE setting_key = 'backup.storage.max_size'), 1
+                ) * 100, 2)
+            END AS usagePercent,
+            MIN(create_time) AS oldestBackupTime,
+            MAX(create_time) AS latestBackupTime,
+            SUM(CASE WHEN expires_at IS NOT NULL AND expires_at &lt;= NOW() + INTERVAL '7 days' AND status = 2 AND deleted = 0 THEN 1 ELSE 0 END) AS expiringSoonCount
+        FROM data_backup_record
+        WHERE deleted = 0
+    </select>
+
+    <!-- 查询即将过期的备份列表（指定天数内） -->
+    <select id="selectExpiringBackups" resultType="com.foodtraceability.entity.DataBackupRecord">
+        SELECT * FROM data_backup_record
+        WHERE expires_at IS NOT NULL
+          AND expires_at &lt;= NOW() + INTERVAL '#{days} days'
+          AND status = 2
+          AND deleted = 0
+        ORDER BY expires_at ASC
+        LIMIT 50
+    </select>
+
+    <!-- 查询已过期的备份列表 -->
+    <select id="selectExpiredBackups" resultType="com.foodtraceability.entity.DataBackupRecord">
+        SELECT * FROM data_backup_record
+        WHERE (expires_at IS NOT NULL AND expires_at &lt; NOW() OR retention_days > 0)
+          AND status IN (2, 4)
+          AND deleted = 0
+        ORDER BY expires_at ASC
+        LIMIT 100
+    </select>
+
+    <!-- 按状态统计备份数量 -->
+    <select id="selectStatusCount" resultType="java.util.HashMap">
+        SELECT
+            COALESCE(SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END), 0) AS pendingCount,
+            COALESCE(SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END), 0) AS inProgressCount,
+            COALESCE(SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END), 0) AS successCount,
+            COALESCE(SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END), 0) AS failedCount,
+            COALESCE(SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END), 0) AS expiredCount,
+            COALESCE(SUM(CASE WHEN status = 5 THEN 1 ELSE 0 END), 0) AS deletingCount
+        FROM data_backup_record
+        WHERE deleted = 0
+    </select>
+
+    <!-- 按月份统计备份数量（用于图表展示） -->
+    <select id="selectMonthlyStats" resultType="java.util.HashMap">
+        SELECT
+            TO_CHAR(create_time, 'YYYY-MM') AS month,
+            COUNT(*) AS count,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS successCount,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS failedCount,
+            COALESCE(SUM(file_size_bytes), 0) AS totalSize
+        FROM data_backup_record
+        WHERE deleted = 0
+          AND create_time &gt;= DATE_TRUNC('month', NOW() - INTERVAL '#{months} months')
+        GROUP BY TO_CHAR(create_time, 'YYYY-MM')
+        ORDER BY month DESC
+        LIMIT #{months}
+    </select>
+
+    <!-- 查询最近N条成功的备份记录 -->
+    <select id="selectLatestSuccessBackups" resultType="com.foodtraceability.entity.DataBackupRecord">
+        SELECT * FROM data_backup_record
+        WHERE status = 2 AND deleted = 0
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

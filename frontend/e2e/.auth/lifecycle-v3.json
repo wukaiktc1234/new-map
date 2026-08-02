@@ -1,0 +1,26 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3002",
+      "localStorage": [
+        {
+          "name": "token",
+          "value": "eyJhbGciOiJIUzUxMiJ9.eyJ0b2tlbklkIjoiMjdkYzQ4ZDgtNTE0My00ZmU1LWEwZTktY2RlYThhZjg0ODBhIiwicGVybWlzc2lvbnMiOlsiKiJdLCJyb2xlcyI6WyJhZG1pbiIsInVzZXIiXSwibWZhRW5hYmxlZCI6ZmFsc2UsIm1mYVZlcmlmaWVkIjpmYWxzZSwidXNlcklkIjoiMSIsInVzZXJuYW1lIjoiYWRtaW4iLCJzdWIiOiJhZG1pbiIsImlzcyI6ImZvb2QtdHJhY2VhYmlsaXR5LXN5c3RlbSIsImlhdCI6MTc4NDExNjEyNSwiZXhwIjoxNzg0MTIzMzI1LCJqdGkiOiIxZmVkMDViNS0xNWJlLTQ5MjItYjA4NC04ZGM3MmE2YjczMzkifQ.bR1IvYc4GJfejKo7fs7ozLNR3KVj5wU-G9LQupKCSVhBpQjNrpTjKIrcnyxzI5Gq72mBpjOYIyl17fXoTrbXEw"
+        },
+        {
+          "name": "user_id",
+          "value": "1"
+        },
+        {
+          "name": "username",
+          "value": "admin"
+        },
+        {
+          "name": "refresh_token",
+          "value": "eyJhbGciOiJIUzUxMiJ9.eyJ0b2tlbklkIjoiYjRmNzUyYTktODYxYS00NTA1LTk3ZGUtMzQwM2U2M2VlMzIyIiwidHlwZSI6InJlZnJlc2giLCJ1c2VySWQiOiIxIiwidXNlcm5hbWUiOiJhZG1pbiIsInN1YiI6ImFkbWluIiwiaXNzIjoiZm9vZC10cmFjZWFiaWxpdHktc3lzdGVtIiwiaWF0IjoxNzg0MTE2MTI1LCJleHAiOjE3ODY3MDgxMjUsImp0aSI6IjczZDQzYTVkLTg2NDUtNDYzNS1hMGNhLTU0NzFhNjg1YTM3OSJ9.obyvLiWrabTb-xCFZeUn70lNHh9UKp9tyilsnmrZp5UEjYTuiABBJvYGfvbSCTPwuBGmPsLYcnaXpRXKdMn1RQ"
+        }
+      ]
+    }
+  ]
+}

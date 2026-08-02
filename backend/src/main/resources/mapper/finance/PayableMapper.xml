@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.PayableMapper">
+
+    <!-- 分页查询应付账款 -->
+    <select id="selectPayablePage" resultType="com.foodtraceability.entity.finance.Payable">
+        SELECT * FROM payables
+        <where>
+            deleted = 0
+            <if test="supplierName != null and supplierName != ''">
+                AND supplier_name LIKE CONCAT('%', #{supplierName}, '%')
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="startDate != null">
+                AND create_time &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND create_time &lt;= #{endDate}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 应付账款汇总统计 -->
+    <select id="selectPayableSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalCount,
+            COALESCE(SUM(original_amount), 0) AS totalOriginalAmount,
+            COALESCE(SUM(paid_amount), 0) AS totalPaidAmount,
+            COALESCE(SUM(balance_amount), 0) AS totalBalanceAmount,
+            COUNT(CASE WHEN status = 1 THEN 1 END) AS pendingCount,
+            COUNT(CASE WHEN status = 2 THEN 1 END) AS partialCount,
+            COUNT(CASE WHEN status = 3 THEN 1 END) AS settledCount,
+            COUNT(CASE WHEN status = 4 THEN 1 END) AS overdueCount
+        FROM payables
+        WHERE deleted = 0
+    </select>
+
+</mapper>

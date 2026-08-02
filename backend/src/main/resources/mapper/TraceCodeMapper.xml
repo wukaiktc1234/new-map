@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.TraceCodeMapper">
+
+    <!-- 追溯码结果映射 -->
+    <resultMap id="traceCodeResultMap" type="com.foodtraceability.entity.TraceCode">
+        <id column="trace_code_id" property="traceCodeId"/>
+        <result column="trace_code" property="traceCode"/>
+        <result column="trace_type" property="traceType"/>
+        <result column="target_type" property="targetType"/>
+        <result column="target_id" property="targetId"/>
+        <result column="target_name" property="targetName"/>
+        <result column="batch_no" property="batchNo"/>
+        <result column="production_date" property="productionDate"/>
+        <result column="expiry_date" property="expiryDate"/>
+        <result column="supplier_id" property="supplierId"/>
+        <result column="supplier_name" property="supplierName"/>
+        <result column="purchase_stockin_id" property="purchaseStockinId"/>
+        <result column="warehouse_id" property="warehouseId"/>
+        <result column="current_location" property="currentLocation"/>
+        <result column="status" property="status"/>
+        <result column="risk_level" property="riskLevel"/>
+        <result column="qr_code_image_url" property="qrCodeImageUrl"/>
+        <result column="chain_data" property="chainData" typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
+        <result column="extra_info" property="extraInfo"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 根据追溯码查询 -->
+    <select id="selectByTraceCode" resultMap="traceCodeResultMap">
+        SELECT * FROM food_trace_codes
+        WHERE trace_code = #{traceCode}
+        LIMIT 1
+    </select>
+
+    <!-- 根据批次号查询追溯码列表 -->
+    <select id="selectByBatchNo" resultMap="traceCodeResultMap">
+        SELECT * FROM food_trace_codes
+        WHERE batch_no = #{batchNo}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据供应商ID查询追溯码列表 -->
+    <select id="selectBySupplierId" resultMap="traceCodeResultMap">
+        SELECT * FROM food_trace_codes
+        WHERE supplier_id = #{supplierId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询即将过期或已过期的追溯码 -->
+    <select id="selectExpiringOrExpired" resultMap="traceCodeResultMap">
+        SELECT * FROM food_trace_codes
+        WHERE status IN (2, 3)
+           OR (expiry_date IS NOT NULL AND expiry_date &lt;= CURRENT_DATE)
+        ORDER BY risk_level DESC, expiry_date ASC
+    </select>
+
+    <!-- 查询高风险追溯码 -->
+    <select id="selectByRiskLevel" resultMap="traceCodeResultMap">
+        SELECT * FROM food_trace_codes
+        WHERE risk_level >= #{riskLevel}
+        ORDER BY risk_level DESC, create_time DESC
+    </select>
+
+</mapper>

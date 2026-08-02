@@ -1,0 +1,89 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">我的订单</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="order-tab-bar">
+    <view 
+      class="order-tab-item {{currentTab === item.value ? 'active' : ''}}" 
+      wx:for="{{tabs}}" 
+      wx:key="value"
+      bindtap="switchTab"
+      data-value="{{item.value}}"
+    >
+      <text>{{item.label}}</text>
+    </view>
+  </view>
+  
+  <scroll-view class="order-list" scroll-y>
+    <view class="order-card" wx:for="{{orders}}" wx:key="id" bindtap="goToOrderDetail" data-id="{{item.id}}">
+      <view class="order-header">
+        <view class="order-info">
+          <view class="order-top-row">
+            <view class="order-number">{{item.orderNumber || item.id}}</view>
+            <view class="order-type-tag">{{item.typeText}}</view>
+          </view>
+          <view class="order-time">{{item.createTime}}</view>
+        </view>
+        <view class="order-status {{item.status}}">{{item.statusText}}</view>
+      </view>
+      <view class="order-items">
+        <view class="order-item" wx:for="{{item.items}}" wx:key="id" wx:for-item="product">
+          <image class="item-image" src="{{product.image || '/images/default-dish.png'}}" mode="aspectFill" />
+          <view class="item-info">
+            <view class="item-name">{{product.name}}</view>
+            <view class="item-spec" wx:if="{{product.spec}}">{{product.spec}}</view>
+            <view class="item-price-qty">
+              <text class="item-price">¥{{product.price}}</text>
+              <text class="item-qty">x{{product.quantity}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="order-footer">
+        <view class="order-total">
+          <text class="total-label">共{{item.totalCount}}件</text>
+          <text class="total-price">¥{{item.total}}</text>
+        </view>
+        <view class="order-actions">
+          <view class="action-btn secondary" wx:if="{{item.status === 'pending'}}" catchtap="cancelOrder" data-id="{{item.id}}">取消</view>
+          <view class="action-btn primary" wx:if="{{item.status === 'pending'}}" catchtap="payOrder" data-id="{{item.id}}">去支付</view>
+          <view class="action-btn primary" wx:if="{{item.status === 'ready'}}" catchtap="showPickupCode" data-id="{{item.id}}">取餐码</view>
+          <view class="action-btn secondary" wx:if="{{item.status === 'processing'}}" catchtap="goToOrderDetail" data-id="{{item.id}}">详情</view>
+          <view class="action-btn secondary" wx:if="{{item.status === 'completed'}}" catchtap="goToOrderDetail" data-id="{{item.id}}">评价</view>
+          <view class="action-btn primary" wx:if="{{item.status === 'completed'}}" catchtap="reorder" data-id="{{item.id}}">再来一单</view>
+        </view>
+      </view>
+    </view>
+    
+    <empty-state 
+      wx:if="{{orders.length === 0}}"
+      title="暂无订单"
+      desc="您还没有任何订单，快去点餐吧"
+      actionText="去点餐"
+      bind:action="goToMenu"
+    />
+  </scroll-view>
+  
+  <tab-bar active="2" />
+  
+  <view class="modal-mask" wx:if="{{showPickupModal}}" bindtap="hidePickupModal" catchtouchmove="preventTouchMove"></view>
+  <view class="pickup-modal {{showPickupModal ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="pickup-content">
+      <view class="pickup-title">取餐码</view>
+      <view class="pickup-number">{{currentOrder.pickupNumber}}</view>
+      <view class="pickup-tip">请凭此码到店取餐</view>
+    </view>
+    <view class="pickup-close" bindtap="hidePickupModal">关闭</view>
+  </view>
+</view>

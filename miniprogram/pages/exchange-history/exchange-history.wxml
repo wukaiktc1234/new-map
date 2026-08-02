@@ -1,0 +1,37 @@
+<view class="page-container">
+  <view class="fixed-header">
+    <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+    
+    <view class="header-bar">
+      <view class="header-left">
+        <view class="back-btn" bindtap="goBack">
+          <view class="back-icon"></view>
+        </view>
+      </view>
+      <view class="header-center">
+        <view class="header-title">兑换记录</view>
+      </view>
+      <view class="header-right"></view>
+    </view>
+  </view>
+  
+  <view class="header-placeholder" style="height: calc({{statusBarHeight}}px + 112rpx);"></view>
+  
+  <view class="record-list">
+    <view class="record-item status-{{item.status === '已使用' ? 'used' : item.status === '已过期' ? 'expired' : ''}}" wx:for="{{records}}" wx:key="id">
+      <view class="record-info">
+        <view class="record-name">{{item.name}}</view>
+        <view class="record-date">{{item.date}}</view>
+      </view>
+      <view class="record-right">
+        <view class="record-points">-{{item.points}}积分</view>
+        <view class="record-status status-{{item.status === '未使用' ? 'unused' : item.status === '已使用' ? 'used' : item.status === '已过期' ? 'expired' : 'received'}}">{{item.status}}</view>
+      </view>
+    </view>
+    
+    <view class="empty-state" wx:if="{{records.length === 0}}">
+      <view class="empty-icon"></view>
+      <view class="empty-text">暂无兑换记录</view>
+    </view>
+  </view>
+</view>

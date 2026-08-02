@@ -1,0 +1,15 @@
+// ========================================
+//  ITCSS 架构 — 样式入口文件
+//  Layer 1: Settings     → _tokens.scss
+//  Layer 2: Generic      → _base.scss
+//  Layer 3: Elements     → _element-overrides.scss
+//  Layer 4: Objects      → _layout.scss
+//  Layer 5: Components   → _modern-page.scss
+//  Layer 6: Trumps       → _dark-mode.scss
+// ========================================
+@use 'global/tokens';
+@use 'global/base';
+@use 'global/element-overrides';
+@use 'global/layout';
+@use 'global/modern-page';
+@use 'global/dark-mode';

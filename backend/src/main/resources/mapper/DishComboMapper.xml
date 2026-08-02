@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DishComboMapper">
+
+    <select id="selectComboPage" resultType="com.foodtraceability.entity.DishCombo">
+        SELECT * FROM dish_combo
+        WHERE deleted = 0
+        <if test="params.comboName != null and params.comboName != ''">
+            AND combo_name LIKE CONCAT('%', #{params.comboName}, '%')
+        </if>
+        <if test="params.status != null and params.status != ''">
+            AND status = #{params.status}
+        </if>
+        ORDER BY id DESC
+    </select>
+
+</mapper>

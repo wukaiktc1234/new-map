@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.ElectronicVoucherMapper">
+
+    <resultMap id="VoucherVOResultMap" type="com.foodtraceability.dto.ElectronicVoucherVO">
+        <id column="id" property="id"/>
+        <result column="voucher_type" property="voucherType"/>
+        <result column="voucher_no" property="voucherNo"/>
+        <result column="source_file_type" property="sourceFileType"/>
+        <result column="source_file_size" property="sourceFileSize"/>
+        <result column="total_amount" property="totalAmount"/>
+        <result column="currency" property="currency"/>
+        <result column="issue_date" property="issueDate"/>
+        <result column="signature_status" property="signatureStatus"/>
+        <result column="verify_status" property="verifyStatus"/>
+        <result column="status" property="status"/>
+        <result column="finance_voucher_id" property="financeVoucherId"/>
+        <result column="create_time" property="createdAt"/>
+        <result column="created_by_name" property="createdByName"/>
+    </resultMap>
+
+    <select id="selectVoucherPage" resultMap="VoucherVOResultMap">
+        SELECT 
+            ev.id,
+            ev.voucher_type,
+            ev.voucher_no,
+            ev.source_file_type,
+            ev.source_file_size,
+            ev.total_amount,
+            ev.currency,
+            ev.issue_date,
+            ev.signature_status,
+            ev.verify_status,
+            ev.status,
+            ev.finance_voucher_id,
+            ev.create_time,
+            u.name as created_by_name
+        FROM electronic_voucher ev
+        LEFT JOIN users u ON ev.created_by = u.ID
+        WHERE ev.deleted = 0
+        AND ev.tenant_id = #{tenantId}
+        <if test="query.voucherNo != null and query.voucherNo != ''">
+            AND ev.voucher_no LIKE CONCAT('%', #{query.voucherNo}, '%')
+        </if>
+        <if test="query.voucherType != null and query.voucherType != ''">
+            AND ev.voucher_type = #{query.voucherType}
+        </if>
+        <if test="query.status != null">
+            AND ev.status = #{query.status}
+        </if>
+        <if test="query.signatureStatus != null">
+            AND ev.signature_status = #{query.signatureStatus}
+        </if>
+        <if test="query.verifyStatus != null">
+            AND ev.verify_status = #{query.verifyStatus}
+        </if>
+        <if test="query.startDate != null">
+            AND ev.issue_date &gt;= #{query.startDate}
+        </if>
+        <if test="query.endDate != null">
+            AND ev.issue_date &lt;= #{query.endDate}
+        </if>
+        <if test="query.businessType != null and query.businessType != ''">
+            AND ev.business_type = #{query.businessType}
+        </if>
+        <if test="query.businessId != null">
+            AND ev.business_id = #{query.businessId}
+        </if>
+        ORDER BY ev.create_time DESC
+    </select>
+
+    <select id="selectByFileHash" resultType="com.foodtraceability.entity.ElectronicVoucher">
+        SELECT * FROM electronic_voucher
+        WHERE source_file_hash = #{fileHash}
+        AND tenant_id = #{tenantId}
+        AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectByVoucherNo" resultType="com.foodtraceability.entity.ElectronicVoucher">
+        SELECT * FROM electronic_voucher
+        WHERE voucher_no = #{voucherNo}
+        AND tenant_id = #{tenantId}
+        AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="findSimilarVouchers" resultType="com.foodtraceability.entity.ElectronicVoucher">
+        SELECT * FROM electronic_voucher
+        WHERE tenant_id = #{tenantId}
+        AND total_amount = #{totalAmount}
+        AND issue_date = #{issueDate}
+        AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

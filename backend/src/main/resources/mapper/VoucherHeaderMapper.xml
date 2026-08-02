@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    VoucherHeader Mapper
+    =====================
+    会计法合规性说明：
+    1. 凭证不可物理删除：数据库触发器 tr_prevent_voucher_delete 拦截 DELETE（见 Flyway 脚本
+       V20260717_003__fix_voucher_header_compliance.sql），应用层通过 @TableLogic 实现逻辑删除。
+    2. 凭证不可并发篡改：实体 VoucherHeader.version 字段使用 @Version 乐观锁。
+    3. 凭证号唯一性：voucher_no 列拥有唯一索引 uk_voucher_header_voucher_no（WHERE deleted = 0）。
+    4. 凭证号生成：由 VoucherNoGenerator 服务统一生成，格式 V + YYYYMM + 6位流水号。
+
+    自定义 SQL 通过 @Select/@Update 注解在 VoucherHeaderMapper 接口中定义，本文件不重复声明以避免
+    MyBatis 重复语句冲突。如需添加复杂多表关联查询，请在此文件中新增 <select> 节点。
+-->
+<mapper namespace="com.foodtraceability.mapper.VoucherHeaderMapper">
+
+</mapper>

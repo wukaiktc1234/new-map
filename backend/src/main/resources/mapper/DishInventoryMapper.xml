@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DishInventoryMapper">
+
+    <resultMap id="DishInventoryResultMap" type="com.foodtraceability.entity.DishInventory">
+        <id property="id" column="id"/>
+        <result property="dishId" column="dish_id"/>
+        <result property="inventoryId" column="inventory_id"/>
+        <result property="inventoryName" column="inventory_name"/>
+        <result property="quantity" column="quantity"/>
+        <result property="unit" column="unit"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="totalCost" column="total_cost"/>
+        <result property="remark" column="remark"/>
+        <result property="createdAt" column="create_time"/>
+        <result property="updatedAt" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <select id="selectByDishId" resultMap="DishInventoryResultMap">
+        SELECT di.*, 
+               i.cost_price as unit_price,
+               (di.quantity * i.cost_price) as total_cost
+        FROM dish_inventory di
+        LEFT JOIN inventory i ON di.inventory_id = i.inventory_id
+        WHERE di.dish_id = #{dishId} AND di.deleted = 0
+        ORDER BY di.create_time DESC
+    </select>
+
+</mapper>

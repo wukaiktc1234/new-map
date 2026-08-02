@@ -1,0 +1,78 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+#app {
+  height: 100%;
+}
+
+/* 全局触摸事件优化 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 按钮类元素 - 只允许点击，禁用双击缩放 */
+.dish-item,
+.category-item,
+.action-btn,
+.pay-btn,
+.qty-btn,
+.el-button,
+.el-button--default,
+.el-button--primary,
+.el-button--success,
+.el-button--warning,
+.el-button--danger,
+.el-button--info {
+  touch-action: manipulation;
+}
+
+/* 输入框优化 */
+.el-input__inner,
+.el-input__wrapper,
+input,
+textarea {
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 卡片和列表项 */
+.dish-card,
+.cart-item,
+.dish-grid > * {
+  touch-action: manipulation;
+}
+
+/* 滚动区域优化 */
+.dish-grid,
+.order-list,
+.cart-list,
+.held-orders-list {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+/* 购物车滑动删除区域 */
+.cart-item-swipe {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* Element Plus 组件优化 */
+.el-dialog,
+.el-message-box,
+.el-drawer {
+  touch-action: auto;
+}
+
+/* 禁用长按菜单 */
+.dish-item,
+.cart-item,
+.el-button {
+  -webkit-touch-callout: none;
+}

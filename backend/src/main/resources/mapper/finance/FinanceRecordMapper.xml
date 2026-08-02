@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.FinanceRecordMapper">
+
+    <!-- 分页查询收支记录 -->
+    <select id="selectRecordPage" resultType="com.foodtraceability.entity.finance.FinanceRecord">
+        SELECT * FROM finance_records
+        <where>
+            deleted = 0
+            <if test="recordNo != null and recordNo != ''">
+                AND record_no LIKE CONCAT('%', #{recordNo}, '%')
+            </if>
+            <if test="recordType != null">
+                AND record_type = #{recordType}
+            </if>
+            <if test="recordCategory != null">
+                AND record_category = #{recordCategory}
+            </if>
+            <if test="paymentMethod != null">
+                AND payment_method = #{paymentMethod}
+            </if>
+            <if test="counterpartyName != null and counterpartyName != ''">
+                AND counterparty_name LIKE CONCAT('%', #{counterpartyName}, '%')
+            </if>
+            <if test="startDate != null">
+                AND business_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND business_date &lt;= #{endDate}
+            </if>
+            <if test="approvalStatus != null">
+                AND approval_status = #{approvalStatus}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 统计指定期间内的收支汇总 -->
+    <select id="sumAmountByCondition" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount), 0) FROM finance_records
+        WHERE deleted = 0
+          AND record_type = #{recordType}
+          <if test="startDate != null">
+              AND business_date &gt;= #{startDate}
+          </if>
+          <if test="endDate != null">
+              AND business_date &lt;= #{endDate}
+          </if>
+    </select>
+
+</mapper>

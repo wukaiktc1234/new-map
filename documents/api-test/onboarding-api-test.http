@@ -1,0 +1,68 @@
+### 入职档案管理API测试脚本
+### 基础URL: http://localhost:8080
+
+### 1. 获取职位级别列表
+GET http://localhost:8080/api/onboarding/archive/position-levels
+Accept: application/json
+
+### 2. 获取档案状态列表
+GET http://localhost:8080/api/onboarding/archive/statuses
+Accept: application/json
+
+### 3. 创建入职档案
+POST http://localhost:8080/api/onboarding/archive
+Content-Type: application/json
+
+{
+  "candidateName": "张三",
+  "email": "zhangsan@example.com",
+  "phone": "13800138000",
+  "position": "软件工程师",
+  "positionLevel": "STAFF",
+  "departmentId": "1",
+  "departmentName": "技术部",
+  "expectedSalary": 15000.00,
+  "finalSalary": 18000.00,
+  "onboardDate": "2026-02-15"
+}
+
+### 4. 分页查询档案列表
+GET http://localhost:8080/api/onboarding/archive/list?page=1&size=10
+Accept: application/json
+
+### 5. 根据状态查询档案（待HR审查）
+GET http://localhost:8080/api/onboarding/archive/by-status/PENDING_HR
+Accept: application/json
+
+### 6. 获取待HR审查的档案列表
+GET http://localhost:8080/api/onboarding/archive/pending-hr
+Accept: application/json
+
+### 7. 获取档案详情（需要将{id}替换为实际的档案ID）
+GET http://localhost:8080/api/onboarding/archive/1
+Accept: application/json
+
+### 8. 更新档案（需要将{id}替换为实际的档案ID）
+PUT http://localhost:8080/api/onboarding/archive/1
+Content-Type: application/json
+
+{
+  "candidateName": "张三",
+  "email": "zhangsan@example.com",
+  "phone": "13800138001",
+  "position": "高级软件工程师",
+  "positionLevel": "STAFF",
+  "departmentId": "1",
+  "departmentName": "技术部",
+  "expectedSalary": 15000.00,
+  "finalSalary": 20000.00,
+  "onboardDate": "2026-02-20"
+}
+
+### 9. 提交档案审批（需要将{id}替换为实际的档案ID）
+POST http://localhost:8080/api/onboarding/archive/1/submit
+Accept: application/json
+
+### 10. 删除档案（需要将{id}替换为实际的档案ID）
+DELETE http://localhost:8080/api/onboarding/archive/1
+Accept: application/json

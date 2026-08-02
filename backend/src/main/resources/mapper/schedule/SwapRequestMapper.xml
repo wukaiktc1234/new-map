@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.schedule.SwapRequestMapper">
+
+    <!-- 基础结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.schedule.SwapRequest">
+        <id column="request_id" property="requestId"/>
+        <result column="plan_id" property="planId"/>
+        <result column="initiator_id" property="initiatorId"/>
+        <result column="initiator_name" property="initiatorName"/>
+        <result column="initiator_entry_id" property="initiatorEntryId"/>
+        <result column="initiator_work_date" property="initiatorWorkDate"/>
+        <result column="initiator_shift_type" property="initiatorShiftType"/>
+        <result column="initiator_shift_name" property="initiatorShiftName"/>
+        <result column="target_employee_id" property="targetEmployeeId"/>
+        <result column="target_employee_name" property="targetEmployeeName"/>
+        <result column="target_entry_id" property="targetEntryId"/>
+        <result column="target_work_date" property="targetWorkDate"/>
+        <result column="target_shift_type" property="targetShiftType"/>
+        <result column="target_shift_name" property="targetShiftName"/>
+        <result column="status" property="status"/>
+        <result column="reason" property="reason"/>
+        <result column="approver_id" property="approverId"/>
+        <result column="approver_name" property="approverName"/>
+        <result column="approve_time" property="approveTime"/>
+        <result column="reject_reason" property="rejectReason"/>
+        <result column="approve_comment" property="approveComment"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        request_id, plan_id, initiator_id, initiator_name, initiator_entry_id,
+        initiator_work_date, initiator_shift_type, initiator_shift_name,
+        target_employee_id, target_employee_name, target_entry_id,
+        target_work_date, target_shift_type, target_shift_name,
+        status, reason, approver_id, approver_name, approve_time,
+        reject_reason, approve_comment, create_time, update_time, deleted
+    </sql>
+
+    <!-- 按方案ID查询 -->
+    <select id="selectByPlanId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM swap_requests
+        WHERE plan_id = #{planId} AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 按发起人+状态查询 -->
+    <select id="selectByInitiatorAndStatus" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM swap_requests
+        WHERE initiator_id = #{initiatorId} AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 按目标员工+状态查询 -->
+    <select id="selectByTargetAndStatus" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM swap_requests
+        WHERE target_employee_id = #{targetEmployeeId} AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 按门店统计待审批数量 -->
+    <select id="countPendingByStore" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM swap_requests sr
+        INNER JOIN schedule_plans sp ON sr.plan_id = sp.plan_id
+        WHERE sr.status = 'pending' AND sr.deleted = 0
+        AND sp.store_id = #{storeId} AND sp.deleted = 0
+    </select>
+
+    <!-- 按状态统计（返回各状态的代表记录用于聚合） -->
+    <select id="countByStatus" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM swap_requests
+        WHERE deleted = 0
+        <if test="planId != null and planId != ''">
+            AND plan_id = #{planId}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 分页查询换班请求 -->
+    <select id="selectSwapPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM swap_requests
+        WHERE deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="planId != null and planId != ''">
+            AND plan_id = #{planId}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 统计待处理换班请求数量 -->
+    <select id="countPending" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM swap_requests
+        WHERE status = 'pending' AND deleted = 0
+    </select>
+
+</mapper>

@@ -1,0 +1,15 @@
+# ============================================================
+# 食品溯源系统 - 开发环境配置 (PostgreSQL) - 外部配置覆盖
+# 用于解决内置JAR中 SSL 握手超时问题
+# ============================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB_NAME:food_traceability}?currentSchema=public&useUnicode=true&characterEncoding=utf-8&sslmode=disable&connectTimeout=5&socketTimeout=30&loginTimeout=5
+    username: ${PG_USERNAME:postgres}
+    password: ${PG_PASSWORD:123456}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 10000
+      validation-timeout: 5000
+      initialization-fail-timeout: -1

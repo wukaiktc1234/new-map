@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.TrainingCourseMapper">
+
+    <!-- 分页查询培训课程（支持类型、状态、关键字筛选） -->
+    <select id="selectCoursePage" resultType="com.foodtraceability.entity.TrainingCourse">
+        SELECT * FROM training_course
+        WHERE deleted = 0
+        <if test="courseType != null and courseType != ''">
+            AND course_type = #{courseType}
+        </if>
+        <if test="publishStatus != null and publishStatus != ''">
+            AND publish_status = #{publishStatus}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (LOWER(title) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                 OR LOWER(description) LIKE CONCAT('%', LOWER(#{keyword}), '%'))
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 培训课程统计聚合查询
+         返回单行 Map：
+         - totalCourses: 总课程数
+         - publishedCourses: 已发布课程数
+         - totalAssigned: 总分配人数
+         - totalCompleted: 总完成人数
+         - averageScore: 平均得分 -->
+    <select id="selectCourseStatistics" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalCourses,
+            SUM(CASE WHEN publish_status = 'published' THEN 1 ELSE 0 END) AS publishedCourses,
+            COALESCE(SUM(assigned_count), 0) AS totalAssigned,
+            COALESCE(SUM(completed_count), 0) AS totalCompleted,
+            COALESCE(AVG(average_score), 0) AS averageScore
+        FROM training_course
+        WHERE deleted = 0
+    </select>
+
+</mapper>

@@ -1,0 +1,81 @@
+<view class="store-selector {{show ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+  <view class="selector-mask" bindtap="onClose"></view>
+  <view class="selector-content">
+    <view class="selector-header">
+      <view class="header-title">选择门店</view>
+      <view class="header-close" bindtap="onClose">
+        <view class="close-icon"></view>
+      </view>
+    </view>
+    
+    <view class="location-bar" bindtap="refreshLocation">
+      <view class="location-icon"></view>
+      <view class="location-text">
+        <text wx:if="{{locating}}">正在定位...</text>
+        <text wx:elif="{{locationText}}">{{locationText}}</text>
+        <text wx:else>点击获取您的位置</text>
+      </view>
+      <view class="refresh-icon {{locating ? 'rotating' : ''}}"></view>
+    </view>
+    
+    <view class="store-tabs">
+      <view class="tab-item {{activeTab === 'nearby' ? 'active' : ''}}" bindtap="switchTab" data-tab="nearby">
+        附近门店
+      </view>
+      <view class="tab-item {{activeTab === 'all' ? 'active' : ''}}" bindtap="switchTab" data-tab="all">
+        全部门店
+      </view>
+    </view>
+    
+    <scroll-view class="store-list" scroll-y enhanced show-scrollbar="{{false}}">
+      <view wx:if="{{loading}}" class="loading-state">
+        <view class="loading-spinner"></view>
+        <text>正在加载门店...</text>
+      </view>
+      
+      <view wx:elif="{{stores.length === 0}}" class="empty-state">
+        <view class="empty-icon"></view>
+        <text>暂无门店信息</text>
+      </view>
+      
+      <view wx:else>
+        <view 
+          class="store-item {{currentStore && currentStore.id === item.id ? 'selected' : ''}}" 
+          wx:for="{{stores}}" 
+          wx:key="id"
+          bindtap="selectStore"
+          data-store="{{item}}"
+        >
+          <view class="store-main">
+            <view class="store-name-row">
+              <text class="store-name">{{item.name}}</text>
+              <view class="store-status {{item.status === '营业中' ? 'open' : 'closed'}}">
+                {{item.status}}
+              </view>
+            </view>
+            <view class="store-address">{{item.address}}</view>
+            <view class="store-info-row">
+              <view class="info-item" wx:if="{{item.distance}}">
+                <view class="info-icon distance-icon"></view>
+                <text>{{item.distanceText || item.distance + 'm'}}</text>
+              </view>
+              <view class="info-item">
+                <view class="info-icon time-icon"></view>
+                <text>{{item.businessHours}}</text>
+              </view>
+            </view>
+          </view>
+          <view class="store-action" wx:if="{{currentStore && currentStore.id === item.id}}">
+            <view class="check-icon"></view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    
+    <view class="selector-footer">
+      <view class="confirm-btn {{!currentStore ? 'disabled' : ''}}" bindtap="confirmSelect">
+        <text>{{currentStore ? '确认选择' : '请选择门店'}}</text>
+      </view>
+    </view>
+  </view>
+</view>

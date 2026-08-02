@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.foodtraceability.mapper.InventoryWarningMapper">
+
+    <!-- 分页查询库存预警列表 -->
+    <select id="selectWarningPage" resultType="com.foodtraceability.entity.InventoryWarning">
+        SELECT * FROM inventory_warning
+        WHERE 1=1
+        <if test="warehouseId != null">
+            AND WAREHOUSE_ID = #{warehouseId}
+        </if>
+        <if test="warningLevel != null">
+            AND WARNING_LEVEL = #{warningLevel}
+        </if>
+        <if test="status != null">
+            AND STATUS = #{status}
+        </if>
+        ORDER BY ID DESC
+    </select>
+
+    <!-- 根据产品ID和仓库ID获取库存预警 -->
+    <select id="selectByProductAndWarehouse" resultType="com.foodtraceability.entity.InventoryWarning">
+        SELECT * FROM inventory_warning
+        WHERE PRODUCT_ID = #{productId}
+        AND WAREHOUSE_ID = #{warehouseId}
+        AND (DELETED = 0 OR DELETED IS NULL)
+        ORDER BY ID DESC
+        LIMIT 1
+    </select>
+
+</mapper>

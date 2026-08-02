@@ -1,0 +1,6 @@
+logging:
+  level:
+    org.springframework.web.servlet.mvc.method.annotation: DEBUG
+    org.springframework.web.servlet.handler: DEBUG
+    org.springframework.boot.autoconfigure.web: DEBUG
+    com.foodtraceability.controller: DEBUG

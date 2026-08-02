@@ -1,0 +1,126 @@
+groups:
+  - name: security_alerts
+    rules:
+      - alert: HighLoginFailureRate
+        expr: rate(http_server_requests_seconds_count{uri="/api/v1/auth/login",status=~"4.."}[5m]) > 10
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "高登录失败率"
+          description: "5分钟内登录失败次数超过10次，可能存在暴力破解攻击。当前值: {{ $value }}"
+
+      - alert: PermissionChangeDetected
+        expr: increase(audit_permission_change_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "权限变更事件"
+          description: "检测到权限变更操作，请确认是否为授权操作。"
+
+      - alert: High404Rate
+        expr: rate(http_server_requests_seconds_count{status="404"}[1m]) > 100
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "异常高的404请求频率"
+          description: "404请求频率超过100/分钟，可能存在扫描攻击。当前值: {{ $value }}"
+
+      - alert: RateLimitTriggered
+        expr: rate(http_server_requests_seconds_count{status="429"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "频繁触发限流"
+          description: "5分钟内触发429限流响应超过5次，可能存在DDoS攻击。"
+
+      - alert: JwtBlacklistHit
+        expr: increase(jwt_blacklist_hits_total[5m]) > 10
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "JWT黑名单命中异常"
+          description: "5分钟内JWT黑名单命中超过10次，可能存在令牌泄露或重放攻击。"
+
+  - name: system_alerts
+    rules:
+      - alert: HighCpuUsage
+        expr: 100 - (avg by(instance) (irate(process_cpu_seconds_total[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "CPU使用率过高"
+          description: "CPU使用率超过80%，当前值: {{ $value }}%"
+
+      - alert: HighMemoryUsage
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: system
+        annotations:
+          summary: "堆内存使用率过高"
+          description: "JVM堆内存使用率超过85%，当前值: {{ $value }}%"
+
+      - alert: ServiceDown
+        expr: up{job="food-traceability-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "服务不可用"
+          description: "食品溯源系统后端服务已停止响应超过1分钟。"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "数据库连接池即将耗尽"
+          description: "数据库连接池使用率超过90%，当前值: {{ $value }}%"
+
+      - alert: SlowApiResponse
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "API响应缓慢"
+          description: "95%的API响应时间超过2秒，P95延迟: {{ $value }}秒"
+
+  - name: business_alerts
+    rules:
+      - alert: OrderProcessingDelay
+        expr: increase(orders_pending_total[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "订单处理延迟"
+          description: "待处理订单积压过多，可能影响业务运营。"
+
+      - alert: InventoryLow
+        expr: inventory_level < inventory_reorder_point
+        for: 10m
+        labels:
+          severity: info
+          category: business
+        annotations:
+          summary: "库存预警"
+          description: "部分商品库存低于补货点，请及时补货。"

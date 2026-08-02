@@ -1,0 +1,4 @@
+# Session Inbox Directory
+# This directory contains inter-session messages.
+# Each message is a JSON file named: {from-session}-{timestamp}-{id}.json
+# Broadcast messages use prefix: all-{timestamp}-{id}.json

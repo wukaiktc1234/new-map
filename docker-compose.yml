@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  food-traceability:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: food-traceability-app
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - OCR_PADDLE_URL=http://paddleocr:8868
+    depends_on:
+      - paddleocr
+      - postgres
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  paddleocr:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: paddleocr-service
+    ports:
+      - "8868:8868"
+    environment:
+      - USE_GPU=false
+      - GPU_MEM=2000
+      - OCR_PORT=8868
+    networks:
+      - app-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 2G
+
+  postgres:
+    image: postgres:18
+    container_name: food-traceability-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=food_traceability
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.foodtraceability.mapper.OtherInboundMapper">
+
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.OtherInbound">
+        <id column="id" property="id"/>
+        <result column="inbound_no" property="inboundNo"/>
+        <result column="inbound_type" property="inboundType"/>
+        <result column="product_id" property="productId"/>
+        <result column="product_name" property="productName"/>
+        <result column="quantity" property="quantity"/>
+        <result column="unit" property="unit"/>
+        <result column="warehouse_id" property="warehouseId"/>
+        <result column="warehouse_name" property="warehouseName"/>
+        <result column="inbound_time" property="inboundTime"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="source_id" property="sourceId"/>
+        <result column="return_source" property="returnSource"/>
+        <result column="remark" property="remark"/>
+        <result column="status" property="status"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createdAt"/>
+        <result column="update_time" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectPageByCondition" resultMap="BaseResultMap">
+        SELECT * FROM other_inbound
+        WHERE deleted = 0
+        <if test="inboundType != null and inboundType != ''">
+            AND inbound_type = #{inboundType}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND inbound_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND inbound_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

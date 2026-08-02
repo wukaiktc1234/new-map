@@ -1,0 +1,139 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">确认订单</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="order-content">
+    <view class="delivery-section" wx:if="{{orderType === 'takeout'}}">
+      <view class="section-header">
+        <view class="section-title">配送信息</view>
+        <view class="section-edit" bindtap="selectAddress">修改</view>
+      </view>
+      <view class="address-card" wx:if="{{address}}">
+        <view class="address-name">{{address.name}} {{address.phone}}</view>
+        <view class="address-detail">{{address.province}}{{address.city}}{{address.district}}{{address.detail}}</view>
+      </view>
+      <view class="address-card empty" wx:else bindtap="selectAddress">
+        <view class="address-empty-text">请选择收货地址</view>
+      </view>
+    </view>
+    
+    <view class="pickup-section" wx:if="{{orderType === 'pickup'}}">
+      <view class="pickup-store-card" bindtap="selectStore">
+        <view class="location-icon-wrap">
+          <view class="location-icon"></view>
+        </view>
+        <view class="store-info">
+          <view class="store-name">{{storeName || '一碗好饭（天河店）'}}</view>
+          <view class="store-distance">点击切换门店</view>
+        </view>
+        <view class="arrow-icon"></view>
+      </view>
+      <view class="pickup-time-card">
+        <view class="time-row">
+          <text class="time-label">取餐时间</text>
+          <text class="time-value">{{pickupTime}}</text>
+        </view>
+        <view class="time-tip">请按时到店取餐，过时将自动取消订单</view>
+      </view>
+    </view>
+    
+    <view class="table-section" wx:if="{{orderType === 'dinein'}}">
+      <view class="store-card">
+        <view class="store-icon">
+          <view class="icon-home"></view>
+        </view>
+        <view class="store-info">
+          <view class="store-name">{{storeName || '一碗好饭（天河店）'}}</view>
+          <view class="store-detail">桌号：{{tableNo}} · 预计15分钟后送餐</view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="items-section">
+      <view class="section-header">
+        <view class="section-title">订单商品</view>
+        <view class="section-count">共{{totalCount}}件</view>
+      </view>
+      <view class="items-list">
+        <view class="item-row" wx:for="{{items}}" wx:key="id">
+          <image class="item-image" src="{{item.image}}" mode="aspectFill" />
+          <view class="item-info">
+            <view class="item-name">{{item.name}}</view>
+            <view class="item-price-qty">
+              <text class="item-price">¥{{item.price}}</text>
+              <text class="item-qty">x{{item.quantity}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="fee-section">
+      <view class="fee-row">
+        <text class="fee-label">商品金额</text>
+        <text class="fee-value">¥{{subtotal}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{packFee > 0}}">
+        <text class="fee-label">餐具费</text>
+        <text class="fee-value">¥{{packFee}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{deliveryFee > 0}}">
+        <text class="fee-label">配送费</text>
+        <text class="fee-value">¥{{deliveryFee}}</text>
+      </view>
+      <view class="fee-row total">
+        <text class="fee-label">合计</text>
+        <text class="fee-value">¥{{total}}</text>
+      </view>
+    </view>
+    
+    <view class="recommend-section">
+      <view class="section-header">
+        <view class="section-title">推荐菜品</view>
+      </view>
+      <scroll-view class="recommend-scroll" scroll-x>
+        <view class="recommend-list">
+          <view class="recommend-item" wx:for="{{recommendItems}}" wx:key="id" bindtap="addToCart" data-item="{{item}}">
+            <image class="recommend-image" src="{{item.image || '/images/default-dish.png'}}" mode="aspectFill" />
+            <view class="recommend-info">
+              <view class="recommend-name">{{item.name}}</view>
+              <view class="recommend-price">¥{{item.price}}</view>
+            </view>
+            <view class="add-btn">+</view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+    
+    <view class="remark-section">
+      <view class="section-header">
+        <view class="section-title">备注</view>
+      </view>
+      <textarea class="remark-input" placeholder="请输入备注信息（选填）" bindinput="onRemarkInput" value="{{remark}}" />
+    </view>
+  </view>
+  
+  <view class="bottom-bar">
+    <view class="price-info">
+      <text class="price-label">应付金额</text>
+      <text class="price-value">¥{{total}}</text>
+    </view>
+    <view class="submit-btn" bindtap="submitOrder">提交订单</view>
+  </view>
+  
+  <view class="loading-mask" wx:if="{{loading}}">
+    <view class="loading-spinner"></view>
+    <view class="loading-text">加载中...</view>
+  </view>
+</view>

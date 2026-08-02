@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.foodtraceability.mapper.InventoryTransferMapper">
+
+    <!-- 调拨单结果映射：列名对齐 inventory_transfers 真实 schema -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.InventoryTransfer">
+        <id column="transfer_id" property="id"/>
+        <result column="transfer_code" property="transferCode"/>
+        <result column="product_id" property="productId"/>
+        <result column="product_name" property="productName"/>
+        <result column="from_warehouse_id" property="fromWarehouseId"/>
+        <result column="from_warehouse_name" property="fromWarehouseName"/>
+        <result column="to_warehouse_id" property="toWarehouseId"/>
+        <result column="to_warehouse_name" property="toWarehouseName"/>
+        <result column="transfer_quantity" property="transferQuantity"/>
+        <result column="remark" property="remark"/>
+        <result column="transfer_date" property="transferDate"/>
+        <result column="transfer_status" property="status"/>
+        <result column="create_user_id" property="createUserId"/>
+        <result column="create_time" property="createdAt"/>
+        <result column="update_time" property="updatedAt"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        transfer_id, transfer_code, product_id, product_name, from_warehouse_id, from_warehouse_name,
+        to_warehouse_id, to_warehouse_name, transfer_quantity, remark,
+        transfer_date, transfer_status, create_user_id, create_time, update_time, deleted
+    </sql>
+
+    <select id="selectInventoryTransferPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM inventory_transfers
+        WHERE deleted = 0
+        <if test="transferNo != null and transferNo != ''">
+            AND transfer_code LIKE CONCAT('%', #{transferNo}, '%')
+        </if>
+        <if test="fromWarehouseId != null">
+            AND from_warehouse_id = #{fromWarehouseId}
+        </if>
+        <if test="toWarehouseId != null">
+            AND to_warehouse_id = #{toWarehouseId}
+        </if>
+        <if test="status != null and status != ''">
+            AND transfer_status = #{status}
+        </if>
+        <if test="applyTimeStart != null and applyTimeStart != ''">
+            AND transfer_date &gt;= #{applyTimeStart}
+        </if>
+        <if test="applyTimeEnd != null and applyTimeEnd != ''">
+            AND transfer_date &lt;= #{applyTimeEnd}
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

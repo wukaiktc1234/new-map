@@ -1,0 +1,245 @@
+// ========================================
+//  ITCSS Layer 1: Settings — 设计令牌
+//  办公轻奢风格，所有样式变量的唯一权威来源
+// ========================================
+
+:root {
+  /* ========================================
+     品牌色彩
+     ======================================== */
+  --fts-primary: #1a5fb4;
+  --fts-primary-rgb: 26, 95, 180;
+  --fts-primary-hover: #3584e4;
+  --fts-primary-active: #104a8e;
+  --fts-primary-light: #e8f0fe;
+  --fts-primary-bg: #f0f5ff;
+
+  --fts-success: #34a853;
+  --fts-success-hover: #47b56a;
+  --fts-success-active: #2d8f47;
+  --fts-success-light: #e8f5e9;
+  --fts-success-bg: #f0f9f0;
+
+  --fts-warning: #f9ab00;
+  --fts-warning-hover: #ffbc2a;
+  --fts-warning-active: #e09a00;
+  --fts-warning-light: #fff8e1;
+  --fts-warning-bg: #fffbed;
+
+  --fts-error: #ea4335;
+  --fts-error-hover: #f05b4e;
+  --fts-error-active: #d33b2d;
+  --fts-error-light: #fce8e6;
+  --fts-error-bg: #fef2f1;
+
+  --fts-info: #5f6368;
+  --fts-info-hover: #74797e;
+  --fts-info-active: #4f5358;
+  --fts-info-light: #f1f3f4;
+  --fts-info-bg: #f8f9fa;
+
+  /* ========================================
+     背景色
+     ======================================== */
+  --fts-bg-page: #f5f7fa;
+  --fts-bg-card: #ffffff;
+  --fts-bg-hover: #e8f4fd;
+  --fts-bg-selected: #d0e3ff;
+  --fts-bg-secondary: #f1f3f4;
+  --fts-bg-tertiary: #f8f9fa;
+
+  /* ========================================
+     文字色
+     ======================================== */
+  --fts-text-primary: #1f2937;
+  --fts-text-secondary: #4b5563;
+  --fts-text-tertiary: #9ca3af;
+  --fts-text-placeholder: #c0c4cc;
+  --fts-text-disabled: #c0c4cc;
+  --fts-text-inverse: #ffffff;
+  --fts-text-link: #1a5fb4;
+
+  --fts-salary-high: #ea4335;
+  --fts-salary-medium: #f9ab00;
+  --fts-salary-low: #34a853;
+
+  /* ========================================
+     图表配色序列
+     ======================================== */
+  --fts-chart-color-1: var(--fts-primary);
+  --fts-chart-color-2: var(--fts-success);
+  --fts-chart-color-3: var(--fts-warning);
+  --fts-chart-color-4: var(--fts-error);
+  --fts-chart-color-5: #8b5cf6;
+  --fts-chart-color-6: #ec4899;
+  --fts-chart-color-7: #14b8a6;
+  --fts-chart-color-8: #f97316;
+
+  /* ========================================
+     边框色
+     ======================================== */
+  --fts-border-primary: #e5e7eb;
+  --fts-border-secondary: #f3f4f6;
+  --fts-border-hover: #d1d5db;
+  --fts-border-focus: #1a5fb4;
+
+  /* ========================================
+     状态标签颜色
+     ======================================== */
+  --fts-status-default-color: #757575;
+  --fts-status-default-bg: #f5f5f5;
+  --fts-status-default-border: transparent;
+  --fts-status-active-color: #2e7d32;
+  --fts-status-active-bg: #e8f5e9;
+  --fts-status-inactive-color: #616161;
+  --fts-status-inactive-bg: #f1f3f4;
+  --fts-status-probation-color: #b45309;
+  --fts-status-probation-bg: #fff8e1;
+  --fts-status-pending-color: #1565c0;
+  --fts-status-pending-bg: #e8f0fe;
+  --fts-status-success-color: #2e7d32;
+  --fts-status-success-bg: #e8f5e9;
+  --fts-status-error-color: #c62828;
+  --fts-status-error-bg: #fce8e6;
+  --fts-status-orange-color: #e65100;
+  --fts-status-orange-bg: #fdeee5;
+  --fts-status-orange-border: transparent;
+  --fts-status-warning-color: #b45309;
+  --fts-status-warning-bg: #fff8e1;
+  --fts-status-info-color: #5a8fc7;
+  --fts-status-primary-color: #1565c0;
+  --fts-status-primary-bg: #e8f0fe;
+  --fts-status-primary-border: transparent;
+  --fts-status-danger-color: #c62828;
+  --fts-status-danger-bg: #fce8e6;
+  --fts-status-danger-border: transparent;
+  --fts-status-info-bg: #eaf2fa;
+
+  --fts-status-active-border: #c8e6c9;
+  --fts-status-inactive-border: #e0e0e0;
+  --fts-status-probation-border: #ffe082;
+  --fts-status-pending-border: #bbdefb;
+  --fts-status-success-border: #c8e6c9;
+  --fts-status-error-border: #ffcdd2;
+  --fts-status-warning-border: #ffe082;
+  --fts-status-info-border: #e0e0e0;
+
+  --fts-category-department-color: #1565c0;
+  --fts-category-department-bg: #e3f2fd;
+  --fts-category-department-border: #bbdefb;
+  --fts-category-position-color: #1565c0;
+  --fts-category-position-bg: #e3f2fd;
+  --fts-category-position-border: #bbdefb;
+  --fts-category-type-color: #4e342e;
+  --fts-category-type-bg: #efebe9;
+  --fts-category-type-border: #d7ccc8;
+  --fts-category-location-color: #e65100;
+  --fts-category-location-bg: #fff3e0;
+  --fts-category-location-border: #ffe0b2;
+  --fts-category-device-color: #37474f;
+  --fts-category-device-bg: #eceff1;
+  --fts-category-device-border: #cfd8dc;
+  --fts-category-connection-color: #1b5e20;
+  --fts-category-connection-bg: #e8f5e9;
+  --fts-category-connection-border: #c8e6c9;
+  --fts-category-document-color: #1565c0;
+  --fts-category-document-bg: #e3f2fd;
+  --fts-category-document-border: #bbdefb;
+  --fts-category-tag-color: #4e342e;
+  --fts-category-tag-bg: #efebe9;
+  --fts-category-tag-border: #d7ccc8;
+  --fts-category-config-color: #e65100;
+  --fts-category-config-bg: #fff3e0;
+  --fts-category-config-border: #ffe0b2;
+
+  /* category tag 视觉增强（雕刻感/边框/图标背景） */
+  --fts-category-tag-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 2px rgba(0,0,0,0.04);
+  --fts-category-tag-icon-bg: rgba(255, 255, 255, 0.45);
+  --fts-category-tag-icon-border: rgba(0, 0, 0, 0.12);
+  --fts-category-tag-icon-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  --fts-category-tag-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+
+  /* ========================================
+     间距系统
+     ======================================== */
+  --fts-space-1: 4px;
+  --fts-space-2: 8px;
+  --fts-space-3: 12px;
+  --fts-space-4: 16px;
+  --fts-space-5: 20px;
+  --fts-space-6: 24px;
+  --fts-space-7: 28px;
+  --fts-space-8: 32px;
+  --fts-space-10: 40px;
+  --fts-space-12: 48px;
+
+  /* ========================================
+     页面缩放（必须在字体变量之前定义）
+     ======================================== */
+  --fts-page-font-scale: 1;
+  --fts-page-icon-scale: 1;
+
+  /* ========================================
+     字体系统（通过 --fts-page-font-scale 支持全局缩放）
+     ======================================== */
+  --fts-font-size-2xs: calc(10px * var(--fts-page-font-scale));
+  --fts-font-size-xs: calc(12px * var(--fts-page-font-scale));
+  --fts-font-size-sm: calc(13px * var(--fts-page-font-scale));
+  --fts-font-size-base: calc(14px * var(--fts-page-font-scale));
+  --fts-font-size-md: calc(14px * var(--fts-page-font-scale));
+  --fts-font-size-lg: calc(16px * var(--fts-page-font-scale));
+  --fts-font-size-xl: calc(18px * var(--fts-page-font-scale));
+  --fts-font-size-2xl: calc(20px * var(--fts-page-font-scale));
+  --fts-font-size-3xl: calc(24px * var(--fts-page-font-scale));
+
+  --fts-font-weight-normal: 400;
+  --fts-font-weight-medium: 500;
+  --fts-font-weight-semibold: 600;
+  --fts-font-weight-bold: 700;
+
+  --fts-line-height-tight: 1.25;
+  --fts-line-height-normal: 1.5;
+  --fts-line-height-loose: 1.75;
+
+  /* ========================================
+     阴影系统
+     ======================================== */
+  --fts-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --fts-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --fts-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+  --fts-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+
+  /* ========================================
+     圆角系统
+     ======================================== */
+  --fts-radius-sm: 4px;
+  --fts-radius-md: 6px;
+  --fts-radius-lg: 8px;
+  --fts-radius-xl: 12px;
+  --fts-radius-full: 9999px;
+
+  --fts-page-radius: var(--fts-radius-lg);
+
+  /* ========================================
+     动画系统
+     ======================================== */
+  --fts-duration-fast: 150ms;
+  --fts-duration-normal: 250ms;
+  --fts-duration-slow: 350ms;
+
+  --fts-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --fts-easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --fts-easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --fts-easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ========================================
+     层级系统
+     ======================================== */
+  --fts-z-dropdown: 1000;
+  --fts-z-sticky: 1020;
+  --fts-z-fixed: 1030;
+  --fts-z-modal-backdrop: 1040;
+  --fts-z-modal: 1050;
+  --fts-z-popover: 1060;
+  --fts-z-tooltip: 1070;
+}

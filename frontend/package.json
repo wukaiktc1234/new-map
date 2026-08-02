@@ -1,0 +1,39 @@
+{
+  "name": "food-traceability-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "h5-server": "node scripts/h5-server.cjs",
+    "h5-server:secure": "node scripts/h5-server-secure.cjs",
+    "dev:all": "concurrently \"npm run dev\" \"npm run h5-server:secure\"",
+    "dev:safe": "concurrently \"npm run dev\" \"npm run h5-server:secure\""
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@playwright/mcp": "^0.0.78",
+    "@stomp/stompjs": "^7.3.0",
+    "@wangeditor/editor": "^5.1.23",
+    "@wangeditor/editor-for-vue": "^5.1.12",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.13.7",
+    "md-editor-v3": "^6.5.1",
+    "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
+    "sass": "^1.99.0",
+    "sockjs-client": "^1.6.1",
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/sockjs-client": "^1.5.4",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "typescript": "~6.0.0",
+    "vite": "^8.0.8",
+    "vue-tsc": "^3.2.6"
+  }
+}

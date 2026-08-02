@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.PurchaseLedgerMapper">
+
+    <!-- 进货台账结果映射 -->
+    <resultMap id="ledgerResultMap" type="com.foodtraceability.entity.PurchaseLedger">
+        <id column="ledger_id" property="ledgerId"/>
+        <result column="ledger_no" property="ledgerNo"/>
+        <result column="purchase_stockin_id" property="purchaseStockinId"/>
+        <result column="supplier_id" property="supplierId"/>
+        <result column="supplier_name" property="supplierName"/>
+        <result column="material_name" property="materialName"/>
+        <result column="specification" property="specification"/>
+        <result column="unit" property="unit"/>
+        <result column="quantity" property="quantity"/>
+        <result column="unit_price" property="unitPrice"/>
+        <result column="amount" property="amount"/>
+        <result column="batch_no" property="batchNo"/>
+        <result column="production_date" property="productionDate"/>
+        <result column="expiry_date" property="expiryDate"/>
+        <result column="quality_inspection_result" property="qualityInspectionResult"/>
+        <result column="inspection_user_id" property="inspectionUserId"/>
+        <result column="inspection_time" property="inspectionTime"/>
+        <result column="certificate_no" property="certificateNo"/>
+        <result column="certificate_type" property="certificateType"/>
+        <result column="certificate_image_url" property="certificateImageUrl"/>
+        <result column="storage_location" property="storageLocation"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 根据供应商ID查询台账列表 -->
+    <select id="selectBySupplierId" resultMap="ledgerResultMap">
+        SELECT * FROM purchase_ledgers
+        WHERE supplier_id = #{supplierId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据批次号查询台账列表 -->
+    <select id="selectByBatchNo" resultMap="ledgerResultMap">
+        SELECT * FROM purchase_ledgers
+        WHERE batch_no = #{batchNo}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询即将过期的台账记录 -->
+    <select id="selectExpiringWithinDays" resultMap="ledgerResultMap">
+        SELECT * FROM purchase_ledgers
+        WHERE expiry_date IS NOT NULL
+          AND expiry_date BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '#{days}' DAY)
+        ORDER BY expiry_date ASC
+    </select>
+
+    <!-- 查询已过期的台账记录 -->
+    <select id="selectExpired" resultMap="ledgerResultMap">
+        SELECT * FROM purchase_ledgers
+        WHERE expiry_date IS NOT NULL AND expiry_date &lt; #{expiryDate}
+        ORDER BY expiry_date ASC
+    </select>
+
+    <!-- 统计按供应商分组的采购金额 -->
+    <select id="selectAmountGroupBySupplier" resultMap="ledgerResultMap">
+        SELECT supplier_id, supplier_name, SUM(amount) as total_amount,
+               COUNT(*) as ledger_count
+        FROM purchase_ledgers
+        GROUP BY supplier_id, supplier_name
+        ORDER BY total_amount DESC
+    </select>
+
+</mapper>

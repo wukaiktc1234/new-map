@@ -1,0 +1,100 @@
+<view class="page-container">
+  <view class="fixed-header">
+    <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+    
+    <view class="header-bar">
+      <view class="header-left">
+        <view class="back-btn" bindtap="goBack">
+          <view class="back-icon"></view>
+        </view>
+      </view>
+      <view class="header-center">
+        <view class="header-title">会员码</view>
+      </view>
+      <view class="header-right"></view>
+    </view>
+  </view>
+  
+  <view class="header-placeholder" style="height: calc({{statusBarHeight}}px + 112rpx);"></view>
+  
+  <view class="balance-section">
+    <view class="balance-card">
+      <view class="balance-info">
+        <text class="balance-label">账户余额</text>
+        <view class="balance-value">
+          <text class="currency">¥</text>
+          <text class="amount">{{balance}}</text>
+        </view>
+      </view>
+      <view class="recharge-entry" bindtap="goToRecharge">
+        <text>充值</text>
+        <view class="arrow-icon"></view>
+      </view>
+    </view>
+  </view>
+  
+  <view class="code-section">
+    <view class="qrcode-card">
+      <view class="qrcode-header">
+        <text class="qrcode-title">付款码</text>
+        <view class="refresh-btn" bindtap="refreshCode">
+          <view class="refresh-icon"></view>
+          <text>刷新</text>
+        </view>
+      </view>
+      
+      <view class="qrcode-wrap">
+        <view class="qrcode-box"></view>
+        <text class="member-code">{{memberCode}}</text>
+      </view>
+      
+      <view class="qrcode-tip">
+        <text>请向收银员出示此码，扫码后即可完成支付</text>
+      </view>
+      
+      <view class="low-balance" wx:if="{{balance < 10}}">
+        <view class="warning-icon"></view>
+        <text>余额不足，请先充值</text>
+        <view class="recharge-btn" bindtap="showRechargeModal">立即充值</view>
+      </view>
+    </view>
+  </view>
+  
+  <view class="tips-section">
+    <view class="tips-title">使用说明</view>
+    <view class="tips-list">
+      <text>1. 会员码可用于门店消费支付</text>
+      <text>2. 支付时请向收银员出示此码</text>
+      <text>3. 余额不足时请先充值再使用</text>
+      <text>4. 如有问题请联系客服：400-888-8888</text>
+    </view>
+  </view>
+  
+  <view class="recharge-modal" wx:if="{{showRecharge}}" catchtouchmove="true">
+    <view class="modal-mask" bindtap="hideRechargeModal"></view>
+    <view class="modal-content">
+      <view class="modal-header">
+        <text class="modal-title">快速充值</text>
+        <view class="modal-close" bindtap="hideRechargeModal"></view>
+      </view>
+      <view class="modal-body">
+        <view class="amount-grid">
+          <view 
+            class="amount-item {{rechargeAmount === item ? 'active' : ''}}" 
+            wx:for="{{rechargeOptions}}" 
+            wx:key="*this"
+            bindtap="selectRechargeAmount"
+            data-amount="{{item}}"
+          >
+            ¥{{item}}
+          </view>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <view class="confirm-btn" bindtap="confirmRecharge">确认充值</view>
+      </view>
+    </view>
+  </view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+</view>

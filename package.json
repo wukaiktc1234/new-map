@@ -1,0 +1,24 @@
+{
+  "dependencies": {
+    "axios": "^1.13.2"
+  },
+  "name": "my-new-project",
+  "version": "1.0.0",
+  "description": "面向个体餐饮企业的全栈溯源管理平台。",
+  "main": "check-errors.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "playwright": "^1.61.1",
+    "tsx": "^4.23.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

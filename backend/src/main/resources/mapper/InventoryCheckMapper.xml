@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.foodtraceability.mapper.InventoryCheckMapper">
+
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.InventoryCheck">
+        <id column="ID" property="id"/>
+        <result column="CHECK_CODE" property="checkCode"/>
+        <result column="WAREHOUSE_ID" property="warehouseId"/>
+        <result column="WAREHOUSE_NAME" property="warehouseName"/>
+        <result column="CHECK_DATE" property="checkDate"/>
+        <result column="CHECK_PERSON_ID" property="checkPersonId"/>
+        <result column="CHECK_PERSON_NAME" property="checkPersonName"/>
+        <result column="STATUS" property="status"/>
+        <result column="TOTAL_PRODUCTS" property="totalProducts"/>
+        <result column="DIFFERENCE_PRODUCTS" property="differenceProducts"/>
+        <result column="TOTAL_DIFFERENCE_QUANTITY" property="totalDifferenceQuantity"/>
+        <result column="REMARK" property="remark"/>
+        <result column="CREATE_TIME" property="createdAt"/>
+        <result column="UPDATE_TIME" property="updatedAt"/>
+        <result column="DELETED" property="deleted"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        ID, CHECK_CODE, WAREHOUSE_ID, WAREHOUSE_NAME, CHECK_DATE, CHECK_PERSON_ID,
+        CHECK_PERSON_NAME, STATUS, TOTAL_PRODUCTS, DIFFERENCE_PRODUCTS,
+        TOTAL_DIFFERENCE_QUANTITY, REMARK, CREATE_TIME, UPDATE_TIME, DELETED
+    </sql>
+
+    <select id="selectInventoryCheckPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM inventory_check
+        WHERE DELETED = 0
+        <if test="taskName != null and taskName != ''">
+            AND CHECK_CODE LIKE CONCAT('%', #{taskName}, '%')
+        </if>
+        <if test="checkType != null and checkType != ''">
+            AND CHECK_TYPE = #{checkType}
+        </if>
+        <if test="status != null and status != ''">
+            AND STATUS = #{status}
+        </if>
+        <if test="warehouseId != null">
+            AND WAREHOUSE_ID = #{warehouseId}
+        </if>
+        <if test="checkDate != null and checkDate != ''">
+            AND DATE(CHECK_DATE) = #{checkDate}
+        </if>
+        ORDER BY CREATE_TIME DESC
+    </select>
+
+</mapper>

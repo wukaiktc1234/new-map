@@ -1,0 +1,356 @@
+{
+  "meta": {
+    "tag": "ent-v3-mrm0oc7v",
+    "timestamp": 1784116124635
+  },
+  "summary": {
+    "total": 57,
+    "passed": 53,
+    "failed": 4,
+    "warns": 0
+  },
+  "results": [
+    {
+      "phase": "开业准备",
+      "test": "1.1 系统配置页面",
+      "status": "PASS",
+      "detail": "长度: 295"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.2 门店对话框",
+      "status": "PASS",
+      "detail": "对话框: 1"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.3 门店数据验证",
+      "status": "PASS",
+      "detail": "搜索验证: true"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.4 分类页面",
+      "status": "PASS",
+      "detail": "加载成功"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.5 菜品对话框",
+      "status": "PASS",
+      "detail": "对话框: 1"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.6 菜品数据验证",
+      "status": "FAIL",
+      "detail": "搜索验证: false"
+    },
+    {
+      "phase": "开业准备",
+      "test": "1.7 定价页面",
+      "status": "PASS",
+      "detail": "加载成功"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.1 供应商列表",
+      "status": "PASS",
+      "detail": "加载成功"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.2 供应商对话框",
+      "status": "PASS",
+      "detail": "对话框: 1"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.3 供应商数据验证",
+      "status": "FAIL",
+      "detail": "搜索验证: false"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.4 采购订单",
+      "status": "PASS",
+      "detail": "长度: 598"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.5 采购入库",
+      "status": "PASS",
+      "detail": "长度: 194"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.6 采购退货",
+      "status": "PASS",
+      "detail": "长度: 194"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.7 采购合同",
+      "status": "PASS",
+      "detail": "长度: 660"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.8 库存概览",
+      "status": "PASS",
+      "detail": "长度: 535, 行数: 0"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.9 库存明细",
+      "status": "PASS",
+      "detail": "长度: 450, 行数: 1"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.10 库存盘点",
+      "status": "PASS",
+      "detail": "长度: 209, 行数: 0"
+    },
+    {
+      "phase": "采购仓储",
+      "test": "2.11 库存预警",
+      "status": "PASS",
+      "detail": "长度: 390, 行数: 0"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.1 员工对话框",
+      "status": "PASS",
+      "detail": "对话框: 1"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.2 员工数据验证",
+      "status": "FAIL",
+      "detail": "搜索验证: false"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.3 合同管理",
+      "status": "PASS",
+      "detail": "长度: 484"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.4 考勤管理",
+      "status": "PASS",
+      "detail": "长度: 473"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.5 薪资管理",
+      "status": "PASS",
+      "detail": "长度: 1103"
+    },
+    {
+      "phase": "人事管理",
+      "test": "3.6 招聘管理",
+      "status": "PASS",
+      "detail": "长度: 477"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.1 订单查询",
+      "status": "PASS",
+      "detail": "长度: 2069, 行数: 20"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.2 订单统计",
+      "status": "PASS",
+      "detail": "长度: 526, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.3 退款管理",
+      "status": "PASS",
+      "detail": "长度: 404, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.4 预约管理",
+      "status": "PASS",
+      "detail": "长度: 473, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.5 运营分析",
+      "status": "PASS",
+      "detail": "长度: 259, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.6 经营报表",
+      "status": "PASS",
+      "detail": "长度: 602, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.7 运营策略",
+      "status": "PASS",
+      "detail": "长度: 264, 行数: 0"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.8 会员列表",
+      "status": "PASS",
+      "detail": "长度: 264"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.9 会员积分",
+      "status": "PASS",
+      "detail": "长度: 264"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.10 会员等级",
+      "status": "PASS",
+      "detail": "长度: 264"
+    },
+    {
+      "phase": "运营销售",
+      "test": "4.11 会员互动",
+      "status": "PASS",
+      "detail": "长度: 264"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.1 财务总账",
+      "status": "PASS",
+      "detail": "长度: 509, 行数: 1"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.2 凭证管理",
+      "status": "PASS",
+      "detail": "长度: 269, 行数: 0"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.3 费用管理",
+      "status": "PASS",
+      "detail": "长度: 269, 行数: 0"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.4 财务报表",
+      "status": "PASS",
+      "detail": "长度: 269, 行数: 0"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.5 资产台账",
+      "status": "PASS",
+      "detail": "长度: 808, 行数: 3"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.6 资产折旧",
+      "status": "PASS",
+      "detail": "长度: 736, 行数: 3"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.7 资产盘点",
+      "status": "PASS",
+      "detail": "长度: 279, 行数: 0"
+    },
+    {
+      "phase": "财务资产",
+      "test": "5.8 资产调拨",
+      "status": "PASS",
+      "detail": "长度: 279, 行数: 0"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.1 溯源列表",
+      "status": "PASS",
+      "detail": "长度: 279"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.2 溯源批次",
+      "status": "PASS",
+      "detail": "长度: 279"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.3 设备列表",
+      "status": "PASS",
+      "detail": "长度: 540"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.4 设备维护",
+      "status": "PASS",
+      "detail": "长度: 284"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.5 签章管理",
+      "status": "PASS",
+      "detail": "长度: 284"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.6 签章申请",
+      "status": "PASS",
+      "detail": "长度: 284"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.7 权限中心",
+      "status": "PASS",
+      "detail": "长度: 516"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.8 系统配置",
+      "status": "PASS",
+      "detail": "长度: 421"
+    },
+    {
+      "phase": "合规管理",
+      "test": "6.9 操作审计",
+      "status": "PASS",
+      "detail": "长度: 471"
+    },
+    {
+      "phase": "收尾验证",
+      "test": "7.1 工作台",
+      "status": "PASS",
+      "detail": "长度: 651"
+    },
+    {
+      "phase": "收尾验证",
+      "test": "7.2 个人中心",
+      "status": "PASS",
+      "detail": "长度: 294"
+    },
+    {
+      "phase": "收尾验证",
+      "test": "7.3 门店数据持久化",
+      "status": "PASS",
+      "detail": "搜索“V3门店-ent-v3-mrm0oc7v”: true"
+    },
+    {
+      "phase": "收尾验证",
+      "test": "7.4 供应商数据持久化",
+      "status": "FAIL",
+      "detail": "搜索“V3供应商-ent-v3-mrm0oc7v”: false"
+    },
+    {
+      "phase": "收尾验证",
+      "test": "7.5 16模块路由全覆盖",
+      "status": "PASS",
+      "detail": "全部通过"
+    }
+  ]
+}

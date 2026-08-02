@@ -1,0 +1,18 @@
+<view class="custom-tab-bar">
+  <view class="tab-item {{active === 0 ? 'active' : ''}}" bindtap="switchTab" data-index="0" data-url="/pages/index/index">
+    <view class="tab-icon home-icon"></view>
+    <text class="tab-text">首页</text>
+  </view>
+  <view class="tab-item {{active === 1 ? 'active' : ''}}" bindtap="switchTab" data-index="1" data-url="/pages/menu-dinein/menu-dinein">
+    <view class="tab-icon menu-icon"></view>
+    <text class="tab-text">菜单</text>
+  </view>
+  <view class="tab-item {{active === 2 ? 'active' : ''}}" bindtap="switchTab" data-index="2" data-url="/pages/order-list/order-list">
+    <view class="tab-icon order-icon"></view>
+    <text class="tab-text">订单</text>
+  </view>
+  <view class="tab-item {{active === 3 ? 'active' : ''}}" bindtap="switchTab" data-index="3" data-url="/pages/profile/profile">
+    <view class="tab-icon profile-icon"></view>
+    <text class="tab-text">我的</text>
+  </view>
+</view>

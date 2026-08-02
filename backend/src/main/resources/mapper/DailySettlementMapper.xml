@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.DailySettlementMapper">
+
+    <!-- 日结记录结果映射 -->
+    <resultMap id="DailySettlementResultMap" type="com.foodtraceability.entity.DailySettlement">
+        <id column="settlement_id" property="settlementId"/>
+        <result column="store_id" property="storeId"/>
+        <result column="settlement_date" property="settlementDate"/>
+        <result column="total_revenue" property="totalRevenue"/>
+        <result column="total_cost" property="totalCost"/>
+        <result column="net_profit" property="netProfit"/>
+        <result column="gross_profit_rate" property="grossProfitRate"/>
+        <result column="order_count" property="orderCount"/>
+        <result column="avg_order_value" property="avgOrderValue"/>
+        <result column="table_usage_rate" property="tableUsageRate"/>
+        <result column="difference_amount" property="differenceAmount"/>
+        <result column="auditor_id" property="auditorId"/>
+        <result column="auditor_name" property="auditorName"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="version" property="version"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 查询列片段 -->
+    <sql id="selectSettlementColumns">
+        settlement_id, store_id, settlement_date, total_revenue, total_cost,
+        net_profit, gross_profit_rate, order_count, avg_order_value,
+        table_usage_rate, difference_amount, auditor_id, auditor_name,
+        status, remark, version, deleted, create_time, update_time
+    </sql>
+
+    <!-- 查询条件片段 -->
+    <sql id="queryCondition">
+        <where>
+            <if test="query.storeId != null and query.storeId != ''">
+                AND store_id = #{query.storeId}
+            </if>
+            <if test="query.status != null and query.status != ''">
+                AND status = #{query.status}
+            </if>
+            <if test="query.startDate != null">
+                AND settlement_date &gt;= #{query.startDate}
+            </if>
+            <if test="query.endDate != null">
+                AND settlement_date &lt;= #{query.endDate}
+            </if>
+            <if test="query.auditorId != null and query.auditorId != ''">
+                AND auditor_id = #{query.auditorId}
+            </if>
+        </where>
+    </sql>
+
+    <!--
+        分页查询日结记录
+        支持按门店、日期范围、状态等条件筛选，按结算日期降序排序
+    -->
+    <select id="selectSettlementPage" resultMap="DailySettlementResultMap">
+        SELECT <include refid="selectSettlementColumns"/>
+        FROM daily_settlements
+        <include refid="queryCondition"/>
+        ORDER BY settlement_date DESC, create_time DESC
+    </select>
+
+    <!--
+        根据门店ID和结算日期查询日结记录
+        用于防止重复生成同一天同一门店的结算单
+    -->
+    <select id="selectByStoreAndDate" resultMap="DailySettlementResultMap">
+        SELECT <include refid="selectSettlementColumns"/>
+        FROM daily_settlements
+        WHERE store_id = #{storeId}
+          AND settlement_date = #{settlementDate}
+        LIMIT 1
+    </select>
+
+    <!--
+        按日期范围查询日结记录列表
+        用于定时任务和导出功能，按结算日期升序排序
+    -->
+    <select id="listByDateRange" resultMap="DailySettlementResultMap">
+        SELECT <include refid="selectSettlementColumns"/>
+        FROM daily_settlements
+        WHERE store_id = #{storeId}
+          AND settlement_date &gt;= #{startDate}
+          AND settlement_date &lt;= #{endDate}
+        ORDER BY settlement_date ASC, create_time ASC
+    </select>
+
+</mapper>

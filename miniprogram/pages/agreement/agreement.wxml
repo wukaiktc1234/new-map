@@ -1,0 +1,24 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">{{title}}</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="content-scroll">
+    <view class="agreement-content">
+      <view class="section" wx:for="{{content}}" wx:key="title">
+        <view class="section-title">{{item.title}}</view>
+        <view class="section-text">{{item.content}}</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.RolePermissionMapper">
+
+    <!-- 批量插入角色权限关联 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO role_permissions (role_id, permission_id, create_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.roleId}, #{item.permissionId}, NOW())
+        </foreach>
+    </insert>
+
+</mapper>

@@ -1,0 +1,93 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">收货地址</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="address-list">
+    <view class="address-card" wx:for="{{addresses}}" wx:key="id">
+      <view class="address-content" bindtap="selectAddress" data-id="{{item.id}}">
+        <view class="address-header">
+          <text class="address-name">{{item.name}}</text>
+          <text class="address-phone">{{item.phone}}</text>
+          <view class="default-tag" wx:if="{{item.isDefault}}">默认</view>
+        </view>
+        <view class="address-detail">{{item.province}}{{item.city}}{{item.district}}{{item.detail}}</view>
+      </view>
+      <view class="address-actions">
+        <view class="action-item" bindtap="setDefault" data-id="{{item.id}}" wx:if="{{!item.isDefault}}">
+          <view class="action-icon set-icon"></view>
+          <text>设为默认</text>
+        </view>
+        <view class="action-item" bindtap="editAddress" data-id="{{item.id}}">
+          <view class="action-icon edit-icon"></view>
+          <text>编辑</text>
+        </view>
+        <view class="action-item" bindtap="deleteAddress" data-id="{{item.id}}">
+          <view class="action-icon delete-icon"></view>
+          <text>删除</text>
+        </view>
+      </view>
+    </view>
+    
+    <view class="empty-state" wx:if="{{addresses.length === 0}}">
+      <view class="empty-icon"></view>
+      <view class="empty-text">暂无收货地址</view>
+    </view>
+  </view>
+  
+  <view class="add-btn" bindtap="addAddress">
+    <text>+ 新增收货地址</text>
+  </view>
+  
+  <view class="modal-mask" wx:if="{{showEditModal}}" bindtap="closeEditModal" catchtouchmove="preventTouchMove"></view>
+  <view class="edit-modal {{showEditModal ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="modal-header">
+      <view class="modal-title">{{editingAddress ? '编辑地址' : '新增地址'}}</view>
+      <view class="modal-close" bindtap="closeEditModal"></view>
+    </view>
+    <view class="modal-body">
+      <view class="form-item">
+        <text class="form-label">收货人</text>
+        <input class="form-input" placeholder="请输入姓名" value="{{editForm.name}}" data-field="name" bindinput="onInputChange" />
+      </view>
+      <view class="form-item">
+        <text class="form-label">手机号</text>
+        <input class="form-input" placeholder="请输入手机号" value="{{editForm.phone}}" data-field="phone" bindinput="onInputChange" />
+      </view>
+      <view class="form-item">
+        <text class="form-label">所在地区</text>
+        <picker mode="region" bindchange="onRegionChange" value="{{[editForm.province, editForm.city, editForm.district]}}">
+          <view class="form-region picker-region">
+            <text>{{editForm.province || '请选择省'}} {{editForm.city || '请选择市'}} {{editForm.district || '请选择区'}}</text>
+            <view class="picker-arrow"></view>
+          </view>
+        </picker>
+      </view>
+      <view class="form-item">
+        <text class="form-label">详细地址</text>
+        <textarea class="form-textarea" placeholder="请输入详细地址" value="{{editForm.detail}}" data-field="detail" bindinput="onInputChange" />
+      </view>
+      <view class="form-item default-item" bindtap="toggleDefault">
+        <text class="form-label">设为默认</text>
+        <view class="default-switch {{editForm.isDefault ? 'active' : ''}}">
+          <view class="switch-dot"></view>
+        </view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="save-btn" bindtap="saveAddress">保存</view>
+    </view>
+  </view>
+  
+  <login-modal show="{{showLoginModal}}" bind:success="onLoginSuccess" bind:close="onCloseLoginModal" />
+</view>

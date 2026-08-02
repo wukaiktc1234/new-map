@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.MsgTemplateMapper">
+
+    <!-- 分页查询消息模板列表 -->
+    <select id="selectTemplatePage" resultType="com.foodtraceability.entity.MsgTemplate">
+        SELECT * FROM msg_template
+        <where>
+            deleted = 0
+            <if test="templateCode != null and templateCode != ''">
+                AND template_code LIKE CONCAT('%', #{templateCode}, '%')
+            </if>
+            <if test="templateName != null and templateName != ''">
+                AND template_name LIKE CONCAT('%', #{templateName}, '%')
+            </if>
+            <if test="templateType != null">
+                AND template_type = #{templateType}
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="channel != null and channel != ''">
+                AND channel = #{channel}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 按模板类型统计数量 -->
+    <select id="countByTemplateType" resultType="map">
+        SELECT
+            template_type AS typeKey,
+            COUNT(*) AS typeCount
+        FROM msg_template
+        WHERE deleted = 0
+        GROUP BY template_type
+    </select>
+
+    <!-- 按渠道统计模板数量 -->
+    <select id="countByChannel" resultType="map">
+        SELECT
+            COALESCE(channel, 'UNKNOWN') AS channelKey,
+            COUNT(*) AS channelCount
+        FROM msg_template
+        WHERE deleted = 0
+        GROUP BY channel
+    </select>
+
+</mapper>

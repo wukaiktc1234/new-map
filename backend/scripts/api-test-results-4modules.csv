@@ -1,0 +1,342 @@
+﻿"Module","Feature","Method","Url","Status","Code","Info"
+"ProductCenter","Category-Tree","GET","/v1/product-center/categories/tree","PASS","0","records=6 total=     "
+"ProductCenter","Category-TreeEnabled","GET","/v1/product-center/categories/tree/enabled","PASS","0","records=6 total=     "
+"ProductCenter","Category-List","GET","/v1/product-center/categories/list","PASS","0","records=9 total=        "
+"ProductCenter","Category-ById","GET","/v1/product-center/categories/1","PASS","0","OK"
+"ProductCenter","Category-Children","GET","/v1/product-center/categories/1/children","PASS","0","records=3 total=  "
+"ProductCenter","Combo-Page","GET","/v1/product-center/combos?page=1&size=10","PASS","0","records=3 total=3"
+"ProductCenter","Combo-OnSale","GET","/v1/product-center/combos/on-sale","PASS","0","records=3 total=  "
+"ProductCenter","Combo-ById","GET","/v1/product-center/combos/1","PASS","0","OK"
+"ProductCenter","Combo-Cost","GET","/v1/product-center/combos/1/cost","PASS","0","OK"
+"ProductCenter","ComboInv-ByCombo","GET","/v1/combo-inventories/combo/1","PASS","0","array=0"
+"ProductCenter","ComboInv-Cost","GET","/v1/combo-inventories/combo/1/cost","FAIL","500","系统繁忙，请稍后重试"
+"ProductCenter","Food-Page","GET","/v1/product-center/foods?page=1&size=10","PASS","0","records=10 total=10"
+"ProductCenter","Food-OnSale","GET","/v1/product-center/foods/on-sale","PASS","0","records=10 total=         "
+"ProductCenter","Food-Recommend","GET","/v1/product-center/foods/recommend","PASS","0","records=4 total=   "
+"ProductCenter","Food-ById","GET","/v1/product-center/foods/1","PASS","0","OK"
+"ProductCenter","Food-ByCategory","GET","/v1/product-center/foods/category/1","PASS","0","records=2 total= "
+"ProductCenter","Pricing-History","GET","/v1/product-center/pricing/history?page=1&size=10","PASS","0","OK"
+"ProductCenter","Pricing-Current","GET","/v1/product-center/pricing/current/FOOD/1","PASS","0","OK"
+"ProductCenter","Pricing-HistoryByProduct","GET","/v1/product-center/pricing/history/FOOD/1","PASS","0","array=0"
+"ProductCenter","DishCost-List","GET","/v1/product-center/dish-cost/list","PASS","0","records=10 total=10"
+"ProductCenter","DishCost-Summary","GET","/v1/product-center/dish-cost/summary","PASS","0","OK"
+"ProductCenter","DishCost-AlertRules","GET","/v1/product-center/dish-cost/alert-rules","PASS","0","records=2 total= "
+"ProductCenter","DishCost-ById","GET","/v1/product-center/dish-cost/1","PASS","0","OK"
+"ProductCenter","DishCost-Trend","GET","/v1/product-center/dish-cost/1/trend","PASS","0","array=0"
+"ProductCenter","DishCost-Bom","GET","/v1/product-center/dish-cost/1/bom","PASS","0","OK"
+"ProductCenter","CostAnalysis-Query","GET","/v1/product-center/cost-analysis","PASS","0","records=13 total=13"
+"ProductCenter","CostAnalysis-Summary","GET","/v1/product-center/cost-analysis/summary","PASS","0","OK"
+"ProductCenter","CostAnalysis-ProfitDist","GET","/v1/product-center/cost-analysis/profit-distribution","PASS","0","OK"
+"ProductCenter","CostAnalysis-CategoryRanking","GET","/v1/product-center/cost-analysis/category-ranking","PASS","0","records=7 total=      "
+"ProductCenter","CostAnalysis-LowProfitWarning","GET","/v1/product-center/cost-analysis/low-profit-warning","PASS","0","array=0"
+"ProductCenter","CostAnalysis-Trend","GET","/v1/product-center/cost-analysis/trend","PASS","0","array=0"
+"ProductCenter","ProdAnalysis-Profitability","GET","/v1/analytics/product/profitability?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"ProductCenter","ProdAnalysis-MenuEngineering","GET","/v1/analytics/product/menu-engineering","PASS","0","OK"
+"ProductCenter","ProdAnalysis-ComboPerf","GET","/v1/analytics/product/combo-performance?startDate=2026-01-01&endDate=2026-06-30","PASS","0","array=0"
+"ProductCenter","ProdAnalysis-PriceElasticity","GET","/v1/analytics/product/price-elasticity/1?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"ProductCenter","ProdAnalysis-CustomerPref","GET","/v1/analytics/product/customer-preference","PASS","0","OK"
+"ProductCenter","ProdAnalysis-ReportById","GET","/v1/analytics/product/reports/1","FAIL","500","获取报表详情失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""PRODUCT_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,period_start,period_end,total_foods_count,total_combos_count,gross_profit_total,gross_profit_rate,food_contribution_top10,combo_popularity,new_food_performance,price_sensitivity_data,generate_time,create_time,update_time,deleted FROM product_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+### The error may exist in com/foodtraceability/mapper/ProductAnalysisReportMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.ProductAnalysisReportMapper.selectById
+### The error occurred while executing a query
+### SQL: SELECT report_id,report_no,period_start,period_end,total_foods_count,total_combos_count,gross_profit_total,gross_profit_rate,food_contribution_top10,combo_popularity,new_food_performance,price_sensitivity_data,generate_time,create_time,update_time,deleted FROM product_analysis_reports WHERE report_id=? AND deleted=0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""PRODUCT_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,period_start,period_end,total_foods_count,total_combos_count,gross_profit_total,gross_profit_rate,food_contribution_top10,combo_popularity,new_food_performance,price_sensitivity_data,generate_time,create_time,update_time,deleted FROM product_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+; bad SQL grammar []"
+"ProductCenter","SalesStats-ProductPage","GET","/v1/sales-stats/product/page?page=1&size=10","PASS","0","OK"
+"ProductCenter","SalesStats-Trend","GET","/v1/sales-stats/trend?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"ProductCenter","SalesStats-TopProducts","GET","/v1/sales-stats/top-products","FAIL","500","获取热销产品失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""FOOD_DESCRIPTION"" not found; SQL statement:
+SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0 [42122-224]
+### The error may exist in com/foodtraceability/mapper/FoodMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.FoodMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""FOOD_DESCRIPTION"" not found; SQL statement:
+SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0 [42122-224]
+; bad SQL grammar []"
+"ProductCenter","SalesStats-Overview","GET","/v1/sales-stats/overview","PASS","0","OK"
+"ProductCenter","SalesStats-CategoryStats","GET","/v1/sales-stats/category-stats","FAIL","500","获取分类统计失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""FOOD_DESCRIPTION"" not found; SQL statement:
+SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0 [42122-224]
+### The error may exist in com/foodtraceability/mapper/FoodMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.FoodMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""FOOD_DESCRIPTION"" not found; SQL statement:
+SELECT  food_code,food_name,food_category,food_price,cost_price,food_desc,food_image,food_status,batch_number,trace_code,manufacturer,production_date,expiration_date,stock,food_description,shelf_life_days,production_address,nutrition_info,storage_conditions,price,weight,quality_grade,quality_report_no,quality_check_date,certification_info,food_image_url,trace_code_image_url,trace_status,create_time,update_time,create_by,update_by,remarks,device_id,sensor_data,rfid_tag,gps_location,collect_time,created_at,updated_at,deleted  FROM food  WHERE deleted=0 [42122-224]
+; bad SQL grammar []"
+"ProductCenter","SalesStats-GrowthRate","GET","/v1/sales-stats/growth-rate","PASS","0","array=0"
+"ProductCenter","DishInv-ByDish","GET","/v1/dish-inventories/dish/1","FAIL","500","系统繁忙，请稍后重试"
+"ProductCenter","DishInv-Cost","GET","/v1/dish-inventories/dish/1/cost","PASS","0","OK"
+"ProductCenter","InvUnit-Page","GET","/v1/inventory/unit?page=1&size=10","FAIL","500","查询计量单位列表失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM inventory_unit [42102-224]
+### The error may exist in com/foodtraceability/mapper/InventoryUnitMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.InventoryUnitMapper.selectList_mpCount
+### The error occurred while executing a query
+### SQL: SELECT COUNT(*) AS total FROM inventory_unit
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM inventory_unit [42102-224]
+; bad SQL grammar []"
+"ProductCenter","InvUnit-All","GET","/v1/inventory/unit/all","FAIL","500","查询所有计量单位失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit [42102-224]
+### The error may exist in com/foodtraceability/mapper/InventoryUnitMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.InventoryUnitMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit [42102-224]
+; bad SQL grammar []"
+"ProductCenter","InvUnit-ById","GET","/v1/inventory/unit/1","FAIL","500","获取计量单位失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT id,name,code,type,description,status,created_at,updated_at FROM inventory_unit WHERE id=? [42102-224]
+### The error may exist in com/foodtraceability/mapper/InventoryUnitMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.InventoryUnitMapper.selectById
+### The error occurred while executing a query
+### SQL: SELECT id,name,code,type,description,status,created_at,updated_at FROM inventory_unit WHERE id=?
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT id,name,code,type,description,status,created_at,updated_at FROM inventory_unit WHERE id=? [42102-224]
+; bad SQL grammar []"
+"ProductCenter","InvUnit-ByType","GET","/v1/inventory/unit/type/weight","FAIL","500","根据类型查询计量单位失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit      WHERE  (type = ?) [42102-224]
+### The error may exist in com/foodtraceability/mapper/InventoryUnitMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.InventoryUnitMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit      WHERE  (type = ?)
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""INVENTORY_UNIT"" not found; SQL statement:
+SELECT  id,name,code,type,description,status,created_at,updated_at  FROM inventory_unit      WHERE  (type = ?) [42102-224]
+; bad SQL grammar []"
+"ProductCenter","MatTemplate-List","GET","/v1/material-templates/list","PASS","0","array=0"
+"ProductCenter","MatTemplate-Page","GET","/v1/material-templates/page?page=1&size=10","PASS","0","OK"
+"ProductCenter","MatTemplate-Categories","GET","/v1/material-templates/categories","PASS","0","array=0"
+"ProductCenter","MatTemplate-ByCategory","GET","/v1/material-templates/category/raw","PASS","0","array=0"
+"ProductCenter","MatTemplate-Search","GET","/v1/material-templates/search?name=test","PASS","0","array=0"
+"ProductCenter","MatTemplate-ById","GET","/v1/material-templates/1","PASS","0","OK"
+"ProductCenter","MatTemplate-ByBarcode","GET","/v1/material-templates/barcode/1234567890","FAIL","500","未找到匹配的模板"
+"OrderMgmt","Order-Query","GET","/v1/orders?page=1&size=10","PASS","0","OK"
+"OrderMgmt","Order-Refunds","GET","/v1/orders/refunds?page=1&size=10","PASS","0","OK"
+"OrderMgmt","Order-RefundStats","GET","/v1/orders/refunds/stats","PASS","0","OK"
+"OrderMgmt","Order-Detail","GET","/v1/orders/1","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Order-TodayStats","GET","/v1/orders/today/statistics","PASS","0","OK"
+"OrderMgmt","Order-ShiftSummary","GET","/v1/orders/cashier/shift-summary","PASS","0","OK"
+"OrderMgmt","OrderTrends-Get","GET","/v1/orders/trends","PASS","0","OK"
+"OrderMgmt","OrderTrends-Daily","GET","/v1/orders/trends/daily","PASS","0","array=0"
+"OrderMgmt","SalesOrder-Page","GET","/v1/sales/order/page?page=1&size=10","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Kitchen-List","GET","/v1/kitchen-order/list?page=1&size=10","PASS","0","OK"
+"OrderMgmt","Kitchen-ActiveFull","GET","/v1/kitchen-order/active/full","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Kitchen-RecentFull","GET","/v1/kitchen-order/recent/full","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Kitchen-ById","GET","/v1/kitchen-order/1","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Kitchen-ByIdFull","GET","/v1/kitchen-order/1/full","FAIL","500","系统繁忙，请稍后重试"
+"OrderMgmt","Kitchen-ByOrderId","GET","/v1/kitchen-order/order/1","FAIL","500","后厨订单不存在"
+"OrderMgmt","Kitchen-StoreActive","GET","/v1/kitchen-order/store-active/1","PASS","0","array=0"
+"OrderMgmt","Kitchen-ChefActive","GET","/v1/kitchen-order/chef-active/1","PASS","0","array=0"
+"OrderMgmt","Kitchen-Statistics","GET","/v1/kitchen-order/statistics/1","PASS","0","OK"
+"OrderMgmt","Kitchen-Sorted","GET","/v1/kitchen-order/orders/sorted","FAIL","500","查询失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY create_time ASC,priority DESC LIMIT 20 OFFSET 0 [42122-224]
+### The error may exist in com/foodtraceability/mapper/KitchenOrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.KitchenOrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY create_time ASC,priority DESC LIMIT 20 OFFSET 0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY create_time ASC,priority DESC LIMIT 20 OFFSET 0 [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","Kitchen-Stats","GET","/v1/kitchen-order/stats","FAIL","500","获取统计数据失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Function ""DATE"" not found; SQL statement:
+SELECT status, COUNT(*) as count FROM kitchen_order WHERE DATE(create_time) = ? AND deleted = 0 GROUP BY status [90022-224]
+### The error may exist in com/foodtraceability/mapper/KitchenOrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.KitchenOrderMapper.countByStatusForDate
+### The error occurred while executing a query
+### SQL: SELECT status, COUNT(*) as count FROM kitchen_order WHERE DATE(create_time) = ? AND deleted = 0 GROUP BY status
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Function ""DATE"" not found; SQL statement:
+SELECT status, COUNT(*) as count FROM kitchen_order WHERE DATE(create_time) = ? AND deleted = 0 GROUP BY status [90022-224]
+; bad SQL grammar []"
+"OrderMgmt","Kitchen-Overdue","GET","/v1/kitchen-order/orders/overdue","PASS","0","array=0"
+"OrderMgmt","Kitchen-GroupedByFood","GET","/v1/kitchen-order/orders/grouped-by-food","FAIL","500","查询聚合订单失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY priority DESC,create_time ASC [42122-224]
+### The error may exist in com/foodtraceability/mapper/KitchenOrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.KitchenOrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY priority DESC,create_time ASC
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0       ORDER BY priority DESC,create_time ASC [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","Reservation-Query","GET","/v1/reservations?page=1&size=10","PASS","0","OK"
+"OrderMgmt","Reservation-Stats","GET","/v1/reservations/stats","PASS","0","OK"
+"OrderMgmt","Reservation-ById","GET","/v1/reservations/1","FAIL","500","预约记录不存在，ID: 1"
+"OrderMgmt","Reservation-ByDate","GET","/v1/reservations/by-date/2026-06-30","PASS","0","array=0"
+"OrderMgmt","PosOrder-List","GET","/v1/pos/orders?page=1&size=10","FAIL","500","查询订单列表失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0       ORDER BY CREATE_TIME DESC [42122-224]
+### The error may exist in com/foodtraceability/mapper/OrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.OrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0       ORDER BY CREATE_TIME DESC
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0       ORDER BY CREATE_TIME DESC [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","PosOrder-ByTable","GET","/v1/pos/orders/table/1","FAIL","500","根据桌台号查询订单失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0     AND (table_number = ?) ORDER BY create_time DESC [42122-224]
+### The error may exist in com/foodtraceability/mapper/KitchenOrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.KitchenOrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0     AND (table_number = ?) ORDER BY create_time DESC
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""TRAY_ID"" not found; SQL statement:
+SELECT  id,kitchen_order_id,order_id,order_number,order_type,table_number,dish_items,total_dishes,priority,status,receive_time,make_start_time,make_complete_time,serve_time,cancel_time,cancel_reason,chef_id,chef_name,store_id,store_name,material_consumed,material_consume_time,material_locked,material_lock_time,food_trace_codes,tray_id,tray_code,tray_bind_time,remark,create_time,update_time,create_by,update_by,deleted  FROM kitchen_order  WHERE deleted=0     AND (table_number = ?) ORDER BY create_time DESC [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","PosOrder-ByOrderNumber","GET","/v1/pos/orders/order/ORDER001","FAIL","500","获取订单详情失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?) [42122-224]
+### The error may exist in com/foodtraceability/mapper/OrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.OrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?)
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?) [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","PosOrder-ByOpenid","GET","/v1/pos/orders/byOpenid?openid=test","FAIL","500","通过openid查询订单失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (USER_ID = ?) ORDER BY CREATE_TIME DESC [42122-224]
+### The error may exist in com/foodtraceability/mapper/OrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.OrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (USER_ID = ?) ORDER BY CREATE_TIME DESC
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (USER_ID = ?) ORDER BY CREATE_TIME DESC [42122-224]
+; bad SQL grammar []"
+"OrderMgmt","PosOrder-QueryByNumber","GET","/v1/pos/orders/byOrderNumber?orderNumber=ORDER001","FAIL","500","获取订单详情失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?) [42122-224]
+### The error may exist in com/foodtraceability/mapper/OrderMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.OrderMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?)
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Column ""USER_ID"" not found; SQL statement:
+SELECT  ORDER_ID,USER_ID,ORDER_NUMBER,ORDER_TYPE,ORDER_STATUS,ORDER_AMOUNT,DISCOUNT_AMOUNT,ACTUAL_AMOUNT,PAYMENT_METHOD,transaction_id,PAYMENT_TIME,DELIVERY_ADDRESS,CONTACT_NAME,CONTACT_PHONE,REMARKS,IDEMPOTENCY_KEY,ORDER_SOURCE,MERCHANT_ID,DELIVERYMAN_ID,ESTIMATED_DELIVERY_TIME,ACTUAL_DELIVERY_TIME,CANCEL_REASON,REFUND_REASON,REFUND_AMOUNT,REFUND_TIME,CREATE_TIME,UPDATE_TIME,CREATE_BY,UPDATE_BY,DELETED  FROM orders  WHERE DELETED=0     AND (ORDER_NUMBER = ?) [42122-224]
+; bad SQL grammar []"
+"OperationsCenter","OpsDashboard-Stats","GET","/v1/operations/dashboard/stats","PASS","0","OK"
+"OperationsCenter","OpsDashboard-Stores","GET","/v1/operations/dashboard/stores","PASS","0","OK"
+"OperationsCenter","OpsReport-Daily","GET","/v1/operations-reports/daily?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"OperationsCenter","OpsReport-KpiSummary","GET","/v1/operations-reports/kpi-summary?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"OperationsCenter","OpsReport-ExportStatus","GET","/v1/operations-reports/export/1/status","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","Decision-HealthScores","GET","/v1/operations/decision-board/health-scores","PASS","0","array=0"
+"OperationsCenter","Decision-StoreRanking","GET","/v1/operations/decision-board/store-ranking","PASS","0","array=0"
+"OperationsCenter","Decision-CategorySales","GET","/v1/operations/decision-board/category-sales","PASS","0","array=0"
+"OperationsCenter","Decision-Insights","GET","/v1/operations/decision-board/insights","PASS","0","array=0"
+"OperationsCenter","Decision-RevenueTrend","GET","/v1/operations/decision-board/revenue-trend","PASS","0","OK"
+"OperationsCenter","LiveMonitor-Overview","GET","/v1/operations/live-monitor/overview","PASS","0","OK"
+"OperationsCenter","LiveMonitor-Stores","GET","/v1/operations/live-monitor/stores","PASS","0","array=0"
+"OperationsCenter","LiveMonitor-Trend","GET","/v1/operations/live-monitor/trend","PASS","0","OK"
+"OperationsCenter","LiveMonitor-Alerts","GET","/v1/operations/live-monitor/alerts","PASS","0","array=0"
+"OperationsCenter","Promotion-List","GET","/v1/promotions?page=1&size=10","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","Promotion-Active","GET","/v1/promotions/active","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","Promotion-ById","GET","/v1/promotions/1","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","Promotion-Effect","GET","/v1/promotions/statistics/effect","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-Overview","GET","/v1/marketing/analysis/overview","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-RFMDist","GET","/v1/marketing/analysis/rfm/distribution","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-ChurnRisk","GET","/v1/marketing/analysis/churn-risk","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-HighValue","GET","/v1/marketing/analysis/high-value","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-CLVRanking","GET","/v1/marketing/analysis/clv-ranking","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","MktAnalysis-Trend","GET","/v1/marketing/analysis/trend","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","SalesAnalysis-Trend","GET","/v1/analytics/sales/trend?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"OperationsCenter","SalesAnalysis-Category","GET","/v1/analytics/sales/category-analysis?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"OperationsCenter","SalesAnalysis-TopFoods","GET","/v1/analytics/sales/top-foods?startDate=2026-01-01&endDate=2026-06-30","PASS","0","array=0"
+"OperationsCenter","SalesAnalysis-Hourly","GET","/v1/analytics/sales/hourly-distribution?date=2026-06-30","PASS","0","OK"
+"OperationsCenter","SalesAnalysis-Channel","GET","/v1/analytics/sales/channel-comparison?startDate=2026-01-01&endDate=2026-06-30","PASS","0","OK"
+"OperationsCenter","SalesAnalysis-ReportById","GET","/v1/analytics/sales/reports/1","FAIL","500","获取报表详情失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""SALES_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,report_type,period_start,period_end,total_orders,total_amount,avg_order_value,refund_count,refund_amount,dine_in_amount,takeout_amount,self_pickup_amount,peak_hour,top_foods_json,payment_method_stats,generate_time,create_time,update_time,deleted FROM sales_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+### The error may exist in com/foodtraceability/mapper/SalesAnalysisReportMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.SalesAnalysisReportMapper.selectById
+### The error occurred while executing a query
+### SQL: SELECT report_id,report_no,report_type,period_start,period_end,total_orders,total_amount,avg_order_value,refund_count,refund_amount,dine_in_amount,takeout_amount,self_pickup_amount,peak_hour,top_foods_json,payment_method_stats,generate_time,create_time,update_time,deleted FROM sales_analysis_reports WHERE report_id=? AND deleted=0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""SALES_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,report_type,period_start,period_end,total_orders,total_amount,avg_order_value,refund_count,refund_amount,dine_in_amount,takeout_amount,self_pickup_amount,peak_hour,top_foods_json,payment_method_stats,generate_time,create_time,update_time,deleted FROM sales_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+; bad SQL grammar []"
+"OperationsCenter","CustomerAnalysis-MemberGrowth","GET","/v1/analytics/customer/member-growth-trend","PASS","0","OK"
+"OperationsCenter","CustomerAnalysis-Retention","GET","/v1/analytics/customer/retention-cohort","PASS","0","OK"
+"OperationsCenter","CustomerAnalysis-RFM","GET","/v1/analytics/customer/rfm-distribution","PASS","0","OK"
+"OperationsCenter","CustomerAnalysis-Segment","GET","/v1/analytics/customer/segment-insight?segmentType=HIGH_VALUE","PASS","0","OK"
+"OperationsCenter","CustomerAnalysis-CLV","GET","/v1/analytics/customer/clv-forecast","PASS","0","OK"
+"OperationsCenter","CustomerAnalysis-ReportById","GET","/v1/analytics/customer/reports/1","FAIL","500","获取报表详情失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""CUSTOMER_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,period,total_members,new_members_count,active_members_count,churned_members_count,retention_rate,avg_frequency,avg_ticket_size,customer_lifecycle_dist,rfm_distribution,clv_avg,generate_time,create_time,update_time,deleted FROM customer_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+### The error may exist in com/foodtraceability/mapper/CustomerAnalysisReportMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.CustomerAnalysisReportMapper.selectById
+### The error occurred while executing a query
+### SQL: SELECT report_id,report_no,period,total_members,new_members_count,active_members_count,churned_members_count,retention_rate,avg_frequency,avg_ticket_size,customer_lifecycle_dist,rfm_distribution,clv_avg,generate_time,create_time,update_time,deleted FROM customer_analysis_reports WHERE report_id=? AND deleted=0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""CUSTOMER_ANALYSIS_REPORTS"" not found; SQL statement:
+SELECT report_id,report_no,period,total_members,new_members_count,active_members_count,churned_members_count,retention_rate,avg_frequency,avg_ticket_size,customer_lifecycle_dist,rfm_distribution,clv_avg,generate_time,create_time,update_time,deleted FROM customer_analysis_reports WHERE report_id=? AND deleted=0 [42102-224]
+; bad SQL grammar []"
+"OperationsCenter","Dashboard-Overview","GET","/v1/dashboard/overview/1","PASS","0","OK"
+"OperationsCenter","Dashboard-TodaySales","GET","/v1/dashboard/today-sales","PASS","0","OK"
+"OperationsCenter","Dashboard-InvAlerts","GET","/v1/dashboard/inventory-alerts","PASS","0","OK"
+"OperationsCenter","Dashboard-MemberGrowth","GET","/v1/dashboard/member-growth","PASS","0","OK"
+"OperationsCenter","Dashboard-FinanceSummary","GET","/v1/dashboard/finance-summary","PASS","0","OK"
+"OperationsCenter","Dashboard-Config","GET","/v1/dashboard/config/user/1/type/1","FAIL","500","获取看板配置失败: 
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""DASHBOARD_CONFIGS"" not found; SQL statement:
+SELECT  config_id,user_id,dashboard_type,widget_layout,refresh_interval,is_default,create_time,update_time,deleted  FROM dashboard_configs  WHERE deleted=0     AND (user_id = ? AND dashboard_type = ?) LIMIT 1 [42102-224]
+### The error may exist in com/foodtraceability/mapper/DashboardConfigMapper.java (best guess)
+### The error may involve com.foodtraceability.mapper.DashboardConfigMapper.selectList
+### The error occurred while executing a query
+### SQL: SELECT  config_id,user_id,dashboard_type,widget_layout,refresh_interval,is_default,create_time,update_time,deleted  FROM dashboard_configs  WHERE deleted=0     AND (user_id = ? AND dashboard_type = ?) LIMIT 1
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""DASHBOARD_CONFIGS"" not found; SQL statement:
+SELECT  config_id,user_id,dashboard_type,widget_layout,refresh_interval,is_default,create_time,update_time,deleted  FROM dashboard_configs  WHERE deleted=0     AND (user_id = ? AND dashboard_type = ?) LIMIT 1 [42102-224]
+; bad SQL grammar []"
+"OperationsCenter","ReportConfig-UserConfig","GET","/v1/operations-reports/config/1","FAIL","500","系统繁忙，请稍后重试"
+"OperationsCenter","ReportConfig-Default","GET","/v1/operations-reports/config/1/default","PASS","0","OK"
+"StoreMgmt","Store-Page","GET","/v1/stores?page=1&size=10","PASS","0","OK"
+"StoreMgmt","Store-Active","GET","/v1/stores/active","PASS","0","array=0"
+"StoreMgmt","Store-CodeAvailable","GET","/v1/stores/code-available?storeCode=S001","PASS","0","OK"
+"StoreMgmt","Store-Stats","GET","/v1/stores/stats","PASS","0","OK"
+"StoreMgmt","Store-ById","GET","/v1/stores/1","FAIL","500","门店不存在: 1"
+"StoreMgmt","Store-ByCode","GET","/v1/stores/code/S001","FAIL","500","门店编码不存在: S001"
+"StoreMgmt","HealthCert-List","GET","/v1/store/health-certificate/list","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","HealthCert-ById","GET","/v1/store/health-certificate/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","HealthCert-ByEmployee","GET","/v1/store/health-certificate/employee/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","HealthCert-Expense","GET","/v1/store/health-certificate/expense/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreInv-Stores","GET","/v1/store-inventory/stores","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreInv-List","GET","/v1/store-inventory/list?page=1&size=10","PASS","0","records=4 total=4"
+"StoreMgmt","StoreInv-Summary","GET","/v1/store-inventory/summary?page=1&size=10","FAIL","500","查询库存汇总失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""V_INVENTORY_SUMMARY"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM v_inventory_summary [42102-224]
+### The error may exist in file [P:\my-new-project\backend\target\classes\mapper\InventorySummaryMapper.xml]
+### The error may involve com.foodtraceability.mapper.InventorySummaryMapper.selectSummaryPage_mpCount
+### The error occurred while executing a query
+### SQL: SELECT COUNT(*) AS total FROM v_inventory_summary
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""V_INVENTORY_SUMMARY"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM v_inventory_summary [42102-224]
+; bad SQL grammar []"
+"StoreMgmt","StoreInv-Logs","GET","/v1/store-inventory/logs?page=1&size=10","FAIL","500","查询门店库存日志失败：
+### Error querying database.  Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""STORE_INVENTORY_LOG"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM store_inventory_log WHERE deleted = 0 [42102-224]
+### The error may exist in file [P:\my-new-project\backend\target\classes\mapper\StoreInventoryLogMapper.xml]
+### The error may involve com.foodtraceability.mapper.StoreInventoryLogMapper.selectLogPage_mpCount
+### The error occurred while executing a query
+### SQL: SELECT COUNT(*) AS total FROM store_inventory_log WHERE deleted = 0
+### Cause: org.h2.jdbc.JdbcSQLSyntaxErrorException: Table ""STORE_INVENTORY_LOG"" not found; SQL statement:
+SELECT COUNT(*) AS total FROM store_inventory_log WHERE deleted = 0 [42102-224]
+; bad SQL grammar []"
+"StoreMgmt","StoreTask-List","GET","/v1/store-management/tasks?page=1&size=10","PASS","0","OK"
+"StoreMgmt","StoreTask-UnreadCount","GET","/v1/store-management/tasks/unread-count","PASS","0","OK"
+"StoreMgmt","StoreTask-ById","GET","/v1/store-management/tasks/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreTask-RedirectUrl","GET","/v1/store-management/tasks/1/redirect-url","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreSettlement-List","GET","/v1/store-management/settlements?page=1&size=10","PASS","0","OK"
+"StoreMgmt","StoreSettlement-ById","GET","/v1/store-management/settlements/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreSettlement-Shifts","GET","/v1/store-management/settlements/1/shifts","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreRecruit-MyList","GET","/v1/store-management/recruitment/approvals/my-list?page=1&size=10","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreRecruit-PendingMe","GET","/v1/store-management/recruitment/approvals/pending-me?page=1&size=10","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","StoreRecruit-ById","GET","/v1/store-management/recruitment/approvals/1","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","DiningTable-List","GET","/v1/store-management/tables?page=1&size=10","PASS","0","OK"
+"StoreMgmt","DiningTable-Stats","GET","/v1/store-management/tables/stats","PASS","0","OK"
+"StoreMgmt","DiningTable-UsageRecords","GET","/v1/store-management/tables/usage-records","PASS","0","OK"
+"StoreMgmt","DiningTable-ById","GET","/v1/store-management/tables/1","PASS","0","OK"
+"StoreMgmt","Queue-Records","GET","/v1/store-management/queue/records?page=1&size=10","FAIL","500","系统繁忙，请稍后重试"
+"StoreMgmt","Queue-Stats","GET","/v1/store-management/queue/stats","FAIL","500","系统繁忙，请稍后重试"

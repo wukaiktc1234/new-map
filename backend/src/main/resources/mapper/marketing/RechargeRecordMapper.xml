@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.marketing.RechargeRecordMapper">
+
+    <!-- 储值统计概览：余额、本月、今日统计（单行聚合，使用 EXTRACT 兼容 H2/PG） -->
+    <select id="selectStatsOverview" resultType="java.util.Map">
+        SELECT
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                THEN r.principal_amount - COALESCE(r.refund_amount, 0) ELSE 0 END), 0) AS totalPrincipalBalance,
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                THEN r.bonus_amount ELSE 0 END), 0) AS totalBonusBalance,
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                THEN r.principal_amount - COALESCE(r.refund_amount, 0) + r.bonus_amount ELSE 0 END), 0) AS totalBalance,
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                AND EXTRACT(MONTH FROM r.payment_time) = EXTRACT(MONTH FROM CURRENT_DATE)
+                AND EXTRACT(YEAR FROM r.payment_time) = EXTRACT(YEAR FROM CURRENT_DATE)
+                THEN r.recharge_amount ELSE 0 END), 0) AS rechargeThisMonth,
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                AND EXTRACT(MONTH FROM r.payment_time) = EXTRACT(MONTH FROM CURRENT_DATE)
+                AND EXTRACT(YEAR FROM r.payment_time) = EXTRACT(YEAR FROM CURRENT_DATE)
+                THEN r.bonus_amount ELSE 0 END), 0) AS bonusThisMonth,
+            COALESCE(SUM(CASE WHEN r.refund_status = 'refunded'
+                AND EXTRACT(MONTH FROM r.refund_time) = EXTRACT(MONTH FROM CURRENT_DATE)
+                AND EXTRACT(YEAR FROM r.refund_time) = EXTRACT(YEAR FROM CURRENT_DATE)
+                THEN r.refund_amount ELSE 0 END), 0) AS refundThisMonth,
+            COUNT(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                AND EXTRACT(MONTH FROM r.payment_time) = EXTRACT(MONTH FROM CURRENT_DATE)
+                AND EXTRACT(YEAR FROM r.payment_time) = EXTRACT(YEAR FROM CURRENT_DATE)
+                THEN 1 END) AS rechargeCountThisMonth,
+            COUNT(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                AND CAST(r.payment_time AS DATE) = CURRENT_DATE
+                THEN 1 END) AS rechargeCountToday,
+            COALESCE(SUM(CASE WHEN r.payment_status IN ('success','partial_refunded')
+                AND CAST(r.payment_time AS DATE) = CURRENT_DATE
+                THEN r.recharge_amount ELSE 0 END), 0) AS rechargeAmountToday
+        FROM recharge_records r
+        WHERE r.deleted = 0
+    </select>
+
+    <!-- 充值方案使用分布 -->
+    <select id="selectPlanUsageDistribution" resultType="java.util.Map">
+        SELECT
+            COALESCE(r.plan_name, '自定义') AS planName,
+            COUNT(*) AS count,
+            COALESCE(SUM(r.recharge_amount), 0) AS totalAmount
+        FROM recharge_records r
+        WHERE r.deleted = 0
+          AND r.payment_status IN ('success','partial_refunded')
+        GROUP BY r.plan_name
+        ORDER BY count DESC
+    </select>
+
+    <!-- 近7天充值趋势 -->
+    <select id="selectWeeklyTrend" resultType="java.util.Map">
+        SELECT
+            CAST(r.payment_time AS DATE) AS rechargeDate,
+            COALESCE(SUM(r.recharge_amount), 0) AS amount,
+            COUNT(*) AS count
+        FROM recharge_records r
+        WHERE r.deleted = 0
+          AND r.payment_status IN ('success','partial_refunded')
+          AND r.payment_time &gt;= #{startTime}
+        GROUP BY CAST(r.payment_time AS DATE)
+        ORDER BY rechargeDate ASC
+    </select>
+
+    <!-- 指定会员在时间范围内的充值汇总（用于风控频繁充值告警） -->
+    <select id="selectMemberRechargeSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS rechargeCount,
+            COALESCE(SUM(r.recharge_amount), 0) AS totalAmount
+        FROM recharge_records r
+        WHERE r.deleted = 0
+          AND r.member_id = #{memberId}
+          AND r.payment_status IN ('success','partial_refunded')
+          AND r.payment_time &gt;= #{startTime}
+    </select>
+
+    <!-- 即将过期的赠送余额统计 -->
+    <select id="selectExpiringBonusStats" resultType="java.util.Map">
+        SELECT
+            COALESCE(SUM(b.bonus_amount - b.remaining_amount), 0) AS expiringBonusAmount,
+            COUNT(*) AS expiringBonusCount
+        FROM bonus_balance_details b
+        WHERE b.deleted = 0
+          AND b.status = 'active'
+          AND b.expire_time IS NOT NULL
+          AND b.expire_time &lt;= #{expireThreshold}
+    </select>
+
+    <!-- 低余额会员数 -->
+    <select id="selectLowBalanceMemberCount" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM (
+            SELECT r.member_id
+            FROM recharge_records r
+            WHERE r.deleted = 0
+              AND r.payment_status IN ('success','partial_refunded')
+            GROUP BY r.member_id
+            HAVING SUM(r.principal_amount - COALESCE(r.refund_amount, 0) + r.bonus_amount) &lt; #{threshold}
+        ) t
+    </select>
+
+</mapper>

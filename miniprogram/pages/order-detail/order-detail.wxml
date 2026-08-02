@@ -1,0 +1,210 @@
+<view class="page-container">
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+  
+  <view class="header-bar">
+    <view class="header-left">
+      <view class="back-btn" bindtap="goBack">
+        <view class="back-icon"></view>
+      </view>
+    </view>
+    <view class="header-center">
+      <view class="header-title">订单详情</view>
+    </view>
+    <view class="header-right"></view>
+  </view>
+  
+  <view class="detail-content">
+    <view class="status-card {{order.type === 'takeout' ? 'takeout' : ''}}">
+      <view class="status-icon {{order.status}}"></view>
+      <view class="status-text">{{order.statusText}}</view>
+      <view class="status-tip" wx:if="{{order.status === 'ready' && order.type !== 'takeout'}}">请凭取餐码到店取餐</view>
+      <view class="status-tip" wx:if="{{order.status === 'processing'}}">商品正在制作中，请耐心等待</view>
+      <view class="status-tip" wx:if="{{order.status === 'ready' && order.type === 'takeout'}}">骑手正在配送中，预计15分钟送达</view>
+      <view class="status-tip" wx:if="{{order.status === 'refund'}}">退款已原路返回，请查收</view>
+      <view class="status-tip" wx:if="{{order.status === 'cancelled'}}">支付超时，订单已自动取消</view>
+      <view class="refresh-area" wx:if="{{order.status === 'processing' || order.status === 'ready'}}">
+        <view class="refresh-btn {{refreshing || !canRefresh ? 'disabled' : ''}}" bindtap="refreshOrderStatus">
+          <text>{{refreshing ? '刷新中...' : canRefresh ? '刷新状态' : cooldownText}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <view class="countdown-card" wx:if="{{order.status === 'pending'}}">
+      <view class="countdown-title">请在规定时间内完成支付</view>
+      <view class="countdown-time">{{countdown}}</view>
+      <view class="countdown-unit">后订单将自动取消</view>
+    </view>
+    
+    <view class="expired-tip-card" wx:if="{{showExpiredTip}}">
+      <view class="expired-icon"></view>
+      <view class="expired-title">支付超时</view>
+      <view class="expired-desc">订单已自动取消，如需购买请重新下单</view>
+    </view>
+    
+    <view class="pickup-code-section" wx:if="{{order.pickupNumber && order.status === 'ready' && order.type !== 'takeout'}}">
+      <view class="pickup-label">取餐码</view>
+      <view class="pickup-number">{{order.pickupNumber}}</view>
+    </view>
+    
+    <view class="delivery-progress" wx:if="{{order.type === 'takeout' && order.status !== 'pending'}}">
+      <view class="delivery-title">配送进度</view>
+      <view class="delivery-timeline">
+        <view class="timeline-item {{order.status === 'completed' ? 'active' : ''}}">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="timeline-title">订单已送达</view>
+            <view class="timeline-time" wx:if="{{order.status === 'completed'}}">{{order.completeTime || '已送达'}}</view>
+          </view>
+        </view>
+        <view class="timeline-item {{order.status === 'ready' ? 'active' : ''}}">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="timeline-title">骑手配送中</view>
+            <view class="timeline-time" wx:if="{{order.status === 'ready'}}">配送中</view>
+          </view>
+        </view>
+        <view class="timeline-item {{order.status === 'processing' || order.status === 'ready' || order.status === 'completed' ? 'active' : ''}}">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="timeline-title">商家已接单</view>
+            <view class="timeline-time">{{order.createTime}}</view>
+          </view>
+        </view>
+        <view class="timeline-item active">
+          <view class="timeline-dot"></view>
+          <view class="timeline-content">
+            <view class="timeline-title">订单已提交</view>
+            <view class="timeline-time">{{order.createTime}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="rider-card" wx:if="{{order.type === 'takeout' && order.status === 'ready'}}">
+      <view class="rider-avatar"></view>
+      <view class="rider-info">
+        <view class="rider-name">李师傅</view>
+        <view class="rider-label">配送员</view>
+      </view>
+      <view class="call-btn" bindtap="callRider">
+        <view class="call-icon"></view>
+      </view>
+    </view>
+    
+    <view class="address-card" wx:if="{{order.type === 'takeout' && order.address}}">
+      <view class="address-label">配送地址</view>
+      <view class="address-content">
+        <view class="address-name">{{order.address.name}} {{order.address.phone}}</view>
+        <view class="address-detail">{{order.address.province}}{{order.address.city}}{{order.address.district}}{{order.address.detail}}</view>
+      </view>
+    </view>
+    
+    <view class="info-card">
+      <view class="info-header">
+        <view class="info-title">订单信息</view>
+      </view>
+      <view class="info-row">
+        <text class="info-label">订单编号</text>
+        <text class="info-value">{{order.orderNumber || order.id}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">订单类型</text>
+        <text class="info-value">{{order.typeText}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">下单时间</text>
+        <text class="info-value">{{order.createTime}}</text>
+      </view>
+      <view class="info-row" wx:if="{{order.tableNo}}">
+        <text class="info-label">桌号</text>
+        <text class="info-value">{{order.tableNo}}</text>
+      </view>
+    </view>
+    
+    <view class="store-card">
+      <view class="store-name">{{order.storeName}}</view>
+      <view class="store-address">广州市天河区天河路385号</view>
+    </view>
+    
+    <view class="items-card">
+      <view class="items-header">
+        <view class="items-title">订单商品</view>
+        <view class="items-count">共{{order.totalCount}}件</view>
+      </view>
+      <view class="items-list">
+        <view class="item-row" wx:for="{{order.items}}" wx:key="id">
+          <image class="item-image" src="{{item.image || '/images/default-dish.png'}}" mode="aspectFill" />
+          <view class="item-info">
+            <view class="item-name">{{item.name}}</view>
+            <view class="item-spec" wx:if="{{item.spec}}">{{item.spec}}</view>
+            <view class="item-price-qty">
+              <text class="item-price">¥{{item.price}}</text>
+              <text class="item-qty">x{{item.quantity}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <view class="fee-card">
+      <view class="fee-row">
+        <text class="fee-label">商品金额</text>
+        <text class="fee-value">¥{{order.subtotal}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{order.packFee > 0}}">
+        <text class="fee-label">餐具费</text>
+        <text class="fee-value">¥{{order.packFee}}</text>
+      </view>
+      <view class="fee-row" wx:if="{{order.deliveryFee > 0}}">
+        <text class="fee-label">配送费</text>
+        <text class="fee-value">¥{{order.deliveryFee}}</text>
+      </view>
+      <view class="fee-row total">
+        <text class="fee-label">实付金额</text>
+        <text class="fee-value">¥{{order.total}}</text>
+      </view>
+    </view>
+    
+    <view class="remark-card" wx:if="{{order.remark}}">
+      <view class="remark-label">备注</view>
+      <view class="remark-content">{{order.remark}}</view>
+    </view>
+  </view>
+  
+  <view class="bottom-bar">
+    <view class="action-btn secondary" bindtap="showContactModal">{{order.type === 'takeout' ? '联系商家' : '联系客服'}}</view>
+    <view class="action-btn secondary" wx:if="{{order.status === 'pending'}}" bindtap="cancelOrder">取消订单</view>
+    <view class="action-btn primary" wx:if="{{order.status === 'completed'}}" bindtap="reorder">再来一单</view>
+    <view class="action-btn primary" wx:if="{{order.status === 'pending'}}" bindtap="payOrder">去支付</view>
+    <view class="action-btn primary" wx:if="{{order.status === 'ready' && order.type === 'takeout'}}" bindtap="confirmReceive">确认收货</view>
+    <view class="action-btn primary" wx:if="{{order.status === 'refund'}}" bindtap="reorder">重新下单</view>
+    <view class="action-btn primary" wx:if="{{order.status === 'cancelled'}}" bindtap="reorder">重新下单</view>
+  </view>
+  
+  <view class="modal-mask" wx:if="{{showContact}}" bindtap="hideContactModal" catchtouchmove="preventTouchMove"></view>
+  <view class="contact-modal {{showContact ? 'show' : ''}}" catchtouchmove="preventTouchMove">
+    <view class="modal-header">
+      <view class="modal-title">联系客服</view>
+      <view class="modal-close" bindtap="hideContactModal"></view>
+    </view>
+    <view class="modal-body">
+      <view class="contact-item">
+        <view class="contact-icon phone-icon"></view>
+        <view class="contact-info">
+          <view class="contact-label">客服电话</view>
+          <view class="contact-value">400-888-8888</view>
+        </view>
+      </view>
+      <view class="contact-item">
+        <view class="contact-icon time-icon"></view>
+        <view class="contact-info">
+          <view class="contact-label">工作时间</view>
+          <view class="contact-value">09:00 - 22:00</view>
+        </view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn" bindtap="makePhoneCall">拨打电话</view>
+    </view>
+  </view>
+</view>

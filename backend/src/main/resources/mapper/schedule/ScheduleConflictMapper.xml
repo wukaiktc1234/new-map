@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.schedule.ScheduleConflictMapper">
+
+    <!-- 基础结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.schedule.ScheduleConflict">
+        <id column="conflict_id" property="conflictId"/>
+        <result column="plan_id" property="planId"/>
+        <result column="level" property="level"/>
+        <result column="type" property="type"/>
+        <result column="entry_id" property="entryId"/>
+        <result column="employee_id" property="employeeId"/>
+        <result column="employee_name" property="employeeName"/>
+        <result column="conflict_date" property="conflictDate"/>
+        <result column="shift_type" property="shiftType"/>
+        <result column="rule_id" property="ruleId"/>
+        <result column="message" property="message"/>
+        <result column="suggestion" property="suggestion"/>
+        <result column="auto_fix_available" property="autoFixAvailable"/>
+        <result column="fix_status" property="fixStatus"/>
+        <result column="fixed_time" property="fixedTime"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="deleted" property="deleted"/>
+    </resultMap>
+
+    <!-- 基础字段列表 -->
+    <sql id="Base_Column_List">
+        conflict_id, plan_id, level, type, entry_id, employee_id, employee_name,
+        conflict_date, shift_type, rule_id, message, suggestion, auto_fix_available,
+        fix_status, fixed_time, create_time, update_time, deleted
+    </sql>
+
+    <!-- 按方案ID查询冲突列表（可选级别筛选） -->
+    <select id="selectByPlanId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM schedule_conflicts
+        WHERE plan_id = #{planId} AND deleted = 0
+        <if test="level != null and level != ''">
+            AND level = #{level}
+        </if>
+        ORDER BY
+            CASE level WHEN 'error' THEN 1 WHEN 'warning' THEN 2 WHEN 'info' THEN 3 ELSE 4 END,
+            create_time DESC
+    </select>
+
+    <!-- 物理删除方案的所有冲突记录（用于重新检查前清理） -->
+    <delete id="deleteByPlanId">
+        DELETE FROM schedule_conflicts WHERE plan_id = #{planId}
+    </delete>
+
+</mapper>

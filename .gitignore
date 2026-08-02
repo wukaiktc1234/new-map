@@ -1,0 +1,261 @@
+# Dependencies
+node_modules/
+*/node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.settings/
+.project
+.classpath
+.factorypath
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env.test
+.env.production
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Spring Boot specific
+spring-boot-*.log
+.sts4-cache
+
+# Maven specific
+mvnw
+mvnw.cmd
+.mvn/
+
+# 本地工具链（JDK21/Maven/Node 等开发运行环境，不提交仓库）
+tools/
+JDK21/
+PostgreSQL/
+RabbitMQ/
+Redis-x64-3.0.504/
+nacos-server-3.1.0/
+android-sdk/
+platform-tools/
+maven-mvnd-1.0.3-windows-amd64/
+venv-ocr/
+venv-paddleocr/
+venv-paddleocr-v5/
+venv-*/
+
+# 敏感凭据文件（token/登录响应/发票等，严禁入库）
+.token.txt
+.login_response.json
+.login.json
+cookies.txt
+*.token
+test_token*.txt
+captcha*.png
+.employees.json
+.positions.json
+.recruitments.json
+.recruitment_stats.json
+.dept_tree.json
+.onboarding.json
+dump.rdb
+/*.pdf
+/*.jpeg
+/*.jpg
+/*.docx
+/*.xlsx
+/*.xml
+miniprogram/project.private.config.json
+
+# 过时/备份/测试数据目录
+backup-pre-build/
+_deprecated_20260627/
+frontend-demo-clean/
+test-report/
+test-review/
+test_data/
+training_data/
+invoice-dataset/
+screenshots/
+uploads/
+test-report/
+
+# 根目录临时调试/测试文件（一次性脚本、接口测试数据）
+/*.cjs
+/fix-*.js
+/find-*.js
+/revert-*.js
+/check-errors.js
+/model-proxy.js
+/ResetAdminPassword.*
+/*.sh
+/*.cmd
+/login*.json
+/tmp_*.json
+/test_*.json
+/pos_order.json
+/req.json
+/receive-coupon.json
+/recharge.json
+/earn-points.json
+/deduct-points.json
+/coupon-template.json
+/*-test-report.json
+/*-history-map.json
+/filename-match*.json
+/*.png
+/debug-*.md
+/history-map.json
+/project.private.config.json
+
+# 工具运行状态目录（本地独有，不同步）
+.dbg/
+.specify/
+.trae/
+
+# 测试运行产物（Playwright 截图/错误上下文，不提交）
+test-results/
+*/test-results/
+playwright-report/
+*/playwright-report/
+
+# Docker
+.dockerignore
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Upload files
+uploads/
+public/uploads/
+
+# Temporary test files
+*.backup
+*.bak
+*.tmp
+*.temp
+*~
+
+# Test output files
+*.txt
+!README.txt
+!LICENSE.txt
+
+# PowerShell scripts in root (keep only essential ones)
+/*.ps1
+!/scripts/*.ps1
+
+# Python scripts (localization tools completed)
+/*.py
+
+# SQL scripts in root (should be in db/migration)
+/*.sql
+
+# Markdown files in root (should be in docs/)
+/*计划*.md
+/*方案*.md
+/*报告*.md
+/*指南*.md
+/*说明*.md
+!README.md
+
+# Frontend dist (build output)
+frontend/dist/
+
+# Backend lib (should be managed by Maven)
+backend/lib/
+
+# Database backups
+database_backups/

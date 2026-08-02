@@ -1,0 +1,491 @@
+:root {
+  /* ========== 主色调 - 暖橙色系 ========== */
+  --kitchen-primary: #f97316;
+  --kitchen-primary-light: #fb923c;
+  --kitchen-primary-dark: #ea580c;
+  --kitchen-primary-gradient: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  --kitchen-primary-gradient-hover: linear-gradient(135deg, #fb923c 0%, #fdba74 100%);
+  --kitchen-primary-glow: 0 0 20px rgba(249, 115, 22, 0.4);
+  
+  /* ========== 辅助色 - 翠绿色系 ========== */
+  --kitchen-accent: #10b981;
+  --kitchen-accent-light: #34d399;
+  --kitchen-accent-dark: #059669;
+  --kitchen-accent-gradient: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  
+  /* ========== 功能色系统 ========== */
+  --kitchen-success: #10b981;
+  --kitchen-success-light: #34d399;
+  --kitchen-success-dark: #059669;
+  --kitchen-success-gradient: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  
+  --kitchen-warning: #f59e0b;
+  --kitchen-warning-light: #fbbf24;
+  --kitchen-warning-dark: #d97706;
+  --kitchen-warning-gradient: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  
+  --kitchen-danger: #ef4444;
+  --kitchen-danger-light: #f87171;
+  --kitchen-danger-dark: #dc2626;
+  --kitchen-danger-gradient: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+  
+  --kitchen-info: #06b6d4;
+  --kitchen-info-light: #22d3ee;
+  --kitchen-info-dark: #0891b2;
+  --kitchen-info-gradient: linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%);
+  
+  /* ========== 背景系统 - 深色暖灰 ========== */
+  --kitchen-bg-primary: #1c1917;
+  --kitchen-bg-secondary: #292524;
+  --kitchen-bg-card: #292524;
+  --kitchen-bg-hover: #3f3a37;
+  --kitchen-bg-active: #44403c;
+  --kitchen-bg-elevated: #352f2b;
+  
+  /* ========== 文字系统 ========== */
+  --kitchen-text-primary: #fafaf9;
+  --kitchen-text-secondary: #d6d3d1;
+  --kitchen-text-muted: #a8a29e;
+  --kitchen-text-inverse: #1c1917;
+  
+  /* ========== 边框系统 ========== */
+  --kitchen-border-color: #44403c;
+  --kitchen-border-light: #352f2b;
+  --kitchen-border-radius: 12px;
+  --kitchen-border-radius-lg: 16px;
+  --kitchen-border-radius-xl: 24px;
+  --kitchen-border-radius-sm: 8px;
+  --kitchen-border-radius-xs: 4px;
+  
+  /* ========== 阴影系统 ========== */
+  --kitchen-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --kitchen-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --kitchen-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --kitchen-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --kitchen-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+  --kitchen-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  
+  /* ========== 彩色阴影 ========== */
+  --kitchen-shadow-primary: 0 10px 40px -5px rgba(249, 115, 22, 0.35);
+  --kitchen-shadow-success: 0 10px 40px -5px rgba(52, 211, 153, 0.35);
+  --kitchen-shadow-info: 0 10px 40px -5px rgba(34, 211, 238, 0.35);
+  --kitchen-shadow-warning: 0 10px 40px -5px rgba(251, 191, 36, 0.35);
+  
+  /* ========== 玻璃拟态效果 ========== */
+  --kitchen-glass-bg: rgba(41, 37, 36, 0.85);
+  --kitchen-glass-bg-dark: rgba(41, 37, 36, 0.95);
+  --kitchen-glass-border: rgba(68, 64, 60, 0.5);
+  --kitchen-glass-blur: blur(20px);
+  
+  /* ========== 间距系统 ========== */
+  --kitchen-spacing-xs: 4px;
+  --kitchen-spacing-sm: 8px;
+  --kitchen-spacing-md: 16px;
+  --kitchen-spacing-lg: 24px;
+  --kitchen-spacing-xl: 32px;
+  --kitchen-spacing-2xl: 48px;
+  
+  /* ========== 字体系统 ========== */
+  --kitchen-font-size-xs: 12px;
+  --kitchen-font-size-sm: 14px;
+  --kitchen-font-size-md: 16px;
+  --kitchen-font-size-lg: 18px;
+  --kitchen-font-size-xl: 24px;
+  --kitchen-font-size-2xl: 32px;
+  --kitchen-font-size-3xl: 40px;
+  --kitchen-font-weight-normal: 400;
+  --kitchen-font-weight-medium: 500;
+  --kitchen-font-weight-semibold: 600;
+  --kitchen-font-weight-bold: 700;
+  
+  /* ========== 过渡动画 ========== */
+  --kitchen-transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --kitchen-transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --kitchen-transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --kitchen-transition-bounce: 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --kitchen-transition-spring: 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* ========== 布局尺寸 ========== */
+  --kitchen-header-height: 64px;
+  --kitchen-sidebar-width: 320px;
+  
+  /* ========== Z-Index层级 ========== */
+  --kitchen-z-dropdown: 1000;
+  --kitchen-z-sticky: 1020;
+  --kitchen-z-fixed: 1030;
+  --kitchen-z-modal-backdrop: 1040;
+  --kitchen-z-modal: 1050;
+  --kitchen-z-popover: 1060;
+  --kitchen-z-tooltip: 1070;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--kitchen-bg-primary);
+  color: var(--kitchen-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+.kitchen-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--kitchen-bg-primary);
+}
+
+.kitchen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--kitchen-header-height);
+  padding: 0 var(--kitchen-spacing-lg);
+  background: var(--kitchen-bg-secondary);
+  border-bottom: 1px solid var(--kitchen-border-color);
+}
+
+.kitchen-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--kitchen-spacing-md);
+}
+
+.kitchen-header-title h1 {
+  margin: 0;
+  font-size: var(--kitchen-font-size-xl);
+  font-weight: 600;
+  color: var(--kitchen-text-primary);
+}
+
+.kitchen-header-title .logo-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--kitchen-primary-gradient);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: var(--kitchen-shadow-primary);
+  transition: transform var(--kitchen-transition-spring);
+  position: relative;
+  overflow: hidden;
+}
+
+.kitchen-header-title .logo-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 50%);
+}
+
+.kitchen-header-title .logo-icon:hover {
+  transform: scale(1.05);
+}
+
+.kitchen-header-info {
+  display: flex;
+  align-items: center;
+  gap: var(--kitchen-spacing-lg);
+}
+
+.kitchen-time {
+  font-size: var(--kitchen-font-size-lg);
+  color: var(--kitchen-text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.kitchen-status {
+  display: flex;
+  align-items: center;
+  gap: var(--kitchen-spacing-sm);
+  padding: var(--kitchen-spacing-sm) var(--kitchen-spacing-md);
+  background: rgba(16, 185, 129, 0.15);
+  border-radius: 20px;
+  font-size: var(--kitchen-font-size-sm);
+  color: var(--kitchen-success-light);
+  font-weight: 500;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.kitchen-status .status-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--kitchen-success);
+  border-radius: 50%;
+  animation: kitchen-pulse 2s ease-in-out infinite;
+}
+
+@keyframes kitchen-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+.kitchen-card {
+  background: var(--kitchen-bg-card);
+  border-radius: var(--kitchen-border-radius-lg);
+  box-shadow: var(--kitchen-shadow);
+  padding: var(--kitchen-spacing-lg);
+  border: 1px solid var(--kitchen-border-color);
+  transition: all var(--kitchen-transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.kitchen-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--kitchen-primary-gradient);
+  opacity: 0;
+  transition: opacity var(--kitchen-transition-normal);
+}
+
+.kitchen-card:hover {
+  border-color: var(--kitchen-primary);
+  box-shadow: var(--kitchen-shadow-xl);
+  transform: translateY(-2px);
+}
+
+.kitchen-card:hover::before {
+  opacity: 1;
+}
+
+.kitchen-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--kitchen-spacing-xs) var(--kitchen-spacing-sm);
+  border-radius: 20px;
+  font-size: var(--kitchen-font-size-xs);
+  font-weight: 600;
+}
+
+.kitchen-badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--kitchen-success-light);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.kitchen-badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--kitchen-warning-light);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.kitchen-badge-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--kitchen-danger-light);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.kitchen-badge-info {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--kitchen-info-light);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.kitchen-badge-primary {
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--kitchen-primary-light);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.kitchen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kitchen-spacing-sm);
+  padding: var(--kitchen-spacing-sm) var(--kitchen-spacing-md);
+  border: none;
+  border-radius: var(--kitchen-border-radius-sm);
+  font-size: var(--kitchen-font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--kitchen-transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.kitchen-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.kitchen-btn:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+.kitchen-btn-primary {
+  background: var(--kitchen-primary-gradient);
+  color: var(--kitchen-text-inverse);
+  box-shadow: var(--kitchen-shadow-primary);
+}
+
+.kitchen-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px -5px rgba(249, 115, 22, 0.4);
+}
+
+.kitchen-btn-success {
+  background: var(--kitchen-success-gradient);
+  color: var(--kitchen-text-inverse);
+  box-shadow: var(--kitchen-shadow-success);
+}
+
+.kitchen-btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px -5px rgba(16, 185, 129, 0.4);
+}
+
+.kitchen-btn-warning {
+  background: var(--kitchen-warning-gradient);
+  color: var(--kitchen-text-inverse);
+}
+
+.kitchen-btn-lg {
+  padding: var(--kitchen-spacing-md) var(--kitchen-spacing-xl);
+  font-size: var(--kitchen-font-size-md);
+  border-radius: var(--kitchen-border-radius);
+}
+
+.kitchen-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--kitchen-spacing-xl);
+  color: var(--kitchen-text-muted);
+}
+
+.kitchen-empty-icon {
+  font-size: 64px;
+  margin-bottom: var(--kitchen-spacing-md);
+  opacity: 0.5;
+  animation: kitchen-float 3s ease-in-out infinite;
+}
+
+.kitchen-empty-text {
+  font-size: var(--kitchen-font-size-md);
+}
+
+.kitchen-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--kitchen-border-color) transparent;
+}
+
+.kitchen-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kitchen-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kitchen-scroll::-webkit-scrollbar-thumb {
+  background: var(--kitchen-border-color);
+  border-radius: 3px;
+  transition: background var(--kitchen-transition-fast);
+}
+
+.kitchen-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--kitchen-text-muted);
+}
+
+@keyframes kitchen-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kitchen-animate-fade-in {
+  animation: kitchen-fade-in 0.4s ease-out;
+}
+
+@keyframes kitchen-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(249, 115, 22, 0.6);
+  }
+}
+
+.kitchen-animate-glow {
+  animation: kitchen-glow 2s ease-in-out infinite;
+}
+
+@keyframes kitchen-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes kitchen-scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+.kitchen-scan-animation {
+  position: relative;
+  overflow: hidden;
+}
+
+.kitchen-scan-animation::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(180deg, transparent, var(--kitchen-primary), transparent);
+  animation: kitchen-scan-line 2s linear infinite;
+}
+
+.kitchen-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--kitchen-border-color), transparent);
+  margin: var(--kitchen-spacing-md) 0;
+}
+
+.kitchen-text-center { text-align: center; }
+.kitchen-text-right { text-align: right; }
+.kitchen-flex-center { display: flex; align-items: center; justify-content: center; }
+.kitchen-flex-between { display: flex; align-items: center; justify-content: space-between; }
+.kitchen-full-height { height: 100%; }
+.kitchen-full-width { width: 100%; }

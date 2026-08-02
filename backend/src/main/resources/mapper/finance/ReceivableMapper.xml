@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.ReceivableMapper">
+
+    <!-- 分页查询应收账款 -->
+    <select id="selectReceivablePage" resultType="com.foodtraceability.entity.finance.Receivable">
+        SELECT * FROM receivables
+        <where>
+            deleted = 0
+            <if test="customerName != null and customerName != ''">
+                AND customer_name LIKE CONCAT('%', #{customerName}, '%')
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="startDate != null">
+                AND due_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND due_date &lt;= #{endDate}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 应收账款汇总统计 -->
+    <select id="selectReceivableSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalCount,
+            COALESCE(SUM(original_amount), 0) AS totalOriginalAmount,
+            COALESCE(SUM(received_amount), 0) AS totalReceivedAmount,
+            COALESCE(SUM(balance_amount), 0) AS totalBalanceAmount,
+            COUNT(CASE WHEN status = 1 THEN 1 END) AS normalCount,
+            COUNT(CASE WHEN status = 2 THEN 1 END) AS overdueCount,
+            COUNT(CASE WHEN status = 3 THEN 1 END) AS badDebtCount,
+            COUNT(CASE WHEN status = 4 THEN 1 END) AS writtenOffCount
+        FROM receivables
+        WHERE deleted = 0
+    </select>
+
+    <!-- 账龄分析 -->
+    <select id="selectAgingAnalysis" resultType="java.util.Map">
+        SELECT
+            CASE
+                WHEN COALESCE(overdue_days, 0) = 0 THEN 'current'
+                WHEN COALESCE(overdue_days, 0) BETWEEN 1 AND 30 THEN '1-30'
+                WHEN COALESCE(overdue_days, 0) BETWEEN 31 AND 60 THEN '31-60'
+                WHEN COALESCE(overdue_days, 0) BETWEEN 61 AND 90 THEN '61-90'
+                WHEN COALESCE(overdue_days, 0) &gt; 90 THEN '90+'
+            END AS agingBucket,
+            COUNT(*) AS count,
+            COALESCE(SUM(balance_amount), 0) AS totalAmount
+        FROM receivables
+        WHERE deleted = 0 AND status IN (1, 2)
+        GROUP BY agingBucket
+        ORDER BY agingBucket
+    </select>
+
+</mapper>

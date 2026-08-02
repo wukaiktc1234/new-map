@@ -1,0 +1,108 @@
+// ========================================
+//  ITCSS Layer 5: Components — 页面组件模式
+//  黄金标准页面根容器样式（参考 FoodManagement.vue）
+//  所有 .modern-page 页面共享的基础布局
+// ========================================
+
+.modern-page {
+  min-height: 100vh;
+  background: var(--fts-bg-page);
+  overflow-x: clip;
+  border-radius: var(--fts-page-radius);
+}
+
+// ========================================
+//  stats-section — 统计卡片网格
+// ========================================
+.stats-section {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--fts-space-4);
+  padding: var(--fts-space-4) 0;
+
+  @media (max-width: 1400px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @media (max-width: 992px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 576px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ========================================
+//  advanced-search-panel — 搜索筛选+工具栏
+//  参考 FoodManagement.vue 黄金标准
+// ========================================
+.advanced-search-panel {
+  background: var(--fts-bg-card);
+  border-bottom: 1px solid var(--fts-border-secondary);
+  border-radius: var(--fts-page-radius) var(--fts-page-radius) 0 0;
+  padding: var(--fts-space-3) var(--fts-space-6);
+
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fts-space-4);
+    flex-wrap: wrap;
+    min-height: 48px;
+  }
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: var(--fts-space-3);
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+
+    .el-date-editor {
+      flex-shrink: 0;
+    }
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: var(--fts-space-3);
+    flex-shrink: 0;
+
+    .el-button {
+      flex-shrink: 0;
+    }
+  }
+}
+
+// ========================================
+//  table-section — 表格区域
+// ========================================
+.table-section {
+  padding: 0 var(--fts-space-6) var(--fts-space-6);
+  overflow-x: auto;
+  background: var(--fts-bg-card);
+  border: 1px solid var(--fts-border-primary);
+  border-top: none;
+  border-radius: 0 0 var(--fts-page-radius) var(--fts-page-radius);
+
+  .el-table__header-wrapper th {
+    border-bottom: 2px solid var(--fts-border-primary);
+  }
+
+  .el-table__row td {
+    border-bottom: 1px solid var(--fts-border-primary);
+  }
+}
+
+// ========================================
+//  pagination-wrapper — 分页区域
+// ========================================
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--fts-space-4) var(--fts-space-6);
+  background: var(--fts-bg-card);
+}

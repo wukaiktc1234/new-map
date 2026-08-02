@@ -1,0 +1,1 @@
+{"mode": "handoff-pending", "previousMode": "multi-session-active", "handoffFrom": "session-main-coordinator", "handoffTo": "next-session-leader", "handoffTime": "2026-04-05T11:00:00Z", "completedPhases": ["Phase-1"], "currentVersion": "v0.9.0", "status": "awaiting-new-session", "notes": "当前会话上下文过长需重开。新窗口请读取 .harness/HANDOFF.md 获取完整交接信息。工作模式切换为 Leader-Agent 单会话内多智能体协调。"}

@@ -1,0 +1,386 @@
+# ============================================================
+# 食品溯源系统 - 生产环境完整配置
+# 环境: production (prod)
+# 数据库: PostgreSQL 18
+# 缓存: Redis | 消息队列: RabbitMQ
+# ============================================================
+
+# ==================== 服务端配置 ====================
+server:
+  port: 8081
+  address: 0.0.0.0
+  # 优雅停机（Spring Boot 2.3+）
+  shutdown: graceful
+  servlet:
+    context-path: /api
+    session:
+      cookie:
+        secure: true           # 生产环境启用Secure标志
+        http-only: true        # 防止JavaScript访问Cookie
+        same-site: strict      # 严格同站策略，防止CSRF
+      timeout: 1800            # 会话超时时间（秒），30分钟
+  tomcat:
+    uri-encoding: UTF-8
+    max-connections: 16384     # 最大连接数
+    accept-count: 200          # 等待队列长度
+    threads:
+      max: 400                 # 最大工作线程数
+      min-spare: 20            # 最小空闲线程数
+    connection-timeout: 15000  # 连接超时（毫秒）
+    max-http-form-post-size: 52428800  # 表单最大50MB
+    relaxed-query-chars:
+      - '[' - ']' - '|' - '{' - '}'
+      - '^' - '&' - '#' - '@' - '`' - '~'
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE_PATH:}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
+    key-alias: ${SSL_KEY_ALIAS:}
+  headers:
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: DENY
+    X-XSS-Protection: 1; mode=block
+    Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# ==================== 优雅停机配置 ====================
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s   # 停机超时时间（秒）
+
+  main:
+    allow-circular-references: true
+    threads:
+      virtual:
+        enabled: true                  # 启用虚拟线程（JDK 21）
+
+  # ==================== PostgreSQL数据源配置 ====================
+  # 生产环境使用 HikariCP 连接池（Spring Boot默认，高性能）
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:food_traceability}?useUnicode=true&characterEncoding=UTF-8&reWriteBatchedInserts=true&ApplicationName=FoodTraceabilityProd
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}          # 必须通过环境变量设置
+    driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      pool-name: FoodTraceabilityHikariPool
+      minimum-idle: 10                 # 最小空闲连接（对应Druid min-idle）
+      maximum-pool-size: 80            # 最大连接池大小（对应Druid max-active）
+      idle-timeout: 300000             # 空闲连接超时5分钟（对应Druid min-evictable-idle-time-millis）
+      max-lifetime: 1800000            # 连接最大生存时间30分钟
+      connection-timeout: 60000        # 获取连接超时60秒（对应Druid max-wait）
+      connection-test-query: SELECT 1  # 连接有效性检测SQL
+      validation-timeout: 5000         # 验证查询超时
+      leak-detection-threshold: 60000  # 连接泄漏检测阈值（1分钟）
+
+  # ==================== MyBatis-Plus 配置 ====================
+  mybatis-plus:
+    mapper-locations: classpath:mapper/**/*.xml
+    type-aliases-package: com.example.demo.entity
+    configuration:
+      map-underscore-to-camel-case: true       # 驼峰命名转换
+      lazy-loading-enabled: true                # 延迟加载
+      aggressive-lazy-loading: false
+      local-cache-scope: STATEMENT              # 语句级缓存
+      log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    global-config:
+      banner: false                             # 关闭MyBatis-Plus Banner
+      db-config:
+        id-type: ASSIGN_ID                      # 主键策略：雪花算法
+        logic-delete-field: deleted             # 逻辑删除字段名
+        logic-delete-value: 1                   # 逻辑删除值：已删除
+        logic-not-delete-value: 0               # 逻辑未删除值：未删除
+        field-strategy: NOT_EMPTY               # 字段策略
+
+  # ==================== Flyway数据库迁移 ====================
+  flyway:
+    enabled: false                              # 暂时禁用，使用DatabaseInitConfig初始化
+
+  # ==================== 缓存配置 ====================
+  cache:
+    type: redis                                 # 生产环境使用Redis缓存
+    redis:
+      time-to-live: 3600000                     # 默认缓存过期时间1小时
+      cache-null-values: false                  # 不缓存空值
+
+  # ==================== Web资源配置 ====================
+  web:
+    resources:
+      add-mappings: false                       # 禁用静态资源映射
+
+  # ==================== Jackson序列化配置 ====================
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null        # 忽略null字段
+    serialization:
+      write_dates_as_timestamps: false          # 日期不转时间戳
+    deserialization:
+      fail_on_unknown_properties: false         # 忽略未知属性
+
+  # ==================== 文件上传配置 ====================
+  servlet:
+    multipart:
+      max-file-size: 10MB                       # 单文件最大10MB
+      max-request-size: 50MB                    # 请求最大50MB
+
+  # ==================== 邮件配置 ====================
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  # ==================== Redis配置（生产环境启用）====================
+  redis:
+    enabled: true                               # 启用Redis
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}                # 密码通过环境变量设置
+    database: ${REDIS_DATABASE:0}               # 数据库索引
+    timeout: 3000ms                             # 命令执行超时
+    connect-timeout: 3000ms                     # 连接超时
+    lettuce:
+      pool:
+        max-active: 32                          # 最大活跃连接数
+        max-wait: 5000ms                        # 获取连接最大等待时间
+        max-idle: 16                            # 最大空闲连接数
+        min-idle: 8                             # 最小空闲连接数
+      shutdown-timeout: 100ms                   # 关闭超时
+
+  # ==================== RabbitMQ配置（生产环境启用）====================
+  rabbitmq:
+    enabled: true                               # 启用RabbitMQ
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VIRTUAL_HOST:/}
+    connection-timeout: 15000                   # 连接超时15秒
+    publisher-confirm-type: correlated          # 发布者确认模式
+    publisher-returns: true                     # 发布者返回
+    listener:
+      simple:
+        acknowledge-mode: manual                # 手动确认模式
+        concurrency: 1                          # 初始消费者数量
+        max-concurrency: 3                      # 最大消费者数量
+        prefetch: 1                             # 每次预取消息数
+        retry:
+          enabled: true                         # 启用重试
+          max-attempts: 3                       # 最大重试次数
+          initial-interval: 1000ms              # 初始重试间隔1秒
+          multiplier: 2.0                       # 重试间隔倍数
+          max-interval: 10000ms                 # 最大重试间隔10秒
+
+# ==================== JWT认证配置 ====================
+# 安全警告：禁止在配置文件中硬编码JWT密钥！
+# 生产环境必须通过环境变量传递：export JWT_SECRET=your-secret-key
+jwt:
+  secret: ${JWT_SECRET:}                        # JWT签名密钥（必须通过环境变量设置）
+  access-token-expiration: 7200000               # Access Token有效期：2小时（7200000ms）
+  refresh-token-expiration: 2592000000           # Refresh Token有效期：30天（2592000000ms）
+  refresh-window: 3600000                       # Refresh窗口期：1小时
+  header: Authorization                         # Token请求头名称
+  prefix: Bearer                                # Token前缀
+  issuer: food-traceability-system              # 签发者标识
+
+# ==================== Jasypt加密配置 ====================
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD:}     # 加密密码（环境变量）
+    iv-generator-classname: org.jasypt.iv.NoIvGenerator
+
+# ==================== OCR服务配置 ====================
+ocr:
+  primary-engine: paddle                        # 主引擎：PaddleOCR
+  fallback-enabled: true                        # 启用备用引擎降级
+  service:
+    url: http://localhost:9000/ocr/predict      # OCR服务地址
+    enabled: true                               # 启用OCR服务
+  zhipu:
+    api-key: ${OCR_ZHIPU_API_KEY:}              # 智谱AI API Key（环境变量）
+  rapid:
+    enabled: false
+  onnx:
+    enabled: false
+    modelPath: ocr-models
+  pattern:
+    enabled: true                               # 启用正则表达式兜底引擎
+  paddle:
+    enabled: true
+    base-url: http://localhost:8110
+    timeout: 120000
+    max-file-size: 52428800
+
+# ==================== 发票验真配置 ====================
+invoice:
+  verify:
+    rpa:
+      enabled: true
+      headless: true
+      timeout: 30
+
+# ==================== 电子凭证验真配置 ====================
+verify:
+  tax-platform:
+    enabled: ${VERIFY_TAX_PLATFORM_ENABLED:true}
+    url: ${VERIFY_TAX_PLATFORM_URL:https://inv-veri.chinatax.gov.cn}
+    app-key: ${VERIFY_TAX_PLATFORM_APP_KEY:}
+    app-secret: ${VERIFY_TAX_PLATFORM_APP_SECRET:}
+    timeout: ${VERIFY_TAX_PLATFORM_TIMEOUT:30000}
+  signature:
+    enabled: ${VERIFY_SIGNATURE_ENABLED:true}
+    check-certificate-chain: ${VERIFY_CHECK_CERT_CHAIN:true}
+    check-certificate-revocation: ${VERIFY_CHECK_CERT_REVOCATION:true}
+  toolkit:
+    enabled: ${VERIFY_TOOLKIT_ENABLED:true}
+    version: V1.0
+
+# ==================== 数据备份与恢复配置 ====================
+backup:
+  storage:
+    path: ${BACKUP_STORAGE_PATH:/data/backups/food-traceability}  # 备份存储路径
+  pg:
+    bin:
+      path: ${BACKUP_PG_BIN_PATH:}            # PostgreSQL bin目录
+    dump:
+      timeout: ${BACKUP_PG_DUMP_TIMEOUT:1800000}
+    restore:
+      timeout: ${BACKUP_PG_RESTORE_TIMEOUT:3600000}
+  auto:
+    enabled: ${BACKUP_AUTO_ENABLED:false}
+    retention-count: ${BACKUP_RETENTION_COUNT:10}
+    backup-name-prefix: ${BACKUP_NAME_PREFIX:auto_backup}
+  health:
+    max-backup-age-hours: ${BACKUP_MAX_AGE_HOURS:24}
+    min-disk-space-percent: ${BACKUP_MIN_DISK_PERCENT:10.0}
+    check-recent-count: ${BACKUP_CHECK_RECENT_COUNT:10}
+
+# ==================== 文件上传配置 ====================
+file:
+  upload:
+    path: ${FILE_UPLOAD_PATH:/data/uploads/voucher}  # 文件上传存储路径
+    max-size: ${FILE_UPLOAD_MAX_SIZE:10485760}       # 最大文件大小10MB
+
+# ==================== 应用安全配置 ====================
+app:
+  security:
+    enabled: true
+    check-default-admin: true                    # 检查默认管理员
+    allow-default-admin-in-dev: false             # 生产环境禁止默认管理员
+  encryption:
+    key: ${ENCRYPTION_KEY:change-this-in-production}  # 加密密钥
+
+  # CORS白名单（生产环境必须配置具体域名）
+  cors:
+    allowed-origins: https://yourdomain.com,https://www.yourdomain.com
+
+  # ==================== 会话配置 ====================
+  session:
+    timeout-hours: 24                           # 会话超时时间（小时）
+    max-concurrent: 5                           # 最大并发会话数
+
+  # ==================== 限流参数调优（生产环境）====================
+  rate-limit:
+    ip:
+      per-minute: 30                            # IP级别限流：每分钟30次
+    user:
+      per-minute: 60                            # 用户级别限流：每分钟60次
+    login:
+      per-minute: 5                             # 登录接口限流：每分钟5次
+    api:
+      per-second: 10                            # API通用限流：每秒10次
+    max-connections-per-ip: 20                  # 每IP最大并发连接数
+
+# ==================== Actuator监控配置 ====================
+management:
+  tracing:
+    sampling:
+      probability: 0.1                           # 采样率10%（生产环境适度采样）
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+    enabled: ${ZIPKIN_ENABLED:false}             # 默认禁用Zipkin
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,env,configprops  # 暴露端点
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized             # 授权后显示详情
+      show-components: when-authorized
+      probes:
+        enabled: true                           # 启用K8s探针
+  health:
+    db:
+      enabled: true                             # 启用数据库健康检查
+    redis:
+      enabled: true                             # 启用Redis健康检查
+    rabbit:
+      enabled: true                             # 启用RabbitMQ健康检查
+    defaults:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true                           # 启用Prometheus指标导出
+
+# ==================== 日志配置 ====================
+logging:
+  level:
+    root: WARN                                  # 全局日志级别WARN
+    com.example.demo: INFO                      # 应用代码INFO级别
+    org.springframework.web: WARN
+    org.springframework.security: WARN          # Security仅警告及以上
+    org.mybatis: INFO                           # MyBatis SQL日志
+    org.hibernate: WARN
+    org.apache.catalina: WARN
+    org.apache.tomcat: WARN
+    SECURITY_AUDIT: INFO                        # 安全审计日志
+  file:
+    name: /var/log/food-traceability/food-traceability.log  # 生产环境日志文件路径
+    max-size: 100MB                             # 单文件最大100MB
+    max-history: 30                             # 保留30个历史文件
+    total-size-cap: 3GB                         # 总日志大小上限3GB
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  config: classpath:logback-spring.xml          # Logback配置文件
+
+# 审计日志保留天数
+logback:
+  audit:
+    retention-days: 180                         # 审计日志保留180天
+  error:
+    retention-days: 365                          # 错误日志保留365天
+
+# ==================== 监控告警配置 ====================
+alert:
+  email:
+    recipients: ops@yourdomain.com              # 告警通知邮箱
+  slack:
+    webhook:                                    # Slack Webhook（可选）
+  login-failure-threshold: 10                   # 登录失败告警阈值
+  404-rate-threshold: 100                       # 404错误率告警阈值
+  cpu-threshold: 80                             # CPU使用率告警阈值(%)
+  memory-threshold: 85                          # 内存使用率告警阈值(%)
+
+# ==================== 远程备份配置 ====================
+remote:
+  backup:
+    enabled: false                              # 异地备份开关
+  bucket:
+    name:                                       # S3/OBS桶名称
+  s3:
+    endpoint:                                   # S3端点
+  access:
+    key:                                        # 访问密钥ID
+  secret:
+    key:                                        # 访问密钥

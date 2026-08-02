@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.finance.CostRecordMapper">
+
+    <!-- 分页查询成本记录 -->
+    <select id="selectCostRecordPage" resultType="com.foodtraceability.entity.finance.CostRecord">
+        SELECT * FROM cost_records
+        <where>
+            deleted = 0
+            <if test="costType != null">
+                AND cost_type = #{costType}
+            </if>
+            <if test="period != null and period != ''">
+                AND period = #{period}
+            </if>
+            <if test="costCenterId != null">
+                AND cost_center_id = #{costCenterId}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据期间和类型汇总成本 -->
+    <select id="sumAmountByPeriodAndType" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount), 0) FROM cost_records
+        WHERE deleted = 0
+          AND period = #{period}
+          <if test="costType != null">
+              AND cost_type = #{costType}
+          </if>
+    </select>
+
+    <!-- 成本结构分析 -->
+    <select id="selectCostStructure" resultType="java.util.Map">
+        SELECT
+            cost_type AS costType,
+            COUNT(*) AS count,
+            COALESCE(SUM(amount), 0) AS totalAmount,
+            COALESCE(AVG(amount), 0) AS avgAmount
+        FROM cost_records
+        WHERE deleted = 0 AND period = #{period}
+        GROUP BY cost_type
+        ORDER BY totalAmount DESC
+    </select>
+
+</mapper>

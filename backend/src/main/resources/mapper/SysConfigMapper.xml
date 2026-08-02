@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.SysConfigMapper">
+
+    <select id="selectConfigPage" resultType="com.foodtraceability.entity.SysConfig">
+        SELECT * FROM sys_config
+        <where>
+            <!-- XML自定义SQL中显式声明deleted=0，与@TableLogic保持一致 -->
+            deleted = 0
+            <if test="configKey != null and configKey != ''">
+                AND config_key LIKE CONCAT('%', #{configKey}, '%')
+            </if>
+            <if test="configName != null and configName != ''">
+                AND config_name LIKE CONCAT('%', #{configName}, '%')
+            </if>
+            <if test="configGroup != null and configGroup != ''">
+                AND config_group = #{configGroup}
+            </if>
+            <if test="isEnabled != null">
+                AND is_enabled = #{isEnabled}
+            </if>
+            <if test="isSensitive != null">
+                AND is_sensitive = #{isSensitive}
+            </if>
+        </where>
+        ORDER BY config_group ASC, sort_order ASC, config_id ASC
+    </select>
+
+    <select id="selectByGroup" resultType="com.foodtraceability.entity.SysConfig">
+        SELECT * FROM sys_config
+        WHERE config_group = #{configGroup} AND deleted = 0 AND is_enabled = 1
+        ORDER BY sort_order ASC, config_id ASC
+    </select>
+
+</mapper>

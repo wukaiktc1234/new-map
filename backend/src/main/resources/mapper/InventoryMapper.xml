@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.foodtraceability.mapper.InventoryMapper">
+
+    <!-- 库存结果映射 -->
+    <resultMap id="BaseResultMap" type="com.foodtraceability.entity.Inventory">
+        <id column="inventory_id" property="inventoryId"/>
+        <result column="material_id" property="materialId"/>
+        <result column="material_name" property="materialName"/>
+        <result column="specification" property="specification"/>
+        <result column="unit" property="unit"/>
+        <result column="warehouse_id" property="warehouseId"/>
+        <result column="location_id" property="locationId"/>
+        <result column="current_stock" property="quantity"/>
+        <result column="locked_quantity" property="lockedQuantity"/>
+        <result column="batch_no" property="batchNo"/>
+        <result column="production_date" property="productionDate"/>
+        <result column="expiry_date" property="expiryDate"/>
+        <result column="unit_cost" property="unitCost"/>
+        <result column="total_cost" property="totalCost"/>
+        <result column="min_safe_qty" property="minSafeQty"/>
+        <result column="max_stock_qty" property="maxStockQty"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 分页查询库存列表 -->
+    <select id="selectInventoryPage" resultMap="BaseResultMap">
+        SELECT inventory_id, material_id, material_name, specification, unit,
+               warehouse_id, location_id, current_stock, locked_quantity, batch_no,
+               production_date, expiry_date, unit_cost, total_cost,
+               min_safe_qty, max_stock_qty, create_time, update_time
+        FROM inventory
+        WHERE deleted = 0
+        <if test="warehouseId != null">
+            AND warehouse_id = #{warehouseId}
+        </if>
+        <if test="materialId != null">
+            AND material_id = #{materialId}
+        </if>
+        <if test="materialName != null and materialName != ''">
+            AND material_name LIKE CONCAT('%', #{materialName}, '%')
+        </if>
+        <if test="batchNo != null and batchNo != ''">
+            AND batch_no LIKE CONCAT('%', #{batchNo}, '%')
+        </if>
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 根据物料ID和仓库ID查询库存 -->
+    <select id="selectByMaterialAndWarehouse" resultMap="BaseResultMap">
+        SELECT * FROM inventory
+        WHERE deleted = 0
+          AND material_id = #{materialId}
+          AND warehouse_id = #{warehouseId}
+        LIMIT 1
+    </select>
+
+</mapper>
