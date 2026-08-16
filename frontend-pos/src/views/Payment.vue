@@ -395,31 +395,22 @@
 
         <!-- 操作提示 -->
         <el-alert
-          type="info"
+          type="warning"
           :closable="false"
           show-icon
           class="qr-tip"
         >
           <template #default>
             <p style="margin: 0; font-size: 12px;">
-              开发模式：可点击下方按钮模拟"已扫码支付完成"。
-              生产环境将由支付平台服务端回调自动确认。
+              当前支付通道待后端接线：付款完成以支付平台服务端回调确认为准，暂不支持人工确认支付完成。
             </p>
           </template>
         </el-alert>
       </div>
 
       <template #footer>
-        <el-button @click="cancelQrPayment" :disabled="confirmingQr">
+        <el-button @click="cancelQrPayment">
           取消支付
-        </el-button>
-        <el-button
-          type="primary"
-          @click="confirmQrPaymentComplete"
-          :loading="confirmingQr"
-        >
-          <el-icon><CircleCheckFilled /></el-icon>
-          已扫码，确认支付完成
         </el-button>
       </template>
     </el-dialog>
@@ -479,8 +470,6 @@ const qrCodeUrl = ref('')
 const qrCodeLoading = ref(false)
 const qrPaymentType = ref<'wechat' | 'alipay'>('wechat')
 const qrExpiresAt = ref<number>(0)
-const confirmingQr = ref(false)
-const qrTransactionId = ref('')
 const qrCountdownText = ref('')
 let qrCountdownTimer: number | null = null
 
@@ -752,7 +741,6 @@ const confirmPayment = async () => {
 const showQrCodeDialog = (result: OrderResult, orderId: string) => {
   currentOrderId.value = orderId
   qrCodeUrl.value = result.qrCodeUrl || ''
-  qrTransactionId.value = result.qrTransactionId || orderId
   qrExpiresAt.value = result.qrExpiresAt || 0
   qrPaymentType.value = selectedMethod.value === 'alipay' ? 'alipay' : 'wechat'
   qrCodeLoading.value = false
@@ -796,63 +784,12 @@ const startQrCountdown = () => {
 const cancelQrPayment = () => {
   showQrCode.value = false
   qrCodeUrl.value = ''
-  qrTransactionId.value = ''
   qrExpiresAt.value = 0
   if (qrCountdownTimer) {
     clearInterval(qrCountdownTimer)
     qrCountdownTimer = null
   }
   ElMessage.info('已取消扫码支付，订单已保留为未支付状态')
-}
-
-/**
- * 确认扫码支付完成
- * 调用后端 confirmQrPayment 接口将订单状态更新为已支付
- */
-const confirmQrPaymentComplete = async () => {
-  if (confirmingQr.value) return
-  if (!qrTransactionId.value) {
-    ElMessage.warning('交易号缺失，无法确认支付')
-    return
-  }
-
-  confirmingQr.value = true
-  try {
-    const result = await posApi.confirmQrPayment(qrTransactionId.value) as unknown as OrderResult
-
-    if (result?.orderId) {
-      // 关闭二维码弹窗
-      showQrCode.value = false
-      if (qrCountdownTimer) {
-        clearInterval(qrCountdownTimer)
-        qrCountdownTimer = null
-      }
-
-      // 显示支付成功弹窗
-      orderNumber.value = result.orderNumber || orderNumber.value
-      currentOrderId.value = result.orderId || currentOrderId.value
-      showSuccess.value = true
-      currentStep.value = 2
-      ElMessage.success('支付成功，订单已推送至后厨')
-
-      // 触发自动打印小票
-      handleAutoPrint(result.orderId || currentOrderId.value)
-
-      countdownTimer = window.setInterval(() => {
-        countdown.value--
-        if (countdown.value <= 0) {
-          goHome()
-        }
-      }, 1000)
-    } else {
-      ElMessage.error('支付确认失败，请重试或联系管理员')
-    }
-  } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : '支付确认异常'
-    ElMessage.error(errMsg)
-  } finally {
-    confirmingQr.value = false
-  }
 }
 
 /**

@@ -103,11 +103,8 @@
       @refund="refundOrder"
     />
 
-    <!-- 交班/日结对话框 -->
-    <ShiftHandover
-      v-model="showShiftHandover"
-      @handoverCompleted="onHandoverCompleted"
-    />
+    <!-- 交班/日结对话框（班次交接功能待后端接线，确认按钮禁用，见 ShiftHandover.vue） -->
+    <ShiftHandover v-model="showShiftHandover" />
 
     <!-- 库存查询对话框 -->
     <StockQueryDialog
@@ -274,25 +271,6 @@ const handleYoloAddToCart = (items: Array<{
  */
 const showShiftHandoverDialog = () => {
   showShiftHandover.value = true
-}
-
-/**
- * 处理交班完成事件
- * 交班后清除当前账号凭证并跳转登录页，确保下一班次需要重新登录
- * @param data - 交班数据
- */
-const onHandoverCompleted = (data: any) => {
-  // 清空购物车和当前订单
-  clearCart()
-
-  ElMessage.success(`交班成功！今日共 ${data.orderCount} 笔订单`)
-
-  // 清除当前账号凭证，跳转登录页让下一班次重新登录
-  localStorage.removeItem('pos-token')
-  localStorage.removeItem('pos-user')
-  setTimeout(() => {
-    router.push('/login')
-  }, 800)
 }
 
 const showOrderQueryDialog = () => {

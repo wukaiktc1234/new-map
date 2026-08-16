@@ -138,12 +138,13 @@
           </button>
           <button
             class="sh-btn sh-btn-confirm"
-            @click="confirmHandover"
-            :disabled="handovering"
+            disabled
+            title="班次交接功能待后端接线"
           >
-            {{ handovering ? '处理中...' : '确认交班' }}
+            确认交班
           </button>
         </div>
+        <div class="sh-pending-note">班次交接功能待后端接线，暂不可执行</div>
       </div>
     </div>
   </el-dialog>
@@ -151,7 +152,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 
 interface OrderItem {
@@ -177,7 +178,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
-  (e: 'handoverCompleted', data: any): void
 }>()
 
 const visible = computed({
@@ -191,7 +191,6 @@ const showOrders = ref(true)
 const showAllOrders = ref(false)
 const filterPaymentMethod = ref<string>('')
 const exporting = ref(false)
-const handovering = ref(false)
 const handoverForm = ref({ remark: '' })
 
 const currentTime = ref('')
@@ -330,31 +329,6 @@ ${handoverForm.value.remark ? `<div style="color:#666;font-size:12px">备注：$
 </body></html>`)
   w.document.close()
   w.print()
-}
-
-const confirmHandover = async () => {
-  try {
-    await ElMessageBox.confirm(
-      `今日共 ${stats.value.totalOrders} 笔订单\n营业额: ¥${stats.value.totalAmount.toFixed(2)}\n\n确认交班？`,
-      '交班确认',
-      { confirmButtonText: '确认交班', cancelButtonText: '取消', type: 'warning', distinguishCancelAndClose: true }
-    )
-    handovering.value = true
-    emit('handoverCompleted', {
-      date: currentDate.value,
-      time: new Date().toLocaleTimeString('zh-CN'),
-      stats: stats.value,
-      remark: handoverForm.value.remark,
-      orderCount: orders.value.length
-    })
-    ElMessage.success('交班成功！辛苦了！')
-    visible.value = false
-    handoverForm.value.remark = ''
-  } catch (e: unknown) {
-    if (e !== 'cancel' && e !== 'close') ElMessage.error('交班失败')
-  } finally {
-    handovering.value = false
-  }
 }
 
 watch(visible, (val) => {
@@ -750,6 +724,13 @@ watch(visible, (val) => {
 .sh-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.sh-pending-note {
+  margin-top: 10px;
+  text-align: right;
+  font-size: 12px;
+  color: #d97706;
 }
 
 /* ====== 暗色模式 ====== */
