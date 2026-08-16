@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.DashboardConfig;
 import com.foodtraceability.entity.SalesAnalysisReport;
 import com.foodtraceability.entity.InventoryAnalysisReport;
@@ -105,9 +107,11 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
 
             logger.info("获取今日销售概览成功");
         } catch (Exception e) {
-            logger.error("获取今日销售概览失败", e);
-            result.put("todayOrderCount", 0);
-            result.put("todayAmount", 0);
+            // OICBE-B1-002（KL-054）catch 先行：销售概览数据源（sales_order 表）未对齐，
+            // 明确错误态替代假空——不再吞错降级为 todayOrderCount=0 的成功响应（code:0 假成功）。
+            // 失败透传至 DashboardController catch -> code:500 明确错误响应，待 PD-015 结构裁决后恢复真实数据。
+            logger.error("获取今日销售概览失败：销售概览数据暂不可用（数据源 sales_order 未对齐，禁止降级为假空 0 值）", e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "今日销售概览数据暂不可用");
         }
 
         return result;

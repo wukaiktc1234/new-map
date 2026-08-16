@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,28 @@ import java.util.stream.Collectors;
 @Service
 public class BudgetServiceImpl extends ServiceImpl<BudgetMapper, Budget>
         implements BudgetService {
+
+    /**
+     * finance/Budget 实体映射列中，budgets 表（旧采购预算结构 V20260704_001）缺失的列（实测 9 列）。
+     * 结构对齐方向属业务决策（PD-016 待裁决，不猜测）；裁决前作为结构护栏使用。
+     */
+    private static final List<String> BUDGET_ENTITY_MAPPED_COLUMNS = Arrays.asList(
+            "budget_year", "budget_month", "budget_type", "category_id",
+            "actual_amount", "variance", "variance_rate", "responsible_dept_id", "remark"
+    );
+
+    /**
+     * 结构护栏（OICBE-B1-003 / KL-055，防假空）：
+     * budgets 表结构与 finance/Budget 实体列漂移（实体 9 列在表中不存在，information_schema 实测），
+     * 空表场景下分页 COUNT 短路会返回 code:0 空列表（假空形态）。
+     * 在 COUNT 短路前显式校验结构：未对齐则抛明确错误态（code:500），禁止伪装空数据。
+     */
+    private void assertBudgetSchemaAligned() {
+        int present = baseMapper.countEntityColumnsPresent(BUDGET_ENTITY_MAPPED_COLUMNS);
+        if (present != BUDGET_ENTITY_MAPPED_COLUMNS.size()) {
+            throw new BusinessException(500, "预算表结构与财务预算实体未对齐，预算数据暂不可用（待结构对齐处理）");
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -87,6 +110,8 @@ public class BudgetServiceImpl extends ServiceImpl<BudgetMapper, Budget>
 
     @Override
     public IPage<BudgetVO> getPage(BudgetQueryDTO query) {
+        // 结构护栏先行（防假空）：结构未对齐时明确错误态，不返回 code:0 空列表
+        assertBudgetSchemaAligned();
         Page<Budget> page = new Page<>(query.getCurrent(), query.getSize());
         LambdaQueryWrapper<Budget> wrapper = new LambdaQueryWrapper<>();
 
