@@ -34,12 +34,12 @@ public interface RegistrationCodeMapper extends BaseMapper<RegistrationCode> {
     /**
      * 更新注册码为已使用
      */
-    @Update("UPDATE registration_code SET status = 'USED', updated_at = NOW() WHERE code = #{code} AND status = 'UNUSED' AND validity_end > NOW()")
+    @Update("UPDATE registration_code SET status = 'USED', update_time = NOW() WHERE code = #{code} AND status = 'UNUSED' AND validity_end > NOW()")
     int updateToUsed(@Param("code") String code);
 
     /**
      * 更新过期的注册码状态
      */
-    @Update("UPDATE registration_code SET status = 'EXPIRED', updated_at = NOW() WHERE status = 'UNUSED' AND validity_end <= NOW()")
+    @Update("UPDATE registration_code SET status = 'EXPIRED', update_time = NOW() WHERE status = 'UNUSED' AND validity_end <= NOW()")
     int updateExpiredCodes();
 }

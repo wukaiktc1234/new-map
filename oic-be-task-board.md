@@ -60,7 +60,7 @@
 | **执行方式** | 规则 6 门禁：三向核对（只读）→ 决策点登记待裁决（不猜测，catch 先行不受阻）→ migration 先行 → 代码对齐 → 冒烟 |
 | **验收标准（qa 独立验收）** | ① 三向核对单产出（实体↔migration↔information_schema）；② **migration 落库**（**PD-014 已裁决（2026-08-16）：代码引用优先建表**——建 registration_code 表（含 code_expiry_time 列）+ onboarding_records 补 code_expiry_time 列，flyway 新版本 success=t、checksum 匹配）；③ 注册码**生成/校验/核销链路真实数据冒烟**（业务成功路径可用，不再 500）；④ 无 RM 轨文件触碰；⑤ **REV：REG-ETM-001 基线条目转正 + 真实数据断言扩展**（regression 维护） |
 | **红线** | R-1~R-7（决策点不猜测；catch 语义先行；分批） |
-| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §一）**：勘误真实（硬编码 SQL 在 Mapper.java 注解，XML 为空文件）；code_expiry_time 列缺失新发现独立证实（第一失败点判断正确）；catch 先行结论成立（L340/379 为业务校验 throw，非 catch 吞错，无需改码）；migration 未落库合规（flyway 189/189 无新版本）；无 RM 轨文件触碰；REV：REG-ETM-001 转正由 regression 执行 |
+| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §一）→ PD-014 已裁决，落地执行（developer 2026-08-16 第二轮）**：勘误真实（硬编码 SQL 在 Mapper.java 注解，XML 为空文件）；code_expiry_time 列缺失新发现独立证实（第一失败点判断正确）；catch 先行结论成立（L340/379 为业务校验 throw，非 catch 吞错，无需改码）；migration 未落库合规（flyway 189/189 无新版本）；无 RM 轨文件触碰；REV：REG-ETM-001 转正由 regression 执行。**第二轮（PD-014 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_002 落库（rank 190，checksum -259030795）+ onboarding_records 补 code_expiry_time；RegistrationCodeMapper updateToUsed/updateExpiredCodes 的 `updated_at` 硬编码列名修复为 `update_time`（字段映射错位，A.4 暴露即修，编译通过）；registration_code 表 SQL 层全链路回滚验证通过（insert/findByCode/updateToUsed/countValidCodes，零残留）；**注册码 HTTP 业务成功路径仍被 OnboardingRecord 实体既有列漂移（created_at/updated_at/interview_id，V20260717_020 改名/建表后实体未同步）阻断——登记差异表（Batch 2+ 候选），非本卡范围，如实报告** |
 | **本批执行证据（developer，2026-08-16）** | 见下方「Batch 1 执行证据」OICBE-B1-001 |
 
 ---
@@ -99,7 +99,7 @@
 | **执行方式** | 规则 6 门禁：三向核对 →（决策点登记）→ migration 先行 → 代码对齐 → 冒烟 |
 | **验收标准（qa 独立验收）** | **PD-016 已裁决（2026-08-16）：migration 为真相源，三步收敛**——① 实体字段差异清单（实体-only 9 列 + 表-only 9 列 + budget_id 类型漂移）；② 影响接口扫描（/v1/finance/budgets 及关联面）；③ **migration 收敛对齐落库**（补实体 9 列 + budget_id 类型对齐；**不直接删字段**，剩余差异表落任务池；flyway 新版本 success=t、checksum 匹配）；④ budgets 链路**真实数据冒烟**（无假成功、无 COUNT 短路假空）；⑤ **REV：REG-KL055 基线条目转正 + 真实数据断言扩展** |
 | **红线** | R-1~R-7（业务结构取舍不猜测） |
-| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §三，附限制 L-1）**：budgets 15 列=migration、实体 9 列漂移、budget_id VARCHAR(32) vs Long 类型漂移独立实测一致；结构护栏触发有日志铁证（traceId=6b5600cf1885 与冒烟响应对账闭环）；PD-016 BLOCKED 不落库合规；L-1：护栏抛 finance 包 BusinessException 未被 common 包 GlobalExceptionHandler 捕获 → 响应为通用「系统繁忙」（仍属明确错误态，不阻塞；finance 域双包异常类并存建议评估）；REV：REG-KL055 转正由 regression 执行 |
+| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §三，附限制 L-1）→ PD-016 已裁决，落地执行（developer 2026-08-16 第二轮）**：budgets 15 列=migration、实体 9 列漂移、budget_id VARCHAR(32) vs Long 类型漂移独立实测一致；结构护栏触发有日志铁证（traceId=6b5600cf1885 与冒烟响应对账闭环）；PD-016 BLOCKED 不落库合规；L-1：护栏抛 finance 包 BusinessException 未被 common 包 GlobalExceptionHandler 捕获 → 响应为通用「系统繁忙」（仍属明确错误态，不阻塞；finance 域双包异常类并存建议评估）；REV：REG-KL055 转正由 regression 执行。**第二轮（PD-016 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_003（9 列补列 + budget_id VARCHAR(32)→BIGINT 类型对齐，rank 191，checksum -388535559）+ V20260816_004（budget_id 自增序列，rank 192，checksum 1208216516——类型对齐补充面，冒烟暴露 budget_id NULL NOT NULL violation 后补）；**结构护栏自动放行（GET /v1/finance/budgets → code:0 正常空列表，不再 500）**；SQL 层财务列读写回滚验证通过（budget_id 序列=2）；**HTTP 写入面（POST create）仍被表-only 列 `budget_name NOT NULL` 约束阻断——登记差异表（任务池），不扩大范围改表-only 列语义，如实报告** |
 | **本批执行证据（developer，2026-08-16）** | 见下方「Batch 1 执行证据」OICBE-B1-003 |
 
 ---
@@ -108,9 +108,9 @@
 
 | 编号 | 来源卡 | 决策点 | 状态 | 先行部分 |
 |---|---|---|---|---|
-| PD-014 | OICBE-B1-001 | registration_code 归属：独立建表 vs 对齐 onboarding_records 列 | **✅ 已决策（2026-08-16 架构裁决）：代码引用优先建表**（建 registration_code 表含 code_expiry_time + onboarding_records 补列，不删代码）——立即落库 | catch 先行已确认无需改码（现状即明确错误态） |
+| PD-014 | OICBE-B1-001 | registration_code 归属：独立建表 vs 对齐 onboarding_records 列 | **✅ 已决策（2026-08-16 架构裁决）：代码引用优先建表**（建 registration_code 表含 code_expiry_time + onboarding_records 补列，不删代码）——**已落库（V20260816_002，rank 190）** | catch 先行已确认无需改码（现状即明确错误态）；Mapper 硬编码列名修复（updated_at→update_time） |
 | PD-015 | OICBE-B1-002 | SalesOrder 与 OrderNew 是否同表合并（sales_order vs orders） | **✅ 已决策（2026-08-16 架构裁决）：两阶段**——阶段一=orders 唯一真相源 + 映射表 + 禁止新增引用（立即）；阶段二=按批迁移（实体/查询/接口/报表/统计，每批 QA+基线） | Dashboard catch 吞错处置已完成（明确错误态替代假空） |
-| PD-016 | OICBE-B1-003 | budgets 对齐方向：旧采购预算结构 vs 财务预算实体 | **✅ 已决策（2026-08-16 架构裁决）：migration 为真相源，三步收敛**（差异清单→接口扫描→migration 收敛对齐；不删字段，差异表落任务池）——立即落库 | 假空形态处置已完成（getPage 结构护栏 → 明确错误态） |
+| PD-016 | OICBE-B1-003 | budgets 对齐方向：旧采购预算结构 vs 财务预算实体 | **✅ 已决策（2026-08-16 架构裁决）：migration 为真相源，三步收敛**（差异清单→接口扫描→migration 收敛对齐；不删字段，差异表落任务池）——**已落库（V20260816_003 + 004，rank 191/192）** | 假空形态处置已完成（getPage 结构护栏 → 明确错误态）；护栏已自动放行（9 列齐备） |
 
 > 决策流转：架构/契约确认 → 回写验收标准 → 任务放行（不猜测实现）。
 
@@ -220,6 +220,77 @@
 | **表-only 9 列（旧采购预算结构，实体无映射）** | `budget_name` / `used_amount` / `remaining_amount` / `budget_period` / `status` / `create_by` / `update_by` / `created_by` / `updated_by` |
 | **处置（PD-016 已裁决：migration 为真相源，三步收敛）** | migration 收敛对齐落库（补实体 9 列 + budget_id 类型对齐）执行中；**不直接删字段**——剩余差异（表-only 9 列保留清单）落任务池 |
 | **状态** | **占位待回填**——保留清单逐列明细 + 去向标注（保留/归档/后续迁移）由 **developer PD-016 执行后回填本表**；未回填前不拆卡、不处置 |
+
+---
+
+## 四·2、PD-014 / PD-016 裁决落地执行证据（developer 2026-08-16 第二轮，规则 6 门禁）
+
+### 卡 1/3（PD-014，registration_code）落库与冒烟
+
+**migration diff（V20260816_002__create_registration_code_table.sql）**：
+
+| 变更 | 内容 |
+|---|---|
+| CREATE TABLE registration_code | id VARCHAR(64) PK / code VARCHAR(50) NOT NULL / type VARCHAR(20) / validity_start TIMESTAMP / validity_end TIMESTAMP / status VARCHAR(20) DEFAULT 'UNUSED' / **code_expiry_time TIMESTAMP** / created_by VARCHAR(36) / onboarding_record_id VARCHAR(32) / create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP / update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP / use_time TIMESTAMP（12 列全字段=RegistrationCode 实体 + 裁决要求 code_expiry_time） |
+| 索引 | idx_registration_code_code（code 查询面 findByCode/updateToUsed）+ idx_registration_code_onboarding_record_id（findByOnboardingRecordId） |
+| ALTER TABLE onboarding_records | ADD COLUMN IF NOT EXISTS code_expiry_time TIMESTAMP（补列，与实体 OnboardingRecord.codeExpiryTime 对齐） |
+| 类型惯例 | code VARCHAR(50) 对齐 onboarding_records.registration_code；onboarding_record_id VARCHAR(32) 对齐 onboarding_records.id；created_by VARCHAR(36) 对齐 onboarding_records.created_by |
+
+**落库记录（flyway）**：189=20260816.001（RM 轨，不变）→ **190=20260816.002 success=t checksum=-259030795**（191/192 为 PD-016 轨，见下）；registration_code 表 information_schema 实测 12 列 + PK + 2 索引全就位；onboarding_records.code_expiry_time 实测存在。
+
+**冒烟（真实 HTTP + SQL 层，开发库 food_traceability）**：
+
+| 项 | 结果 |
+|---|---|
+| POST /api/v1/onboarding-records（构造合法入参创建入职记录） | ❌ **code:500**——根因日志铁证：`关系 "onboarding_records" 中 "created_at" 字段不存在`（OnboardingRecord 实体 createdAt/updatedAt/interviewId 列漂移，V20260717_020 改名 + V20260625_004 建表未含 interview_id 后实体未同步——**既有独立问题，非本批 migration 范围**） |
+| POST /api/v1/onboarding-records/{id}/registration-code（生成链路） | ❌ 不可达——首步 getById 即被上述实体漂移阻断（同根因）；getById 非分页 COUNT 短路路径，必 500 |
+| GET /api/v1/onboarding-records（列表） | ⚠️ code:0 空列表（表 0 行分页 COUNT 短路，掩盖列漂移——与 KL-055 同机制；一旦有行 data 查询即 500） |
+| **registration_code 表 SQL 层链路（回滚验证，零残留）** | ✅ insert（generateCode 面）→ SELECT by code（findByCode 等价）→ UPDATE status='USED' + **update_time**（updateToUsed 修复后等价）→ COUNT UNUSED（countValidCodes 等价）全部通过；code_expiry_time 读写正常；ROLLBACK 后 0 行残留 |
+| onboarding_records.code_expiry_time 写入面（SQL 回滚） | ✅ INSERT + SELECT code_expiry_time 读写正常（该列已不再漂移；整体 selectById 仍被其余既有漂移列阻断） |
+
+**代码修复（A.4 暴露的字段映射错位，卡文件范围内）**：`RegistrationCodeMapper.java` L37/L43——`updateToUsed`/`updateExpiredCodes` 硬编码 `updated_at = NOW()` 与表列（update_time，实体 @TableField 映射）不一致 → 核销/过期更新 SQL 500。修复为 `update_time = NOW()`（2 处）；`mvn compile` EXIT 0。**生效条件：部署/重启后（红线不触碰运行实例 PID 30264，本批不重启）**。
+
+### 卡 3/3（PD-016，budgets）落库与冒烟
+
+**实体字段差异清单（三向核对 2026-08-16 实测）**：
+
+| 类别 | 列 | 类型（实体 → 表） |
+|---|---|---|
+| 实体-only 9 列（本次补齐） | budget_year / budget_month / budget_type / category_id | Integer → INTEGER |
+| | actual_amount / variance | Long（分）→ BIGINT |
+| | variance_rate | BigDecimal → NUMERIC(10,4) |
+| | responsible_dept_id | Long → BIGINT |
+| | remark | String → VARCHAR(500)（DTO Size max=500） |
+| budget_id 类型漂移 | VARCHAR(32) PK → **BIGINT**（实体 Long IdType.AUTO） | drop PK → ALTER TYPE USING ::bigint → 重建 PK（行数=0 安全） |
+| 表-only 7 列保留不删 | budget_name / used_amount / remaining_amount / budget_period / status / create_by / update_by | （采购预算语义列；注：卡 1 版「表-only 9 列」含 created_by/updated_by 为旧口径——三向核对修正：created_by/updated_by 实体侧由 BaseEntity 提供，非缺失；**表-only 实际 7 列**） |
+| **剩余差异登记（任务池）** | ① budget_amount DECIMAL(15,2) vs 实体 Long 分（读写可用：整数分写 DECIMAL 成功、读回 BigDecimal→Long 映射 OK；精度语义差异登记）② **budget_name NOT NULL 约束** vs 财务实体无 budgetName 字段（**POST create 写入阻断点**，实测 NOT NULL violation；放宽约束涉表-only 列语义取舍，登记任务池不顺手修）③ 旧 `entity/Budget.java`（@TableName("budget") 单数表，budget_id String）与 `service/BudgetService.java`（无实现无注入方，死代码）——观察登记 |
+
+**migration diff（V20260816_003 + V20260816_004）**：003=ADD COLUMN IF NOT EXISTS ×9（含 COMMENT）+ budget_id VARCHAR(32)→BIGINT（DROP CONSTRAINT budgets_pkey → ALTER TYPE USING ::bigint → ADD CONSTRAINT budgets_pkey）；004=CREATE SEQUENCE budgets_budget_id_seq + SET DEFAULT nextval（**003 落库后冒烟暴露 budget_id NULL NOT NULL violation——类型对齐缺少 AUTO 语义（BIGSERIAL 惯例），补 004 修复，同属 budget_id 对齐必要面**）。
+
+**落库记录（flyway）**：191=20260816.003 success=t checksum=-388535559；192=20260816.004 success=t checksum=1208216516；budgets 实测 24 列（15+9）+ budget_id BIGINT + PK 重建 + 序列默认值；行数=0。
+
+**冒烟（真实 HTTP + SQL 层）**：
+
+| 项 | 结果 |
+|---|---|
+| GET /v1/finance/budgets?current=1&size=20（护栏放行验证） | ✅ **code:0 success:true records:[] total:0 正常空列表——结构护栏不再触发（countEntityColumnsPresent=9=9），不再 code:500**（真实语义：表 0 行 → 空列表为真实数据，非 COUNT 短路假空——护栏防假空机制已按设计完成使命） |
+| SQL 层财务列读写（事务回滚，零污染） | ✅ INSERT（budget_id 序列=2）+ SELECT 9 财务列读写正常（variance_rate 0.0000、actual_amount/variance BIGINT）→ ROLLBACK |
+| POST /v1/finance/budgets（HTTP 写入面） | ❌ code:500——budget_id 序列修复后仍被 **budget_name NOT NULL**（表-only 列）阻断；**登记差异表（任务池），不扩大范围改表-only 列语义** |
+| 冒烟数据清理 | ✅ 三表（registration_code/budgets/onboarding_records）回滚验证后均 0 行，零残留；budgets_budget_id_seq 为结构交付物保留 |
+
+### REV 标注
+
+- **REG-ETM-001**（注册码生成/校验/核销链路）：基线条目转正 + **真实数据断言扩展待 regression**——现登记为：registration_code 表 SQL 层链路断言（insert/findByCode/updateToUsed 修复后）可用 + onboarding_records 实体既有列漂移（created_at/updated_at/interview_id）阻断 HTTP 业务成功路径，**断言扩展需先处理差异表 DR-01（Batch 2+）**；
+- **REG-KL055**（/v1/finance/budgets）：基线条目转正 + **真实数据断言扩展待 regression**——现登记为：护栏放行（code:0 正常空列表）断言生效；真实数据写入断言需先处理差异表 DR-02（budget_name NOT NULL，Batch 2+）。
+
+### 差异表登记（任务池候选，Batch 2+）
+
+| 编号 | 来源 | 差异 | 建议处置 | 阻断面 |
+|---|---|---|---|---|
+| DR-01 | 卡 1/3 冒烟暴露 | OnboardingRecord 实体 createdAt/updatedAt/interviewId 列漂移（created_at/updated_at/interview_id 表无此列） | 独立任务卡：实体 @TableField 对齐或按 V20260717_020 规范补列（ETM 家族，A 类） | onboarding_records 全链路（insert/selectById/update）+ 注册码 HTTP 业务成功路径 |
+| DR-02 | 卡 3/3 冒烟暴露 | budgets.budget_name NOT NULL vs 财务实体无 budgetName | 表-only 列约束取舍（放宽 vs 实体补字段）——涉业务结构取舍，走待裁决/任务池 | POST /v1/finance/budgets 写入面 |
+| DR-03 | 卡 3/3 差异清单 | budgets.budget_amount DECIMAL(15,2) vs 实体 Long 分 | 类型/精度语义对齐（读取面可用，语义差异） | 无（读写可用，仅语义标注） |
+| DR-04 | 卡 3/3 差异清单 | 旧 entity/Budget.java（budget 单数表）+ service/BudgetService.java 死代码 | 观察/清理任务卡（无注入方无实现） | 无 |
 
 ---
 
