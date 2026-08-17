@@ -1,34 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.foodtraceability.mapper.SalesOrderMapper">
-    
+    <!--
+      OICBE-B2-002 查询迁移（T 契约 §四·4）：表名 sales_order/sales_order_detail → orders/order_items；
+      列名按 T-1~T-7 映射。B 项（B-1 状态机 status 过滤 / B-2 completedTime / B-3 orderType / B-4 明细列）
+      不参与 SQL（BLOCKED 待 PD-017~020，不猜测）。
+    -->
+
     <resultMap id="BaseResultMap" type="com.foodtraceability.entity.SalesOrder">
-        <id property="id" column="id" />
-        <result property="orderNo" column="order_no" />
+        <!-- T-1 主键随表：id → order_id -->
+        <id property="id" column="order_id" />
+        <!-- T-4 命名选边新列集：orderNo → order_code -->
+        <result property="orderNo" column="order_code" />
         <result property="customerId" column="customer_id" />
         <result property="customerName" column="customer_name" />
         <result property="customerPhone" column="customer_phone" />
-        <result property="orderType" column="order_type" />
+        <!-- B-3 BLOCKED：orderType 枚举映射待 PD-019，不参与 SQL -->
+        <!-- T-3 金额落新列集 bigint 分：totalAmount → total_amount -->
         <result property="totalAmount" column="total_amount" />
+        <!-- T-3：discountAmount → discount_amount（唯一同名列） -->
         <result property="discountAmount" column="discount_amount" />
-        <result property="actualAmount" column="actual_amount" />
-        <result property="status" column="status" />
-        <result property="orderTime" column="order_time" />
-        <result property="estimatedTime" column="estimated_time" />
-        <result property="completedTime" column="completed_time" />
-        <result property="tableNo" column="table_no" />
-        <result property="peopleCount" column="people_count" />
+        <!-- T-3 实收/实付语义：actualAmount → paid_amount -->
+        <result property="actualAmount" column="paid_amount" />
+        <!-- B-1 BLOCKED：status 状态机映射待 PD-017，不参与 SQL -->
+        <!-- T-4：orderTime → create_time -->
+        <result property="orderTime" column="create_time" />
+        <!-- T-4：estimatedTime → expected_time -->
+        <result property="estimatedTime" column="expected_time" />
+        <!-- B-2 BLOCKED：completedTime 处置待 PD-018，不参与 SQL -->
+        <!-- T-6：tableNo → table_name -->
+        <result property="tableNo" column="table_name" />
+        <!-- T-4：peopleCount → dining_people_count -->
+        <result property="peopleCount" column="dining_people_count" />
+        <!-- T-4：remark → remark（新列集选边） -->
         <result property="remark" column="remark" />
         <result property="storeId" column="store_id" />
-        <result property="createdBy" column="created_by" />
-        <result property="updatedBy" column="updated_by" />
+        <!-- T-5：createdBy → create_by -->
+        <result property="createdBy" column="create_by" />
+        <!-- T-5：updatedBy → update_by -->
+        <result property="updatedBy" column="update_by" />
     </resultMap>
-    
+
+    <!-- 明细 resultMap（T-2 归属 order_items；item_id→id 非驼峰同名，需显式列映射） -->
+    <resultMap id="SalesOrderDetailResultMap" type="com.foodtraceability.entity.SalesOrderDetail">
+        <!-- T-1 主键随表：id → item_id -->
+        <id property="id" column="item_id" />
+        <!-- T-1：orderId → order_id -->
+        <result property="orderId" column="order_id" />
+        <!-- T-7：productId → food_id（按 order_items 现状 varchar） -->
+        <result property="productId" column="food_id" />
+        <result property="productName" column="product_name" />
+        <!-- B-4 BLOCKED：productCode/unit/inventoryCode/storeId/createdBy/updatedBy 处置待 PD-020，不参与 SQL -->
+        <result property="quantity" column="quantity" />
+        <!-- T-7：unitPrice → unit_price（bigint 分） -->
+        <result property="unitPrice" column="unit_price" />
+        <!-- T-7：totalPrice → amount（bigint 分） -->
+        <result property="totalPrice" column="amount" />
+    </resultMap>
+
     <select id="selectSalesOrderPage" resultMap="BaseResultMap">
-        SELECT * FROM sales_order
+        SELECT * FROM orders
         WHERE deleted = 0
         <if test="orderNo != null and orderNo != ''">
-            AND order_no LIKE CONCAT('%', #{orderNo}, '%')
+            AND order_code LIKE CONCAT('%', #{orderNo}, '%')
         </if>
         <if test="customerId != null">
             AND customer_id = #{customerId}
@@ -36,28 +70,32 @@
         <if test="customerName != null and customerName != ''">
             AND customer_name LIKE CONCAT('%', #{customerName}, '%')
         </if>
-        <if test="status != null and status != ''">
-            AND status = #{status}
-        </if>
+        <!-- B-1 BLOCKED：status 过滤（status ↔ order_status 状态机映射待 PD-017 决策，决策前不实现映射、不猜状态机） -->
         <if test="startDate != null">
-            AND order_time >= #{startDate, jdbcType=TIMESTAMP}
+            AND create_time >= #{startDate, jdbcType=TIMESTAMP}
         </if>
         <if test="endDate != null">
-            AND order_time &lt;= #{endDate, jdbcType=TIMESTAMP}
+            AND create_time &lt;= #{endDate, jdbcType=TIMESTAMP}
         </if>
         ORDER BY create_time DESC
     </select>
-    
-    <select id="selectOrderDetailList" resultType="com.foodtraceability.entity.SalesOrderDetail">
-        SELECT * FROM sales_order_detail WHERE order_id = #{orderId}
+
+    <select id="selectOrderDetailList" resultMap="SalesOrderDetailResultMap">
+        SELECT * FROM order_items WHERE order_id = #{orderId}
     </select>
-    
+
+    <!--
+      T-2 明细归属 order_items；仅写 T 项列（B-4 列 product_code/unit/inventory_code/store_id/created_by 待 PD-020 不参与 SQL）。
+      运行行为注记：order_items.product_type 为 NOT NULL（V6.0.0），SalesOrderDetail 无对应来源字段 → INSERT 对齐后
+      运行时仍将触发 NOT NULL violation（明确错误态），属明细归属语义缺口（B-4/PD-020 决策输入），如实报告不猜测。
+    -->
     <insert id="insertOrderDetail" parameterType="com.foodtraceability.entity.SalesOrderDetail">
-        INSERT INTO sales_order_detail (order_id, product_id, product_name, product_code, quantity, unit, unit_price, total_price, inventory_code, store_id, created_by)
-        VALUES (#{orderId}, #{productId}, #{productName}, #{productCode}, #{quantity}, #{unit}, #{unitPrice}, #{totalPrice}, #{inventoryCode}, #{storeId}, #{createdBy})
+        INSERT INTO order_items (order_id, food_id, product_name, quantity, unit_price, amount)
+        VALUES (#{orderId}, #{productId}, #{productName}, #{quantity}, #{unitPrice}, #{totalPrice})
     </insert>
-    
-    <delete id="deleteOrderDetail" parameterType="Long">
-        DELETE FROM sales_order_detail WHERE id = #{id}
+
+    <!-- T-1 主键随表：明细物理删除按 item_id（对齐 order_items 主键；逻辑删除语义差异见修改证据） -->
+    <delete id="deleteOrderDetail" parameterType="String">
+        DELETE FROM order_items WHERE item_id = #{detailId}
     </delete>
 </mapper>

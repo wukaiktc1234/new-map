@@ -42,8 +42,8 @@ import static org.mockito.Mockito.when;
  *
  * <p>Sprint 3.1 P0 T-039（TDD）：验证 confirmDelivery() 在订单状态从 completed
  * 流转为 delivered 后，同事务调用 {@code ReceivableService.createForOrder()}
- * 创建应收账款。金额以分为单位（SalesOrder.actualAmount 为 Integer，
- * 转换为 Long 供 ReceivableService 使用），到期日为订单日 + 30 天。
+ * 创建应收账款。金额以分为单位（OICBE-B2-001 T-3 类型对齐后 SalesOrder.actualAmount
+ * 为 Long，直接供 ReceivableService 使用），到期日为订单日 + 30 天。
  * 应收创建失败时整个出库事务回滚（强一致性，ADR-004）。</p>
  *
  * <p>测试位于 service.impl 包下。由于 SalesOrderServiceImpl
@@ -81,10 +81,14 @@ class SalesOrderServiceImplTest {
         ReflectionTestUtils.setField(service, "baseMapper", salesOrderMapper);
     }
 
-    /** 构造一个可确认出库的 SalesOrder（状态 completed + 有效金额） */
-    private SalesOrder buildDeliverableOrder(Long orderId, Integer actualAmount) {
+    /**
+     * 构造一个可确认出库的 SalesOrder（状态 completed + 有效金额）
+     * OICBE-B2-001/003：主键随表 String（T-1，setId(String)）、金额 Long（T-3）；
+     * status 为 B-1 BLOCKED 字段（exist=false，仅内存断言，不参与 SQL），状态机映射待 PD-017 决策。
+     */
+    private SalesOrder buildDeliverableOrder(Long orderId, Long actualAmount) {
         SalesOrder order = new SalesOrder();
-        order.setId(orderId);
+        order.setId(String.valueOf(orderId));
         order.setOrderNo("SO20260626001");
         order.setCustomerId(7001L);
         order.setCustomerName("张三");
@@ -103,7 +107,7 @@ class SalesOrderServiceImplTest {
     void confirmDelivery_success_callsCreateForOrder() {
         // given
         Long orderId = 8001L;
-        Integer actualAmount = 50000; // 500元（单位：分）
+        Long actualAmount = 50000L; // 500元（单位：分）
         SalesOrder order = buildDeliverableOrder(orderId, actualAmount);
         when(salesOrderMapper.selectById(orderId)).thenReturn(order);
         when(salesOrderMapper.updateById(any())).thenReturn(1);
@@ -114,8 +118,8 @@ class SalesOrderServiceImplTest {
         // then
         assertTrue(result, "确认出库应返回 true");
 
-        // 验证状态流转为 delivered
-        assertEquals("delivered", order.getStatus(), "订单状态应流转为 delivered");
+        // 验证状态流转为 delivered（B-1 状态机语义待 PD-017 决策；本断言仅验证 ServiceImpl 现状字符串状态流转逻辑不变）
+        assertEquals("delivered", order.getStatus(), "订单状态应流转为 delivered（待 PD-017 状态机映射决策）");
 
         // 验证 receivableService.createForOrder 被调用且参数正确
         ArgumentCaptor<Long> orderIdCaptor = ArgumentCaptor.forClass(Long.class);
@@ -147,7 +151,7 @@ class SalesOrderServiceImplTest {
     void confirmDelivery_receivableCreateFails_throwsBusinessException() {
         // given
         Long orderId = 8002L;
-        Integer actualAmount = 30000;
+        Long actualAmount = 30000L;
         SalesOrder order = buildDeliverableOrder(orderId, actualAmount);
         when(salesOrderMapper.selectById(orderId)).thenReturn(order);
         when(salesOrderMapper.updateById(any())).thenReturn(1);
@@ -172,7 +176,7 @@ class SalesOrderServiceImplTest {
     void confirmDelivery_zeroAmount_skipsReceivableCreation() {
         // given
         Long orderId = 8003L;
-        SalesOrder order = buildDeliverableOrder(orderId, 0);
+        SalesOrder order = buildDeliverableOrder(orderId, 0L);
         when(salesOrderMapper.selectById(orderId)).thenReturn(order);
         when(salesOrderMapper.updateById(any())).thenReturn(1);
 
@@ -227,8 +231,8 @@ class SalesOrderServiceImplTest {
     void confirmDelivery_invalidStatus_returnsFalse() {
         // given
         Long orderId = 8006L;
-        SalesOrder order = buildDeliverableOrder(orderId, 50000);
-        order.setStatus("preparing"); // 非 completed
+        SalesOrder order = buildDeliverableOrder(orderId, 50000L);
+        order.setStatus("preparing"); // 非 completed（B-1 状态机语义待 PD-017 决策，此处仅验证 ServiceImpl 现状判断逻辑）
         when(salesOrderMapper.selectById(orderId)).thenReturn(order);
 
         // when
@@ -250,7 +254,7 @@ class SalesOrderServiceImplTest {
     void confirmDelivery_alwaysCallsCreateForOrder_idempotencyByReceivableService() {
         // given
         Long orderId = 8007L;
-        Integer actualAmount = 80000;
+        Long actualAmount = 80000L;
         SalesOrder order = buildDeliverableOrder(orderId, actualAmount);
         when(salesOrderMapper.selectById(orderId)).thenReturn(order);
         when(salesOrderMapper.updateById(any())).thenReturn(1);

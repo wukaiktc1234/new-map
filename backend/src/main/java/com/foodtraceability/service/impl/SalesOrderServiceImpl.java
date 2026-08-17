@@ -86,7 +86,9 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder updateSalesOrder(Long id, SalesOrder order) {
-        order.setId(id);
+        // OICBE-B2-001 类型适配（T-1 主键随表 String）：接口/Controller 签名（Batch 3 B-5 范围）本批不变，
+        // 实体层 setId(String) 需由 Long 参数转换；业务语义不变（查询/更新语义迁移归 Batch 3）。
+        order.setId(String.valueOf(id));
         salesOrderMapper.updateById(order);
         return salesOrderMapper.selectById(id);
     }
@@ -185,8 +187,8 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     /**
      * 为销售订单创建应收账款（T-039 内部方法）
      *
-     * <p>SalesOrder.actualAmount 为 Integer（分），需转换为 Long 供
-     * ReceivableService 使用。金额无效时跳过创建。</p>
+     * <p>SalesOrder.actualAmount 为 Long（分）（OICBE-B2-001 T-3 类型对齐：Integer→Long），
+     * 金额无效时跳过创建。</p>
      *
      * <p>强一致性：异常时抛出 BusinessException 触发事务回滚。
      * 幂等性由 ReceivableService 通过确定性 receivableNo 保证。</p>
@@ -194,7 +196,8 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
      * @param order 销售订单
      */
     private void createReceivableForOrder(SalesOrder order) {
-        Integer actualAmount = order.getActualAmount();
+        // OICBE-B2-001 类型适配（T-3）：实体金额对齐 Long
+        Long actualAmount = order.getActualAmount();
         if (actualAmount == null || actualAmount <= 0) {
             log.warn("销售订单金额无效，跳过应收账款创建，订单ID：{}，金额：{}",
                     order.getId(), actualAmount);
@@ -202,10 +205,13 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         }
 
         try {
-            // Integer（分）→ Long（分），保持单位一致
-            Long amount = actualAmount.longValue();
+            Long amount = actualAmount;
+            // OICBE-B2-001 类型适配（T-1 主键 String 化）：ReceivableService.createForOrder 签名 Long 属
+            // T-039 应收联动契约（Batch 3-002 迁移范围），本批不改接口签名；String 订单号转 Long——
+            // 非数字订单号（orders.order_id 业务字符串 "O"+时间戳）将抛 NumberFormatException → 下方 catch
+            // → BusinessException 明确错误态（与原缺表 500 语义一致，不吞错），如实报告待 Batch 3 契约。
             receivableService.createForOrder(
-                    order.getId(),
+                    Long.valueOf(order.getId()),
                     order.getCustomerId(),
                     order.getCustomerName(),
                     amount,
@@ -225,6 +231,7 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     @Transactional(rollbackFor = Exception.class)
     public SalesOrderDetail addOrderDetail(Long orderId, SalesOrderDetail detail) {
         if (detail.getInventoryCode() == null || detail.getInventoryCode().isEmpty()) {
+            // OICBE-B2-001 类型适配（T-7 productId String 化）：generateInventoryCode 参数 Long → String
             detail.setInventoryCode(generateInventoryCode(detail.getProductId()));
         }
         
@@ -235,19 +242,21 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void removeOrderDetail(Long detailId) {
-        salesOrderMapper.deleteOrderDetail(detailId);
+        // OICBE-B2-001 类型适配（T-1 明细主键 String 化）：Mapper 签名 Long → String
+        salesOrderMapper.deleteOrderDetail(String.valueOf(detailId));
     }
     
     private String generateOrderNo() {
         return "SO" + System.currentTimeMillis();
     }
     
-    private String generateInventoryCode(Long productId) {
+    private String generateInventoryCode(String productId) {
         return "IC" + productId + "-" + System.currentTimeMillis();
     }
     
     private void deductInventoryForOrder(Long orderId) {
-        List<SalesOrderDetail> details = salesOrderMapper.selectOrderDetailList(orderId);
+        // OICBE-B2-001 类型适配（T-1 主键 String 化）：Mapper.selectOrderDetailList 签名 Long → String
+        List<SalesOrderDetail> details = salesOrderMapper.selectOrderDetailList(String.valueOf(orderId));
         
         String storeIdStr = SecurityUtils.getCurrentUserStoreId();
         Long storeId = storeIdStr != null ? Long.parseLong(storeIdStr) : null;

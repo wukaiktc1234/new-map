@@ -1,39 +1,91 @@
 package com.foodtraceability.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import java.math.BigDecimal;
 
-@TableName("sales_order_detail")
+/**
+ * 销售订单明细实体（OICBE-B2-001 实体对齐：@TableName("sales_order_detail") → "order_items"，T-2 明细归属）
+ *
+ * <p>T 技术契约（oic-be-task-board.md §四·4，已裁决）：T-1 主键随表（id→item_id，String，对齐 OrderItemNew
+ * IdType.ASSIGN_UUID）、T-2 明细归属 order_items（sales_order_detail 表不存在，order_items 为唯一存在明细表）、
+ * T-7 明细类型（unitPrice→unit_price、totalPrice→amount，bigint 分；productId→food_id 按 order_items 现状
+ * varchar 对齐；OrderItemNew.foodId Long 既存类型漂移另行治理）。
+ *
+ * <p>类型按表对齐说明：unitPrice/totalPrice 原 BigDecimal（分），order_items 为 bigint（分）→ 实体层用 Long
+ * （兼容类型，分语义不变）；调用方转换逻辑在 Service 层保留，语义迁移归 Batch 3。
+ *
+ * <p>B 业务语义（BLOCKED，不猜测）：B-4 明细 6 列处置（productCode/unit/inventoryCode/storeId/createdBy/
+ * updatedBy：补列 vs 派生 vs 废弃待 PD-020）——以 @TableField(exist = false) 标注保留字段，不参与 SQL
+ * （技术手段非业务决策）。
+ */
+@TableName("order_items")
 public class SalesOrderDetail {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private Long orderId;
-    private Long productId;
+    /** 明细ID（T-1：id → order_items.item_id varchar(32) PK，String 业务主键，IdType.ASSIGN_UUID 对齐 OrderItemNew） */
+    @TableId(value = "item_id", type = IdType.ASSIGN_UUID)
+    private String id;
+
+    /** 关联订单ID（T-1：orderId → order_items.order_id varchar(32)，随 orders.order_id String 化） */
+    @TableField("order_id")
+    private String orderId;
+
+    /** 单品ID（T-7：productId → order_items.food_id，按表现状 varchar 对齐；原 Long 对齐为 String） */
+    @TableField("food_id")
+    private String productId;
+
+    /** 商品名称（直映 order_items.product_name varchar(100)） */
+    @TableField("product_name")
     private String productName;
+
+    /** 商品编码（B-4 BLOCKED：order_items 无 product_code 列，补列/派生/废弃待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private String productCode;
+
+    /** 数量（直映 order_items.quantity integer） */
+    @TableField("quantity")
     private Integer quantity;
+
+    /** 单位（B-4 BLOCKED：order_items 无 unit 列，待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private String unit;
-    private BigDecimal unitPrice;
-    private BigDecimal totalPrice;
+
+    /** 单价（分）（T-7：unitPrice → order_items.unit_price bigint；原 BigDecimal 对齐为 Long） */
+    @TableField("unit_price")
+    private Long unitPrice;
+
+    /** 小计金额（分）（T-7：totalPrice → order_items.amount bigint；命名漂移 total_price ↔ amount） */
+    @TableField("amount")
+    private Long totalPrice;
+
+    /** 库存编码（B-4 BLOCKED：order_items 无 inventory_code 列，待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private String inventoryCode;
+
+    /** 门店ID（B-4 BLOCKED：order_items 无 store_id 列，待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private Long storeId;
+
+    /** 创建人（B-4 BLOCKED：order_items 无 created_by 列，待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private String createdBy;
+
+    /** 更新人（B-4 BLOCKED：order_items 无 updated_by 列，待 PD-020 决策，exist=false 不参与 SQL） */
+    @TableField(exist = false)
     private String updatedBy;
 
     public SalesOrderDetail() {
     }
 
-    public Long getId() {
+    public String getId() {
         return this.id;
     }
 
-    public Long getOrderId() {
+    public String getOrderId() {
         return this.orderId;
     }
 
-    public Long getProductId() {
+    public String getProductId() {
         return this.productId;
     }
 
@@ -53,11 +105,11 @@ public class SalesOrderDetail {
         return this.unit;
     }
 
-    public BigDecimal getUnitPrice() {
+    public Long getUnitPrice() {
         return this.unitPrice;
     }
 
-    public BigDecimal getTotalPrice() {
+    public Long getTotalPrice() {
         return this.totalPrice;
     }
 
@@ -77,15 +129,15 @@ public class SalesOrderDetail {
         return this.updatedBy;
     }
 
-    public void setId(final Long id) {
+    public void setId(final String id) {
         this.id = id;
     }
 
-    public void setOrderId(final Long orderId) {
+    public void setOrderId(final String orderId) {
         this.orderId = orderId;
     }
 
-    public void setProductId(final Long productId) {
+    public void setProductId(final String productId) {
         this.productId = productId;
     }
 
@@ -105,11 +157,11 @@ public class SalesOrderDetail {
         this.unit = unit;
     }
 
-    public void setUnitPrice(final BigDecimal unitPrice) {
+    public void setUnitPrice(final Long unitPrice) {
         this.unitPrice = unitPrice;
     }
 
-    public void setTotalPrice(final BigDecimal totalPrice) {
+    public void setTotalPrice(final Long totalPrice) {
         this.totalPrice = totalPrice;
     }
 

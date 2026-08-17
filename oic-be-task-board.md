@@ -27,8 +27,8 @@
 
 | 批次 | 范围 | 状态 | 说明 |
 |---|---|---|---|
-| **Batch 1** | **OICBE-B1-001（ETM-001）+ OICBE-B1-002（KL-054）+ OICBE-B1-003（KL-055）** | **QA PASS 3/3（2026-08-16）** | 三卡全 PASS、无 FAIL、无 -R1（`docs/quality/oicbe-b1-qa-report.md`；卡 3 附限制 L-1）；**可进入部署流程**；PD-014/015 待架构/契约确认、PD-016 BLOCKED（决策前不落库）；migration 均未落库；commit 72f0d5a（4 文件，无新增 migration、无 RM 轨触碰）；勘误已确认（ETM-001 硬编码 SQL 在 Mapper.java 注解，XML 为空文件）；REV：REG-ETM-001/002/003、REG-KL055 转正由 regression 执行 |
-| Batch 2+（后续候选） | 家族专项其余项（ETM-002~093 A 类）、后端池联动项（EMP-BE-004/005、KIT-BE-004 等） | 占位（未排卡） | 由架构/planner 按序放卡，每批 2~3 卡；同源只登记不顺手修 |
+| **Batch 1** | **OICBE-B1-001（ETM-001）+ OICBE-B1-002（KL-054）+ OICBE-B1-003（KL-055）** | **QA 3/3 = PASS_WITH_LIMITATION（2026-08-16，两阶段验收）** | ① 首批 QA PASS 3/3（`docs/quality/oicbe-b1-qa-report.md`，卡 3 附 L-1 finance 双包异常类评估项 §四·3）→ **② 裁决落地 QA：卡 1/卡 3 = PASS_WITH_LIMITATION（`docs/quality/oicbe-b1-impl2-qa-report.md`：rank 190/191/192 checksum 独立 MATCH、SQL 层链路/护栏放行独立复验、Mapper 修复 mvn compile 独立 EXIT=0；限制=HTTP 业务成功路径受 DR-01（卡 1）/DR-02（卡 3）阻断，均非本批引入）；卡 2（阶段一）= PASS_WITH_LIMITATION（`docs/quality/oicbe-b1-phase1-qa-report.md`：六项验收全过，限制 L-1~L-4 均为文档级 minor）**；三卡均无 FAIL、无 -R1，**可进入部署流程**（发布门禁前置：REV 基线条目转正由 regression 执行 + Mapper 修复随部署/重启生效 R-2）；PD-014/016 已落库（V20260816_002/003/004，rank 190/191/192）、PD-015 阶段一完成、剩余差异表 DR-01~04 落任务池（Batch 2+ 排卡，不裁决处置）；commit 72f0d5a + c697c95（5 文件，无 RM 轨触碰）；REV：REG-ETM-001/002/003、REG-KL055 转正由 regression 执行 |
+| Batch 2+（后续候选） | 家族专项其余项（ETM-002~093 A 类）、后端池联动项（EMP-BE-004/005、KIT-BE-004 等） | 占位（未排卡） | 由架构/planner 按序放卡，每批 2~3 卡；同源只登记不顺手修；**阶段二（OICBE-B2-xxx）放卡前置标注（2026-08-17）：映射契约确认（架构/契约）**，契约确认后拆卡（§四·2） |
 
 ---
 
@@ -60,7 +60,7 @@
 | **执行方式** | 规则 6 门禁：三向核对（只读）→ 决策点登记待裁决（不猜测，catch 先行不受阻）→ migration 先行 → 代码对齐 → 冒烟 |
 | **验收标准（qa 独立验收）** | ① 三向核对单产出（实体↔migration↔information_schema）；② **migration 落库**（**PD-014 已裁决（2026-08-16）：代码引用优先建表**——建 registration_code 表（含 code_expiry_time 列）+ onboarding_records 补 code_expiry_time 列，flyway 新版本 success=t、checksum 匹配）；③ 注册码**生成/校验/核销链路真实数据冒烟**（业务成功路径可用，不再 500）；④ 无 RM 轨文件触碰；⑤ **REV：REG-ETM-001 基线条目转正 + 真实数据断言扩展**（regression 维护） |
 | **红线** | R-1~R-7（决策点不猜测；catch 语义先行；分批） |
-| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §一）→ PD-014 已裁决，落地执行（developer 2026-08-16 第二轮）**：勘误真实（硬编码 SQL 在 Mapper.java 注解，XML 为空文件）；code_expiry_time 列缺失新发现独立证实（第一失败点判断正确）；catch 先行结论成立（L340/379 为业务校验 throw，非 catch 吞错，无需改码）；migration 未落库合规（flyway 189/189 无新版本）；无 RM 轨文件触碰；REV：REG-ETM-001 转正由 regression 执行。**第二轮（PD-014 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_002 落库（rank 190，checksum -259030795）+ onboarding_records 补 code_expiry_time；RegistrationCodeMapper updateToUsed/updateExpiredCodes 的 `updated_at` 硬编码列名修复为 `update_time`（字段映射错位，A.4 暴露即修，编译通过）；registration_code 表 SQL 层全链路回滚验证通过（insert/findByCode/updateToUsed/countValidCodes，零残留）；**注册码 HTTP 业务成功路径仍被 OnboardingRecord 实体既有列漂移（created_at/updated_at/interview_id，V20260717_020 改名/建表后实体未同步）阻断——登记差异表（Batch 2+ 候选），非本卡范围，如实报告** |
+| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §一）→ PD-014 已裁决，落地执行（developer 2026-08-16 第二轮）**：勘误真实（硬编码 SQL 在 Mapper.java 注解，XML 为空文件）；code_expiry_time 列缺失新发现独立证实（第一失败点判断正确）；catch 先行结论成立（L340/379 为业务校验 throw，非 catch 吞错，无需改码）；migration 未落库合规（flyway 189/189 无新版本）；无 RM 轨文件触碰；REV：REG-ETM-001 转正由 regression 执行。**第二轮（PD-014 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_002 落库（rank 190，checksum -259030795）+ onboarding_records 补 code_expiry_time；RegistrationCodeMapper updateToUsed/updateExpiredCodes 的 `updated_at` 硬编码列名修复为 `update_time`（字段映射错位，A.4 暴露即修，编译通过）；registration_code 表 SQL 层全链路回滚验证通过（insert/findByCode/updateToUsed/countValidCodes，零残留）；**注册码 HTTP 业务成功路径仍被 OnboardingRecord 实体既有列漂移（created_at/updated_at/interview_id，V20260717_020 改名/建表后实体未同步）阻断——登记差异表（Batch 2+ 候选），非本卡范围，如实报告**。**QA 验收回写（2026-08-16，`docs/quality/oicbe-b1-impl2-qa-report.md`）→ 卡 1 = PASS_WITH_LIMITATION**：migration rank 190 checksum -259030795 独立 MATCH（提交文件==应用文件）；registration_code 12 列+PK+2 索引+onboarding_records 补列实测齐备；SQL 层 4 步链路（insert/findByCode/updateToUsed/countValidCodes）事务回滚独立验证通过；Mapper L37/L43 修复 diff 核验 + mvn compile 独立 EXIT=0；**限制 1 = HTTP 业务成功路径受 DR-01 阻断**（OnboardingRecord 实体 createdAt/updatedAt/interviewId vs 表无此三列——既有漂移非本批引入，QA 独立证实根因）；**限制 2（R-2）= Mapper 修复需部署重启生效**（运行实例 PID 30264 未重启，红线合规；部署前线上 updateToUsed/updateExpiredCodes 仍引用 updated_at → 500 明确错误态）；无 FAIL、无 -R1；**可进入部署流程**；差异表 DR-01 保持 Batch 2+ 排卡（处置方向不裁决） |
 | **本批执行证据（developer，2026-08-16）** | 见下方「Batch 1 执行证据」OICBE-B1-001 |
 
 ---
@@ -79,7 +79,7 @@
 | **执行方式** | 规则 6 门禁：三向核对 → 决策点登记待裁决（不猜测）→ migration 先行 → 代码对齐 → 冒烟 |
 | **验收标准（qa 独立验收）** | **阶段一（本卡验收）**：① orders 唯一生产真相源确认书（信息核对：orders 51 列双结构、SalesOrder 8 列无表等事实）；② **sales_order↔orders 字段映射表**（19 字段逐列映射：列名/类型/状态机/明细归属，含命名漂移与类型漂移标注）；③ **禁止新增 sales_order 引用**（现状引用扫描清单 + 声明）；④ 阶段二批次计划（实体/查询/接口/报表/统计分批，每批 QA+基线）；⑤ catch 先行改码保持（dashboard 明确错误态无假空）；⑥ **REV：REG-ETM-002/003 维持明确错误态断言（阶段二批次迁移后扩展真实数据断言）** |
 | **红线** | R-1~R-8（同表合并决策不猜测；分批；禁止新增 sales_order 引用） |
-| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §二）**：orders 51 列双结构、SalesOrder-only 8 列无表独立实测一致；catch 先行改码三方验证（git diff + 运行时日志 BadSqlGrammarException@L97 + live 冒烟 code:500，不再假空）；未补业务数据来源（不改业务规则）；migration 未落库合规（PD-015 待裁决）；观察：总览 overview{1,2} 随销售子项 500（明确错误态优先，接受）；REV：REG-ETM-002/003 转正由 regression 执行 |
+| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §二）**：orders 51 列双结构、SalesOrder-only 8 列无表独立实测一致；catch 先行改码三方验证（git diff + 运行时日志 BadSqlGrammarException@L97 + live 冒烟 code:500，不再假空）；未补业务数据来源（不改业务规则）；migration 未落库合规（PD-015 待裁决）；观察：总览 overview{1,2} 随销售子项 500（明确错误态优先，接受）；REV：REG-ETM-002/003 转正由 regression 执行。**阶段一 QA 验收回写（2026-08-16，`docs/quality/oicbe-b1-phase1-qa-report.md`）→ 阶段一 = PASS_WITH_LIMITATION**：六项验收标准全过（独立实测 information_schema + 读码 + git 只读 + 全仓 grep），核心事实与 developer 产出 100% 吻合，无 FAIL、无 -R1；**限制 L-1~L-4 均为文档级 minor（不阻塞阶段二前置准备）**——L-1：文档 minor×3（Test 计数 6 vs 实测 7 个 @Test / §四 SalesOrderDetail 🟡 计数「4」实列 5 / remark 明细 🟢 vs 汇总 🟡 口径不一）；L-2：§五 漏登 2 处注释级引用（DatabaseFixConfig.java L61/L756 已删除方法 no-op 注释、ReceivableService.java L53 Javadoc 类名提及——非 R-8 禁止类，补登并纳入 Batch 4-002 清理核对）；L-3：§1.4 ④ flyway 表述未标快照时刻（阶段一执行时刻 ≤18:03 = 189 条/20260816.001，验收时刻 192 条/20260816.004，git 时序 7fa3e0d 18:03:26 → c697c95 18:09:00 证明无矛盾）；L-4：entity-table-mapping-audit.md untracked 建议入库（G 类锚点版本风险）；**flyway 时序核验：验收时刻 192（PD-014/016 已落库），与阶段一执行快照无矛盾**；**L-1~L-4 补正由 developer 阶段二放卡前执行** |
 | **本批执行证据（developer，2026-08-16）** | 见下方「Batch 1 执行证据」OICBE-B1-002 |
 | **阶段一产出证据（developer，2026-08-16）** | **PD-015 阶段一已执行（只读核对 + 文档产出，无代码/无表变更）**：① **orders 唯一生产真相源确认书**（`docs/quality/sales-order-orders-mapping.md` §一：sales_order/sales_order_detail 生产表不存在、orders 51 列双结构全清单实测、OrderNew 33/33 列 0 缺失、flyway 仍为 20260816.001、orders 1 行/order_items 0 行；边界事实：orders_legacy 32 列/order_items_legacy 12 列为 POS 旧链路独立表，不在合并面）；② **sales_order↔orders 字段映射表**（§二/§三：19 字段逐列映射——可直映 4 / 需语义转换 7 / **表无对应列 8**（status/order_time/estimated_time/completed_time/table_no/people_count/created_by/updated_by，其中 7 列有语义候选、completed_time 无候选）；状态机 'completed' vs 2、主键 Long AUTO vs String、金额 Integer vs bigint/numeric 三大漂移点；SalesOrderDetail 13 字段 ↔ order_items 归属核对，明细归属待契约）；③ **禁止新增 sales_order 引用**（§五全仓引用扫描清单：主代码 9 文件 + 前端注释 1 + 脚本/资源 3 + 治理文档约 19 处；前端零运行时消费、报表/统计面零 sales_order 引用；声明登记 §六 + 红线 R-8）；④ **阶段二批次计划**（§七 + 本板 §四·2：Batch 2 实体+查询 / Batch 3 接口 / Batch 4 报表统计+清理，每批 QA+基线，**不执行**，等 planner 放卡+契约确认）；⑤ catch 先行改码保持（dashboard 明确错误态无假空）✓；⑥ REV：REG-ETM-002/003 维持明确错误态断言 ✓；新发现观察：order_items.food_id varchar vs OrderItemNew.foodId Long 既存类型漂移（非本卡范围，登记观察） |
 
@@ -99,7 +99,7 @@
 | **执行方式** | 规则 6 门禁：三向核对 →（决策点登记）→ migration 先行 → 代码对齐 → 冒烟 |
 | **验收标准（qa 独立验收）** | **PD-016 已裁决（2026-08-16）：migration 为真相源，三步收敛**——① 实体字段差异清单（实体-only 9 列 + 表-only 9 列 + budget_id 类型漂移）；② 影响接口扫描（/v1/finance/budgets 及关联面）；③ **migration 收敛对齐落库**（补实体 9 列 + budget_id 类型对齐；**不直接删字段**，剩余差异表落任务池；flyway 新版本 success=t、checksum 匹配）；④ budgets 链路**真实数据冒烟**（无假成功、无 COUNT 短路假空）；⑤ **REV：REG-KL055 基线条目转正 + 真实数据断言扩展** |
 | **红线** | R-1~R-7（业务结构取舍不猜测） |
-| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §三，附限制 L-1）→ PD-016 已裁决，落地执行（developer 2026-08-16 第二轮）**：budgets 15 列=migration、实体 9 列漂移、budget_id VARCHAR(32) vs Long 类型漂移独立实测一致；结构护栏触发有日志铁证（traceId=6b5600cf1885 与冒烟响应对账闭环）；PD-016 BLOCKED 不落库合规；L-1：护栏抛 finance 包 BusinessException 未被 common 包 GlobalExceptionHandler 捕获 → 响应为通用「系统繁忙」（仍属明确错误态，不阻塞；finance 域双包异常类并存建议评估）；REV：REG-KL055 转正由 regression 执行。**第二轮（PD-016 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_003（9 列补列 + budget_id VARCHAR(32)→BIGINT 类型对齐，rank 191，checksum -388535559）+ V20260816_004（budget_id 自增序列，rank 192，checksum 1208216516——类型对齐补充面，冒烟暴露 budget_id NULL NOT NULL violation 后补）；**结构护栏自动放行（GET /v1/finance/budgets → code:0 正常空列表，不再 500）**；SQL 层财务列读写回滚验证通过（budget_id 序列=2）；**HTTP 写入面（POST create）仍被表-only 列 `budget_name NOT NULL` 约束阻断——登记差异表（任务池），不扩大范围改表-only 列语义，如实报告** |
+| **状态** | **QA PASS（2026-08-16，`docs/quality/oicbe-b1-qa-report.md` §三，附限制 L-1）→ PD-016 已裁决，落地执行（developer 2026-08-16 第二轮）**：budgets 15 列=migration、实体 9 列漂移、budget_id VARCHAR(32) vs Long 类型漂移独立实测一致；结构护栏触发有日志铁证（traceId=6b5600cf1885 与冒烟响应对账闭环）；PD-016 BLOCKED 不落库合规；L-1：护栏抛 finance 包 BusinessException 未被 common 包 GlobalExceptionHandler 捕获 → 响应为通用「系统繁忙」（仍属明确错误态，不阻塞；finance 域双包异常类并存建议评估）；REV：REG-KL055 转正由 regression 执行。**第二轮（PD-016 落库，见下方「PD-014/PD-016 裁决落地执行证据」）**：V20260816_003（9 列补列 + budget_id VARCHAR(32)→BIGINT 类型对齐，rank 191，checksum -388535559）+ V20260816_004（budget_id 自增序列，rank 192，checksum 1208216516——类型对齐补充面，冒烟暴露 budget_id NULL NOT NULL violation 后补）；**结构护栏自动放行（GET /v1/finance/budgets → code:0 正常空列表，不再 500）**；SQL 层财务列读写回滚验证通过（budget_id 序列=2）；**HTTP 写入面（POST create）仍被表-only 列 `budget_name NOT NULL` 约束阻断——登记差异表（任务池），不扩大范围改表-only 列语义，如实报告**。**QA 验收回写（2026-08-16，`docs/quality/oicbe-b1-impl2-qa-report.md`）→ 卡 3 = PASS_WITH_LIMITATION**：rank 191/192 checksum（-388535559 / 1208216516）独立 MATCH；budgets 24 列 + budget_id BIGINT + PK 重建 + 序列默认值实测齐备；表-only 7 列（+BaseEntity 2 列）全保留未删；护栏放行独立 HTTP 复验（GET code:0 success:true records:[] total:0，不再 500）；9 财务列读写事务回滚独立验证通过（读面达成）；**限制 = 写入面（POST create）受 DR-02 阻断**（budget_name NOT NULL 表-only 约束，独立复现 violation——涉表-only 列语义取舍（放宽 vs 实体补字段），按裁决不扩大范围，差异表 Batch 2+ 排卡不裁决）；无 FAIL、无 -R1；**可进入部署流程** |
 | **本批执行证据（developer，2026-08-16）** | 见下方「Batch 1 执行证据」OICBE-B1-003 |
 
 ---
@@ -188,7 +188,16 @@
 
 > **依据**：PD-015 已裁决两阶段（§四 待裁决点登记）——阶段一 = orders 唯一真相源 + 字段映射表 + 禁止新增引用（**已完成**：`docs/quality/sales-order-orders-mapping.md`）；阶段二 = 按批迁移（实体/查询/接口/报表/统计，每批 QA + 基线）。
 > **回填来源（developer 阶段一产出）**：映射表 `docs/quality/sales-order-orders-mapping.md` §二/§三（19 字段逐列映射 + 8 无对应列 + 明细归属）+ §五 引用面扫描结论。
-> **启动前置**：① 映射契约确认（状态机映射/主键策略/类型转换/候选列选边/8 无对应列处置/明细归属逐项闭环）；② planner 按映射表拆正式任务卡（编号 `OICBE-B2-xxx` 起）。
+> **启动前置**：
+> ① **映射契约确认待办清单（2026-08-16 QA phase1 报告 §八 契约点回填；待架构/契约确认后放卡 `OICBE-B2-xxx`，未确认前禁止任何 sales_order→orders 代码迁移）**：
+>    - **状态机映射**：'completed' vs order_status=2（SalesOrderServiceImpl 状态机 pending→preparing→completed→delivered 逐态映射，L79/117/136/175）；
+>    - **主键策略**：Long AUTO vs order_id varchar(32)（String 主键）；
+>    - **金额类型**：Integer vs bigint/numeric 漂移（total_amount bigint、discount_amount/actual_amount numeric），含 order_items.food_id varchar vs OrderItemNew.foodId Long 既存类型漂移（Batch 2 契约输入之一）；
+>    - **8 列无对应处置**：status/order_time/estimated_time/completed_time/table_no/people_count/created_by/updated_by 表无对应列——**completed_time 完全无候选（三选一：补列/派生/废弃，映射文档 §二标注）**；其余 7 列语义候选选边（含双候选列选边：orderNo↔order_number/order_code、totalAmount↔total_amount/order_amount、remark↔remark/remarks、createdBy↔create_by/create_user_id）；
+>    - **明细归属**：SalesOrderDetail 13 字段 ↔ sales_order_detail（表不存在）vs order_items 17 列——归属待契约确认；
+> ② **L-1~L-4 补正待办（developer 阶段二放卡前补正，QA phase1 报告 §七，不阻塞前置准备）**：L-1 文档 minor×3（Test 计数 6→7、§四 SalesOrderDetail 🟡 计数 4→5、remark 归类口径统一）；L-2 补登 2 处注释级引用（DatabaseFixConfig.java L61/L756、ReceivableService.java L53）至映射文档 §五并纳入 Batch 4-002 清理核对；L-3 映射文档 §1.4 ④ flyway 表述补「快照时刻：2026-08-16 18:03 前」注记；L-4 entity-table-mapping-audit.md 治理文件入库（untracked→git）；
+> ③ planner 按映射表拆正式任务卡（编号 `OICBE-B2-xxx` 起）；
+>    - **放卡前置标注（2026-08-17 planner）：映射契约确认（架构/契约）为放卡前置**——①清单（状态机映射/主键策略/金额类型/8 列无对应处置/明细归属）经架构/契约确认后，planner 方可拆卡 `OICBE-B2-xxx`（下表 Batch 2 占位卡 OICBE-B2-001~003 为候选卡面）；**契约未确认前不拆卡、不执行任何 sales_order→orders 代码迁移**；
 > **并行候选**：RM-B2 实施卡 3（idx_inventory_batch_no 索引落库）已排期 2026-08-16，与阶段二第一批并行候选（批约束按轨独立计）。
 
 | 批次 | 范围 | 建议卡（占位） | 契约依赖 | QA + 基线 |
@@ -197,7 +206,7 @@
 | Batch 3 | 接口/服务迁移 | OICBE-B3-001 /v1/sales/order 8 端点语义迁移（SalesOrderController+SalesOrderService 层）；OICBE-B3-002 T-039 应收联动（confirmDelivery→ReceivableService）与财务凭证链路迁移 orders 体系 | 接口契约（端点/字段形态）、应收触发契约 | QA 接口+联动冒烟；REG-接口/T039 基线 |
 | Batch 4 | 报表/统计+清理 | OICBE-B4-001 报表/统计面核对（OperationsReport/DailySettlement 等 orders 面确认零 sales_order 引用 + dashboard 统计真实数据断言）；OICBE-B4-002 遗留清理（废弃 sql/sales_order.sql、clear-data.sql 表名修正、前端注释同步 L44/191、测试脚本） | — | QA 报表/清理核对；REG-统计/回归基线 |
 
-> **批约束（D-4 / R-2 / R-8）**：每批 2~3 卡：developer → qa（PASS/FAIL）→ 部署 → observe；每批含 **REV 回归基线更新**（regression 维护）；**分批迁移，不全仓一次性改**；迁移期间禁止新增 sales_order 引用（R-8），存量只减不增。**阶段二不启动，等 planner 放卡。**
+> **批约束（D-4 / R-2 / R-8）**：每批 2~3 卡：developer → qa（PASS/FAIL）→ 部署 → observe；每批含 **REV 回归基线更新**（regression 维护）；**分批迁移，不全仓一次性改**；迁移期间禁止新增 sales_order 引用（R-8），存量只减不增。**阶段二不启动，等 planner 放卡；放卡前置 = 映射契约确认（架构/契约），契约确认后拆卡 `OICBE-B2-xxx`（2026-08-17 planner 标注）。**
 
 ---
 
@@ -313,8 +322,126 @@
 | EMP-BE-004 / EMP-BE-005 | 员工域端点立项 / 消息端点命名统一（OIC-2 Batch 2 联动项，`DEPENDENCY: Backend KL Pool`） |
 | KIT-BE-004 | kitchen 路由前缀统一 + SecurityConfig 僵尸豁免清理（OIC-2 B2-003 联动项） |
 | KL-050/051（状态） | 设备域漂移家族成员，家族专项统一治理中（production-known-limitations.md 状态引用） |
+| **OICBE-B2-DR01**（差异表 DR-01，来源卡 1/3 冒烟暴露 + QA impl2 报告） | OnboardingRecord 实体列漂移 3 列（createdAt/updatedAt/interviewId vs 表无 created_at/updated_at/interview_id，V20260717_020 改名/建表后实体未同步）——**阻断 onboarding_records 全链路（insert/selectById/update）+ 注册码 HTTP 业务成功路径（卡 1 限制 L-1）**；处置方向待裁决（实体 @TableField 对齐 vs 按 V20260717_020 规范补列），Batch 2+ 排卡，不拆全卡 |
+| **OICBE-B2-DR02**（差异表 DR-02，来源卡 3/3 冒烟暴露 + QA impl2 报告） | budgets.budget_name NOT NULL（表-only 约束）vs 财务实体无 budgetName——**涉表-only 列语义取舍（放宽 vs 实体补字段）**，阻断 POST /v1/finance/budgets 写面（卡 3 限制 L-2）；待裁决/任务池，Batch 2+ 排卡，不拆全卡 |
+| **OICBE-B2-DR03**（差异表 DR-03，来源卡 3/3 差异清单） | budgets.budget_amount DECIMAL(15,2) vs 实体 Long 分——类型/精度语义对齐（读取面可用，仅语义差异标注）；Batch 2+ 排卡，不拆全卡 |
+| **OICBE-B2-DR04**（差异表 DR-04，来源卡 3/3 差异清单） | 旧 entity/Budget.java（@TableName("budget") 单数表，budget_id String）+ service/BudgetService.java 死代码（无实现无注入方）——观察/清理任务卡；Batch 2+ 排卡，不拆全卡 |
+
+---
+
+## 四·4、阶段二契约确认结果（2026-08-17 架构自裁，`docs/quality/sales-order-orders-mapping.md` §二/§三 为输入）
+
+> **T 技术契约（已裁决，可执行）**：
+> - T-1 主键：SalesOrder.id / SalesOrderDetail.id → orders.order_id / order_items.item_id（String 业务主键，随表——orders 唯一真相源）
+> - T-2 明细归属：**order_items**（sales_order_detail 表不存在，order_items 为唯一存在明细表）
+> - T-3 金额：落新列集 bigint（分）（total_amount/final_amount/paid_amount；discountAmount→discount_amount 唯一同名列，按表类型对齐）
+> - T-4 命名选边：新列集优先（orderNo→order_code、order_time→create_time、estimated_time→expected_time、remark→remark、people_count→dining_people_count）
+> - T-5 createdBy/updatedBy → create_by/update_by（String 直映，类型兼容）
+> - T-6 table_no → table_name（String 类型兼容；语义确认随批 QA 复核）
+> - T-7 明细类型：unitPrice/totalPrice → unit_price/amount（bigint 分）；productId → food_id（按 order_items 现状 varchar 对齐；OrderItemNew.foodId Long 既存漂移另行治理）
+>
+> **B 业务语义（转决策池 PD-017~021，BLOCKED 不猜测）**：B-1 状态机映射（status：pending/preparing/completed/delivered ↔ order_status 0-6，delivered 无对应）→ PD-017；B-2 completed_time 处置（补列/派生/废弃三选一）→ PD-018；B-3 orderType 枚举映射（dinein/takeout/delivery ↔ 1堂食/2外卖/3自提/4打包）→ PD-019；B-4 明细 5 列处置（productCode/unit/inventoryCode/storeId/createdBy/updatedBy：补列/派生/废弃）→ PD-020；B-5 接口契约（/v1/sales/order 8 端点保留/字段形态，Batch 3 前置）→ PD-021。
+
+## 四·5、阶段二批 1 任务卡（2026-08-17 架构代落盘——planner 会话中断返回空，按 T/B 清单拆卡；正式维护归 planner）
+
+### OICBE-B2-001 实体对齐（T 项先行，P1）
+- 范围：SalesOrder/SalesOrderDetail @TableName → orders/order_items；字段映射按 T-1~T-7（可直映/选边/类型对齐）
+- **B 项 BLOCKED**：status/completedTime/orderType 等 B 项字段卡内标注待 PD-017~020 决策，不实现映射（不猜测）
+- 验收：三向核对（实体↔orders/order_items↔migration）+ T 项字段映射断言 + B 项 BLOCKED 标注合规 + 无新增 sales_order 引用（R-8）+ 构建 EXIT=0
+- 规则 6：本批 T 项无表结构变更（orders/order_items 已存在）→ migration 先行=无新 migration（注明）；REV：REG-ETM-003 扩展（B 项决策后）
+- 状态：**开发完成（2026-08-18，developer）**——T-1~T-6 全映射 + B-1/B-2/B-3 exist=false 标注（待 PD-017~019）；无新 migration（orders/order_items 已存在，零表结构变更）；三向核对（实体注解 ↔ 映射文档 §一实测 ↔ V6.0.0/V20260707_005 等 migration）一致；mvn compile EXIT=0；无新增 sales_order 引用（@TableName/硬编码 SQL 归零，注释级登记除外）；**REV：REG-ETM-003 扩展待 B 项决策后**（SalesOrderDetail mapper 链路对齐后行为断言，同源观察不修）。证据见 §四·6
+
+### OICBE-B2-002 查询迁移（T 项先行，P1）
+- 范围：SalesOrderMapper.xml 4 语句 + Mapper 接口对齐 orders/order_items；DashboardServiceImpl 查询改走 orders 真实数据
+- **B 项 BLOCKED**：今日销售概览真实数据依赖 B-1 状态机决策——**B-1 决策后恢复真实数据；决策前维持 code:500 明确错误态**（72f0d5a 现状）
+- 验收：mapper 对齐断言 + dashboard 行为（决策后真实数据/决策前明确错误态）+ 无新增 sales_order 引用 + 构建 EXIT=0
+- REV：REG-ETM-002 扩展（B-1 决策后）
+- 状态：**开发完成（2026-08-18，developer）**——Mapper.xml 4 语句（L28/52/56/61）表名/列名按 T 对齐 orders/order_items（status 过滤条件移除并注释 B-1 BLOCKED，orderNo→order_code、order_time→create_time、明细显式 resultMap item_id→id 等）；Mapper 接口签名对齐 String 主键（selectOrderDetailList/deleteOrderDetail）；**DashboardServiceImpl 零改动**（72f0d5a 明确错误态保持，QueryWrapper 字符串列名 order_time/status 在 orders 表不存在 → 运行时仍 BadSqlGrammarException → catch → code:500，B-1 决策前行为正确）；mvn compile EXIT=0；无新增 sales_order 引用。**运行行为变化如实报告**（INSERT 缺 product_type NOT NULL 来源列 → 运行时 violation；deleteOrderDetail 物理删除 order_items 行绕过 @TableLogic——均属明细归属语义缺口，PD-020/Batch 3 决策输入）。证据见 §四·6
+
+### OICBE-B2-003 测试对齐（T 项，P1）
+- 范围：SalesOrderServiceImplTest 6 例更新（实体构造/状态机按 T 项；B 项相关测试标注待决策）
+- 验收：测试通过 + 无新增 sales_order 引用
+- 状态：**开发完成（2026-08-18，developer）**——实体构造按 T 项更新（setId(String)/金额 Long）；B 项相关断言（状态流转/非 completed 分支）标注「待 PD-017 决策」；测试运行 **7 例（QA phase1 L-1 实测口径）全 PASS**（Tests run: 7, Failures: 0, Errors: 0），BUILD SUCCESS EXIT=0；无新增 sales_order 引用。证据见 §四·6
 
 ---
 
 *初始创建：2026-08-16（架构代落盘，planner 卡面备稿）。登记来源：用户 OIC-BE 轨指令 + `docs/quality/entity-table-mapping-audit.md` + `production-known-limitations.md` KL-054/055 + `docs/quality/rm-b2-readiness-check.md`。未修改任何代码。*
 *排期登记回写：2026-08-16（planner——新增 §四·2 阶段二批次计划占位框架（PD-015 阶段二：实体/查询/接口/报表/统计分批，每批 2~3 卡 + QA + 基线；developer 阶段一产出映射表后回填卡面）；§四·3 登记 OICBE-B1-003-L1 评估项（finance 双包异常类并存）与 OICBE-B1-003-DIFF 差异表占位（budgets 表-only 9 列保留清单——developer PD-016 执行中，产出后回填）。仅登记排期，未写代码、未做正确性判断）。*
+*QA 验收回写（2026-08-16，planner——三卡状态回写 QA PASS_WITH_LIMITATION）：卡 1/卡 3（`docs/quality/oicbe-b1-impl2-qa-report.md`：限制=DR-01 阻断卡 1 HTTP 业务成功路径 + R-2 Mapper 修复待部署/重启生效；DR-02 阻断卡 3 写面，均非本批引入）、卡 2 阶段一（`docs/quality/oicbe-b1-phase1-qa-report.md`：六项验收全过，限制 L-1~L-4 文档级 minor——补正待办登记 §四·2 启动前置②）；DR 差异表排卡登记（OICBE-B2-DR01~04 占位 §六，不拆全卡）；阶段二启动前置细化（映射契约确认待办清单①：状态机 'completed' vs 2 / 主键 Long AUTO vs String / 金额类型 / 8 列无对应处置（completed_time 三选一）/ 明细归属 sales_order_detail vs order_items + 双候选列选边）；§一 批次状态更新为 QA 3/3 = PASS_WITH_LIMITATION。核实：rm-receiving-task-board.md 实施卡 3「与 OIC-BE 阶段二并行候选」已登记在位（§三-B 实施卡 3 + §一 + 文件尾回写），未重复登记；production-regression-test.md 不触碰（regression 职责）。仅登记回写，未写代码、未做正确性判断）。*
+*主机重启事件注记（2026-08-16 用户通知，planner 登记）：主机重启 → 后端 :8081 随重启进入 **R-2 部署生效窗口**——RegistrationCodeMapper 修复（c697c95，`updated_at`→`update_time`，OICBE-B1-001 限制 2）随重启部署生效，**重启后补充线上断言**（updateToUsed / updateExpiredCodes 线上链路断言；恢复基线检查 R-1~R-6 见 `docs/quality/observation-log.md`，regression 并行执行中）。按既有先例：中断如实登记、不重置计时、已排定收口时间不变；运行实例 PID（30264）随重启变更，以重启后实测为准。仅登记事件，未写代码、未做正确性判断。*
+*阶段二放卡前置标注回写：2026-08-17（planner——§四·2 阶段二批次计划标注「**映射契约确认（架构/契约）为放卡前置**」：契约确认后拆卡 `OICBE-B2-xxx`，未确认前不拆卡、不执行任何 sales_order→orders 代码迁移；§一 Batch 2+ 行同步标注）。仅登记标注，未写代码、未做正确性判断、历史条目零修改）。*
+
+---
+
+## 四·6、阶段二批 1 执行证据（developer 2026-08-18，OICBE-B2-001/002/003）
+
+> 输入：T 技术契约 T-1~T-7（§四·4 已裁决）+ B 业务语义 PD-017~021（BLOCKED 不猜测）。仅 T 项实现映射；B 项字段以 `@TableField(exist = false)` 标注保留、不参与 SQL（技术手段非业务决策）。
+
+### 修改文件（6 + 治理 1）
+
+| 文件 | 卡 | 改动 |
+|---|---|---|
+| `entity/SalesOrder.java` | 001 | @TableName("sales_order")→"orders"；字段按 T-1~T-6 映射（见下表）；B-1/B-2/B-3 三字段 exist=false |
+| `entity/SalesOrderDetail.java` | 001 | @TableName("sales_order_detail")→"order_items"；T-1/T-2/T-7 映射；B-4 六字段 exist=false |
+| `mapper/SalesOrderMapper.java` | 002 | 泛型随实体；selectOrderDetailList/deleteOrderDetail 签名 Long→String（T-1 主键随表） |
+| `resources/mapper/SalesOrderMapper.xml` | 002 | 4 语句（L28/52/56/61）表名/列名按 T 对齐；status 过滤条件移除（B-1 注释）；明细显式 resultMap |
+| `service/impl/SalesOrderServiceImpl.java` | 001/002 连锁 | **最小编译适配（超卡文件列表，编译门禁必需，零业务逻辑变更）**：setId(String.valueOf(id))、金额 Long、selectOrderDetailList/deleteOrderDetail String.valueOf、generateInventoryCode(String)、Long.valueOf(order.getId())（T-039 签名 Batch 3 范围不动） |
+| `test/.../SalesOrderServiceImplTest.java` | 003 | 实体构造按 T 项（setId(String)/金额 Long）；B 项断言标注「待 PD-017 决策」 |
+| `oic-be-task-board.md` | 治理 | 三卡状态回写（本文件） |
+
+### T 项映射清单（卡 1/卡 2）
+
+| T | SalesOrder 字段 → orders 列 | 实体类型 | SalesOrderDetail 字段 → order_items 列 | 实体类型 |
+|---|---|---|---|---|
+| T-1 | id → order_id（@TableId，全局 ASSIGN_ID 对齐 OrderNew） | Long→**String** | id → item_id（IdType.ASSIGN_UUID 对齐 OrderItemNew）；orderId → order_id | Long→**String** |
+| T-2 | — | — | @TableName → order_items | — |
+| T-3 | totalAmount → total_amount；actualAmount → **paid_amount**（实收/实付）；discountAmount → discount_amount（唯一同名列按表 bigint 对齐） | Integer→**Long** | — | — |
+| T-4 | orderNo → order_code；orderTime → create_time；estimatedTime → expected_time；remark → remark；peopleCount → dining_people_count | 不变 | — | — |
+| T-5 | createdBy → create_by；updatedBy → update_by | String 直映 | — | — |
+| T-6 | tableNo → table_name | String 兼容 | — | — |
+| T-7 | — | — | unitPrice → unit_price；totalPrice → amount（bigint 分）；productId → food_id（按表现状 varchar） | BigDecimal→**Long**；Long→**String** |
+
+直映列（不变）：customer_id / customer_name / customer_phone / store_id（主表）；product_name / quantity（明细）。
+
+### B 项 exist=false 标注（BLOCKED 不猜测）
+
+| B 项 | 字段 | 标注 | 决策点 |
+|---|---|---|---|
+| B-1 | SalesOrder.status | `@TableField(exist = false)` + Mapper.xml status 过滤条件移除（注释标注） | PD-017 状态机映射 |
+| B-2 | SalesOrder.completedTime | `@TableField(exist = false)` | PD-018 补列/派生/废弃 |
+| B-3 | SalesOrder.orderType | `@TableField(exist = false)` | PD-019 枚举映射 |
+| B-4 | SalesOrderDetail.productCode / unit / inventoryCode / storeId / createdBy / updatedBy（6 列，卡面「5 列」与映射文档 §四「7 含 remark」均为历史计数口径偏差，以实体实际字段为准） | `@TableField(exist = false)` | PD-020 补列/派生/废弃 |
+
+### 三向核对（规则 6）
+
+| 维度 | 证据 |
+|---|---|
+| 实体 | SalesOrder @TableName("orders") 19 字段 / SalesOrderDetail @TableName("order_items") 13 字段，注解列名全部落在映射文档 §一 实测 51/17 列清单内 |
+| migration | orders/order_items 已存在（V6.0.0 建表 + V20260707_001 补列 + V20260707_005 主键 VARCHAR 化/重建 FK + V20260629_003 store_id）；**本批 T 项零表结构变更 → 无新 migration（规则 6「migration 先行」=无变更，注明）** |
+| 真实表 | 映射文档 §一 2026-08-16 information_schema 实测：orders 51 列（order_id varchar(32) PK、total_amount/paid_amount bigint、create_by/update_by varchar、table_name varchar、dining_people_count integer、expected_time timestamp）；order_items 17 列（item_id varchar PK、food_id varchar、unit_price/amount bigint）——实体注解与实测一一对应 |
+| 一致性 | @TableId 策略对齐同表既有实体（OrderNew/OrderItemNew）；mvn compile EXIT=0（编译面列名/类型一致） |
+
+### 验证结果
+
+| 项 | 结果 |
+|---|---|
+| mvn compile | **EXIT=0**（JDK21 P:\my-new-project\JDK21 + Maven 3.9.11） |
+| SalesOrderServiceImplTest | **Tests run: 7（QA phase1 L-1 实测口径，卡面「6 例」为场景分组计数）, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS** |
+| R-8 无新增 sales_order 引用 | 主代码 @TableName/硬编码 SQL/注解引用 **归零**（实体/Mapper.xml 中仅注释级历史事实登记）；DashboardServiceImpl L98 实体引用 + L110/113 注释为存量（卡 2 明示不动）；clear-data.sql / sql/sales_order.sql / DatabaseFixConfig.java / ReceivableService.java 注释为存量登记（Batch 4-002 清理范围） |
+| Dashboard 行为 | **零改动**：72f0d5a 明确错误态保持——QueryWrapper 字符串列名 order_time/status 在 orders 表不存在 → 运行时仍 BadSqlGrammarException → catch → code:500（B-1 决策前行为正确，真实数据恢复待 PD-017） |
+
+### 异常/行为变化如实报告
+
+1. **SalesOrderServiceImpl 编译适配（超卡文件列表）**：实体类型对齐（T-1 String 主键 / T-3/T-7 Long 金额）使 ServiceImpl 出现类型编译冲突，按编译门禁做了**最小编译适配（5 处，零业务逻辑变更）**——接口/Controller 签名（Batch 3 B-5 范围）本批不动。
+2. **insertOrderDetail 对齐后运行时仍失败**：order_items.product_type NOT NULL（V6.0.0），SalesOrderDetail 无对应来源字段（非 T 项、非 B 项）→ INSERT 缺列 → NOT NULL violation（明确错误态）。属明细归属语义缺口，PD-020/Batch 3 决策输入，不猜测补值。
+3. **deleteOrderDetail 物理删除语义**：`DELETE FROM order_items WHERE item_id = ?` 为物理删除，绕过 OrderItemNew 体系 @TableLogic(deleted) 逻辑删除——与原 sales_order_detail 物理删除语义一致，但影响 order_items 共享表数据面；接口契约（B-5/PD-021 Batch 3）决策输入。
+4. **T-039 应收链路 Long.valueOf(order.getId())**：ReceivableService.createForOrder 签名 Long 属 Batch 3-002 迁移范围；orders 真实 order_id（"O"+时间戳）非纯数字 → NumberFormatException → 既有 catch → BusinessException 明确错误态（与原缺表 500 语义一致，不吞错）。
+5. **主键语义变化**：updateSalesOrder/deleteSalesOrder/getSalesOrderById 等 Long 入参经 String.valueOf 转 order_id 查询——纯数字字符串在 orders 表无匹配（真实 order_id 为业务字符串）→ 查不到/0 行（原缺表 500 → 现明确空结果），语义迁移归 Batch 3。
+6. **selectOrderDetailList 无结果时 deductInventoryForOrder 空转**：order_id String 化查询后无匹配明细 → 不扣库存不生成凭证（原 500 → 现空操作），行为差异随 B 项决策后 Batch 3 复核。
+
+### REV 标注
+
+- **REG-ETM-002**（dashboard 今日销售概览）：基线条目维持「明确错误态」断言；**真实数据断言扩展待 B-1（PD-017）决策后**（决策前不恢复真实数据，本批 Dashboard 零改动）。
+- **REG-ETM-003**（SalesOrderDetail mapper 链路 SELECT/INSERT/DELETE 对齐后行为）：**扩展待 B 项决策后**——INSERT 受 product_type NOT NULL 缺口阻断（见异常 2），SELECT/DELETE 已对齐 order_items（运行时行为断言待 Batch 3 契约确认）。
+
+*产出：2026-08-18，developer（会话4）。未触碰 RM 轨文件/前端/其它轨。*
