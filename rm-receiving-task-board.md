@@ -176,7 +176,7 @@
 | | **④ selectInventoryPage 按批次筛选抽查（只读 HTTP :8081）**：`GET /api/v1/inventory?batchNo=SMOKE-WH-UPDATE-20260816` → **HTTP 200**（code=0，total=1，命中 inv=35 batchNo=SMOKE-WH-UPDATE-20260816 quantity=150）——查询面无 500，不受影响 |
 | | **⑤ 产品口径列收敛治理候选登记（RM-B1-001-OBS-2）**：§五 登记行已更新——**保留不删已批准**（架构 §十 事项 4），收敛策略**待架构评审**（治理类，不阻塞发布），本卡**仅登记不实施收敛**（详见 §五 更新行） |
 | | **⑥ 不触碰声明**：零业务代码改动（未触碰任何 .java/mapper/前端/壳文件）；未删除任何列/索引；OBS-5/6（expiry_date/location_id 手工索引）仅登记 §五，未落库、未处理；未触碰 RM-B1-002 壳文件与其它轨文件 |
-| | **⑦ 提交**：`<COMMIT_HASH_PLACEHOLDER>` 见下方 —— 精确提交（migration 1 文件 + 本任务板），禁止 git add .（详见提交记录行） |
+| | **⑦ 提交**：`ad55771` — `feat: RM-B2-实施卡3 idx_inventory_batch_no 索引落库 + 产品口径列收敛治理候选登记`（2 files changed, 276 insertions；migration 1 文件 + 任务板精确 add，git add . 未使用；提交后 `git log` 复核 HEAD=ad55771；migration 文件落库后内容未再改动——checksum 已固化） |
 
 ---
 
