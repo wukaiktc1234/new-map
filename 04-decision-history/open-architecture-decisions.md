@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** DECISION-RECON-001
+
 # Open Architecture Decisions
 
 > **文档类型**: 架构决策清单  
