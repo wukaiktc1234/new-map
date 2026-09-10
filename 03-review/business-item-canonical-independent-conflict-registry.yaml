@@ -1,0 +1,558 @@
+# ============================================================================
+# BUSINESS ITEM CANONICAL - INDEPENDENT CONFLICT REGISTRY
+# ============================================================================
+# 任务: ARCHITECTURE / BUSINESS SEMANTICS MASTER BRIEF (Independent Architect Review)
+# 性质: REVIEW ARTIFACT - 冲突登记，非 Decision，非 Resolution
+# 生成日期: 2026-09-10
+#
+# 本表登记本次独立审查发现的冲突。每条给出双方原文/实测位置与可复现方法。
+# 本表不做裁决；裁决权属 Product / Architecture Owner（见 decision-gaps 文档）。
+#
+# 与既有登记表的关系:
+#   本表取代并不删除以下既有登记表的效力，但登记其证据缺陷:
+#     - 03-review/business-item-canonical-conflict-registry.yaml (CONFLICT-A..H)
+#     - 03-review/independent-review-conflict-registry.yaml (IRC-001..011)
+#   本轮新增冲突编号前缀为 BIC-。
+#
+# severity:
+#   CRITICAL : 阻断任何 Identity 模型决策
+#   BLOCKER  : 阻断 PD-CANONICAL-001 确认
+#   HIGH     : 阻断至少一个 Scope Item
+#   MEDIUM   : 影响可审计性
+#
+# evidence_grade:
+#   E1_DB_LIVE : 本次运行库只读实测（可复现，命令见 review 文档 §8）
+#   E1_CODE    : 代码/DDL 直接证据
+#   E1_SCAN    : 全仓 8140 文本文件扫描
+#   E3_DOC     : 仅文档主张，无 E1 支撑
+# ============================================================================
+
+registry_version: "1.0"
+registry_status: "INDEPENDENT_REVIEW"
+review_task: "ARCHITECTURE-BUSINESS-SEMANTICS-MASTER-BRIEF-INDEPENDENT-REVIEW"
+review_date: "2026-09-10"
+review_verdict: "MAJOR_REVISION_REQUIRED"
+review_method:
+  live_db: true
+  db_name: "food_traceability"
+  db_engine: "PostgreSQL 18 (local, read-only)"
+  files_scanned: 8140
+  reused_prior_conclusions: false
+  reclassified_prior_verified: 14
+
+conflicts:
+
+  # ==========================================================================
+  - conflict_id: "BIC-001"
+    severity: "CRITICAL"
+    title: "同一持仓行持有两个命名空间的外键，且指向语义无关的不同物品"
+    type: "IDENTITY_COLLISION"
+    evidence_grade: "E1_DB_LIVE"
+    side_a:
+      claim: "inventory.product_id 与 inventory.material_id 是同一物品的两种表示（'product_id 的值与 material_id 的值恰好一致'）"
+      sources:
+        - "06-business-item-model/canonical-identity-analysis.md:444-448"
+        - "03-review/system-fact-map-v1.md:55"
+    side_b:
+      claim: "两列指向语义无关的不同物品"
+      observed:
+        - "inventory_id=4: material_id=1 -> material_archives#1 = 娃娃菜"
+        - "inventory_id=4: product_id=1  -> product#1           = 测试物料A"
+      reproduction: "SELECT i.inventory_id,i.material_id,ma.material_name,i.product_id,p.name FROM inventory i LEFT JOIN material_archives ma ON ma.material_id=i.material_id LEFT JOIN product p ON p.product_id=i.product_id WHERE i.inventory_id=4;"
+      constraints:
+        - "fk_inv_product_id: FOREIGN KEY (product_id) REFERENCES product(product_id)  [存在]"
+        - "inventory.material_id -> material_archives.material_id  [无任何外键]"
+    why_critical: >
+      任何以「存在一个统一 Canonical Identity」为前提的模型（Option B 及 Option D 的 L1）
+      都必须能解释这一行。实测显示这不是「同一物品的两种表示」，而是两个不同物品被压进
+      同一行。该冲突未被 PD-CANONICAL-001 的任何 Scope Item 覆盖。
+    blocks: ["DS-001", "DS-002", "DS-004", "DS-005", "DS-015"]
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-002"
+    severity: "CRITICAL"
+    title: "仓库持仓与门店持仓对同一物料给出不同数量，且两表互不约束"
+    type: "BALANCE_DIVERGENCE"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      divergent_material_ids: [1, 10, 21, 35]
+      sample:
+        - "material_id=1  娃娃菜    : inventory(仓库)=101 斤   vs store_inventory(门店)=71.000 斤"
+        - "material_id=10 虾滑      : inventory=40 斤          vs store_inventory=70.000 斤"
+        - "material_id=21 不锈钢汤桶 : inventory=0 个           vs store_inventory=2.000 个"
+        - "material_id=35 二硫化硒洗剂: inventory=0 瓶           vs store_inventory=20.000 瓶"
+      space_overlap:
+        warehouse_only: 2
+        both: 7
+        store_only: 7
+        note: "仓库持有 9 个物料 / 门店持有 14 个 / 仅 7 个共有；门店独有的 7 个物料在 inventory 中完全没有行"
+    reproduction: "review 文档 §8 Q4（FULL OUTER JOIN 聚合）"
+    why_critical: >
+      「Inventory Holding 是一个层」这一前提在两份实现上不成立。任何单一 I3 层模型
+      （含 Option D）必须先裁决：仓库持仓与门店持仓是同一持仓的两种视图，还是两个独立持仓。
+    blocks: ["DS-017", "AD-INVENTORY-002", "AD-LOCATION-001"]
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-003"
+    severity: "CRITICAL"
+    title: "库存台账无法重建余额：引用不存在的持仓 ID、无外键、枚举泄漏"
+    type: "LEDGER_INTEGRITY"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      ledger_inventory_ids: [4, 6, 9, 12, 13, 14, 15, 16, 24, 26, 28, 31, 32, 33, 35]
+      existing_inventory_ids: [4, 5, 6, 13, 14, 30, 31, 32, 33, 34, 35]
+      dangling_ledger_ids: [9, 12, 15, 16, 24, 26, 28]
+      unledgered_inventory_ids: [5, 30, 34]
+      non_contiguous_rows: "inventory_id=12 被 2 行流水引用，before_qty 不衔接（20->35, 35->50）"
+      null_transaction_type_rows: [2, 3]
+      foreign_keys_on_ledger: "NONE (pg_constraint 对 inventory_transactions 返回空)"
+      same_defect_in_store_ledger: "store_inventory_log 同样无任何外键"
+    reproduction: "review 文档 §8 Q5"
+    contradicts:
+      - "L2-001: Ledger = Inventory Event Record / Balance = Derived（Balance 无法从现行台账派生）"
+      - "AD-INVENTORY-001 Option A（Ledger-First）的可行性前提"
+    resolution_owner: "Architecture Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-004"
+    severity: "BLOCKER"
+    title: "DS-004 / DS-005 的判定属性在物品主数据上不存在"
+    type: "RULE_UNIMPLEMENTABLE"
+    evidence_grade: "E1_DB_LIVE"
+    side_a:
+      claim: "Same/Different Identity 由 Brand + Product Family + Specification 判定"
+      sources: ["04-decision-history/PD-CANONICAL-001-Decision.yaml:151-159, 237-265"]
+    side_b:
+      claim: "material_archives 共 18 列，无 brand、无 product_family、无 item_type；foods 共 21 列，同样无 brand / family"
+      observed:
+        material_archives_columns: "material_id, material_code, material_name, category_id, unit, spec, reference_price, supplier_id, status, remark, create_time, update_time, deleted, barcode, origin, shelf_life, storage_condition, department_id"
+        brand_column_exists_only_on: ["asset_master", "asset_masters_enhanced", "material_template"]
+    reproduction: "review 文档 §8 Q8"
+    impact: "规则在本项目不可实施；DS-004/DS-005 无法作为可执行判定程序"
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-005"
+    severity: "BLOCKER"
+    title: "真实数据对 Specification = IDENTITY_BOUNDARY 构成直接反例"
+    type: "COUNTEREXAMPLE_FROM_REAL_DATA"
+    evidence_grade: "E1_DB_LIVE"
+    real_rows:
+      - "material_id=17 圆形打包盒   unit=套 spec=500ml reference_price=45"
+      - "material_id=18 长方形打包盒 unit=套 spec=750ml reference_price=55"
+    side_a:
+      claim: "Specification（Size/Volume/Weight）是 Identity 的物理边界；任一不同即不同 Identity"
+      sources: ["PD-CANONICAL-001-Decision.yaml:252-258, 159"]
+    side_b:
+      claim: "Packaging / Container Type 是 NOT_IDENTITY_BOUNDARY"
+      sources: ["PD-CANONICAL-001-Decision.yaml:267-273"]
+    observed_problem: >
+      两个打包盒的差异同时包含「形状」与「容量」，而系统把二者压进同一个 spec 文本列。
+      若形状是身份边界 -> 同一物品的容量升级会变身份（与 DS-011 冲突）；
+      若形状不是边界 -> 单列 spec 无法表达该区分（与 DS-005 冲突）。
+      两条路都说明：单列 spec 不足以承担身份判定。
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-006"
+    severity: "HIGH"
+    title: "商用设备 / 药用洗剂 / 食品共用同一主数据与库存表，且无任何类型或可库存标记"
+    type: "ONTOLOGY_UNDIFFERENTIATED"
+    evidence_grade: "E1_DB_LIVE"
+    real_rows:
+      - "material_id=20 商用电磁炉 台 3500W -> store_inventory 1.000 台"
+      - "material_id=21 不锈钢汤桶 个 50L   -> store_inventory 2.000 个"
+      - "material_id=35 二硫化硒洗剂 瓶 120g -> store_inventory 20.000 瓶"
+      - "material_id=12 方便面 包 85g ; material_id=13 红薯粉 斤 干制"
+    absent_flags:
+      - "is_food: 0 命中（全仓 8140 文件）"
+      - "is_stockable / stockable: 0 命中"
+      - "item_type / material_type: 0 命中"
+      - "column scan '^(sku|uom)|conversion|is_food|stockable|is_stock|pack_size|packaging' 仅命中 orders.packaging_fee"
+    contradicts:
+      - "L2-004: Stockable = Business Item Capability（无实现标记）"
+      - "PD-CANONICAL-006 Consumable 定义（无实现标记）"
+      - "Reassessment 案例 D（餐盒）与案例 E（Service）区分的可实现性"
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-007"
+    severity: "HIGH"
+    title: "门店流水把物料 ID 写入 product_id 列，且门店键由仓库键填充"
+    type: "IDENTITY_MISLABEL"
+    evidence_grade: "E1_DB_LIVE+E1_CODE"
+    observed:
+      store_inventory_log_samples:
+        - "id=1:  inventory_id=8,  product_id=10, product_name=虾滑        (material_archives#10 = 虾滑)"
+        - "id=15: inventory_id=1,  product_id=1,  product_name=娃娃菜      (material_archives#1  = 娃娃菜)"
+        - "id=2:  inventory_id=14, product_id=34, product_name=UI????B     (material_archives#34 = UI测试物料B, 名称已乱码)"
+      store_id_values: [1, 584]
+      store_id_584_meaning: "584 为 purchase_arrival 的仓库 ID"
+    code_evidence:
+      - "StoreInventoryServiceImpl.java:264 - logEntry.setProductId(materialId)"
+      - "InventoryTransferServiceImpl.java:226 - 注释原文：仓库与门店的映射沿用 PurchaseStockinServiceImpl 既有约定：warehouseId 作为 storeId"
+    schema_mismatch:
+      - "store_inventory.store_id  = character varying (NOT NULL)"
+      - "inventory.store_id        = bigint (实测填充 0/11)"
+      - "stores.store_id           = bigint"
+    contradicts: ["L2-005 Location 已 RECONCILED", "DS-017 Store 是 Location Context"]
+    resolution_owner: "Architecture Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-008"
+    severity: "HIGH"
+    title: "物料主数据本身含重复定义，且无 product family 可用于消歧"
+    type: "MASTER_DATA_DUPLICATION"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      duplicate_names:
+        - "Test Tomato: 7 行 (material_id 26,27,28,29,30,31,32)"
+        - "E2E Potato: 2 行 (material_id 23,24)"
+      test_pollution:
+        - "material_id=25 测试采购物料"
+        - "material_id=31 Test Tomato 154027"
+        - "material_id=32 Test Tomato 154237"
+        - "material_id=33 E2E Material 160258715"
+        - "material_id=34 UI测试物料B"
+      total_materials: 35
+    reproduction: "SELECT material_name, count(*) FROM material_archives GROUP BY 1 HAVING count(*)>1;"
+    impact: >
+      「同一物品被建为两条记录」这一 PD-CANONICAL-001 的 problem_indicator
+      在本库中已被实测证实（Test Tomato x7）。去重决策必须先于任何分层建模决策。
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-009"
+    severity: "HIGH"
+    title: "两套并行的配方/BOM 表示，其中一套被代码查询但表内无数据"
+    type: "PARALLEL_MODEL"
+    evidence_grade: "E1_DB_LIVE+E1_CODE"
+    observed:
+      dish_recipes: "5 行，其中 4 行 deleted=1；有效行仅 1 行 (food_id=1, material_id=3, required_quantity=0.100)"
+      dish_recipes_duplicate_history: "同一 (food_id=1, material_id=3) 曾有 5 行，数量先为 1.000 x3 后为 0.100 x2 -> 数量被 10 倍修正但无唯一键，靠软删维持"
+      dish_recipe: "0 行（且该表列为 dish_id + material_id，非 food_id）"
+      dish_inventory: "0 行"
+      combo_ingredients: "2 行，其中 1 行 deleted=1"
+      java_queries_nonexistent_columns:
+        - "mapper/DishRecipeMapper.java:17,20,23,26 查询 ingredient_id / estimated_cost / sort_order，而 dish_recipe 建表列中不存在这些列"
+      tables_absent: ["dish_ingredient", "ingredients"]
+    contradicts:
+      - "L2-007: INGREDIENT = Recipe <-> Business Item Relationship (RECONCILED)"
+      - "PD-CANONICAL-005 Decision Status = N/A"
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-010"
+    severity: "HIGH"
+    title: "批次与效期存在两套事实，其中库存侧一套在空转"
+    type: "BATCH_TRUTH_SPLIT"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      inventory_batch_no_filled: "4 / 11"
+      inventory_production_date_filled: "0 / 11"
+      inventory_expiry_date_filled: "0 / 11"
+      trace_code_space: "material_trace_code / food_trace_codes / expiry_alert_record 各自持有完整 batch_no + production_date + expiry_date"
+      store_side: "store_inventory 无 batch_no / production_date / expiry_date 列"
+      dead_logic: "InventoryServiceImpl.java:356-359 的效期预警读取 inventory.expiry_date（实测恒为空集）"
+    contradicts:
+      - "DS-016: Batch/Lot/Expiry 是 Inventory Context 的事件属性，不是 Identity 的一部分"
+      - "L2-002: Inventory Fact = Material x Location x Quantity（缺少批次维度）"
+    resolution_owner: "Product Owner"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-011"
+    severity: "MEDIUM"
+    title: "失效 API 端点：契约与实现存在，数据库表不存在"
+    type: "PHANTOM_ENDPOINT"
+    evidence_grade: "E1_SCAN+E1_CODE"
+    observed:
+      inventory_unit:
+        ddl: "0 个（全仓 SQL 无 CREATE TABLE inventory_unit）"
+        entity: "entity/InventoryUnit.java:11 @TableName(\"inventory_unit\")"
+        mapper: "mapper/InventoryUnitMapper.java"
+        service: "service/InventoryUnitService.java + impl"
+        controller: "controller/InventoryUnitController.java @RequestMapping(\"/v1/inventory/unit\") 暴露 6 个端点"
+        db_now: "to_regclass('public.inventory_unit') -> NULL"
+        db_evidence_it_once_existed: "backend/logs/food-traceability.2026-06-30.0.json 记录成功的 SELECT COUNT(*) / SELECT id,name,code,type,description,status,created_at,updated_at FROM inventory_unit"
+        frontend_callers: 0
+      inventory_category:
+        same_shape: true
+        controller: "controller/InventoryCategoryController.java @RequestMapping(\"/v1/inventory/category\")"
+        db_now: "to_regclass('public.inventory_category') -> NULL"
+        frontend_callers: 0
+    contradicts:
+      - "DG-005: inventory_unit 表已存在但未被引用（表不存在）"
+      - "L1-009 / business-item-inventory-integration（同上）"
+    note: >
+      正确表述不是「文档想象了一张表」，而是「一对已上线但已失效的 API 端点」：
+      契约存在、实现存在、表不存在。任何第三方调用将得到 500。
+    resolution_owner: "Engineering"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-012"
+    severity: "MEDIUM"
+    title: "金额口径在同一张表内并存（分 与 元/小数）"
+    type: "UNIT_OF_AMOUNT"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      inventory_cents_columns: "unit_cost bigint, total_cost bigint（注释：单位成本（分）/ 总成本（分））"
+      inventory_decimal_columns: "cost_price numeric(12,2), stock_value numeric(12,2)"
+      store_inventory: "store_inventory.current_stock numeric(15,3) vs inventory.current_stock integer"
+    contradicts: ["LOCK-A003: 金额以分为准 (Evidence Status: PARTIAL)"]
+    resolution_owner: "Engineering"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-013"
+    severity: "MEDIUM"
+    title: "version 列承担双重语义（乐观锁 + 删除墓碑）"
+    type: "COLUMN_SEMANTIC_OVERLOAD"
+    evidence_grade: "E1_DB_LIVE"
+    observed:
+      - "dish_recipes: 有效行 version=0；4 行被软删的行 version=1"
+      - "inventory.version: integer NOT NULL DEFAULT 0"
+      - "store_inventory.version: integer NOT NULL DEFAULT 0"
+    risk: >
+      若任何快照、视图或客户端以 version=0 过滤未删除数据，则任何经历过一次更新的
+      存活行都会被静默排除（first-update disappearance）。
+    resolution_owner: "Engineering"
+    status: "UNRESOLVED"
+
+  # ==========================================================================
+  - conflict_id: "BIC-014"
+    severity: "BLOCKER"
+    title: "既有 VERIFIED 判定的重分类结果"
+    type: "EVIDENCE_RECLASSIFICATION"
+    evidence_grade: "E1_DB_LIVE"
+    reclassifications:
+      - id: "CONF-01"
+        claim: "inventory 以 material_id 管理库存"
+        was: "VERIFIED"
+        now: "CONFLICT"
+        reason: "双口径并存，且两列指向不同物品（BIC-001）"
+      - id: "CONF-02"
+        claim: "store_inventory 以 store_id + material_id 管理门店库存"
+        was: "VERIFIED"
+        now: "PARTIAL"
+        reason: "列与唯一键成立，但 store_id 类型冲突且由仓库键填充（BIC-007）"
+      - id: "CONF-03"
+        claim: "dish_recipe 连接 food 和 material"
+        was: "VERIFIED"
+        now: "INVALID"
+        reason: "真实 dish_recipe 列为 dish_id + material_id；food_id + material_id 属于 dish_recipes（BIC-009）"
+      - id: "CONF-04"
+        claim: "inventory 存在同 (material_id, warehouse_id) 重复行"
+        was: "（上一轮独立审查的 CONFIRMED）"
+        now: "INVALID"
+        reason: "inventory_id=4 -> warehouse_id=1，inventory_id=5 -> warehouse_id=2；分组统计返回空集。本审查推翻自己的上一轮结论"
+      - id: "CONF-05"
+        claim: "product 表不是死表"
+        was: "CONFIRMED"
+        now: "PARTIAL"
+        reason: "表非死（1 行 + 5 处活跃调用），但不是活跃业务主数据（仅 1 行测试数据）"
+      - id: "CONF-06"
+        claim: "无完整 Ledger"
+        was: "CONFIRMED"
+        now: "CONFIRMED（升级为 CRITICAL）"
+        reason: "实测 7 个孤儿 inventory_id、零外键、2 行 NULL 枚举（BIC-003）"
+      - id: "CONF-07"
+        claim: "product_id 与 material_id 取值恰好一致"
+        was: "（文档断言）"
+        now: "INVALID"
+        reason: "实测反例：product_id=1 -> 测试物料A，material_id=1 -> 娃娃菜"
+      - id: "CONF-08"
+        claim: "金额以分为准"
+        was: "PARTIAL"
+        now: "PARTIAL（维持）"
+        reason: "同表内 bigint(分) 与 numeric(12,2) 并存（BIC-012）"
+      - id: "CONF-09"
+        claim: "多 UOM / Conversion 是已识别业务需求"
+        was: "VALID"
+        now: "VALID（加强）"
+        reason: "两余额表精度分裂（integer vs numeric(15,3)）无换算可解释"
+      - id: "CONF-10"
+        claim: "Transit 是 Inventory State"
+        was: "INVALID"
+        now: "INVALID（且存在被遗漏的反证）"
+        reason: "purchase_arrivals.shipment_status 为持久化 in_transit 状态列，原结论未引用"
+      - id: "CONF-11"
+        claim: "inventory_unit 表已存在但未被引用"
+        was: "VERIFIED（文档）"
+        now: "INVALID"
+        reason: "无 DDL、当前 DB 无表；但 2026-06-30 日志证明曾可用（BIC-011）"
+      - id: "CONF-12"
+        claim: "INGREDIENT = Recipe <-> Business Item Relationship (RECONCILED)"
+        was: "RECONCILED"
+        now: "INVALID"
+        reason: "4 套并行表示，2 张表 0 行（BIC-009）"
+      - id: "CONF-13"
+        claim: "CONSUMABLE = Capability"
+        was: "RECONCILED"
+        now: "UNVERIFIED"
+        reason: "系统无任何 capability / stockable / is_food 标记（BIC-006）"
+      - id: "CONF-14"
+        claim: "06 语料 registry 16/16 CONFIRMED"
+        was: "CONFIRMED"
+        now: "CONFLICT"
+        reason: "命名对象大面积不存在；采用被同语料否决的模型"
+    rule_applied: "禁止为维持旧文档一致性而保留 VERIFIED"
+    resolution_owner: "Architecture Owner"
+    status: "UNRESOLVED"
+
+# ============================================================================
+# 幽灵对象审计台账（brief §14 强制）
+# ============================================================================
+ghost_object_ledger:
+  scan_scope:
+    files_scanned: 8140
+    extensions: [".java", ".xml", ".sql", ".ts", ".tsx", ".vue", ".js", ".yml", ".yaml", ".json", ".properties", ".md", ".html"]
+    excluded_dirs: ["node_modules", ".git", "target", "venv-*", "JDK21", "maven-mvnd*", "nacos-server*", "PostgreSQL", "Redis-*", "RabbitMQ", "android-sdk", "backups"]
+  objects:
+    - name: "stock_item"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      frontend: false
+      doc_mentions: 10
+    - name: "inventory_item"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      frontend: false
+      doc_mentions: 6
+    - name: "inventory_ledger"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      frontend: false
+      doc_mentions: 8
+    - name: "inventory_balance"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      frontend: false
+      doc_mentions: 5
+    - name: "inventory_unit"
+      verdict: "HALF_EXISTS_PHANTOM_ENDPOINT"
+      db: false
+      ddl: false
+      entity: true
+      code: true
+      frontend: false
+      doc_mentions: 17
+      runtime_evidence: "backend/logs/food-traceability.2026-06-30.0.json 记录成功的 inventory_unit 查询"
+      exposed_endpoints: 6
+      frontend_callers: 0
+    - name: "inventory_category"
+      verdict: "HALF_EXISTS_PHANTOM_ENDPOINT"
+      db: false
+      ddl: false
+      entity: true
+      code: true
+      frontend: false
+      doc_mentions: 4
+      exposed_endpoints: 6
+      frontend_callers: 0
+    - name: "location.transit"
+      verdict: "ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      note: "无 location 主表；inventory_transfers 无在途状态、无明细行表"
+    - name: "is_food"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+      doc_mentions: 5
+    - name: "in_transit"
+      verdict: "EXISTS_CORRECTED"
+      db: true
+      ddl: true
+      entity: true
+      frontend: true
+      detail: "purchase_arrivals.shipment_status VARCHAR（持久化），取值 shipped/in_transit/delivered；PurchaseArrival.java:72-88；前端 9 处引用"
+      correction_note: "上一轮审查曾判为「零命中」，本轮更正为存在"
+    - name: "unit_conversion"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+    - name: "sku_code"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+    - name: "is_stockable"
+      verdict: "COMPLETELY_ABSENT"
+      db: false
+      ddl: false
+      entity: false
+      code: false
+    - name: "product_batches"
+      verdict: "COMPLETELY_ABSENT"
+      note: "迁移脚本 V20260717_010:19 自述「product_batches 表在代码库中不存在，跳过」"
+  aggregate:
+    completely_absent: 9
+    half_exists_phantom_endpoint: 2
+    absent_concept: 1
+    exists_corrected: 1
+
+# ============================================================================
+# 冲突统计
+# ============================================================================
+summary:
+  conflicts_total: 14
+  by_severity:
+    CRITICAL: 3
+    BLOCKER: 4
+    HIGH: 4
+    MEDIUM: 3
+  by_type:
+    IDENTITY_COLLISION: 1
+    BALANCE_DIVERGENCE: 1
+    LEDGER_INTEGRITY: 1
+    RULE_UNIMPLEMENTABLE: 1
+    COUNTEREXAMPLE_FROM_REAL_DATA: 1
+    ONTOLOGY_UNDIFFERENTIATED: 1
+    IDENTITY_MISLABEL: 1
+    MASTER_DATA_DUPLICATION: 1
+    PARALLEL_MODEL: 1
+    BATCH_TRUTH_SPLIT: 1
+    PHANTOM_ENDPOINT: 1
+    UNIT_OF_AMOUNT: 1
+    COLUMN_SEMANTIC_OVERLOAD: 1
+    EVIDENCE_RECLASSIFICATION: 1
+  evidence_reclassified_total: 14
+  evidence_now:
+    VALID: 2
+    PARTIAL: 3
+    INVALID: 5
+    CONFLICT: 2
+    UNVERIFIED: 1
+    CONFIRMED_UPGRADED: 1
