@@ -1,0 +1,503 @@
+registry_version: "1.0"
+registry_date: "2026-09-10"
+registry_status: "BASELINE_RECONCILIATION_PASS"
+
+documents:
+  # 03-review - New Current
+  - document_id: "DOC-CURRENT-BASELINE-001"
+    path: "03-review/current-business-semantic-baseline.md"
+    source_task: "PROJECT-KNOWLEDGE-BASE-BASELINE-RECONCILIATION-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "N/A"
+    decision_status: "N/A"
+    supersedes: []
+    superseded_by: []
+    scope: "Business Item + Inventory semantic baseline"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-REASSESSMENT-001"
+    path: "03-review/business-item-canonical-semantic-reassessment.md"
+    source_task: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes:
+      - "06-business-item-model/recommendation.md"
+      - "06-business-item-model/dec-006-refined-decision-pack.md"
+    superseded_by: []
+    scope: "Business Item canonical semantic"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-DECISION-BOUNDARY-001"
+    path: "03-review/business-item-canonical-decision-boundary.md"
+    source_task: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Decision boundary analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-CONFLICT-REGISTRY-001"
+    path: "03-review/business-item-canonical-conflict-registry.yaml"
+    source_task: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Conflict registry for Business Item"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-INVENTORY-INTEGRATION-001"
+    path: "03-review/business-item-inventory-integration.md"
+    source_task: "BUSINESS-ITEM-INVENTORY-INTEGRATION-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Business Item + Inventory integration"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-SYSTEM-FACT-BASELINE-001"
+    path: "03-review/system-fact-baseline.md"
+    source_task: "SYSTEM-FACT-BASELINE-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "System fact baseline"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-SYSTEM-TRUTH-SOURCE-001"
+    path: "03-review/system-truth-source-map.md"
+    source_task: "SYSTEM-TRUTH-SOURCE-001"
+    document_status: "CURRENT_BASELINE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Truth source mapping"
+    can_be_used_as_current_input: true
+
+  # 06-business-item-model - Historical Analysis
+  - document_id: "DOC-BIM-RECOMMENDATION-001"
+    path: "06-business-item-model/recommendation.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "SUPERSEDED"
+    evidence_status: "VERIFIED"
+    decision_status: "SUPERSEDED"
+    supersedes: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
+    scope: "Business Item model recommendation"
+    can_be_used_as_current_input: false
+
+  - document_id: "DOC-BIM-DEC006-REFINED-001"
+    path: "06-business-item-model/dec-006-refined-decision-pack.md"
+    source_task: "DEC-006-REFINED"
+    document_status: "HISTORICAL"
+    evidence_status: "VERIFIED"
+    decision_status: "HISTORICAL"
+    supersedes: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
+    scope: "DEC-006 refined decision pack"
+    can_be_used_as_current_input: false
+
+  - document_id: "DOC-BIM-CANONICAL-IDENTITY-001"
+    path: "06-business-item-model/canonical-identity-analysis.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Canonical identity analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-CONCEPT-TAXONOMY-001"
+    path: "06-business-item-model/concept-taxonomy.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Concept taxonomy"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-IDENTITY-ROLE-001"
+    path: "06-business-item-model/identity-type-role-capability.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Identity type role capability"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-SELLABLE-001"
+    path: "06-business-item-model/sellable-capability-analysis.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Sellable capability analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-PURCHASABLE-001"
+    path: "06-business-item-model/purchasable-capability-analysis.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Purchasable capability analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-STOCKABLE-001"
+    path: "06-business-item-model/stockable-capability-analysis.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Stockable capability analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-INGREDIENT-RECIPE-001"
+    path: "06-business-item-model/ingredient-recipe-relationship-analysis.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Ingredient recipe relationship"
+    can_be_used_as_current_input: true
+
+  # 07-inventory-semantic-model - Historical Analysis
+  - document_id: "DOC-ISM-RECOMMENDATION-001"
+    path: "07-inventory-semantic-model/inventory-semantic-recommendation.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "SUPERSEDED"
+    evidence_status: "VERIFIED"
+    decision_status: "SUPERSEDED"
+    supersedes: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
+    scope: "Inventory semantic recommendation"
+    can_be_used_as_current_input: false
+
+  - document_id: "DOC-ISM-TRUTH-ANALYSIS-001"
+    path: "07-inventory-semantic-model/inventory-truth-analysis.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "RECONCILED"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory truth analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-IDENTITY-ANALYSIS-001"
+    path: "07-inventory-semantic-model/inventory-identity-analysis.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory identity analysis"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-LOCATION-MODEL-001"
+    path: "07-inventory-semantic-model/inventory-location-model.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory location model"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-QUANTITY-MODEL-001"
+    path: "07-inventory-semantic-model/inventory-quantity-model.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "RECONCILED"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory quantity model"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-UOM-MODEL-001"
+    path: "07-inventory-semantic-model/inventory-uom-model.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "RECONCILED"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory UOM model"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-STATE-MODEL-001"
+    path: "07-inventory-semantic-model/inventory-state-model.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory state model"
+    can_be_used_as_current_input: true
+
+  # 04-decision-history - Historical Decisions
+  - document_id: "DOC-DH-OPEN-PRODUCT-001"
+    path: "04-decision-history/open-product-decisions.md"
+    source_task: "DEC-006"
+    document_status: "HISTORICAL"
+    evidence_status: "VERIFIED"
+    decision_status: "HISTORICAL"
+    supersedes: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
+    scope: "Open product decisions"
+    can_be_used_as_current_input: false
+
+  - document_id: "DOC-DH-PRODUCT-ARCH-001"
+    path: "04-decision-history/product-architecture-separation-analysis.md"
+    source_task: "DEC-006"
+    document_status: "HISTORICAL"
+    evidence_status: "VERIFIED"
+    decision_status: "HISTORICAL"
+    supersedes: []
+    superseded_by: []
+    scope: "Product architecture separation"
+    can_be_used_as_current_input: false
+
+  - document_id: "DOC-DH-PRODUCT-DECISION-001"
+    path: "04-decision-history/product-decision-pack.md"
+    source_task: "DEC-006"
+    document_status: "HISTORICAL"
+    evidence_status: "VERIFIED"
+    decision_status: "HISTORICAL"
+    supersedes: []
+    superseded_by: []
+    scope: "Product decision pack"
+    can_be_used_as_current_input: false
+
+  # 05-governance - Governance Documents
+  - document_id: "DOC-GOV-CANONICAL-ID-001"
+    path: "05-governance/canonical-id-registry.md"
+    source_task: "GOVERNANCE-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Canonical ID registry"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-GOV-STATUS-MODEL-001"
+    path: "05-governance/canonical-status-model.md"
+    source_task: "GOVERNANCE-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Canonical status model"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-GOV-DECISION-PROVENANCE-001"
+    path: "05-governance/decision-provenance.md"
+    source_task: "GOVERNANCE-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Decision provenance"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-GOV-HIERARCHICAL-LAYER-001"
+    path: "05-governance/hierarchical-layer-model.md"
+    source_task: "GOVERNANCE-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Hierarchical layer model"
+    can_be_used_as_current_input: true
+
+  # 01-engineering-reality - Engineering Reality
+  - document_id: "DOC-ER-DB-REALITY-001"
+    path: "01-engineering-reality/db-reality-map.md"
+    source_task: "ENGINEERING-REALITY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Database reality mapping"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ER-API-MAP-001"
+    path: "01-engineering-reality/api-map.md"
+    source_task: "ENGINEERING-REALITY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "API mapping"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ER-BUSINESS-OBJECT-001"
+    path: "01-engineering-reality/business-object-map.md"
+    source_task: "ENGINEERING-REALITY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Business object mapping"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ER-LEGACY-MAP-001"
+    path: "01-engineering-reality/legacy-map.md"
+    source_task: "ENGINEERING-REALITY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Legacy system mapping"
+    can_be_used_as_current_input: true
+
+  # 02-business-dependency - Business Dependency
+  - document_id: "DOC-BD-TRUTH-SOURCE-001"
+    path: "02-business-dependency/truth-source-matrix.md"
+    source_task: "BUSINESS-DEPENDENCY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Truth source matrix"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BD-MASTER-DATA-001"
+    path: "02-business-dependency/master-data-source-map.md"
+    source_task: "BUSINESS-DEPENDENCY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Master data source mapping"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BD-FOUNDATION-001"
+    path: "02-business-dependency/foundation-map.md"
+    source_task: "BUSINESS-DEPENDENCY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Foundation mapping"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BD-DATA-LINEAGE-001"
+    path: "02-business-dependency/data-lineage-map.md"
+    source_task: "BUSINESS-DEPENDENCY-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "LOCKED"
+    supersedes: []
+    superseded_by: []
+    scope: "Data lineage mapping"
+    can_be_used_as_current_input: true
+
+  # 06-business-item-model - Additional Reference
+  - document_id: "DOC-BIM-MODEL-SUMMARY-001"
+    path: "06-business-item-model/business-item-model-summary.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Business Item model summary"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-CANDIDATE-MODELS-001"
+    path: "06-business-item-model/candidate-semantic-models.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Candidate semantic models"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-RECONCILIATION-001"
+    path: "06-business-item-model/business-item-model-reconciliation-summary.md"
+    source_task: "BUSINESS-ITEM-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Business Item model reconciliation"
+    can_be_used_as_current_input: true
+
+  # 07-inventory-semantic-model - Additional Reference
+  - document_id: "DOC-ISM-CANDIDATE-MODELS-001"
+    path: "07-inventory-semantic-model/candidate-inventory-models.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Candidate inventory models"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-SUMMARY-001"
+    path: "07-inventory-semantic-model/inventory-semantic-summary.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory semantic summary"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-ISM-MOVEMENT-MODEL-001"
+    path: "07-inventory-semantic-model/inventory-movement-model.md"
+    source_task: "INVENTORY-SEMANTIC-MODEL-001"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "OPEN"
+    supersedes: []
+    superseded_by: []
+    scope: "Inventory movement model"
+    can_be_used_as_current_input: true
