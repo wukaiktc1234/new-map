@@ -1,9 +1,9 @@
 # Current Business Semantic Baseline
 
-## 一、Baseline 概述
-- 生成日期：2026-09-10
-- 任务：PROJECT-KNOWLEDGE-BASE-BASELINE-RECONCILIATION-001
-- 状态：BASELINE-RECONCILIATION = PASS_WITH_OPEN_DECISIONS
+> **任务**: PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001
+> **版本**: 2.0 (Finalized)
+> **日期**: 2026-09-10
+> **状态**: BASELINE-FINALIZATION = PASS_WITH_CORRECTIONS
 
 ## 二、A. Confirmed Current Reality（当前代码/DB/API事实）
 
@@ -41,37 +41,47 @@
 
 ## 三、B. Current Reconciled Semantics（已收敛语义）
 
-### L2-001: Inventory Truth = Stock Ledger
+### L2-001: Ledger = Inventory Event Record / Balance = Derived State
 - 状态：RECONCILED
-- 来源：07-inventory-semantic-model/inventory-truth-analysis.md
+- 注意：Ledger-first vs Balance-first 仍属于 AD-INVENTORY-001 = OPEN
 
 ### L2-002: Inventory Fact = Material × Location × Quantity
 - 状态：RECONCILED
-- 注意：这是 Current Implementation Fact，不是 Target Model
+- 类型：CURRENT IMPLEMENTATION FACT（不得写成 Target Canonical Inventory Fact）
 
 ### L2-003: Balance = Derived View
 - 状态：RECONCILED
 
-### L2-004: Stockable = Location-scoped Business Role
+### L2-004: Stockable = Business Item Capability
 - 状态：RECONCILED
+- 注意：Location-specific stocking configuration 属于 Scope / Profile / Context 层
 
-### L2-005: Location = 统一抽象
+### L2-005: Location = 统一语义抽象方向
 - 状态：RECONCILED
+- 注意：Store / Warehouse / Kitchen 可作为 Location Types
+- 注意：Transit 当前 Reassessment 方向为 Inventory State，而非 Physical Location
+- 正式数据模型：AD-LOCATION-001 = OPEN
 
-### L2-006: UOM = 独立 Foundation
+### L2-006: 多 UOM / Context-specific UOM / Conversion = 已识别的业务语义需求
 - 状态：RECONCILED
+- 注意："UOM 是否独立 Foundation" 仍属于 AD-UOM-001 = OPEN
+- 禁止把 Base → Purchase → Stock → Recipe → Sales 写成固定 Ontology
 
-### L2-007: INGREDIENT = Recipe ↔ Item Relationship
-- 状态：RECONCILED
+### L2-007: INGREDIENT = Recipe ↔ Business Item Relationship
+- 状态：RECONCILED SEMANTIC INVARIANT
+- 注意：不再作为未解决 Product Decision
 
-### L2-008: SELLABLE = Capability + Role
+### L2-008: SELLABLE = Capability
 - 状态：RECONCILED
+- 注意：Sales Role / Sales Profile 属于 Context-specific 表现
 
-### L2-009: PURCHASABLE = Capability + Profile
+### L2-009: PURCHASABLE = Capability
 - 状态：RECONCILED
+- 注意：Procurement Profile 是配置，不是 Capability 的一部分
 
-### L2-010: CONSUMABLE = Role (三种消费场景)
+### L2-010: CONSUMABLE = Capability
 - 状态：RECONCILED
+- 注意：Consumption Context（Recipe / Supply / Operational）属于 Context / Consumption Event
 
 ## 四、C. Open Decisions（开放决策）
 
