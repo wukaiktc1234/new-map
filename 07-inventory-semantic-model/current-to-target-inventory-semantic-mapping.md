@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # 当前→目标库存语义映射 (Phase 21 - Current-to-Target Inventory Semantic Mapping)
 
 > **核心问题**：当前数据库表结构中的每个字段，映射到目标业务语义概念的哪个部分？
