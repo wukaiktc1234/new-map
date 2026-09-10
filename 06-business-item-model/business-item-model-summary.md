@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** BUSINESS-ITEM-MODEL-001
+
 # 业务项模型分析总结
 
 ## 核心发现
