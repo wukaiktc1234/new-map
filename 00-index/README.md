@@ -312,5 +312,3 @@ Remediation / Engineering
 > 文档状态以各目录及具体文档中的声明为准。
 
 ````
-[1]: https://github.com/wukaiktc1234/new-map/tree/main "GitHub - wukaiktc1234/new-map: 项目地图文档 · GitHub"
-[2]: https://github.com/wukaiktc1234/new-map/tree/main/06-business-item-model "new-map/06-business-item-model at main · wukaiktc1234/new-map · GitHub"
