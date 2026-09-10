@@ -1,3 +1,7 @@
+> **DOCUMENT STATUS:** SUPERSEDED
+> **SUPERSEDED BY:** 03-review/business-item-canonical-semantic-reassessment.md
+> **SOURCE TASK:** PROJECT-MASTER-REVIEW-001
+
 # 推荐模型
 
 > **RECOMMENDATION: Model C — Hybrid Domain Model（混合领域模型）**
