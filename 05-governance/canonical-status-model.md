@@ -10,6 +10,16 @@
 
 ## 一、Canonical Status 定义
 
+### 1.0 Document Status (文档状态)
+
+| 状态 | 英文 | 定义 | 适用对象 | 说明 |
+|------|------|------|----------|------|
+| **CURRENT_BASELINE** | Current Baseline | 当前基线 | 文档 | 最新综合结论，可作为下一任务直接输入 |
+| **ACTIVE_REFERENCE** | Active Reference | 有效参考 | 文档 | 仍有证据价值，但不是最终综合结论 |
+| **SUPERSEDED** | Superseded | 已替代 | 文档 | 内容已被新的分析/Reassessment 替代 |
+| **HISTORICAL** | Historical | 历史追溯 | 文档 | 用于历史追溯 |
+| **INVALIDATED** | Invalidated | 已废止 | 文档 | 明确证明错误或废止 |
+
 ### 1.1 Evidence Status (证据状态)
 
 | 状态 | 英文 | 定义 | 适用对象 | 说明 |
