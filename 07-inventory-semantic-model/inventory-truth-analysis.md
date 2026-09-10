@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # Inventory Truth Analysis (Phase 1)
 
 ## 核心问题：什么才是 Inventory 的 Canonical Truth？
