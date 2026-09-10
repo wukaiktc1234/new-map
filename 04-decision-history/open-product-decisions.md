@@ -15,37 +15,43 @@
 
  | 决策ID | 决策标题 | 优先级 | 截止日期 | 负责人 | 状态 |
  |--------|----------|--------|----------|--------|------|
- | PD-CANONICAL-001 | Canonical Business Item 定义 | P0 | 2026-09-10 | Product Owner | 🟡 RECOMMENDED (NOT CONFIRMED) |
+ | PD-CANONICAL-001 | Canonical Business Identity 语义 | P0 | 2026-09-10 | Product Owner | 🟡 RECOMMENDED (NOT CONFIRMED) |
  | DEC-004 | Customer/Member 关系定义 | P0 | 2026-09-30 | Product Owner | 🟡 OPEN |
  | DEC-006 | Product/Food/Material 边界 | P1 | 2026-10-15 | Product Owner | 🟡 OPEN |
 
  ---
 
- ## PD-CANONICAL-001: Canonical Business Item 定义
+ ## PD-CANONICAL-001: Canonical Business Identity 语义
 
  | 字段 | 值 |
  |------|-----|
  | **决策ID** | PD-CANONICAL-001 |
- | **决策标题** | Canonical Business Item 定义 |
+ | **决策标题** | Canonical Business Identity 业务语义 |
  | **状态** | 🟡 RECOMMENDED (NOT CONFIRMED) |
  | **优先级** | P0 |
  | **负责人** | Product Owner |
  | **截止日期** | 2026-09-10 |
- | **阻塞影响** | 阻塞所有后续 Product / Architecture 语义决策 (PD-CANONICAL-002~006, AD-IDENTITY-001, DE-PK-001, DE-SKU-001) |
+ | **Scope** | 仅业务语义，不含 Implementation |
+ | **阻塞影响** | 阻塞 PD-CANONICAL-002~006 (Product 语义决策) |
+ | **Informed-By** | AD-IDENTITY-001, DE-PK-001, DE-SKU-001 (可并行推进) |
 
  ---
 
  ### 1. 问题描述
 
- 餐饮 ERP 系统中，Business Item（业务物品）在不同模块中有不同的表示方式：
- - POS 模块使用 `foods` 表
- - 采购模块使用 `material_archives` 表
- - 库存模块使用 `inventory` 表（以 material_id 关联）
- - 配方模块使用 `dish_recipe` 表（连接 food 和 material）
+ **Canonical Business Identity 的正式业务语义是什么？**
 
- 这导致同一物理实体（如 Coca-Cola 330ml）在系统中有多个独立的表示，跨模块统计需要复杂的多表 JOIN 和人工匹配。
+ 具体包括：
+ 1. Identity 是否存在？
+ 2. Identity 的业务定义
+ 3. Identity 稳定性原则
+ 4. Same Identity 判断规则
+ 5. Different Identity 判断规则
+ 6. Identity 与 Context / Capability / Role / Profile / Relationship 的关系
+ 7. Identity 与 Packaging / UOM / SKU / Barcode / Supplier / Batch / Store 的关系
+ 8. Identity 生命周期语义
 
- **需决策：是否引入统一 Canonical Business Item Identity 层？**
+ **注意：本决策不涉及任何实现细节（表名、UUID、PK、Migration、Service、API）。**
 
  ---
 
@@ -66,37 +72,33 @@
 
  | 维度 | 评估 |
  |------|------|
- | **描述** | Food / Material / Ingredient 各自定义 Identity 表，无统一 Canonical 层 |
- | **优点** | 与现有实现最接近，改动最小 |
- | **缺点** | 跨模块统计仍需复杂 JOIN + 人工匹配；无法解决同一物理实体多表重复的问题 |
+ | **描述** | Food / Material / Ingredient 各自定义 Identity，无统一 Canonical 层 |
  | **Invariant 验证** | 3/3 FAIL |
- | **风险** | HIGH — 根本问题未解决 |
+ | **Verdict** | 根本问题未解决 |
 
- #### Option B: Unified Canonical Identity (统一 Canonical 层) ⭐ RECOMMENDED
+ #### Option B: Unified Canonical Business Identity (统一业务语义层) ⭐ RECOMMENDED
 
  | 维度 | 评估 |
  |------|------|
- | **描述** | 引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags |
- | **优点** | 满足 3 Invariant；跨模块统计只需 Canonical Identity JOIN；新增模块直接引用 Canonical Identity |
- | **缺点** | 需要新增 Canonical Identity 表；需要迁移现有数据建立 Canonical 映射 |
+ | **描述** | 引入统一 Canonical Business Identity 作为业务语义层，独立于任何实现形式 |
  | **Invariant 验证** | 3/3 PASS |
- | **风险** | MEDIUM — 数据迁移复杂度可控 |
+ | **Verdict** | 满足所有 Business Invariant |
 
  #### Option C: Hybrid (混合模式)
 
  | 维度 | 评估 |
  |------|------|
  | **描述** | 部分类型共享 Canonical Identity，部分类型保持独立 |
- | **优点** | 折中方案，改动适中 |
- | **缺点** | Decision Boundary 模糊；无法满足 Invariant 3；仍然存在跨模块统计的 JOIN 复杂度 |
  | **Invariant 验证** | 1 PASS / 1 PARTIAL / 1 FAIL |
- | **风险** | HIGH — 边界不清 |
+ | **Verdict** | Decision Boundary 模糊 |
 
  ---
 
  ### 4. 推荐方案
 
- **推荐方案**: Option B — Unified Canonical Identity
+ **推荐方案**: Option B — Unified Canonical Business Identity
+
+ **Recommendation Type**: Canonical Business Identity 作为业务语义层 (NOT 作为 table / UUID / implementation)
 
  **推荐理由**:
  1. **满足 3 个 Business Invariant**: 只有 Option B 能同时满足多角色共存、Identity 稳定性、概念分离
@@ -114,11 +116,13 @@
 
  | 依赖类型 | 依赖项 | 说明 |
  |----------|--------|------|
- | ⚡ 强依赖 | 无 | 此为 Phase 1 第一个决策 |
- | 🔗 影响 | PD-CANONICAL-002~006 | 所有后续 Product 语义决策 |
- | 🔗 影响 | AD-IDENTITY-001 | Identity Storage 设计 |
- | 🔗 影响 | DE-PK-001 | Primary Key 设计 |
- | 🔗 影响 | DE-SKU-001 | SKU 生成规则 |
+ | ⚡ 强依赖 | 无 | 此为语义层第一个决策 |
+ | 🔗 Blocks | PD-CANONICAL-002~006 | 所有后续 Product 语义决策 |
+ | 🔗 Informed-By | AD-IDENTITY-001 | Identity Storage 设计 (可并行推进) |
+ | 🔗 Informed-By | DE-PK-001 | Primary Key 设计 (可并行推进) |
+ | 🔗 Informed-By | DE-SKU-001 | SKU 生成规则 (可并行推进) |
+ | 🔗 Informed-By | DE-STORAGE-001 | Storage 策略 (可并行推进) |
+ | 🔗 Informed-By | DE-MIGRATION-001 | 数据迁移策略 (可并行推进) |
 
  ---
 
@@ -126,13 +130,12 @@
 
  | 影响域 | 影响模块 | 影响程度 |
  |--------|----------|----------|
- | 商品域 | 商品模块 | 高 — 新增 Canonical Identity 层 |
- | 订单域 | 订单模块 | 中 — 订单需引用 Canonical Identity |
- | 库存域 | 库存模块 | 中 — 库存需引用 Canonical Identity |
- | 采购域 | 采购模块 | 中 — 采购需引用 Canonical Identity |
- | 配方域 | 配方模块 | 低 — 配方通过 Material 关联 |
- | 数据域 | 数据分析 | 高 — 跨模块统计简化 |
- | 基础设施 | 数据库 | 中 — 新增表 + 数据迁移 |
+ | 商品域 | 商品模块 | 高 — 定义 Canonical Identity 语义 |
+ | 订单域 | 订单模块 | 中 — 定义 Identity 与 Context 的关系 |
+ | 库存域 | 库存模块 | 中 — 定义 Identity 与 Location 的关系 |
+ | 采购域 | 采购模块 | 中 — 定义 Identity 与 Supplier 的关系 |
+ | 配方域 | 配方模块 | 低 — 定义 Identity 与 Relationship 的关系 |
+ | 数据域 | 数据分析 | 高 — 定义跨模块统计的 Identity 规则 |
 
  ---
 
@@ -143,8 +146,7 @@
  | 业务需求 | ✅ CONFIRMED | 10 个业务案例验证通过 |
  | 技术可行性 | ✅ CONFIRMED | Canonical Identity + Context-specific Profile 模式已验证 |
  | Invariant 验证 | ✅ CONFIRMED | 3/3 Invariant 全部 PASS |
- | 数据迁移 | ⏳ PENDING | 需制定迁移计划 |
- | 性能影响 | ⏳ PENDING | 需评估 Canonical 查询性能 |
+ | Identity Resolution Matrix | ✅ CANDIDATE | 17 个规则待 Product Owner 确认 |
 
  ---
 
@@ -153,6 +155,7 @@
  | 版本 | 日期 | 决策者 | 决策内容 |
  |------|------|--------|----------|
  | v1.0 | 2026-09-10 | 架构总控 | 初始提案，标记为 RECOMMENDED (NOT CONFIRMED) |
+ | v2.0 | 2026-09-10 | 架构总控 | Scope Finalization — 收敛为 Canonical Business Identity Semantics |
 
  ---
 
@@ -164,8 +167,8 @@
  | 进入 PD-CANONICAL-002 (Product 语义) | Product Owner | Week 2 | P1 |
  | 进入 PD-CANONICAL-003 (Food 语义) | Product Owner | Week 2 | P1 |
  | 进入 PD-CANONICAL-004 (Material 语义) | Product Owner | Week 2 | P1 |
- | 进入 AD-IDENTITY-001 (Identity Storage) | Architecture Owner | Week 1 | P1 |
- | 进入 DE-PK-001 (Primary Key) | Architecture Owner | Week 1 | P1 |
+ | 并行推进 AD-IDENTITY-001 (参考 PD-001 语义) | Architecture Owner | Week 2 | P1 |
+ | 并行推进 DE-PK-001 (参考 PD-001 语义) | Architecture Owner | Week 2 | P1 |
 
  ---
 
@@ -568,11 +571,11 @@ ALTER TABLE product RENAME TO product_archived;
 
  | 决策ID | 决策标题 | 推荐方案 | 状态 | 截止日期 |
  |--------|----------|----------|------|----------|
- | PD-CANONICAL-001 | Canonical Business Item 定义 | B_unified_canonical | 🟡 RECOMMENDED (NOT CONFIRMED) | 2026-09-10 |
+ | PD-CANONICAL-001 | Canonical Business Identity 语义 | B_unified_canonical (语义层) | 🟡 RECOMMENDED (NOT CONFIRMED) | 2026-09-10 |
  | DEC-004 | Customer/Member 关系定义 | Guest Member（散客类型） | 🟡 OPEN | 2026-09-30 |
  | DEC-006 | Product/Food/Material 边界 | 废弃 Product，保留 Food + Material | 🟡 OPEN | 2026-10-15 |
 
----
+ ---
 
  ## 下一步行动
 
