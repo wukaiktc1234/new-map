@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # Inventory Semantic Model 调和总结
 
 ## 任务完成情况
