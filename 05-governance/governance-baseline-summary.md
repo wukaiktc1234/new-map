@@ -277,14 +277,34 @@ ENGINEERING CARDS
 
 ## 十、文档状态
 
+### 10.1 Governance Documents
+
 | 文档 | 状态 | 说明 |
 |------|------|------|
 | canonical-id-registry.md | ✅ CANONICAL BASELINE | 最终基线 |
-| canonical-status-model.md | ✅ CANONICAL BASELINE | 最终基线 |
+| canonical-status-model.md | ✅ CANONICAL BASELINE | 最终基线（已增加 Document Status） |
 | decision-provenance.md | ✅ CANONICAL BASELINE | 最终基线 |
 | hierarchical-layer-model.md | ✅ CANONICAL BASELINE | 最终基线 |
 | remediation-gate-review.md | ✅ CANONICAL BASELINE | 最终基线 |
 | governance-baseline-summary.md | ✅ CANONICAL BASELINE | 最终基线 |
+
+### 10.2 Business Item / Inventory Documents
+
+| 文档 | Document Status | 说明 |
+|------|-----------------|------|
+| 03-review/current-business-semantic-baseline.md | CURRENT_BASELINE | 统一入口 |
+| 03-review/business-item-canonical-semantic-reassessment.md | CURRENT_BASELINE | 最新语义评估 |
+| 03-review/business-item-canonical-decision-boundary.md | CURRENT_BASELINE | 决策边界划分 |
+| 03-review/business-item-canonical-conflict-registry.yaml | CURRENT_BASELINE | 冲突登记 |
+| 03-review/business-item-inventory-integration.md | CURRENT_BASELINE | 跨域整合 |
+| 06-business-item-model/recommendation.md | SUPERSEDED | 已被 Reassessment 替代 |
+| 06-business-item-model/dec-006-refined-decision-pack.md | HISTORICAL | 历史推荐 |
+| 06-business-item-model/candidate-model-comparison.md | SUPERSEDED | 已被 Reassessment 替代 |
+| 06-business-item-model/candidate-semantic-models.md | SUPERSEDED | 已被 Reassessment 替代 |
+| 07-inventory-semantic-model/inventory-semantic-recommendation.md | SUPERSEDED | 已被 Reassessment 替代 |
+| 07-inventory-semantic-model/candidate-inventory-models.md | SUPERSEDED | 已被 Reassessment 替代 |
+
+> 详细 Document Lifecycle 见 `03-review/document-baseline-registry.yaml`
 
 ---
 
