@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** BUSINESS-ITEM-MODEL-002
+
 # Identity Resolution Rules
 
 > **文档类型**: Canonical Identity 粒度规则  
