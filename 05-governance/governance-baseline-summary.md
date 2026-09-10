@@ -22,7 +22,7 @@
 | 建立 Canonical Status Model | ✅ 完成 | 统一状态定义，禁止状态混淆 |
 | 重新计算全部统计 | ✅ 完成 | 基于验证结果重新统计 |
 | 建立 Decision Provenance | ✅ 完成 | 每个决策必须有明确来源 |
-| 建立唯一层级 | ✅ 完成 | 固定六层模型，禁止层级混乱 |
+| 建立唯一层级 | ✅ 完成 | 固定七层模型，禁止层级混乱 |
 | 重新审查 Remediation Gate | ✅ 完成 | 严格审查，禁止强行 Ready |
 
 ---
@@ -36,14 +36,14 @@
 | `canonical-id-registry.md` | 全项目唯一 ID 注册表 | 所有 ID 唯一，已废止 ID 永久保留 |
 | `canonical-status-model.md` | 统一状态定义 | 统一状态定义，禁止状态混淆 |
 | `decision-provenance.md` | 决策溯源矩阵 | 每个决策必须有明确来源 |
-| `hierarchical-layer-model.md` | 唯一层级定义 | 固定六层模型，禁止层级混乱 |
+| `hierarchical-layer-model.md` | 唯一层级定义 | 固定七层模型，禁止层级混乱 |
 | `remediation-gate-review.md` | Remediation Gate 重新审查 | 严格审查，禁止强行 Ready |
 | `governance-baseline-summary.md` | 治理基线总结 | 本文档 |
 
 ### 2.2 文档位置
 
 ```
-docs/architecture/project-master-map/governance-baseline/
+docs/architecture/05-governance/
 ├── canonical-id-registry.md
 ├── canonical-status-model.md
 ├── decision-provenance.md
