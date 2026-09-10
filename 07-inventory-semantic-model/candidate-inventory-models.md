@@ -1,3 +1,7 @@
+> **DOCUMENT STATUS:** SUPERSEDED
+> **SUPERSEDED BY:** 03-review/business-item-canonical-semantic-reassessment.md
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # 候选库存模型比较 (Phase 22 - Candidate Inventory Models)
 
 > **核心问题**：哪种库存模型最适合餐饮ERP的业务需求？
