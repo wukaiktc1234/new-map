@@ -1,0 +1,475 @@
+ > **DOCUMENT STATUS:** ACTIVE_REFERENCE
+ > **SOURCE TASK:** PD-CANONICAL-001-FORMAL-DECISION-001
+
+ # ============================================================================
+ # PD-CANONICAL-001: Canonical Business Item 定义
+ # ============================================================================
+ # 决策编号: PD-CANONICAL-001
+ # 决策标题: Canonical Business Item 定义
+ # 决策类别: PRODUCT_DECISION
+ # 生成日期: 2026-09-10
+ # 决策状态: RECOMMENDED (NOT CONFIRMED)
+ # 优先级: P0 (阻塞所有后续 Product / Architecture 语义决策)
+ # ============================================================================
+
+ meta:
+   id: PD-CANONICAL-001
+   title: "Canonical Business Item 定义"
+   category: PRODUCT_DECISION
+   decision_status: RECOMMENDED
+   evidence_status: VERIFIED
+   blocking: true
+   generated_from:
+     - "03-review/business-item-canonical-semantic-reassessment.md"
+     - "03-review/business-item-canonical-decision-boundary.md"
+     - "03-review/current-business-semantic-baseline.md (v2.0)"
+     - "06-business-item-model/canonical-identity-analysis.md"
+
+ # ============================================================================
+ # 一、问题定义
+ # ============================================================================
+ question: |
+   Business Item 是否应该拥有独立 Canonical Identity？
+   - Option A: 每个 Business Item 类型（Food / Material / Ingredient）独立定义 Identity，无统一 Canonical 层
+   - Option B: 引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags
+
+ # ============================================================================
+ # 二、当前现实
+ # ============================================================================
+ current_reality:
+   truth_source: "各模块自行维护 Identity，无统一 Canonical Identity"
+   evidence:
+     - location: "06-business-item-model/canonical-identity-analysis.md"
+       finding: "可乐在系统中有 4 个独立表示：foods(product_code='COLA001'), product(product_code='COLA001'), material_archives(material_code='MAT_COLA001'), inventory(material_id=1)"
+     - location: "03-review/business-item-canonical-semantic-reassessment.md §3.1"
+       finding: "POS 用 product table, Procurement 用 material table, Inventory 用 stock_item/inventory_item, Recipe 用 ingredient table，Identity 来源不统一"
+     - location: "03-review/current-business-semantic-baseline.md"
+       finding: "inventory 以 material_id 管理库存；store_inventory 以 store_id + material_id 管理门店库存；dish_recipe 连接 food 和 material；order_items 使用 food_id；purchase_order_items 使用 material_id"
+   confidence: HIGH (multiple evidence sources)
+   problem_indicators:
+     - "同一物理实体在不同模块有不同 ID 和 Name，跨模块统计需复杂多表 JOIN + 人工匹配"
+     - "新增模块（如 loyalty program）无法直接引用同一个业务对象"
+     - "同一可乐可能被建为两个 material，导致库存分散"
+     - "POS 扫码销售的 product 与采购的 material 无法自动关联"
+
+ # ============================================================================
+ # 三、10 个业务案例验证
+ # ============================================================================
+ business_cases:
+   - case_id: "CASE-001"
+     name: "Coca-Cola 330ml (单一 SKU，多场景)"
+     scenarios:
+       - context: "POS"
+         module: "foods"
+         id_used: "food_id"
+         identity_consistent: true
+       - context: "Procurement"
+         module: "material_archives"
+         id_used: "material_id"
+         identity_consistent: false
+       - context: "Inventory"
+         module: "inventory"
+         id_used: "material_id"
+         identity_consistent: false
+       - context: "Recipe"
+         module: "dish_recipe"
+         id_used: "ingredient_id → material_id"
+         identity_consistent: false
+     verdict: "同一物理实体 4 个独立表示，Canonical Identity 必须统一"
+     supports_option: B
+
+   - case_id: "CASE-002"
+     name: "Coca-Cola 330ml vs 500ml (多 SKU 变体)"
+     scenarios:
+       - context: "330ml vs 500ml"
+         module: "foods"
+         id_used: "两个 food_id"
+         identity_consistent: false
+       - context: "330ml vs 500ml"
+         module: "material_archives"
+         id_used: "两个 material_id"
+         identity_consistent: false
+     verdict: "同一线型产品的不同规格需要共享 Canonical Identity + 规格扩展"
+     supports_option: B
+
+   - case_id: "CASE-003"
+     name: "Case Packs (整箱 vs 散装)"
+     scenarios:
+       - context: "整箱采购"
+         module: "material_archives"
+         id_used: "material_id (箱)"
+         identity_consistent: false
+       - context: "散装销售"
+         module: "foods"
+         id_used: "food_id (罐)"
+         identity_consistent: false
+     verdict: "同一物理实体的不同包装形态需要 Canonical Identity + Packaging Profile"
+     supports_option: B
+
+   - case_id: "CASE-004"
+     name: "Suppliers (供应商维度)"
+     scenarios:
+       - context: "同一可乐从不同供应商采购"
+         module: "material_archives"
+         id_used: "可能多个 material_id"
+         identity_consistent: false
+     verdict: "Canonical Identity 必须独立于 Supplier，Supplier 属于 Procurement Profile"
+     supports_option: B
+
+   - case_id: "CASE-005"
+     name: "Barcodes (条码维度)"
+     scenarios:
+       - context: "同一可乐 330ml 有多个条码（不同供应商/批次）"
+         module: "material_archives"
+         id_used: "barcode 字段"
+         identity_consistent: false
+     verdict: "Barcode 是 Context-specific Identifier，不是 Canonical Identity"
+     supports_option: B
+
+   - case_id: "CASE-006"
+     name: "Batches (批次维度)"
+     scenarios:
+       - context: "同一可乐 330ml 不同生产批次"
+         module: "inventory"
+         id_used: "batch_id"
+         identity_consistent: false
+     verdict: "Batch 是 Inventory Context 的事件属性，不是 Canonical Identity"
+     supports_option: B
+
+   - case_id: "CASE-007"
+     name: "Stores (门店维度)"
+     scenarios:
+       - context: "同一可乐在不同门店的库存和售价"
+         module: "store_inventory"
+         id_used: "store_id + material_id"
+         identity_consistent: false
+     verdict: "Store 是 Location Context，Canonical Identity 必须独立于 Location"
+     supports_option: B
+
+   - case_id: "CASE-008"
+     name: "Chicken Wings (多角色共存)"
+     scenarios:
+       - context: "POS 销售"
+         module: "foods"
+         id_used: "food_id (成品)"
+         identity_consistent: false
+       - context: "采购原料"
+         module: "material_archives"
+         id_used: "material_id (原料)"
+         identity_consistent: false
+       - context: "Recipe 成分"
+         module: "dish_recipe"
+         id_used: "ingredient_id → material_id"
+         identity_consistent: false
+     verdict: "同一物理实体同时承担 Sellable + Purchasable + Recipe Component 三种角色，Canonical Identity 必须独立于 Capability"
+     supports_option: B
+
+   - case_id: "CASE-009"
+     name: "Kung Pao Chicken (菜品 = Recipe Output)"
+     scenarios:
+       - context: "POS 销售"
+         module: "foods"
+         id_used: "food_id"
+         identity_consistent: true
+       - context: "Recipe 管理"
+         module: "dish_recipe"
+         id_used: "dish_id → food_id"
+         identity_consistent: true
+       - context: "Inventory"
+         module: "N/A (现做现卖，不库存)"
+         id_used: "N/A"
+         identity_consistent: true
+     verdict: "菜品的 Canonical Identity = food_id，但其 Identity 不应被 Inventory Context 定义"
+     supports_option: B
+
+   - case_id: "CASE-010"
+     name: "Takeaway Box / Cleaning / Service (非食用消耗品)"
+     scenarios:
+       - context: "采购"
+         module: "material_archives"
+         id_used: "material_id"
+         identity_consistent: false
+       - context: "消耗"
+         module: "inventory"
+         id_used: "material_id"
+         identity_consistent: false
+     verdict: "非食用消耗品也需要 Canonical Identity，不能仅用 Material 作为 Identity"
+     supports_option: B
+
+ # ============================================================================
+ # 四、选项分析
+ # ============================================================================
+ options:
+   A_type_specific:
+     name: "Type-specific Entity (每个类型独立 Identity)"
+     description: "Food / Material / Ingredient 各自定义 Identity 表，无统一 Canonical 层"
+     pros:
+       - "与现有实现最接近，改动最小"
+       - "每个类型可以有独立的属性集"
+     cons:
+       - "跨模块统计仍需复杂 JOIN + 人工匹配"
+       - "新增模块无法直接引用同一业务对象"
+       - "无法解决同一物理实体多表重复的问题"
+       - "不满足 Invariant 1 (多角色共存) 和 Invariant 2 (Identity 稳定性)"
+     effort: LOW
+     risk: HIGH (根本问题未解决)
+     supports_invariants: false
+
+   B_unified_canonical:
+     name: "Unified Canonical Identity (统一 Canonical 层)"
+     description: "引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags"
+     pros:
+       - "满足 Invariant 1: 同一 Business Item 可同时 Sell + Purchase + Stock + Consume"
+       - "满足 Invariant 2: Identity 稳定，不因 Context 变化"
+       - "满足 Invariant 3: Role / Capability / Profile / Context 分离"
+       - "跨模块统计只需 Canonical Identity JOIN"
+       - "新增模块直接引用 Canonical Identity"
+       - "支持多 SKU 变体 (Canonical + Variant)"
+       - "支持多 Packaging (Canonical + Packaging Profile)"
+     cons:
+       - "需要新增 Canonical Identity 表"
+       - "需要迁移现有数据建立 Canonical 映射"
+       - "需要更新所有引用现有 ID 的服务"
+     effort: MEDIUM
+     risk: MEDIUM (数据迁移复杂度)
+     supports_invariants: true
+
+   C_hybrid:
+     name: "Hybrid (混合模式)"
+     description: "部分类型共享 Canonical Identity，部分类型保持独立"
+     pros:
+       - "折中方案，改动适中"
+     cons:
+       - "仍然存在跨模块统计的 JOIN 复杂度"
+       - "Decision Boundary 模糊，无法明确划定哪些类型需要 Canonical"
+       - "无法满足 Invariant 3 (概念分离)"
+     effort: MEDIUM
+     risk: HIGH (边界不清)
+     supports_invariants: partial
+
+ # ============================================================================
+ # 五、3 Invariant 验证矩阵
+ # ============================================================================
+ invariant_validation:
+   invariant_1_multi_role:
+     title: "多角色共存"
+     requirement: "同一 Business Item 可同时 Sell + Purchase + Stock + Consume + Recipe Component"
+     option_a: "FAIL — 每个类型独立 Identity，无法跨类型关联"
+     option_b: "PASS — Canonical Identity 独立于任何 Capability，通过 domain_tags 标记能力"
+     option_c: "PARTIAL — 混合模式仍有部分类型无法跨类型关联"
+
+   invariant_2_identity_stability:
+     title: "Identity 稳定性"
+     requirement: "Business Identity 不因使用场景变化而变化"
+     option_a: "FAIL — 同一可乐在不同模块有不同 ID"
+     option_b: "PASS — Canonical UUID 不变，Context-specific Profile 各自独立"
+     option_c: "PARTIAL — 部分类型共享 Identity，部分不共享"
+
+   invariant_3_concept_separation:
+     title: "概念分离"
+     requirement: "Role / Capability / Profile / Context 不得互相混淆"
+     option_a: "FAIL — Identity 混合了 Capability 和 Profile"
+     option_b: "PASS — Identity 层独立，Capability / Profile / Context 各自定义"
+     option_c: "FAIL — 混合模式仍存在概念混淆"
+
+ # ============================================================================
+ # 六、Recommendation
+ # ============================================================================
+ recommendation:
+   primary: B_unified_canonical
+   rationale: |
+     1. **满足 3 个 Business Invariant**: 只有 Option B 能同时满足多角色共存、Identity 稳定性、概念分离
+     2. **10 个业务案例全部验证通过**: 每个案例都指向 Canonical Identity 的必要性
+     3. **当前现实已证明不足**: 各模块自行维护 Identity 导致跨模块统计复杂、数据冗余
+     4. **目标模型清晰**: Canonical Identity + Context-specific Profile 是业界成熟模式
+     5. **与 L2-001~L2-010 收敛结论一致**: Capability / Profile / Context 已被识别为独立概念
+   confidence: HIGH
+   status: "RECOMMENDED (NOT CONFIRMED — 等待 Product Owner 正式确认)"
+   fallback: C_hybrid
+   fallback_condition: "如果 Product Owner 认为 Canonical Identity 表改动过大，可先用 Hybrid 模式过渡"
+
+ # ============================================================================
+ # 七、决策范围 (13 items)
+ # ============================================================================
+ decision_scope:
+   - scope_item: "Canonical Identity 核心属性"
+     description: "UUID + canonical_name + domain_tags + created_at"
+     resolved_by: "PD-CANONICAL-001"
+   - scope_item: "Canonical Name 生成规则"
+     description: "由谁生成？手工输入还是自动推断？"
+     resolved_by: "PD-CANONICAL-001"
+   - scope_item: "Domain Tags 枚举"
+     description: "SELLABLE / PURCHASABLE / STOCKABLE / CONSUMABLE / RECIPE_COMPONENT 等"
+     resolved_by: "PD-CANONICAL-001"
+   - scope_item: "Canonical Identity 表名"
+     description: "canonical_business_item / business_item / bi_master"
+     resolved_by: "AD-IDENTITY-001"
+   - scope_item: "Primary Key 类型"
+     description: "UUID v7 / Auto-Increment / Composite"
+     resolved_by: "DE-PK-001"
+   - scope_item: "各子类型如何引用 Canonical Identity"
+     description: "food.material_id / material.canonical_id / 通过 mapping table"
+     resolved_by: "AD-IDENTITY-001"
+   - scope_item: "多 SKU 变体如何表达"
+     description: "Canonical + Variant / Canonical + SKU Profile"
+     resolved_by: "PD-CANONICAL-002"
+   - scope_item: "多 Packaging 如何表达"
+     description: "Canonical + Packaging Profile / Canonical + UOM Context"
+     resolved_by: "PD-CANONICAL-004"
+   - scope_item: "Barcode 是否属于 Canonical Identity"
+     description: "Barcode 是 Context-specific Identifier，不是 Canonical"
+     resolved_by: "PD-CANONICAL-001 (已明确: NOT Canonical)"
+   - scope_item: "Batch 是否属于 Canonical Identity"
+     description: "Batch 是 Inventory Context 的事件属性，不是 Canonical"
+     resolved_by: "PD-CANONICAL-001 (已明确: NOT Canonical)"
+   - scope_item: "Location 是否影响 Canonical Identity"
+     description: "Canonical Identity 独立于 Location"
+     resolved_by: "PD-CANONICAL-001 (已明确: NOT Canonical)"
+   - scope_item: "Supplier 是否影响 Canonical Identity"
+     description: "Supplier 属于 Procurement Profile，不是 Canonical"
+     resolved_by: "PD-CANONICAL-001 (已明确: NOT Canonical)"
+   - scope_item: "Canonical Business Item 的生命周期"
+     description: "创建 / 停用 / 归档 / 合并"
+     resolved_by: "PD-CANONICAL-001 (已明确: 支持停用/归档，合并需人工干预)"
+
+ # ============================================================================
+ # 八、阻塞影响
+ # ============================================================================
+ blocking_impact:
+   blocks:
+     - "PD-CANONICAL-002 (Product 语义) — 必须先确定 Canonical Identity 层"
+     - "PD-CANONICAL-003 (Food 语义) — Food 的 Canonical 定位依赖此决策"
+     - "PD-CANONICAL-004 (Material 语义) — Material 的 Canonical 定位依赖此决策"
+     - "PD-CANONICAL-006 (Consumable 定义) — Consumable 的 Canonical 归属依赖此决策"
+     - "AD-IDENTITY-001 (Identity Storage) — 表结构设计依赖此决策"
+     - "DE-PK-001 (Primary Key) — PK 类型依赖此决策"
+     - "DE-SKU-001 (SKU 生成规则) — SKU 生成依赖 Canonical Identity"
+   blocked_by: "无 (此为 Phase 1 第一个决策)"
+
+ # ============================================================================
+ # 九、决策依赖图
+ # ============================================================================
+ dependency_graph:
+   PD-CANONICAL-001:
+     depends_on: []
+     blocks:
+       - PD-CANONICAL-002
+       - PD-CANONICAL-003
+       - PD-CANONICAL-004
+       - PD-CANONICAL-006
+       - AD-IDENTITY-001
+       - DE-PK-001
+       - DE-SKU-001
+
+ # ============================================================================
+ # 十、证据引用
+ # ============================================================================
+ evidence:
+   - "06-business-item-model/canonical-identity-analysis.md: 14 个 Business Object 的 Identity 分析"
+   - "06-business-item-model/concept-taxonomy.md: 概念分类与边界"
+   - "03-review/business-item-canonical-semantic-reassessment.md §3.1: Canonical Identity 评估"
+   - "03-review/business-item-canonical-decision-boundary.md: Decision Boundary 划分"
+   - "03-review/current-business-semantic-baseline.md: 14 个 Implementation Facts"
+   - "03-review/business-item-canonical-conflict-registry.yaml: 8 个 Conflict Registry"
+   - "LOCK-A001: foods 为菜品唯一真相源 (VERIFIED)"
+   - "LOCK-A002: material_archives 为物料真相源 (VERIFIED)"
+   - "L2-007: INGREDIENT = Recipe ↔ Business Item Relationship (RECONCILED)"
+
+ # ============================================================================
+ # 十一、Provenance
+ # ============================================================================
+ provenance:
+   decision_id: PD-CANONICAL-001
+   origin: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
+   source_documents:
+     - "03-review/business-item-canonical-semantic-reassessment.md"
+     - "03-review/business-item-canonical-decision-boundary.md"
+     - "03-review/current-business-semantic-baseline.md (v2.0)"
+     - "06-business-item-model/canonical-identity-analysis.md"
+   owner: "Product Owner"
+   decision_date: "2026-09-10"
+   decision_status: "RECOMMENDED (NOT CONFIRMED)"
+   evidence_status: "VERIFIED"
+   execution_status: "BLOCKED (等待 Product Owner 确认)"
+
+ # ============================================================================
+ # 十二、执行计划
+ # ============================================================================
+ execution_plan:
+   phase_1:
+     name: "Decision Confirmation"
+     tasks:
+       - "Product Owner 正式确认 PD-CANONICAL-001 为 Option B"
+       - "记录确认时间和决策者"
+     duration: "0.5 天"
+   phase_2:
+     name: "Canonical Identity 表设计"
+     depends_on: "AD-IDENTITY-001, DE-PK-001"
+     tasks:
+       - "设计 canonical_business_item 表结构"
+       - "定义 UUID 生成规则"
+       - "定义 domain_tags 枚举"
+     duration: "1-2 天"
+   phase_3:
+     name: "数据迁移"
+     depends_on: "DE-MIGRATION-001"
+     tasks:
+       - "从 foods / material_archives / product 表提取 Canonical Identity"
+       - "建立 mapping table (canonical_id ↔ module_id)"
+       - "验证数据一致性"
+     duration: "3-5 天"
+   phase_4:
+     name: "服务层适配"
+     tasks:
+       - "创建 CanonicalBusinessItemService (CRUD)"
+       - "更新 FoodService / MaterialService 引用 Canonical Identity"
+       - "更新 InventoryService 支持 Canonical 查询"
+     duration: "5-8 天"
+   total_effort: "10-16 人天"
+
+ # ============================================================================
+ # 十三、验收标准
+ # ============================================================================
+ acceptance_criteria:
+   - "canonical_business_item 表存在且包含所有现有 Food / Material / Product 的 Identity"
+   - "每个 Canonical Business Item 有唯一的 UUID + canonical_name"
+   - "每个 Canonical Business Item 有 domain_tags 标记其 Capabilities"
+   - "Food / Material / Product 表可通过 mapping table 关联到 Canonical Identity"
+   - "跨模块统计（如：可乐的采购成本 vs 销售收入）只需 Canonical Identity JOIN"
+   - "新增业务对象可直接引用 Canonical Identity"
+   - "现有的 LOCK-A001 / LOCK-A002 不被破坏"
+
+ # ============================================================================
+ # 十四、风险项
+ # ============================================================================
+ risks:
+   - risk: "数据迁移复杂度"
+     severity: "MEDIUM"
+     mitigation: "增量迁移 + 双写过渡期"
+   - risk: "现有服务引用破坏"
+     severity: "HIGH"
+     mitigation: "通过 mapping table 渐进式迁移，不直接修改现有表"
+   - risk: "性能影响"
+     severity: "LOW"
+     mitigation: "Canonical Identity 查询走缓存 (Redis)"
+   - risk: "Product Owner 不确认"
+     severity: "HIGH"
+     mitigation: "提供 10 个业务案例验证 + 3 Invariant 验证矩阵"
+
+ # ============================================================================
+ # 十五、统计摘要
+ # ============================================================================
+ summary:
+   total_business_cases: 10
+   cases_supporting_option_b: 10
+   invariants_validated: 3
+   invariants_passing_option_b: 3
+   conflicts_addressed: 5
+   conflicts_addressed_by_pd_canonical_001:
+     - "CONFLICT-A (Product 语义)"
+     - "CONFLICT-B (Material 语义)"
+     - "CONFLICT-C (Food 语义)"
+     - "CONFLICT-E (CONSUMABLE 定义)"
+     - "部分 CONFLICT-G (Location 模型)"
+   decision_status: "RECOMMENDED (NOT CONFIRMED)"
+   next_action: "Product Owner 正式确认"
