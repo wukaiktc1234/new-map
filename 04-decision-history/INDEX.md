@@ -1,20 +1,21 @@
 # ============================================================================
-# Foundation Decision Recon — 审议索引
+# Decision History — 审议索引
 # ============================================================================
-# 决策编号: DEC-001 ~ DEC-005
-# 生成日期: 2026-09-09
-# 基于: Project Master Map 静态分析
+# 决策编号: DEC-001 ~ DEC-005, PD-CANONICAL-001
+# 生成日期: 2026-09-10
+# 基于: Project Master Map 静态分析 + BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001
 # ============================================================================
 
 meta:
-  id: FOUNDATION-DECISION-RECON-001
+  id: DECISION-HISTORY-INDEX-001
   type: decision_index
-  scope: foundation_decisions
-  total_decisions: 5
+  scope: foundation_decisions + product_decisions
+  total_decisions: 6
   by_status:
     OPEN: 5
+    RECOMMENDED: 1
   by_priority:
-    P0: 1
+    P0: 2
     P1: 3
     P2: 1
 
@@ -69,7 +70,34 @@ decisions:
     affected_domains: [Product, Order, Procurement, Marketing, Finance]
     阻断能力: "价格历史和策略管理"
 
+  PD-CANONICAL-001:
+    title: "Canonical Business Item 定义"
+    file: "PD-CANONICAL-001-Decision.yaml"
+    priority: P0
+    blocking: true
+    question: "Business Item 是否应该拥有独立 Canonical Identity？"
+    recommendation: "B_unified_canonical — 引入统一 Canonical Business Item Identity 层"
+    affected_domains: [POS, Procurement, Inventory, Recipe, Reporting, Marketing]
+    阻断能力: "所有后续 Product / Architecture 语义决策 (PD-CANONICAL-002~006, AD-IDENTITY-001, DE-PK-001, DE-SKU-001)"
+    decision_status: "RECOMMENDED (NOT CONFIRMED)"
+    evidence_status: "VERIFIED"
+
 decision_dependencies:
+  - from: PD-CANONICAL-001
+    to: PD-CANONICAL-002
+    description: "Canonical Identity 层是 Product 语义决策的前提"
+  - from: PD-CANONICAL-001
+    to: PD-CANONICAL-003
+    description: "Canonical Identity 层是 Food 语义决策的前提"
+  - from: PD-CANONICAL-001
+    to: PD-CANONICAL-004
+    description: "Canonical Identity 层是 Material 语义决策的前提"
+  - from: PD-CANONICAL-001
+    to: AD-IDENTITY-001
+    description: "Canonical Identity 定义是 Identity Storage 设计的前提"
+  - from: PD-CANONICAL-001
+    to: DE-PK-001
+    description: "Canonical Identity 定义是 Primary Key 设计的前提"
   - from: DEC-001
     to: DEC-005
     description: "Warehouse 管理模式影响库存成本计算，进而影响价格体系"
@@ -82,22 +110,49 @@ decision_dependencies:
 
 execution_order:
   phase_1:
+    name: "Canonical Identity Foundation"
+    decisions: [PD-CANONICAL-001]
+    deadline: "2026-09-10"
+    description: "PD-CANONICAL-001 是 P0 级阻断，必须优先确认"
+    status: "RECOMMENDED (NOT CONFIRMED)"
+  phase_2:
     name: "Foundation Stabilization"
     decisions: [DEC-001]
     deadline: "2026-09-16"
     description: "Warehouse 是 P0 级阻断，必须优先决策"
-  phase_2:
+  phase_3:
+    name: "Product Semantic Decisions"
+    decisions: [PD-CANONICAL-002, PD-CANONICAL-003, PD-CANONICAL-004, PD-CANONICAL-006]
+    deadline: "2026-09-17"
+    description: "Product 语义决策，依赖 PD-CANONICAL-001 确认"
+  phase_4:
+    name: "Architecture Decisions"
+    decisions: [AD-IDENTITY-001, AD-LOCATION-001, AD-UOM-001, AD-INVENTORY-001, AD-INVENTORY-002]
+    deadline: "2026-09-23"
+    description: "Architecture 决策，依赖 Product Decisions"
+  phase_5:
     name: "Foundation Clarification"
     decisions: [DEC-002, DEC-003, DEC-004]
     deadline: "2026-09-23"
     description: "Unit/PaymentMethod/Customer 是 P1 级，可分阶段处理"
-  phase_3:
+  phase_6:
     name: "Foundation Enhancement"
     decisions: [DEC-005]
     deadline: "2026-09-30"
     description: "Price 是 P2 级，可最后处理"
+  phase_7:
+    name: "Engineering Decisions"
+    decisions: [DE-PK-001, DE-SKU-001, DE-STORAGE-001, DE-MIGRATION-001]
+    deadline: "2026-09-30"
+    description: "Engineering 决策，依赖 Architecture Decisions"
 
 summary_table:
+  - decision: PD-CANONICAL-001
+    what: "Canonical Business Item"
+    is_what: "Unified Canonical Identity (B_unified_canonical)"
+    needs_independent_table: "是（canonical_business_item）"
+    recommendation: "引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags"
+    decision_status: "RECOMMENDED (NOT CONFIRMED)"
   - decision: DEC-001
     what: "Warehouse"
     is_what: "Independent Foundation (E_hybrid)"
