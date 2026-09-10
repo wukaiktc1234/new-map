@@ -1,9 +1,9 @@
 # Document Baseline Reconciliation Report
 
 ## 一、报告概述
-- 任务：PROJECT-KNOWLEDGE-BASE-BASELINE-RECONCILIATION-001
+- 任务：PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001
 - 日期：2026-09-10
-- 状态：BASELINE-RECONCILIATION = PASS_WITH_OPEN_DECISIONS
+- 状态：BASELINE-FINALIZATION = PASS_WITH_CORRECTIONS
 
 ## 二、文档统计
 
@@ -16,15 +16,17 @@
 - 05-governance: 7
 - 06-business-item-model: 37
 - 07-inventory-semantic-model: 27
-- **总计: 147**
+- **NON-ARCHIVE DOCUMENT TOTAL: 147**
+- 99-archive/delivery-history: 5
+- **REPOSITORY TOTAL: 152**
 
 ### Document Status 统计
 | Status | 数量 | 说明 |
 |--------|------|------|
 | CURRENT_BASELINE | 6 | 最新综合结论 |
 | ACTIVE_REFERENCE | ~30 | 仍有证据价值 |
-| SUPERSEDED | ~15 | 已被新分析替代 |
-| HISTORICAL | ~90 | 历史追溯 |
+| SUPERSEDED | ~8 | 已被新分析替代 |
+| HISTORICAL | ~100 | 历史追溯 |
 | INVALIDATED | 0 | 无明确错误 |
 
 ## 三、当前可直接作为任务输入的文档
@@ -87,7 +89,7 @@
 | business-item-model-reconciliation-summary.md | ACTIVE_REFERENCE | 仍有证据价值 |
 | concept-taxonomy.md | ACTIVE_REFERENCE | 仍有证据价值 |
 | identity-type-role-capability.md | ACTIVE_REFERENCE | 仍有证据价值 |
-| identity-resolution-rules.md | SUPERSEDED | 已被 Reassessment 替代 |
+| identity-resolution-rules.md | ACTIVE_REFERENCE | Candidate Rules，仍有证据价值 |
 | product-semantic-analysis.md | ACTIVE_REFERENCE | 仍有证据价值 |
 | food-semantic-analysis.md | ACTIVE_REFERENCE | 仍有证据价值 |
 | material-semantic-analysis.md | ACTIVE_REFERENCE | 仍有证据价值 |
@@ -120,7 +122,7 @@
 |------|-----------------|------|
 | DEC-001~005 | HISTORICAL | 历史决策 |
 | verified-locked-decisions.md | ACTIVE_REFERENCE | 仍有证据价值 |
-| open-product-decisions.md | ACTIVE_REFERENCE | 仍有证据价值 |
+| open-product-decisions.md | HISTORICAL | 已被 Reassessment 替代 |
 | open-architecture-decisions.md | ACTIVE_REFERENCE | 仍有证据价值 |
 | decision-recon-* | HISTORICAL | 历史分析 |
 | decision-baseline-recovery-* | HISTORICAL | 历史分析 |
