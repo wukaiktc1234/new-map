@@ -1,7 +1,8 @@
-registry_version: "1.0"
+registry_version: "2.0"
 registry_date: "2026-09-10"
-registry_status: "REASSESSED"
+registry_status: "OPEN"
 task_id: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
+finalization_task: "PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001"
 
 conflicts:
   - conflict_id: "CONFLICT-A"
@@ -57,7 +58,8 @@ conflicts:
     description_b: "INGREDIENT 是 Recipe Relationship，代表配方关系"
     evidence_b: "ingredient 表连接 material 和 recipe 表"
     judgment: "已明确为 Recipe Relationship，通过外键定义关系"
-    decision_boundary: "PD-CANONICAL-004"
+    decision_boundary: null
+    note: "RECONCILED SEMANTIC INVARIANT, NOT_BLOCKING"
 
   - conflict_id: "CONFLICT-E"
     title: "CONSUMABLE 的三种消费场景"
@@ -70,7 +72,7 @@ conflicts:
     description_b: "CONSUMABLE 指销售/服务消耗，用于交付"
     evidence_b: "销售或服务时物品被消耗，减少库存"
     judgment: "三种场景（生产、销售、服务）混用同一概念，需明确区分"
-    decision_boundary: "PD-CANONICAL-004"
+    decision_boundary: "PD-CANONICAL-006"
 
   - conflict_id: "CONFLICT-F"
     title: "Inventory Truth: Ledger vs Balance"
@@ -132,6 +134,17 @@ decision_boundaries:
     title: "Material 语义"
     status: "OPEN"
 
+  - boundary_id: "PD-CANONICAL-005"
+    type: "PRODUCT_DECISION"
+    title: "Ingredient 定义"
+    status: "RECONCILED"
+    note: "NOT_BLOCKING, Semantic Invariant"
+
+  - boundary_id: "PD-CANONICAL-006"
+    type: "PRODUCT_DECISION"
+    title: "Consumable 定义"
+    status: "OPEN"
+
   - boundary_id: "AD-IDENTITY-001"
     type: "ARCHITECTURE_DECISION"
     title: "Identity Storage"
@@ -150,4 +163,9 @@ decision_boundaries:
   - boundary_id: "AD-INVENTORY-001"
     type: "ARCHITECTURE_DECISION"
     title: "Inventory Truth"
+    status: "OPEN"
+
+  - boundary_id: "AD-INVENTORY-002"
+    type: "ARCHITECTURE_DECISION"
+    title: "Inventory Object"
     status: "OPEN"
