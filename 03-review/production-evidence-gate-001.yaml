@@ -1,0 +1,606 @@
+# ============================================================================
+# PRODUCTION READ-ONLY EVIDENCE GATE - 001
+# Evidence Registry
+# ============================================================================
+# 任务编号: PRODUCTION-EVIDENCE-GATE-001
+# 任务类型: READ-ONLY / PRODUCTION EVIDENCE COLLECTION / NO SEMANTIC DECISION
+# 执行日期: 2026-09-11 01:38 ~ 01:52 (UTC+08:00)
+# 权限: 全部只读 SELECT；无 UPDATE / DELETE / INSERT / DDL / Migration
+#
+# 证据等级（不得混用）:
+#   PRODUCTION_EVIDENCE       : 生产库查询 + 结果
+#   LIVE_LOCAL_INSTANCE_EVIDENCE : 本机 PostgreSQL 实例（含测试数据，非生产）
+#   CODE_EVIDENCE             : 代码 / DDL / 日志文件
+#   HISTORICAL_EVIDENCE       : 既有文档
+#   SYNTHETIC_COUNTEREXAMPLE  : 合成反例（本次未使用）
+#
+# 证据状态（仅允许下列五种）:
+#   CONFIRMED_PRODUCTION / NOT_FOUND_PRODUCTION / PARTIAL_PRODUCTION /
+#   CONFLICT_PRODUCTION  / UNVERIFIED
+#
+#   注: 本次无可达生产环境，因此**没有一条**可评为 *_PRODUCTION。
+#       本地发现以 local_status 字段单独记录，不与生产状态混用。
+# ============================================================================
+
+registry_version: "1.0"
+registry_status: "READ_ONLY_GATE_EXECUTED"
+task_id: "PRODUCTION-EVIDENCE-GATE-001"
+executed_at: "2026-09-11T01:38:00+08:00"
+executed_at_end: "2026-09-11T01:52:00+08:00"
+gate_verdict: "BLOCKED"
+gate_verdict_reason: >
+  不存在独立的生产数据库实例、无生产凭证、无生产主机配置；唯一可查的
+  food_traceability 实例承载测试数据（stores = 测试门店A / 测试门店B）。
+  依 brief 第二十条，不得根据开发库结果推断生产，因此本地结果不可折抵为
+  生产证据，BE-01..BE-12 全部为 UNVERIFIED（生产侧）。
+
+environment:
+  production_reachable: false
+  production_host_configured: false
+  production_credentials_present: false
+  postgresql_instances_on_host: 1
+  postgresql_service: "postgresql-x64-18 (Running)"
+  databases_present: ["food_traceability", "postgres"]
+  expected_test_database: "food_traceability_test"
+  test_database_present: false
+  queried_database: "food_traceability"
+  queried_engine: "PostgreSQL 18.3"
+  queried_endpoint: "localhost:5432"
+  environment_classification: "LIVE_LOCAL_INSTANCE"
+  test_fingerprints:
+    - "stores 表仅 2 行：测试门店A / 测试门店B"
+    - "users 含 admin / store_manager / purchaser / finance / chef 测试账号"
+    - "material_archives 全表含 13 行 E2E/Test 物料（均已软删）"
+  flyway_history_rows: 205
+  flyway_last_applied: "2026-09-09 14:17:24"
+  public_tables: 305
+  required_env_vars_missing:
+    - "PG_HOST"
+    - "PG_PORT"
+    - "PG_DB_NAME"
+    - "PG_USERNAME"
+    - "PG_PASSWORD"
+    - "APP_ENCRYPTION_KEY"
+    - "CONFIG_ENCRYPT_KEY"
+    - "AES_SECRET_KEY"
+    - "JWT_SECRET"
+
+evidence:
+
+  - evidence_id: "EV-BE01-1"
+    be_id: "BE-01"
+    source: "food_traceability.inventory"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) total, count(product_id) product_id_filled,
+      round(100.0*count(product_id)/NULLIF(count(*),0),2) product_id_pct,
+      count(material_id) material_id_filled,
+      round(100.0*count(material_id)/NULLIF(count(*),0),2) material_id_pct,
+      count(*) FILTER (WHERE product_id IS NOT NULL AND material_id IS NOT NULL) both_filled,
+      count(*) FILTER (WHERE product_id IS NOT NULL AND material_id IS NOT NULL
+                         AND material_id <> product_id) mismatched
+      FROM inventory WHERE deleted = 0;
+    result:
+      total_rows: 11
+      product_id_filled: 1
+      product_id_pct: 9.09
+      material_id_filled: 11
+      material_id_pct: 100.00
+      both_filled: 1
+      both_filled_pct: 9.09
+      mismatched_values: 0
+      mismatched_pct: 0.00
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      material_id 为事实主键（100%），product_id 近乎空转（9.09%）。数值不相等的
+      行为 0，因为唯一同时填充的两列取值恰为 1；但两列所指物品不同（见 EV-BE01-2）。
+
+  - evidence_id: "EV-BE01-2"
+    be_id: "BE-01"
+    source: "food_traceability.inventory LEFT JOIN material_archives / product"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT i.inventory_id, i.material_id, ma.material_name AS material_side,
+             i.product_id, p.name AS product_side
+      FROM inventory i
+      LEFT JOIN material_archives ma ON ma.material_id = i.material_id
+      LEFT JOIN product p ON p.product_id = i.product_id
+      WHERE i.deleted = 0 ORDER BY i.inventory_id;
+    result:
+      rows_returned: 11
+      decisive_row:
+        inventory_id: 4
+        material_id: 1
+        material_side: "娃娃菜"
+        product_id: 1
+        product_side: "测试物料A"
+        verdict: "DIFFERENT ITEM"
+      product_id_null_rows: 10
+      product_table_rows: 1
+      product_table_test_like_rows: 1
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      inventory_id=4 一行内 material_id 与 product_id 指向语义无关的两个物品。
+      任何「存在统一 Canonical Identity」的假设都必须解释这一行。样本量 1 行，
+      不足以推断生产。
+
+  - evidence_id: "EV-BE01-3"
+    be_id: "BE-01"
+    source: "pg_constraint (inventory)"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT c.conname, c.contype, pg_get_constraintdef(c.oid)
+      FROM pg_constraint c WHERE c.conrelid::regclass::text='inventory'
+      ORDER BY c.contype, c.conname;
+    result:
+      constraints:
+        - "inventory_pkey | p | PRIMARY KEY (inventory_id)"
+        - "chk_inventory_stock_nonneg | c | CHECK (current_stock >= 0 AND safety_stock >= 0)"
+        - "chk_inventory_deleted_domain | c | CHECK (deleted = ANY (ARRAY[0,1]))"
+        - "fk_inv_product_id | f | FOREIGN KEY (product_id) REFERENCES product(product_id)"
+        - "inventory_inventory_id_not_null | n | NOT NULL inventory_id"
+        - "inventory_version_not_null | n | NOT NULL version"
+      material_id_foreign_key: "NONE"
+      product_id_foreign_key: "fk_inv_product_id -> product(product_id)"
+      unique_constraint_on_business_columns: "NONE"
+    status: "UNVERIFIED"
+    local_status: "CONFIRMED_LOCAL"
+    confidence: "HIGH"
+    impact: "声明式完整性指向 product；实际写入路径指向 material_id 且无约束保护。"
+
+  - evidence_id: "EV-BE02-1"
+    be_id: "BE-02"
+    source: "food_traceability.inventory"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) dup_groups, COALESCE(sum(n-1),0) excess_rows FROM (
+        SELECT material_id, warehouse_id, count(*) n FROM inventory WHERE deleted=0
+        GROUP BY 1,2 HAVING count(*)>1) d;
+    result:
+      material_warehouse_dup_groups: 0
+      material_warehouse_excess_rows: 0
+      material_warehouse_batch_dup_groups: 0
+      material_warehouse_batch_excess_rows: 0
+      unique_indexes_on_inventory: ["inventory_pkey (inventory_id)"]
+    status: "UNVERIFIED"
+    local_status: "NOT_FOUND_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      当前无重复数据可展示。结构性事实（缺业务唯一约束）成立，
+      但不得表述为「生产存在重复」。
+
+  - evidence_id: "EV-BE03-1"
+    be_id: "BE-03"
+    source: "food_traceability.inventory FULL OUTER JOIN store_inventory"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT COALESCE(w.material_id,s.material_id) material_id, w.wh_qty, w.wh_unit,
+             s.st_qty, s.st_unit, (w.wh_qty - s.st_qty) diff
+      FROM (SELECT material_id, sum(current_stock) wh_qty, min(unit) wh_unit
+            FROM inventory WHERE deleted=0 GROUP BY material_id) w
+      FULL OUTER JOIN (SELECT material_id, sum(current_stock) st_qty, min(unit) st_unit
+            FROM store_inventory WHERE deleted=0 GROUP BY material_id) s
+        ON w.material_id = s.material_id ORDER BY 1;
+    result:
+      store_only: 7
+      warehouse_only: 2
+      both: 7
+      both_divergent: 4
+      divergent_material_ids: [1, 10, 21, 35]
+      samples:
+        - "material_id=1  娃娃菜    : warehouse 101 斤   | store 71.000 斤   | diff +30.000"
+        - "material_id=10 虾滑      : warehouse 40 斤    | store 70.000 斤   | diff -30.000"
+        - "material_id=21 不锈钢汤桶 : warehouse 0 个     | store 2.000 个    | diff -2.000"
+        - "material_id=35 二硫化硒洗剂: warehouse 0 瓶     | store 20.000 瓶   | diff -20.000"
+      store_rows_referencing_absent_material: 1
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      「Inventory Holding 是一层」在两份实现上不成立。差异数值属本地数据，
+      不可外推；「两表无同步机制」为结构事实。
+
+  - evidence_id: "EV-BE04-1"
+    be_id: "BE-04"
+    source: "food_traceability.inventory / store_inventory / store_inventory_log / stores"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) total, count(store_id) store_filled, count(location_id) location_filled,
+             count(warehouse_id) warehouse_filled FROM inventory WHERE deleted=0;
+    result:
+      inventory_total: 11
+      inventory_store_id_filled: 0
+      inventory_store_id_pct: 0.00
+      inventory_location_id_filled: 0
+      inventory_location_id_pct: 0.00
+      inventory_warehouse_id_filled: 10
+      store_inventory_store_id_distribution: [{ "store_id": "1", "rows": 14 }, { "store_id": "2", "rows": 2 }]
+      store_inventory_log_store_id_distribution: [{ "store_id": "1", "rows": 14 }, { "store_id": "584", "rows": 2 }]
+      stores_table_ids: [1, 2]
+      warehouses_table_ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      orphan_store_id_in_log: "584"
+      orphan_584_matches_any_store: false
+      orphan_584_matches_any_warehouse: false
+      column_type_mismatch:
+        inventory.store_id: "bigint"
+        store_inventory.store_id: "character varying"
+        store_inventory_log.store_id: "character varying"
+        stores.store_id: "bigint"
+    status: "UNVERIFIED"
+    local_status: "PARTIAL_LOCAL"
+    confidence: "MEDIUM"
+    impact: >
+      inventory 的门店/库位列完全空转（0%）。store_id=584 为孤儿值，既不匹配
+      门店也不匹配仓库，其来源无法由数据库本身确定。代码注释提供
+      「warehouseId 作为 storeId」的代码级支持，但缺少数据级证据。
+
+  - evidence_id: "EV-BE05-1"
+    be_id: "BE-05"
+    source: "food_traceability.inventory / store_inventory / material_trace_code / food_trace_codes"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) total, count(batch_no) batch_filled, count(DISTINCT batch_no) batch_distinct,
+             count(expiry_date) expiry_filled, count(production_date) proddate_filled,
+             count(DISTINCT material_id) material_coverage
+      FROM inventory WHERE deleted=0;
+    result:
+      total: 11
+      batch_no_filled: 4
+      batch_no_pct: 36.36
+      batch_no_distinct: 4
+      expiry_date_filled: 0
+      expiry_date_pct: 0.00
+      production_date_filled: 0
+      production_date_pct: 0.00
+      material_id_distinct: 9
+      store_inventory_batch_or_expiry_columns: "NONE"
+      material_trace_code: { rows: 18, batch_filled: 13, expiry_filled: 8 }
+      food_trace_codes: { rows: 0, batch_filled: 0, expiry_filled: 0 }
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      批次与效期存在两套事实：库存侧 expiry_date 全空（效期预警逻辑读此列
+      => 本地恒为空集），追溯码侧持有真实批次与效期。生产侧填充率未验证。
+
+  - evidence_id: "EV-BE06-1"
+    be_id: "BE-06"
+    source: "food_traceability.inventory_transactions / inventory"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) total, count(inventory_id) with_id,
+             count(*) FILTER (WHERE inventory_id IS NOT NULL AND NOT EXISTS
+               (SELECT 1 FROM inventory i WHERE i.inventory_id = t.inventory_id)) dangling,
+             count(*) FILTER (WHERE transaction_type IS NULL) null_type
+      FROM inventory_transactions t;
+    result:
+      total_ledger_rows: 27
+      rows_with_inventory_id: 27
+      dangling_inventory_id: 17
+      dangling_pct: 62.96
+      dangling_inventory_ids: [9, 12, 15, 16, 24, 26, 28]
+      null_transaction_type: 2
+      null_transaction_type_rows:
+        - "transaction_id=2, inventory_id=6, material_id=999999, reference_type=adjust"
+        - "transaction_id=3, inventory_id=9, material_id=22, reference_type=adjust"
+      foreign_keys_on_ledger: "NONE"
+      foreign_keys_on_store_inventory_log: "NONE"
+      unledgered_inventory_rows: 3
+      unledgered_samples: ["inventory_id=5 material_id=1 stock=30", "inventory_id=30 material_id=21 stock=0", "inventory_id=34 material_id=35 stock=0"]
+      before_after_chains:
+        - "inventory_id=9 : 0.00->70.00 , 70.00->170.00"
+        - "inventory_id=12: 20.00->35.00 , 35.00->50.00 (starts non-zero)"
+        - "inventory_id=16: 0.00->10.00 ... 80.00->90.00 (9 rows, contiguous)"
+        - "inventory_id=31: 0.00->50.00 , 50.00->100.00"
+        - "inventory_id=35: 0.00->100.00 , 100.00->150.00"
+      balance_vs_ledger_terminal_mismatch: "material_id=22 : balance 150 vs ledger chain terminal 170"
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: "台账无法重建余额（62.96% 孤儿 + 零外键），且余额与台账终值已脱钩。"
+
+  - evidence_id: "EV-BE07-1"
+    be_id: "BE-07"
+    source: "food_traceability.material_archives"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT material_name, count(*) n FROM material_archives WHERE deleted=0
+      GROUP BY 1 HAVING count(*)>1 ORDER BY n DESC;
+    result:
+      live_rows: 22
+      all_rows: 35
+      soft_deleted_rows: 13
+      duplicate_material_name_live: 0
+      duplicate_barcode_live: 0
+      duplicate_spec_live: [{ "spec": "冷冻", "n": 5 }, { "spec": "新鲜", "n": 4 }]
+      duplicate_spec_note: "规格枚举值，非重复物料"
+      test_pollution_live: { matched: 0, total: 22, pct: 0.00 }
+      test_pollution_all: { matched: 13, total: 35, pct: 37.14 }
+      soft_deleted_materials:
+        - "22 Test Cucumber"
+        - "23 E2E Potato"
+        - "24 E2E Potato"
+        - "25 测试采购物料"
+        - "26 Test Tomato"
+        - "27 Test Tomato"
+        - "28 Test Tomato"
+        - "29 Test Tomato"
+        - "30 Test Tomato"
+        - "31 Test Tomato 154027"
+        - "32 Test Tomato 154237"
+        - "33 E2E Material 160258715"
+        - "34 UI测试物料B"
+      dangling_references_to_soft_deleted_materials:
+        - "inventory.inventory_id=31 -> material_id=26 (soft-deleted)"
+        - "inventory.inventory_id=35 -> material_id=22 (soft-deleted)"
+    status: "UNVERIFIED"
+    local_status: "PARTIAL_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      活跃数据污染率为 0（13 行测试数据均已软删）；但软删主数据未级联处理
+      引用，形成悬挂引用。未执行任何删除（依 brief 第十条仅统计）。
+
+  - evidence_id: "EV-BE08-1"
+    be_id: "BE-08"
+    source: "food_traceability.purchase_request_item vs material_archives / foods"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT CASE WHEN food_id ~ '^[0-9]+$' AND EXISTS (SELECT 1 FROM material_archives ma
+                      WHERE ma.material_id::text = pri.food_id) THEN 'MATERIAL_ID'
+                  WHEN food_id ~ '^[0-9]+$' AND EXISTS (SELECT 1 FROM foods f
+                      WHERE f.food_id::text = pri.food_id) THEN 'FOOD_ID'
+                  WHEN food_id ~ '^[0-9]+$' THEN 'NUMERIC_BUT_NO_MATCH'
+                  ELSE 'UNPARSEABLE' END verdict, count(*)
+      FROM purchase_request_item pri GROUP BY 1 ORDER BY 2 DESC;
+    result:
+      total_rows: 50
+      food_id_filled: 49
+      numeric_parseable: 47
+      unparseable: 3
+      matches_material_archives: 46
+      matches_foods: 6
+      verdicts:
+        MATERIAL_ID: 46
+        UNPARSEABLE: 3
+        NUMERIC_BUT_NO_MATCH: 1
+        FOOD_ID_only: 0
+      column_type: "character varying(32)"
+      samples:
+        - "food_id=1  food_name=娃娃菜 -> material_archives#1 = 娃娃菜 ; foods#1 = 生菜串"
+        - "food_id=24 food_name=E2E Potato -> material_archives#24 = E2E Potato (soft-deleted)"
+        - "food_id=NULL food_name=???? -> UNPARSEABLE"
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: "food_id（VARCHAR）实际承载 material ID；含 3 行不可解析、1 行无匹配。"
+
+  - evidence_id: "EV-BE09-1"
+    be_id: "BE-09"
+    source: "backend/logs/food-traceability.2026-06-30.0.log + .json"
+    environment: "CODE_EVIDENCE"
+    query: >
+      Select-String -Path backend/logs/food-traceability.2026-06-30.0.log
+        -Pattern "inventory/unit|inventory/category|InventoryUnit|InventoryCategory"
+    result:
+      total_log_hits: 96
+      hits_by_file: { "food-traceability.2026-06-30.0.json": 48, "food-traceability.2026-06-30.0.log": 48 }
+      occurrence_dates: ["2026-06-30"]
+      client_type_reported: "Web端 (ClientTypeInterceptor)"
+      third_party_callers: "NONE_FOUND"
+      internal_service_callers: "NONE_FOUND"
+      response_status: "全部「成功」(ApiResponseTimeAspect)"
+      endpoints_observed:
+        - "GET /api/v1/inventory/unit"
+        - "GET /api/v1/inventory/unit/all"
+        - "GET /api/v1/inventory/unit/{id}"
+        - "GET /api/v1/inventory/unit/type/{type}"
+      sample_log_lines:
+        - "2026-06-30 05:05:16.083 [JwtAuthenticationFilter] JWT Filter processing request: GET /api/v1/inventory/unit"
+        - "2026-06-30 05:05:16.088 [ClientTypeInterceptor] 请求路径: /api/v1/inventory/unit, 客户端类型: Web端"
+        - "2026-06-30 05:05:16.114 [InventoryUnitMapper.selectList] ==> Preparing: SELECT id,name,code,type,description,status,created_at,updated_at FROM inventory_unit"
+    status: "UNVERIFIED"
+    local_status: "PARTIAL_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      两个端点曾被 Web 端真实调用且返回成功（当日表存在）；当前表不存在，
+      端点已失效。历史证据，不代表当前生产依赖。
+
+  - evidence_id: "EV-BE09-2"
+    be_id: "BE-09"
+    source: "food_traceability: to_regclass + audit tables + frontend source"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT to_regclass('public.inventory_unit'), to_regclass('public.inventory_category');
+      SELECT count(*) FROM audit_log WHERE COALESCE(request_url,'') ~* 'inventory/unit|inventory/category';
+    result:
+      to_regclass_inventory_unit: null
+      to_regclass_inventory_category: null
+      audit_log_rows: 0
+      sys_operation_logs_rows: 1
+      audit_matches: 0
+      frontend_callers: 0
+      frontend_dirs_searched: ["frontend/src", "frontend-pos/src", "frontend-kitchen/src"]
+    status: "UNVERIFIED"
+    local_status: "CONFIRMED_LOCAL"
+    confidence: "HIGH"
+    impact: "当前无表、无审计记录、无前端调用方；端点处于失效状态。"
+
+  - evidence_id: "EV-BE10-1"
+    be_id: "BE-10"
+    source: "food_traceability.inventory / material_archives / store_inventory"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT count(*) rows, min(unit_cost), max(unit_cost), min(total_cost), max(total_cost),
+             min(cost_price), max(cost_price), min(stock_value), max(stock_value)
+      FROM inventory WHERE deleted=0;
+    result:
+      rows: 11
+      unit_cost: { filled: 8, min: 200, max: 2800, type: "bigint" }
+      total_cost: { filled: 8, min: 350, max: 112000, type: "bigint" }
+      cost_price: { filled: 11, min: 0.00, max: 0.00, type: "numeric(12,2)" }
+      stock_value: { filled: 11, min: 0.00, max: 0.00, type: "numeric(12,2)" }
+      material_archives_reference_price: { filled: 22, min: 20, max: 120000, type: "bigint" }
+      store_inventory_costs: { rows: 16, unit_cost_filled: 16, total_cost_filled: 16, unit_cost_max: 120000 }
+      money_columns_by_type:
+        bigint_cents:
+          - "inventory.unit_cost, inventory.total_cost"
+          - "store_inventory.unit_cost, store_inventory.total_cost"
+          - "store_inventory_log.unit_cost"
+          - "inventory_transactions.unit_cost, inventory_transactions.total_cost"
+          - "material_archives.reference_price"
+          - "foods.cost_price"
+          - "dish_recipes.unit_cost"
+        numeric_yuan:
+          - "inventory.cost_price, inventory.stock_value"
+          - "food.cost_price (legacy)"
+          - "product.cost_price (legacy)"
+      arithmetic_check:
+        - "inventory_id=4 : unit_cost 350 x qty 70 = 24500 vs total_cost 35000 -> MISMATCH"
+        - "inventory_id=13: 1600 x 30 = 48000 vs 48000 -> OK"
+        - "inventory_id=14: 2800 x 40 = 112000 vs 112000 -> OK"
+        - "inventory_id=35: 300 x 150 = 45000 vs 45000 -> OK"
+    status: "UNVERIFIED"
+    local_status: "CONFIRMED_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      主流口径为「分」(BIGINT)；库存表的小数列全为 0，从未写入。
+      LOCK-A003「金额以分为准」在活跃写入路径上成立，遗留列为未清理死列。
+      inventory_id=4 的成本列之间存在算术不一致。
+
+  - evidence_id: "EV-BE11-1"
+    be_id: "BE-11"
+    source: "food_traceability.dish_recipes"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT food_id, material_id, count(*) n,
+             string_agg(required_quantity::text, ',' ORDER BY recipe_id) qtys,
+             string_agg(deleted::text, ',' ORDER BY recipe_id) deleted_flags
+      FROM dish_recipes GROUP BY 1,2 HAVING count(*)>1;
+    result:
+      total_rows: 5
+      duplicate_groups_including_deleted:
+        - { food_id: 1, material_id: 3, n: 5, qtys: "1.000,1.000,1.000,0.100,0.100", deleted_flags: "1,1,1,1,0" }
+      duplicate_groups_live_only: 0
+      live_rows: 1
+      soft_deleted_rows: 4
+      columns_present:
+        - recipe_id, food_id, material_id, material_name, specification
+        - required_quantity, unit, loss_rate, unit_cost, subtotal_cost
+        - create_time, update_time, deleted, version
+      status_column_present: false
+      version_column_present: true
+      unique_indexes: ["dish_recipes_pkey (recipe_id)"]
+      unique_constraint_on_food_material: "NONE"
+    status: "UNVERIFIED"
+    local_status: "CONFLICT_LOCAL"
+    confidence: "HIGH"
+    impact: >
+      BOM 重复真实发生过（5 行同项），用量从 1.000 修正为 0.100 留下 4 行残留；
+      系统仅靠软删维持唯一性，无约束保障。
+
+  - evidence_id: "EV-BE12-1"
+    be_id: "BE-12"
+    source: "food_traceability.inventory / store_inventory / dish_recipes + information_schema.views"
+    environment: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    query: >
+      SELECT 'inventory' t, version, deleted, count(*) FROM inventory GROUP BY 1,2,3
+      UNION ALL SELECT 'store_inventory', version, deleted, count(*) FROM store_inventory GROUP BY 1,2,3
+      UNION ALL SELECT 'dish_recipes', version, deleted, count(*) FROM dish_recipes GROUP BY 1,2,3
+      ORDER BY 1,2,3;
+    result:
+      version_distribution:
+        inventory: [{ version: 0, n: 7 }, { version: 1, n: 3 }, { version: 2, n: 1 }]
+        store_inventory: [{ version: 0, n: 10 }, { version: 1, n: 5 }, { version: 3, n: 1 }]
+        dish_recipes: [{ version: 0, n: 5 }]
+      version_x_deleted_crosstab:
+        - "dish_recipes version=0 deleted=0 -> 1"
+        - "dish_recipes version=0 deleted=1 -> 4"
+        - "inventory version=0 deleted=0 -> 7"
+        - "inventory version=1 deleted=0 -> 3"
+        - "inventory version=2 deleted=0 -> 1"
+      views_filtering_version: "NONE"
+      all_public_views: ["asset_master", "dining_table", "v_kitchen_order_full"]
+      interpretation: >
+        dish_recipes 的 version=0 同时覆盖存活与已删行，且软删未递增 version，
+        说明 version 与 deleted 正交，version 未承担删除墓碑语义。
+    status: "UNVERIFIED"
+    local_status: "NOT_FOUND_LOCAL"
+    confidence: "MEDIUM"
+    impact: >
+      未发现 version=0 被用作删除墓碑的证据；该风险在本地未实现。
+      生产侧需复查视图与客户端过滤条件。
+
+# ============================================================================
+# 汇总
+# ============================================================================
+summary:
+  total_evidence_entries: 15
+  be_items_covered: 12
+  be_items_total: 12
+  production_evidence_entries: 0
+  evidence_status_counts:
+    CONFIRMED_PRODUCTION: 0
+    NOT_FOUND_PRODUCTION: 0
+    PARTIAL_PRODUCTION: 0
+    CONFLICT_PRODUCTION: 0
+    UNVERIFIED: 15
+  local_status_counts:
+    CONFLICT_LOCAL: 7
+    CONFIRMED_LOCAL: 3
+    PARTIAL_LOCAL: 3
+    NOT_FOUND_LOCAL: 2
+  local_status_note: "15 条中 15 条均带 local_status，合计 7+3+3+2 = 15"
+  environment_counts:
+    PRODUCTION_EVIDENCE: 0
+    LIVE_LOCAL_INSTANCE_EVIDENCE: 14
+    CODE_EVIDENCE: 1
+    HISTORICAL_EVIDENCE: 0
+    SYNTHETIC_COUNTEREXAMPLE: 0
+  environment_note: >
+    环境为 CODE_EVIDENCE 的 1 条为 EV-BE09-1（历史日志文件）。
+    EV-BE09-2 与 EV-BE01-3 虽含代码/约束内容，但其来源为数据库实测，
+    归入 LIVE_LOCAL_INSTANCE_EVIDENCE。
+
+prior_statements_corrected:
+  - statement: "material_archives 存在 7 行 Test Tomato 重复定义"
+    corrected_to: "活跃行重复为 0；13 行测试数据全部已软删（全表 37.14%，活跃 0%）"
+    basis: "EV-BE07-1"
+  - statement: "inventory 存在重复行（inventory_id 4 与 5）"
+    corrected_to: "无重复；两行 warehouse_id 不同（1 与 2）"
+    basis: "EV-BE02-1"
+  - statement: "inventory_unit 表从未存在"
+    corrected_to: "2026-06-30 曾真实可用，Web 端调用 96 次全部成功；当前不存在"
+    basis: "EV-BE09-1"
+  - statement: "version=0 兼作乐观锁与删除墓碑"
+    corrected_to: "本地未发现该耦合；version 与 deleted 正交"
+    basis: "EV-BE12-1"
+
+gate:
+  verdict: "BLOCKED"
+  blocking_condition: >
+    生产环境不可访问。无独立生产实例、无生产凭证、无生产主机配置；
+    唯一可查实例承载测试数据。
+  unblock_conditions:
+    - "由 DBA/运维在生产 DB 执行 production-evidence-gate-001.md §16 的 12 条只读查询"
+    - "回填结果至 production-evidence-gate-001.md §2..§13 与本源文件"
+    - "回填后重新评定 GATE-0"
+  not_a_blocker:
+    - "12 项查询本身已全部执行完毕（针对本机实例）"
+    - "查询语句可直接复用，无需改写"
+
+declarations:
+  writes_performed: 0
+  ddl_performed: 0
+  migrations_performed: 0
+  code_modified: false
+  api_modified: false
+  frontend_modified: false
+  decision_modified: false
+  pd_canonical_001_status: "RECOMMENDED / NOT CONFIRMED (unchanged)"
+  semantic_decisions_made: 0
+  options_recommended: []
+  production_inference_from_dev: false
