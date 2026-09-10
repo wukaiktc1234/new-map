@@ -165,9 +165,9 @@
 
  ### Phase 0: PRODUCT DECISION (PD-CANONICAL-001)
 
- | 决策ID | 决策标题 | DEPENDS_ON | BLOCKS | UNLOCKS | INDEPENDENT |
- |--------|----------|------------|--------|---------|-------------|
- | PD-CANONICAL-001 | Canonical Business Item 定义 | - (LOCK 为事实基础) | D004, D006, AD-IDENTITY-001, DE-PK-001, DE-SKU-001 | D004, D006, AD-IDENTITY-001 | ✓ (Phase 1 第一个决策) |
+ | 决策ID | 决策标题 | DEPENDS_ON | BLOCKS | INFORMED_BY | UNLOCKS | INDEPENDENT |
+ |--------|----------|------------|--------|-------------|---------|-------------|
+ | PD-CANONICAL-001 | Canonical Business Identity 语义 | - (LOCK 为事实基础) | D004, D006 | AD-IDENTITY-001, DE-PK-001, DE-SKU-001, DE-STORAGE-001, DE-MIGRATION-001 | D004, D006 | ✓ (语义层第一个决策) |
 
  ### 基线 A: 业务数据真相源 (LOCK-A001~010)
 
@@ -195,11 +195,11 @@
 
  ### OPEN PRODUCT (产品决策)
 
- | 决策ID | 决策标题 | DEPENDS_ON | BLOCKS | UNLOCKS | INDEPENDENT |
- |--------|----------|------------|--------|---------|-------------|
- | PD-CANONICAL-001 | Canonical Business Item 定义 | - | D004, D006, AD-IDENTITY-001, DE-PK-001, DE-SKU-001 | D004, D006 | ✓ |
- | DEC-004 | Customer/Member 关系定义 | PD-CANONICAL-001, A005, B001, B004 | D010, E007 | D010, E007 | - |
- | DEC-006 | Product/Food/Material 边界 | PD-CANONICAL-001, A001, A002, B001 | D010, D011, E005 | D010, D011, E005 | - |
+ | 决策ID | 决策标题 | DEPENDS_ON | BLOCKS | INFORMED_BY | UNLOCKS | INDEPENDENT |
+ |--------|----------|------------|--------|-------------|---------|-------------|
+ | PD-CANONICAL-001 | Canonical Business Identity 语义 | - | D004, D006 | AD-IDENTITY-001, DE-PK-001, DE-SKU-001 | D004, D006 | ✓ |
+ | DEC-004 | Customer/Member 关系定义 | PD-CANONICAL-001, A005, B001, B004 | D010, E007 | - | D010, E007 | - |
+ | DEC-006 | Product/Food/Material 边界 | PD-CANONICAL-001, A001, A002, B001 | D010, D011, E005 | - | D010, D011, E005 | - |
 
 ### OPEN ARCHITECTURE (架构决策)
 
@@ -232,14 +232,16 @@
  ### 关键路径分析
 
  ```
- CRITICAL PATH 0: Canonical Identity Foundation
- PD-CANONICAL-001 (Canonical Business Item 定义)
+ CRITICAL PATH 0: Canonical Identity Semantics
+ PD-CANONICAL-001 (Canonical Business Identity 语义)
    → PD-CANONICAL-002~006 (Product Semantic Decisions)
-     → AD-IDENTITY-001 (Identity Storage)
-       → DE-PK-001 (Primary Key)
+     → DEC-004, DEC-006 (Product Decisions)
+       → DEC-010, DEC-011 (Architecture Decisions)
          
  路径长度: 4 步
- 预计耗时: 2-3 周
+ 预计耗时: 3-4 周
+ 
+ Note: AD-IDENTITY-001, DE-PK-001 等可并行推进 (Informed-By, NOT Blocked)
  ```
 
  ```
