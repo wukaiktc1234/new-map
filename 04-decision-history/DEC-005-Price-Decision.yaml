@@ -1,0 +1,397 @@
+# ============================================================================
+# DEC-005: Price Decision
+# ============================================================================
+# 决策编号: DEC-005
+# 决策标题: Price 管理模式
+# 决策类别: Foundation
+# 生成日期: 2026-09-09
+# 状态: OPEN
+# 优先级: P2 (价格历史和策略管理)
+# ============================================================================
+
+meta:
+  id: DEC-005
+  title: "Price 对象归属与定义"
+  category: FOUNDATION
+  status: OPEN
+  priority: P2
+  blocking: false
+  generated_from:
+    - foundation-map.md §19
+    - data-design-map.md §3.1
+    - business-object-map.md §1, §2
+    - upstream-dependency-map.md §2, §4
+    - business-data-flow-map.md §2.1, §2.2
+
+# ============================================================================
+# 一、问题定义
+# ============================================================================
+question: |
+  Price（价格）到底是什么？
+  - Product Attribute（产品属性，内联在 Foods/Materials 表中）
+  - Store Operating Scope Data（门店经营范围数据，门店级价格）
+  - Price Master（价格主数据，独立管理表）
+  - Price Policy（价格策略，包含折扣、会员价等规则）
+  - Derived Selling Price（衍生售价，从成本+利润计算）
+
+# ============================================================================
+# 二、当前现实
+# ============================================================================
+current_reality:
+  truth_source: "无独立表 — 分散存储在各业务表中"
+  evidence:
+    - location: "foundation-map.md §19"
+      finding: "Price 标记为 MISSING，存储在 foods.price, material_archives.price 等字段中"
+    - location: "data-design-map.md §3.1"
+      finding: "foods.price 为 decimal(10,2)，单位为分"
+    - location: "business-data-flow-map.md §2.2"
+      finding: "订单创建时从 foods.price 获取单价，order_items.unitPrice 记录快照"
+  confidence: LOW
+  current_implementation:
+    foods:
+      field: "price"
+      type: "decimal(10,2)"
+      unit: "分"
+      note: "菜品售价，随菜品创建"
+    material_archives:
+      field: "price"
+      type: "decimal(10,2)"
+      unit: "分"
+      note: "物料采购价，随物料创建"
+    order_items:
+      field: "unitPrice"
+      type: "decimal(10,2)"
+      unit: "分"
+      note: "下单时快照，不随菜品价格变更更新"
+    purchase_orders:
+      field: "totalAmount"
+      type: "decimal(10,2)"
+      unit: "分"
+      note: "采购总金额"
+  problem_indicators:
+    - "价格无历史记录（改价后无法追溯）"
+    - "无价格策略管理（会员价、批量价、时段价）"
+    - "菜品和物料价格分散管理"
+    - "订单价格快照机制是否完善？"
+    - "促销价格如何与基础价格关联？"
+
+# ============================================================================
+# 三、价格体系分析
+# ============================================================================
+price_system_analysis:
+  price_types_in_system:
+    - type: "菜品售价 (Food Price)"
+      location: "foods.price"
+      purpose: "菜品销售价格"
+      update_frequency: "低（偶尔调价）"
+      consumers: ["OrderService", "POS", "Mini Program"]
+    - type: "物料采购价 (Material Cost)"
+      location: "material_archives.price"
+      purpose: "物料采购成本"
+      update_frequency: "中（供应商报价变更）"
+      consumers: ["PurchaseOrderService", "InventoryService"]
+    - type: "订单单价 (Order Unit Price)"
+      location: "order_items.unitPrice"
+      purpose: "下单时价格快照"
+      update_frequency: "不更新（创建时锁定）"
+      consumers: ["OrderService", "FinanceService"]
+    - type: "采购单价 (Purchase Unit Price)"
+      location: "purchase_orders.items[].price"
+      purpose: "采购时价格快照"
+      update_frequency: "不更新（创建时锁定）"
+      consumers: ["PurchaseOrderService", "PayableService"]
+    - type: "促销价格 (Promotion Price)"
+      location: "可能在 marketing_promotion 表或配置中"
+      purpose: "促销活动价格"
+      update_frequency: "高（活动期间频繁变更）"
+      consumers: ["OrderService", "MarketingService"]
+    - type: "会员价格 (Member Price)"
+      location: "未发现独立存储"
+      purpose: "会员专享价格"
+      update_frequency: "中"
+      consumers: ["OrderService", "MarketingService"]
+
+  price_update_scenarios:
+    - scenario: "菜品调价"
+      trigger: "管理后台修改 foods.price"
+      current_behavior: "直接更新 foods.price"
+      problem: "历史订单的价格快照不受影响，但无法追溯调价历史"
+    - scenario: "供应商报价变更"
+      trigger: "物料采购价变更"
+      current_behavior: "更新 material_archives.price"
+      problem: "历史采购单的价格快照不受影响，但无法追溯报价历史"
+    - scenario: "促销活动"
+      trigger: "营销活动设置特价"
+      current_behavior: "可能通过 promotion 表或配置实现"
+      problem: "促销价格与基础价格的关系不明确"
+    - scenario: "会员价"
+      trigger: "会员等级不同价格不同"
+      current_behavior: "未发现实现"
+      problem: "会员价格体系未建立"
+
+# ============================================================================
+# 四、订单历史价格快照分析
+# ============================================================================
+snapshot_analysis:
+  question: "订单历史价格是否必须保存 Snapshot？"
+  current_implementation:
+    order_items:
+      has_snapshot: true
+      fields: ["unitPrice", "foodName"]
+      mechanism: "下单时从 foods.price 复制到 order_items.unitPrice"
+      evidence: "data-design-map.md §3.1: order_items.unitPrice 为下单时快照"
+    purchase_orders:
+      has_snapshot: true
+      fields: ["supplierName"]
+      mechanism: "下单时从 suppliers.name 复制到 purchase_orders.supplierName"
+      evidence: "master-data-source-map.md §2.1: purchase_orders.supplierName 为快照"
+  snapshot_necessity:
+    must_have: true
+    reasons:
+      - "菜品改价后，历史订单应保持原价显示"
+      - "财务对账需要历史价格准确性"
+      - "审计要求保留历史交易价格"
+      - "退货/退款需要按原价处理"
+    evidence: "master-data-source-map.md §3.2: order_items.foodName 为 SNAPSHOT"
+
+  what_should_be_snapshotted:
+    - field: "order_items.unitPrice"
+      reason: "菜品改价后历史订单不受影响"
+      current: "已实现"
+    - field: "order_items.foodName"
+      reason: "菜品改名后历史订单不受影响"
+      current: "已实现"
+    - field: "purchase_orders.supplierName"
+      reason: "供应商改名后历史采购单不受影响"
+      current: "已实现"
+    - field: "orders.storeName"
+      reason: "门店改名后历史订单不受影响"
+      current: "已实现"
+    - field: "promotion 价格"
+      reason: "促销结束后历史订单应保留促销价"
+      current: "待确认"
+
+# ============================================================================
+# 五、选项分析
+# ============================================================================
+options:
+  A_inline:
+    name: "价格内联在业务表中（Product Attribute）"
+    description: "价格作为 Foods/Materials 表的字段，不独立管理"
+    schema: |
+      -- 保持现状
+      foods.price decimal(10,2)  -- 菜品售价
+      material_archives.price decimal(10,2)  -- 物料采购价
+      order_items.unitPrice decimal(10,2)  -- 订单价格快照
+    pros:
+      - "当前实现，改动最小"
+      - "查询直接，无需 JOIN"
+      - "价格随对象创建/更新"
+    cons:
+      - "无价格历史（改价后无法追溯）"
+      - "无价格策略管理"
+      - "价格分散在多个表中"
+      - "无法审计价格变更"
+    effort: NONE
+    risk: LOW
+    affected_domains: [Product, Order, Procurement]
+    migration_needed: false
+    limitation: "无价格历史，无策略管理"
+
+  B_price_master:
+    name: "创建 price_list 统一管理（Price Master）"
+    description: "价格作为独立的主数据，统一管理所有价格"
+    schema: |
+      CREATE TABLE price_list (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        entityType VARCHAR(20) NOT NULL,       -- FOOD/MATERIAL
+        entityId BIGINT NOT NULL,              -- foods.id 或 material_archives.id
+        priceType VARCHAR(20) NOT NULL,        -- BASE/Wholesale/Member/Promotion
+        price decimal(10,2) NOT NULL,          -- 价格（分）
+        currency VARCHAR(10) DEFAULT 'CNY',
+        effectiveFrom TIMESTAMP,               -- 生效时间
+        effectiveTo TIMESTAMP,                 -- 失效时间
+        storeId BIGINT,                        -- 门店级价格（NULL=全局）
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(entityType, entityId, priceType, storeId, effectiveFrom)
+      );
+      -- 示例数据
+      -- (1, 'FOOD', 1001, 'BASE', 2800, 'CNY', '2026-01-01', NULL, NULL, 1)
+      -- (2, 'FOOD', 1001, 'MEMBER', 2500, 'CNY', '2026-01-01', NULL, NULL, 1)
+      -- (3, 'FOOD', 1001, 'PROMOTION', 1990, 'CNY', '2026-09-01', '2026-09-30', NULL, 1)
+    pros:
+      - "价格历史完整可追溯"
+      - "支持多级价格（基础价/批发价/会员价/促销价）"
+      - "支持门店级价格"
+      - "支持价格生效时间管理"
+      - "价格变更可审计"
+    cons:
+      - "增加数据维护成本"
+      - "查询时需要 JOIN 或缓存"
+      - "价格策略逻辑复杂"
+      - "迁移成本高"
+    effort: HIGH
+    risk: MEDIUM
+    affected_domains: [Product, Order, Procurement, Marketing, Finance]
+    migration_needed: true
+    migration_complexity: HIGH
+
+  C_price_policy:
+    name: "价格策略管理（Price Policy）"
+    description: "价格策略独立管理，包含折扣、会员价、时段价等规则"
+    schema: |
+      CREATE TABLE price_policies (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100) NOT NULL,
+        policyType VARCHAR(20),                -- DISCOUNT/MemberPrice/TimeBased
+        entityType VARCHAR(20),                -- FOOD/MATERIAL
+        entityId BIGINT,
+        discountRate decimal(5,2),             -- 折扣率
+        memberLevelId BIGINT,                  -- 会员等级
+        timeRange JSON,                        -- 时段配置
+        storeId BIGINT,                        -- 门店级
+        priority INT DEFAULT 0,               -- 优先级
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    pros:
+      - "完整的价格策略管理"
+      - "支持复杂定价规则"
+      - "支持会员价、时段价、批量价"
+    cons:
+      - "复杂度最高"
+      - "策略引擎需要额外开发"
+      - "策略冲突解决复杂"
+    effort: VERY_HIGH
+    risk: HIGH
+    affected_domains: [Product, Order, Marketing]
+    migration_needed: true
+    migration_complexity: VERY_HIGH
+
+  D_derived_price:
+    name: "衍生售价（Derived Selling Price）"
+    description: "售价从成本+利润计算，不直接存储"
+    schema: |
+      -- 不存储售价，从成本+利润率计算
+      -- foods 表添加 profitRate 字段
+      ALTER TABLE foods ADD COLUMN profitRate decimal(5,2) DEFAULT 0.3;
+      -- 售价 = 物料成本 / (1 - 利润率)
+      -- 查询时计算: price = materialCost / (1 - profitRate)
+    pros:
+      - "价格自动随成本变化"
+      - "利润管控精确"
+    cons:
+      - "每次查询需要计算"
+      - "物料成本变化频繁时售价不稳定"
+      - "不适合固定售价场景"
+    effort: MEDIUM
+    risk: HIGH
+    affected_domains: [Product, Order, Finance]
+    migration_needed: true
+    limitation: "不适合餐饮行业（售价通常固定）"
+
+  E_hybrid_snapshot:
+    name: "混合模式（内联 + 快照 + 历史表）"
+    description: "基础价格内联，订单快照保留，价格变更记录到历史表"
+    schema: |
+      -- 保持 foods.price 为当前价格
+      foods.price decimal(10,2)
+      -- 订单快照保持不变
+      order_items.unitPrice decimal(10,2)
+      -- 新增价格变更历史表
+      CREATE TABLE price_change_log (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        entityType VARCHAR(20) NOT NULL,       -- FOOD/MATERIAL
+        entityId BIGINT NOT NULL,
+        oldPrice decimal(10,2),
+        newPrice decimal(10,2),
+        changeReason VARCHAR(200),
+        changedBy BIGINT,
+        changedAt TIMESTAMP DEFAULT NOW()
+      );
+    pros:
+      - "保持现有查询性能"
+      - "价格变更可追溯"
+      - "改动较小"
+      - "历史订单快照不受影响"
+    cons:
+      - "无多级价格管理"
+      - "无价格策略管理"
+      - "门店级价格不支持"
+    effort: LOW
+    risk: LOW
+    affected_domains: [Product, Order]
+    migration_needed: true
+    migration_complexity: LOW
+
+# ============================================================================
+# 六、推荐方案
+# ============================================================================
+recommendation:
+  primary: A_inline
+  short_term_rationale: |
+    1. 当前阶段价格需求简单（菜品售价、物料采购价）
+    2. 无多级价格、门店级价格需求
+    3. 改动最小，风险最低
+    4. 如果未来需要价格历史，再升级为 E_hybrid_snapshot
+  conditions_to_upgrade:
+    - "需要价格变更审计"
+    - "需要多级价格（会员价、批发价）"
+    - "需要门店级价格"
+  long_term: B_price_master
+  long_term_condition: "当价格管理需求增加时"
+
+# ============================================================================
+# 七、订单历史价格快照结论
+# ============================================================================
+snapshot_conclusion:
+  must_snapshot: true
+  current_status: "已实现 — order_items.unitPrice 为下单时快照"
+  additional_snapshots_needed:
+    - "order_items.foodName — 已实现"
+    - "orders.storeName — 已实现"
+    - "purchase_orders.supplierName — 已实现"
+  recommendation: "保持现有快照机制，无需额外处理"
+
+# ============================================================================
+# 八、执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "价格快照验证"
+    tasks:
+      - "验证 order_items.unitPrice 快照机制正确"
+      - "验证菜品改价后历史订单不受影响"
+      - "验证退货/退款按原价处理"
+    duration: "1-2 天"
+    effort: "低"
+  phase_2:
+    name: "评估价格管理需求"
+    tasks:
+      - "调研多级价格需求（会员价、批发价）"
+      - "评估门店级价格需求"
+      - "确认是否需要独立 price_list 表"
+    duration: "1-2 天"
+    effort: "低"
+
+# ============================================================================
+# 九、验证标准
+# ============================================================================
+acceptance_criteria:
+  - "菜品改价后历史订单价格不变"
+  - "订单价格快照正确"
+  - "退货/退款按原价处理"
+  - "价格变更可追溯（如有历史表）"
+
+# ============================================================================
+# 十、证据引用
+# ============================================================================
+evidence:
+  - "foundation-map.md §19: Price 标记为 MISSING"
+  - "data-design-map.md §3.1: foods.price 为 decimal(10,2)"
+  - "data-design-map.md §3.1: order_items.unitPrice 为下单时快照"
+  - "business-data-flow-map.md §2.2: 订单创建时从 foods.price 获取单价"
+  - "master-data-source-map.md §3.2: order_items.foodName 为 SNAPSHOT"
+  - "upstream-dependency-map.md §2: Order Input 包含 Food 价格"
+  - "upstream-dependency-map.md §4: StoreInventory Input 包含 Food 价格"

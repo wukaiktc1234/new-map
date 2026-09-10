@@ -1,0 +1,437 @@
+# ============================================================================
+# DEC-002: Unit Decision
+# ============================================================================
+# 决策编号: DEC-002
+# 决策标题: Unit 管理模式
+# 决策类别: Foundation
+# 生成日期: 2026-09-09
+# 状态: OPEN
+# 优先级: P1 (影响物料/菜品管理一致性)
+# ============================================================================
+
+meta:
+  id: DEC-002
+  title: "Unit 对象归属与定义"
+  category: FOUNDATION
+  status: OPEN
+  priority: P1
+  blocking: false
+  generated_from:
+    - foundation-map.md §15
+    - data-design-map.md §3.1
+    - business-object-map.md §1-2
+    - upstream-dependency-map.md §5.2
+    - db-reality-map.md §4-5
+
+# ============================================================================
+# 一、问题定义
+# ============================================================================
+question: |
+  Unit（计量单位）到底是什么？
+  - Independent Master（独立主数据，需要独立管理表）
+  - Material Attribute（物料属性，内联在 material_archives 表中）
+  - Product Attribute（产品属性，内联在 foods 表中）
+  - Configuration（配置项，系统级配置）
+  - Embedded Enumeration（嵌入式枚举，代码中硬编码）
+
+# ============================================================================
+# 二、当前现实
+# ============================================================================
+current_reality:
+  truth_source: "无独立表 — 可能存储在字段枚举或配置中"
+  evidence:
+    - location: "foundation-map.md §15"
+      finding: "Unit 标记为 MISSING FOUNDATION，无独立表，可能是枚举值"
+    - location: "data-design-map.md §3.1"
+      finding: "foods.unit 字段默认值为 '份'，varchar(20)"
+    - location: "data-design-map.md §3.1"
+      finding: "material_archives.unit 字段，varchar(20)，无默认值"
+    - location: "db-reality-map.md §4"
+      finding: "foods 表有 unit 字段，material_archives 表有 unit 字段"
+  confidence: LOW
+  current_implementation:
+    foods:
+      field: "unit"
+      type: "varchar(20)"
+      default: "'份'"
+      examples: ["份", "斤", "kg", "L", "个", "瓶"]
+    material_archives:
+      field: "unit"
+      type: "varchar(20)"
+      default: "无"
+      examples: ["斤", "kg", "L", "箱", "袋", "瓶"]
+    inventory:
+      field: "quantity"
+      type: "int"
+      note: "数量单位隐含在关联的 material 或 food 中"
+    order_items:
+      field: "quantity"
+      type: "int"
+      note: "数量单位隐含在关联的 food 中"
+  problem_indicators:
+    - "单位定义分散在多个表中，无统一管理"
+    - "同一种物料在不同场景可能使用不同单位（如采购用 '箱'，库存用 '个'）"
+    - "单位换算无法自动处理（如 1斤 = 500g）"
+    - "菜品和物料使用同一单位体系还是不同单位体系？"
+    - "无法动态添加新单位"
+
+# ============================================================================
+# 三、业务对象关系分析
+# ============================================================================
+relationship_analysis:
+  entities_that_use_unit:
+    - entity: Food (菜品)
+      table: foods
+      field: "unit"
+      default: "'份'"
+      context: "菜品销售单位"
+      truth_source: "foods.unit"
+      consumers: ["OrderService", "StoreInventoryService", "MenuService"]
+    - entity: Material (物料)
+      table: "material_archives"
+      field: "unit"
+      default: "无"
+      context: "物料采购/库存单位"
+      truth_source: "material_archives.unit"
+      consumers: ["InventoryService", "PurchaseOrderService", "TraceabilityService"]
+    - entity: Inventory (库存)
+      table: "inventory"
+      field: "quantity"
+      unit_source: "隐含在 material.unit 中"
+      context: "库存数量的单位"
+      consumers: ["OrderService", "ProductionService"]
+    - entity: StoreInventory (门店库存)
+      table: "store_inventory"
+      field: "quantity"
+      unit_source: "隐含在 food.unit 中"
+      context: "门店库存数量的单位"
+      consumers: ["OrderService"]
+    - entity: OrderItem (订单明细)
+      table: "order_items"
+      field: "quantity"
+      unit_source: "隐含在 food.unit 中"
+      context: "下单数量的单位"
+      consumers: ["OrderService"]
+    - entity: PurchaseOrderItem (采购订单明细)
+      table: "purchase_orders (items)"
+      field: "quantity"
+      unit_source: "隐含在 material.unit 中"
+      context: "采购数量的单位"
+      consumers: ["PurchaseOrderService"]
+    - entity: DishRecipe (菜品配方/BOM)
+      table: "dish_recipes"
+      field: "quantity"
+      unit_source: "隐含在 material.unit 中"
+      context: "配方用量的单位"
+      consumers: ["ProductionService"]
+
+  dependency_analysis:
+    purchase_chain:
+      - "Material.unit → 采购单位"
+      - "采购订单 items[].quantity 需要单位"
+      - "收货确认时数量可能需要换算（如采购 '箱'，收货 '个'）"
+    inventory_chain:
+      - "Material.unit → 库存单位"
+      - "inventory.quantity 单位跟随 material.unit"
+      - "库存调拨时如果单位不同需要换算"
+    order_chain:
+      - "Food.unit → 销售单位"
+      - "order_items.quantity 单位跟随 food.unit"
+      - "订单扣减库存时如果单位不同需要换算"
+    recipe_chain:
+      - "Material.unit → 配方单位"
+      - "dish_recipes.quantity 单位跟随 material.unit"
+      - "生产消耗时如果单位不同需要换算"
+    cross_unit_problem: |
+      关键问题：采购单位 ≠ 库存单位 ≠ 销售单位
+      示例：
+      - 采购：10 箱 × 24 瓶/箱 = 240 瓶
+      - 库存：240 瓶
+      - 销售：240 瓶（按瓶销售）或 10 箱（按箱销售）
+      当前系统无法处理这种单位换算
+
+  key_question: |
+    1. 菜品单位和物料单位是同一套体系还是不同体系？
+    2. 是否需要支持单位换算（如采购 '箱' → 库存 '个'）？
+    3. 单位是否需要动态管理（运行时添加新单位）？
+
+# ============================================================================
+# 四、选项分析
+# ============================================================================
+options:
+  A_enum:
+    name: "保持枚举/硬编码（Embedded Enumeration）"
+    description: "单位作为代码中的枚举值，不独立管理"
+    schema: |
+      // Java 枚举
+      public enum Unit {
+        PIECE("份"), JIN("斤"), KG("kg"), LITER("L"),
+        BOX("箱"), BAG("袋"), BOTTLE("瓶"), PIECE("个")
+      }
+      // 或在 application.yml 中配置
+      units: [份, 斤, kg, L, 箱, 袋, 瓶, 个]
+    pros:
+      - "最简单，无额外维护"
+      - "查询性能好（无需 JOIN）"
+      - "适用于固定单位集合"
+    cons:
+      - "新增单位需改代码并重新部署"
+      - "无法支持单位换算"
+      - "菜品和物料单位无法区分管理"
+      - "无法审计单位使用情况"
+      - "与 foundation-map.md 的 MISSING 标记一致"
+    effort: NONE
+    risk: MEDIUM
+    affected_domains: [Product, Inventory, Procurement]
+    migration_needed: false
+    limitation: "无法动态扩展，不支持单位换算"
+
+  B_independent_table:
+    name: "创建 units 独立表（Independent Master）"
+    description: "Unit 作为独立的 Foundation Object，拥有完整生命周期"
+    schema: |
+      CREATE TABLE units (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(20) UNIQUE NOT NULL,       -- 单位编码
+        name VARCHAR(50) NOT NULL,              -- 单位名称
+        symbol VARCHAR(10),                     -- 单位符号 (kg, L)
+        category VARCHAR(20),                   -- 类别: WEIGHT/VOLUME/COUNT
+        baseUnitId BIGINT,                      -- 基础单位（用于换算）
+        conversionRate DECIMAL(10,4),           -- 换算率（相对基础单位）
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      -- 示例数据
+      -- (1, 'kg', '千克', 'kg', 'WEIGHT', 1, 1.0)
+      -- (2, 'g', '克', 'g', 'WEIGHT', 1, 0.001)
+      -- (3, 'jin', '斤', '斤', 'WEIGHT', 1, 0.5)
+      -- (4, 'L', '升', 'L', 'VOLUME', NULL, NULL)
+      -- (5, 'ml', '毫升', 'ml', 'VOLUME', 4, 0.001)
+      -- (6, 'piece', '个', '个', 'COUNT', NULL, NULL)
+      -- (7, 'box', '箱', '箱', 'COUNT', 6, 24)
+    pros:
+      - "统一管理所有单位"
+      - "支持单位换算（baseUnitId + conversionRate）"
+      - "支持动态添加新单位"
+      - "可审计单位使用情况"
+      - "Foundation 设计一致"
+    cons:
+      - "增加数据维护成本"
+      - "查询时需要 JOIN units 表"
+      - "单位换算逻辑增加复杂度"
+    effort: MEDIUM
+    risk: LOW
+    affected_domains: [Product, Inventory, Procurement, Recipe]
+    affected_objects: [foods, material_archives, inventory, order_items, dish_recipes]
+    migration_needed: true
+    migration_complexity: MEDIUM
+
+  C_material_attribute:
+    name: "作为物料/菜品的内联属性（Material/Product Attribute）"
+    description: "单位作为 material_archives 和 foods 表的字段，不独立管理"
+    schema: |
+      -- 保持现状
+      foods.unit varchar(20) DEFAULT '份'
+      material_archives.unit varchar(20)
+      -- 但添加 CHECK 约束
+      ALTER TABLE foods ADD CONSTRAINT chk_food_unit
+        CHECK (unit IN ('份', '斤', 'kg', 'L', '个', '瓶'));
+      ALTER TABLE material_archives ADD CONSTRAINT chk_material_unit
+        CHECK (unit IN ('斤', 'kg', 'L', '箱', '袋', '瓶', '个'));
+    pros:
+      - "当前实现，改动最小"
+      - "查询无需 JOIN"
+      - "每种对象可有独立的单位集合"
+    cons:
+      - "单位定义分散，无法统一管理"
+      - "无法支持单位换算"
+      - "CHECK 约束仍需硬编码"
+      - "无法动态添加新单位"
+    effort: LOW
+    risk: MEDIUM
+    affected_domains: [Product, Inventory, Procurement]
+    migration_needed: false
+    limitation: "本质还是枚举，只是换了个位置"
+
+  D_configuration:
+    name: "作为系统配置项（Configuration）"
+    description: "单位作为系统配置，通过管理界面配置"
+    schema: |
+      -- 在 system_config 表中存储
+      CREATE TABLE system_config (
+        config_key VARCHAR(100) PRIMARY KEY,
+        config_value TEXT,
+        config_type VARCHAR(20)
+      );
+      INSERT INTO system_config VALUES
+        ('product.units', '["份","斤","kg","L","个","瓶"]', 'JSON'),
+        ('material.units', '["斤","kg","L","箱","袋","瓶","个"]', 'JSON');
+    pros:
+      - "可通过管理界面配置"
+      - "无需改代码"
+      - "可分门店配置不同单位"
+    cons:
+      - "配置管理增加运维复杂度"
+      - "仍无法支持单位换算"
+      - "配置分散在 JSON 中，查询不便"
+    effort: LOW
+    risk: MEDIUM
+    affected_domains: [Product, Inventory]
+    migration_needed: false
+    limitation: "查询不便，无法支持复杂换算"
+
+  E_hybrid_unit_conversion:
+    name: "独立表 + 单位换算（Independent Master with Conversion）"
+    description: "创建 units 表，并在库存/订单中记录换算关系"
+    schema: |
+      CREATE TABLE units (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(20) UNIQUE NOT NULL,
+        name VARCHAR(50) NOT NULL,
+        category VARCHAR(20),  -- WEIGHT/VOLUME/COUNT
+        status INT DEFAULT 1
+      );
+      CREATE TABLE unit_conversions (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        fromUnitId BIGINT REFERENCES units(id),
+        toUnitId BIGINT REFERENCES units(id),
+        conversionRate DECIMAL(10,4),
+        UNIQUE(fromUnitId, toUnitId)
+      );
+      -- 示例: 1箱 = 24个, 1斤 = 500g
+    pros:
+      - "完整单位管理 + 灵活换算"
+      - "支持跨类别换算（如体积 ↔ 重量）"
+      - "可审计换算历史"
+    cons:
+      - "复杂度最高"
+      - "换算率需要人工维护"
+      - "可能引入换算精度问题"
+    effort: HIGH
+    risk: MEDIUM
+    affected_domains: [Product, Inventory, Procurement, Recipe, Finance]
+    migration_needed: true
+    migration_complexity: HIGH
+
+# ============================================================================
+# 五、影响分析
+# ============================================================================
+impact_analysis:
+  if_A_enum:
+    current_state: "保持现状"
+    limitations:
+      - "无法动态添加新单位"
+      - "无法支持单位换算"
+      - "菜品和物料单位定义不一致"
+    work_around: "每次添加新单位需改代码并重新部署"
+
+  if_B_independent_table:
+    product_domain:
+      - "foods.unit → units.id (FK)"
+      - "菜品创建时选择单位"
+      - "菜品列表按单位筛选"
+    inventory_domain:
+      - "material_archives.unit → units.id (FK)"
+      - "库存查询可按单位统计"
+      - "库存调拨支持单位换算"
+    procurement_domain:
+      - "采购订单支持不同单位"
+      - "收货确认支持单位换算"
+    recipe_domain:
+      - "菜品配方 (dish_recipes) 支持精确单位"
+      - "BOM 成本计算支持单位换算"
+    finance_domain:
+      - "成本计算支持单位换算"
+
+  if_C_material_attribute:
+    current_state: "保持现状 + CHECK 约束"
+    limitation: "本质还是枚举"
+
+  if_D_configuration:
+    product_domain:
+      - "可通过管理界面添加新单位"
+      - "配置分散在 JSON 中"
+
+  if_E_hybrid_unit_conversion:
+    advanced_scenarios:
+      - "采购 '箱' → 库存 '个' (1箱=24个)"
+      - "采购 '斤' → 库存 'kg' (1斤=0.5kg)"
+      - "配方用量 'g' → 库存 'kg' (换算)"
+    finance_domain:
+      - "成本计算精确到基础单位"
+
+# ============================================================================
+# 六、跨域单位问题
+# ============================================================================
+cross_domain_unit_issues:
+  issue_1: "菜品单位 vs 物料单位"
+    description: "菜品销售用 '份'，物料采购用 '斤/kg'，可能不一致"
+    current_behavior: "各自独立，无换算"
+    risk: "配方成本计算时单位不匹配"
+
+  issue_2: "采购单位 vs 库存单位"
+    description: "采购可能用 '箱'，库存可能用 '个'"
+    current_behavior: "假设单位一致，无换算"
+    risk: "库存数量不准确"
+
+  issue_3: "销售单位 vs 库存单位"
+    description: "菜品销售用 '份'，但原料库存用 'kg'"
+    current_behavior: "通过菜品配方 (BOM) 隐式关联"
+    risk: "配方用量不精确"
+
+# ============================================================================
+# 七、推荐方案
+# ============================================================================
+recommendation:
+  primary: A_enum
+  short_term_rationale: |
+    1. 当前阶段单位需求简单（份、斤、kg、L、个等固定集合）
+    2. 无明确的单位换算需求
+    3. 改动最小，风险最低
+    4. 如果未来需要换算，再升级为 B 或 E
+  conditions_to_upgrade:
+    - "业务明确需要单位换算（如采购 '箱' → 库存 '个'）"
+    - "需要动态添加新单位"
+    - "菜品和物料需要独立的单位体系"
+  long_term: B_independent_table
+  long_term_condition: "当出现单位换算需求时升级"
+
+# ============================================================================
+# 八、执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "单位枚举标准化"
+    tasks:
+      - "统一 foods.unit 和 material_archives.unit 的枚举值"
+      - "添加 CHECK 约束（可选）"
+      - "文档化单位使用规范"
+    duration: "1 天"
+    effort: "低"
+  phase_2:
+    name: "评估单位换算需求"
+    tasks:
+      - "调研采购-库存-销售单位换算需求"
+      - "确认是否需要独立 units 表"
+      - "制定升级路线图"
+    duration: "1-2 天"
+    effort: "低"
+
+# ============================================================================
+# 九、验证标准
+# ============================================================================
+acceptance_criteria:
+  - "foods.unit 和 material_archives.unit 使用统一的枚举值"
+  - "单位定义文档化"
+  - "无单位不一致导致的 Bug"
+
+# ============================================================================
+# 十、证据引用
+# ============================================================================
+evidence:
+  - "foundation-map.md §15: Unit 标记为 MISSING FOUNDATION"
+  - "data-design-map.md §3.1: foods.unit 默认 '份'"
+  - "data-design-map.md §3.1: material_archives.unit 无默认值"
+  - "db-reality-map.md §4: foods 表有 unit 字段"
+  - "db-reality-map.md §5: material_archives 表有 unit 字段"
+  - "upstream-dependency-map.md §5.2: Unit MISSING FOUNDATION 详细分析"

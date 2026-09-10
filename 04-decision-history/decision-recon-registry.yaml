@@ -1,0 +1,1346 @@
+# ============================================================================
+# PROJECT-DECISION-RECON-001: 决策协调注册表
+# ============================================================================
+# 描述: 项目决策协调注册表，包含所有已识别的决策项
+# 生成日期: 2026-09-09
+# 状态: ACTIVE
+# 版本: 1.0
+# ============================================================================
+
+registry:
+  id: PROJECT-DECISION-RECON-001
+  title: "决策协调注册表"
+  description: "项目决策协调注册表，用于跟踪和管理所有架构、产品、安全和工程决策"
+  generated_date: "2026-09-09"
+  version: "1.0"
+  status: "ACTIVE"
+
+# ============================================================================
+# 决策分类定义
+# ============================================================================
+decision_categories:
+  ALREADY_DECIDED:
+    description: "已确定的决策，需要确认和记录"
+    priority: "P0"
+    status: "CONFIRMED"
+  
+  PRODUCT_DECISION:
+    description: "产品层面的决策，需要产品负责人确认"
+    priority: "P0"
+    status: "PENDING_PRODUCT"
+  
+  ARCHITECTURE_DECISION:
+    description: "架构层面的决策，需要架构师确认"
+    priority: "P1"
+    status: "PENDING_ARCHITECTURE"
+  
+  SECURITY_DECISION:
+    description: "安全相关的决策，需要安全团队确认"
+    priority: "P1"
+    status: "PENDING_SECURITY"
+  
+  ENGINEERING_EXECUTION:
+    description: "工程执行层面的决策，需要开发团队确认"
+    priority: "P2"
+    status: "PENDING_ENGINEERING"
+  
+  IMPLICIT_DECISION:
+    description: "隐含的决策，需要识别和明确化"
+    priority: "P1"
+    status: "PENDING_IDENTIFICATION"
+
+# ============================================================================
+# 已确定的决策 (ALREADY_DECIDED)
+# ============================================================================
+decisions:
+  DEC-006:
+    decision_id: "DEC-006"
+    title: "Product-Food-Material 关系决策"
+    category: "ALREADY_DECIDED"
+    current_reality: "Product、Food、Material 三者关系不明确，存在重复定义"
+    existing_decision: "需要明确三者边界和关系"
+    expected_design: "建立清晰的产品-菜品-物料关系模型"
+    question: "Product、Food、Material 三者的边界和关系是什么？"
+    decision_type: "RELATIONSHIP"
+    status: "CONFIRMED"
+    options:
+      - id: "A"
+        name: "独立管理"
+        description: "三者完全独立，各自有独立表和生命周期"
+        pros: ["职责清晰", "独立演进"]
+        cons: ["数据冗余", "同步复杂"]
+      - id: "B"
+        name: "继承关系"
+        description: "建立继承关系，Material 是基础，Food 继承 Material，Product 继承 Food"
+        pros: ["复用性强", "数据一致性"]
+        cons: ["耦合度高", "扩展性受限"]
+      - id: "C"
+        name: "组合关系"
+        description: "Product 由 Food 组成，Food 由 Material 组成"
+        pros: ["灵活性高", "支持复杂组合"]
+        cons: ["实现复杂", "查询性能"]
+    recommended_option: "B"
+    recommendation_reason: "继承关系最符合业务逻辑，Food 本质上是一种特殊的 Material，Product 是 Food 的包装"
+    depends_on: []
+    blocks: ["DEC-001", "DEC-004"]
+    unlocks: ["库存管理", "采购管理"]
+    affected_foundations: ["Material", "Food", "Product"]
+    affected_master_data: ["material_archives", "foods", "products"]
+    affected_capabilities: ["产品管理", "菜品管理", "物料管理"]
+    affected_transactions: ["采购", "销售", "库存"]
+    affected_domains: ["Product", "Inventory", "Procurement"]
+    affected_tables: ["material_archives", "foods", "products", "product_items"]
+    affected_apis: ["/api/v1/materials", "/api/v1/foods", "/api/v1/products"]
+    affected_pages: ["MaterialList.vue", "FoodList.vue", "ProductList.vue"]
+    affected_dialogs: ["MaterialForm.vue", "FoodForm.vue", "ProductForm.vue"]
+    requirements: ["REQ-001", "REQ-002"]
+    principles: ["单一职责", "开闭原则"]
+    root_causes: ["业务边界不清晰", "历史演进导致"]
+    remediation_candidates: ["重构物料管理", "统一产品模型"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构现有物料和产品表结构"
+    risk:
+      level: "MEDIUM"
+      description: "可能影响现有业务流程"
+    evidence: ["foundation-map.md", "business-object-map.md"]
+    confidence: "HIGH"
+
+  DEC-007:
+    decision_id: "DEC-007"
+    title: "Order State Machine 决策"
+    category: "ALREADY_DECIDED"
+    current_reality: "订单状态流转不清晰，缺乏统一的状态机定义"
+    existing_decision: "需要建立统一的订单状态机"
+    expected_design: "建立清晰的订单状态流转模型"
+    question: "订单状态如何流转？需要哪些状态？"
+    decision_type: "STATE_MACHINE"
+    status: "CONFIRMED"
+    options:
+      - id: "A"
+        name: "简单状态机"
+        description: "只有基本状态：待支付、已支付、已完成、已取消"
+        pros: ["简单易懂", "实现简单"]
+        cons: ["灵活性差", "无法处理复杂场景"]
+      - id: "B"
+        name: "完整状态机"
+        description: "包含完整状态：待确认、已确认、制作中、待配送、配送中、已完成、已取消、已退款"
+        pros: ["功能完整", "支持复杂业务"]
+        cons: ["实现复杂", "维护成本高"]
+      - id: "C"
+        name: "可配置状态机"
+        description: "状态可配置，支持不同业务场景自定义状态"
+        pros: ["灵活性高", "可扩展"]
+        cons: ["实现复杂", "配置管理"]
+    recommended_option: "B"
+    recommendation_reason: "完整状态机最符合餐饮业务需求，支持从下单到完成的完整流程"
+    depends_on: []
+    blocks: ["支付集成", "配送管理"]
+    unlocks: ["订单全流程管理"]
+    affected_foundations: ["Order"]
+    affected_master_data: ["orders", "order_items"]
+    affected_capabilities: ["订单管理", "支付管理", "配送管理"]
+    affected_transactions: ["下单", "支付", "配送", "完成"]
+    affected_domains: ["Order", "Payment", "Delivery"]
+    affected_tables: ["orders", "order_items", "order_status_logs"]
+    affected_apis: ["/api/v1/orders", "/api/v1/order-status"]
+    affected_pages: ["OrderList.vue", "OrderDetail.vue"]
+    affected_dialogs: ["OrderStatusChange.vue"]
+    requirements: ["REQ-003", "REQ-004"]
+    principles: ["状态模式", "单一职责"]
+    root_causes: ["业务流程不清晰", "缺乏统一状态管理"]
+    remediation_candidates: ["重构订单流程", "统一状态管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构订单状态管理逻辑"
+    risk:
+      level: "LOW"
+      description: "状态机相对独立，影响范围可控"
+    evidence: ["business-data-flow-map.md", "order-flow-analysis.md"]
+    confidence: "HIGH"
+
+  DEC-008:
+    decision_id: "DEC-008"
+    title: "Amount/Money Contract 决策"
+    category: "ALREADY_DECIDED"
+    current_reality: "金额计算不一致，缺乏统一的金额合约定义"
+    existing_decision: "需要建立统一的金额合约"
+    expected_design: "建立清晰的金额计算和精度控制模型"
+    question: "金额如何计算？精度如何控制？货币如何处理？"
+    decision_type: "CONTRACT"
+    status: "CONFIRMED"
+    options:
+      - id: "A"
+        name: "固定精度"
+        description: "使用 Decimal(10,2) 固定精度，统一处理"
+        pros: ["简单易懂", "实现简单"]
+        cons: ["精度限制", "扩展性差"]
+      - id: "B"
+        name: "可配置精度"
+        description: "精度可配置，支持不同货币和业务场景"
+        pros: ["灵活性高", "支持多币种"]
+        cons: ["实现复杂", "配置管理"]
+      - id: "C"
+        name: "分单位存储"
+        description: "以最小单位（分）存储，显示时转换"
+        pros: ["精度高", "计算准确"]
+        cons: ["转换复杂", "显示处理"]
+    recommended_option: "A"
+    recommendation_reason: "餐饮业务金额计算相对简单，固定精度足够满足需求"
+    depends_on: []
+    blocks: ["支付集成", "财务报表"]
+    unlocks: ["金额计算一致性"]
+    affected_foundations: ["Amount", "Money"]
+    affected_master_data: ["orders", "order_items", "payments", "purchases"]
+    affected_capabilities: ["金额计算", "支付处理", "财务统计"]
+    affected_transactions: ["支付", "退款", "对账"]
+    affected_domains: ["Order", "Payment", "Finance"]
+    affected_tables: ["orders", "order_items", "payments", "purchase_orders"]
+    affected_apis: ["/api/v1/payments", "/api/v1/finance"]
+    affected_pages: ["PaymentList.vue", "FinanceReport.vue"]
+    affected_dialogs: ["PaymentForm.vue"]
+    requirements: ["REQ-005", "REQ-006"]
+    principles: ["精度控制", "一致性"]
+    root_causes: ["缺乏统一金额合约", "历史系统精度不一致"]
+    remediation_candidates: ["统一金额计算", "建立金额合约"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要统一所有金额字段的精度和计算逻辑"
+    risk:
+      level: "HIGH"
+      description: "金额计算错误可能导致财务问题"
+    evidence: ["data-design-map.md", "financial-analysis.md"]
+    confidence: "HIGH"
+
+  DEC-009:
+    decision_id: "DEC-009"
+    title: "Data Ownership 决策"
+    category: "ALREADY_DECIDED"
+    current_reality: "数据所有权不明确，缺乏统一的数据归属管理"
+    existing_decision: "需要明确数据所有权和管理责任"
+    expected_design: "建立清晰的数据所有权模型"
+    question: "数据归谁所有？谁负责维护？谁有权访问？"
+    decision_type: "GOVERNANCE"
+    status: "CONFIRMED"
+    options:
+      - id: "A"
+        name: "部门所有"
+        description: "数据归部门所有，部门负责维护"
+        pros: ["职责清晰", "管理简单"]
+        cons: ["跨部门共享复杂", "数据孤岛"]
+      - id: "B"
+        name: "业务域所有"
+        description: "数据归业务域所有，域负责维护"
+        pros: ["领域驱动", "职责清晰"]
+        cons: ["跨域协作复杂", "边界划分"]
+      - id: "C"
+        name: "平台所有"
+        description: "数据归平台所有，统一管理"
+        pros: ["统一管理", "数据共享"]
+        cons: ["平台负担重", "响应慢"]
+    recommended_option: "B"
+    recommendation_reason: "业务域所有最符合领域驱动设计，职责清晰且支持领域自治"
+    depends_on: []
+    blocks: ["数据治理", "权限管理"]
+    unlocks: ["数据质量管理", "数据安全"]
+    affected_foundations: ["DataOwnership"]
+    affected_master_data: ["all_tables"]
+    affected_capabilities: ["数据治理", "权限管理", "数据质量"]
+    affected_transactions: ["数据创建", "数据修改", "数据删除"]
+    affected_domains: ["All"]
+    affected_tables: ["all_tables"]
+    affected_apis: ["/api/v1/data-governance"]
+    affected_pages: ["DataOwnership.vue"]
+    affected_dialogs: ["DataOwnerForm.vue"]
+    requirements: ["REQ-007", "REQ-008"]
+    principles: ["数据治理", "最小权限"]
+    root_causes: ["缺乏数据治理", "历史系统无数据归属"]
+    remediation_candidates: ["建立数据治理体系", "明确数据归属"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要建立数据归属管理机制"
+    risk:
+      level: "MEDIUM"
+      description: "数据归属变更可能影响业务流程"
+    evidence: ["data-governance-framework.md", "data-lineage-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 产品决策 (PRODUCT_DECISION)
+# ============================================================================
+  DEC-001:
+    decision_id: "DEC-001"
+    title: "Warehouse 管理模式决策"
+    category: "PRODUCT_DECISION"
+    current_reality: "Warehouse 无独立表，通过 inventory.warehouse_id 引用"
+    existing_decision: "需要确定 Warehouse 的管理模式"
+    expected_design: "建立清晰的 Warehouse 管理模型"
+    question: "Warehouse 是独立 Foundation Object 还是其他对象的属性？"
+    decision_type: "FOUNDATION"
+    status: "PENDING_PRODUCT"
+    options:
+      - id: "A"
+        name: "独立表管理"
+        description: "创建 warehouses 独立表，作为独立 Foundation Object"
+        pros: ["完整生命周期", "支持多仓库", "属性独立维护"]
+        cons: ["增加维护成本", "需要迁移数据"]
+      - id: "B"
+        name: "Store 属性"
+        description: "作为 Store 的存储位置，不独立存在"
+        pros: ["符合餐饮实际", "数据模型简单"]
+        cons: ["无法管理中央仓", "调拨失去语义"]
+      - id: "C"
+        name: "Inventory 属性"
+        description: "作为 Inventory 的仓位属性，不独立存在"
+        pros: ["仓位管理粒度细", "与现有表一致"]
+        cons: ["丢失仓库级管理", "语义被破坏"]
+      - id: "D"
+        name: "配置项"
+        description: "作为配置项/枚举，不是业务对象"
+        pros: ["最简单", "无额外维护"]
+        cons: ["无法独立管理", "扩展性差"]
+      - id: "E"
+        name: "混合模式"
+        description: "中央仓库独立管理，门店内存储位置作为 Store 属性"
+        pros: ["支持中央仓", "门店仓保持现状", "符合实际"]
+        cons: ["两套概念", "inventory.warehouse_id 仅指向中央仓"]
+    recommended_option: "E"
+    recommendation_reason: "混合模式最符合餐饮行业实际，中央仓独立管理，门店仓保持现有模式"
+    depends_on: []
+    blocks: ["库存管理", "采购管理"]
+    unlocks: ["多仓库管理", "仓库间调拨"]
+    affected_foundations: ["Warehouse"]
+    affected_master_data: ["warehouses", "inventory", "employees"]
+    affected_capabilities: ["仓库管理", "库存管理", "采购管理"]
+    affected_transactions: ["采购入库", "仓库调拨", "库存盘点"]
+    affected_domains: ["Inventory", "Procurement", "HR"]
+    affected_tables: ["warehouses", "inventory", "employees", "inventory_transfer"]
+    affected_apis: ["/api/v1/warehouses", "/api/v1/inventory"]
+    affected_pages: ["WarehouseList.vue", "InventoryList.vue"]
+    affected_dialogs: ["WarehouseForm.vue"]
+    requirements: ["REQ-009", "REQ-010"]
+    principles: ["单一职责", "开闭原则"]
+    root_causes: ["业务边界不清晰", "历史演进导致"]
+    remediation_candidates: ["创建 warehouses 表", "重构库存管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要创建 warehouses 表并迁移数据"
+    risk:
+      level: "MEDIUM"
+      description: "可能影响现有库存管理流程"
+    evidence: ["foundation-map.md", "db-reality-map.md"]
+    confidence: "HIGH"
+
+  DEC-004:
+    decision_id: "DEC-004"
+    title: "Customer-Member 关系决策"
+    category: "PRODUCT_DECISION"
+    current_reality: "Customer 和 Member 关系不明确，存在重复定义"
+    existing_decision: "需要明确 Customer 和 Member 的边界和关系"
+    expected_design: "建立清晰的客户-会员关系模型"
+    question: "Customer 和 Member 是什么关系？是否需要统一？"
+    decision_type: "RELATIONSHIP"
+    status: "PENDING_PRODUCT"
+    options:
+      - id: "A"
+        name: "独立管理"
+        description: "Customer 和 Member 完全独立，各自有独立表"
+        pros: ["职责清晰", "独立演进"]
+        cons: ["数据冗余", "同步复杂"]
+      - id: "B"
+        name: "Member 继承 Customer"
+        description: "Member 是 Customer 的子类，继承 Customer 属性"
+        pros: ["复用性强", "数据一致性"]
+        cons: ["耦合度高", "扩展性受限"]
+      - id: "C"
+        name: "统一模型"
+        description: "统一为 Customer，Member 作为 Customer 的角色或状态"
+        pros: ["数据统一", "管理简单"]
+        cons: ["重构复杂", "业务逻辑变更"]
+    recommended_option: "B"
+    recommendation_reason: "Member 继承 Customer 最符合业务逻辑，Member 是具有会员身份的 Customer"
+    depends_on: []
+    blocks: ["会员管理", "客户管理"]
+    unlocks: ["统一客户视图", "会员权益管理"]
+    affected_foundations: ["Customer", "Member"]
+    affected_master_data: ["customers", "members"]
+    affected_capabilities: ["客户管理", "会员管理", "营销管理"]
+    affected_transactions: ["客户注册", "会员升级", "积分兑换"]
+    affected_domains: ["Customer", "Membership", "Marketing"]
+    affected_tables: ["customers", "members", "member_points"]
+    affected_apis: ["/api/v1/customers", "/api/v1/members"]
+    affected_pages: ["CustomerList.vue", "MemberList.vue"]
+    affected_dialogs: ["CustomerForm.vue", "MemberForm.vue"]
+    requirements: ["REQ-011", "REQ-012"]
+    principles: ["继承复用", "数据一致性"]
+    root_causes: ["业务演进", "历史系统设计"]
+    remediation_candidates: ["重构客户模型", "统一客户视图"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构客户和会员表结构"
+    risk:
+      level: "MEDIUM"
+      description: "可能影响现有客户和会员管理流程"
+    evidence: ["business-object-map.md", "customer-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 架构决策 (ARCHITECTURE_DECISION)
+# ============================================================================
+  DEC-010:
+    decision_id: "DEC-010"
+    title: "Cross-Domain Access 决策"
+    category: "ARCHITECTURE_DECISION"
+    current_reality: "跨域访问缺乏统一规范，存在直接数据库访问"
+    existing_decision: "需要建立跨域访问规范"
+    expected_design: "建立清晰的跨域访问模型"
+    question: "跨域访问应该如何实现？直接访问还是通过API？"
+    decision_type: "ARCHITECTURE"
+    status: "PENDING_ARCHITECTURE"
+    options:
+      - id: "A"
+        name: "直接数据库访问"
+        description: "允许直接访问其他域的数据库表"
+        pros: ["性能高", "实现简单"]
+        cons: ["耦合度高", "维护困难"]
+      - id: "B"
+        name: "API 访问"
+        description: "通过 API 访问其他域的服务"
+        pros: ["松耦合", "可维护性好"]
+        cons: ["性能开销", "实现复杂"]
+      - id: "C"
+        name: "事件驱动"
+        description: "通过事件进行跨域通信"
+        pros: ["异步解耦", "可扩展性好"]
+        cons: ["最终一致性", "调试困难"]
+    recommended_option: "B"
+    recommendation_reason: "API 访问最符合微服务架构原则，保证松耦合和可维护性"
+    depends_on: []
+    blocks: ["数据一致性", "性能优化"]
+    unlocks: ["服务独立部署", "技术异构"]
+    affected_foundations: ["CrossDomainAccess"]
+    affected_master_data: ["all_tables"]
+    affected_capabilities: ["跨域查询", "数据聚合", "业务流程"]
+    affected_transactions: ["跨域操作", "数据同步"]
+    affected_domains: ["All"]
+    affected_tables: ["all_tables"]
+    affected_apis: ["all_apis"]
+    affected_pages: ["all_pages"]
+    affected_dialogs: ["all_dialogs"]
+    requirements: ["REQ-013", "REQ-014"]
+    principles: ["松耦合", "单一职责"]
+    root_causes: ["历史系统设计", "缺乏架构规范"]
+    remediation_candidates: ["建立API网关", "重构跨域访问"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要重构所有跨域访问逻辑"
+    risk:
+      level: "HIGH"
+      description: "可能影响系统性能和稳定性"
+    evidence: ["architecture-analysis.md", "cross-domain-access-analysis.md"]
+    confidence: "HIGH"
+
+  DEC-011:
+    decision_id: "DEC-011"
+    title: "Event Architecture 决策"
+    category: "ARCHITECTURE_DECISION"
+    current_reality: "事件架构不清晰，缺乏统一的事件定义和处理机制"
+    existing_decision: "需要建立统一的事件架构"
+    expected_design: "建立清晰的事件架构模型"
+    question: "事件如何定义？如何发布和订阅？如何保证可靠性？"
+    decision_type: "ARCHITECTURE"
+    status: "PENDING_ARCHITECTURE"
+    options:
+      - id: "A"
+        name: "同步事件"
+        description: "使用同步事件，直接调用处理"
+        pros: ["实现简单", "调试容易"]
+        cons: ["耦合度高", "可靠性差"]
+      - id: "B"
+        name: "异步事件"
+        description: "使用异步事件，通过消息队列处理"
+        pros: ["解耦性好", "可靠性高"]
+        cons: ["实现复杂", "最终一致性"]
+      - id: "C"
+        name: "事件溯源"
+        description: "使用事件溯源，保存所有事件历史"
+        pros: ["可审计", "可回溯"]
+        cons: ["存储开销大", "实现复杂"]
+    recommended_option: "B"
+    recommendation_reason: "异步事件最符合微服务架构，保证解耦性和可靠性"
+    depends_on: []
+    blocks: ["数据一致性", "系统监控"]
+    unlocks: ["事件驱动架构", "实时数据处理"]
+    affected_foundations: ["EventArchitecture"]
+    affected_master_data: ["events", "event_logs"]
+    affected_capabilities: ["事件处理", "消息队列", "实时数据"]
+    affected_transactions: ["事件发布", "事件订阅", "事件处理"]
+    affected_domains: ["All"]
+    affected_tables: ["events", "event_logs", "message_queues"]
+    affected_apis: ["/api/v1/events", "/api/v1/event-logs"]
+    affected_pages: ["EventMonitor.vue"]
+    affected_dialogs: ["EventConfig.vue"]
+    requirements: ["REQ-015", "REQ-016"]
+    principles: ["事件驱动", "最终一致性"]
+    root_causes: ["缺乏事件架构", "历史系统无事件机制"]
+    remediation_candidates: ["建立事件总线", "重构事件处理"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要建立事件架构和消息队列"
+    risk:
+      level: "MEDIUM"
+      description: "事件处理可能影响系统性能"
+    evidence: ["event-architecture-analysis.md", "message-queue-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 安全决策 (SECURITY_DECISION)
+# ============================================================================
+  DEC-013:
+    decision_id: "DEC-013"
+    title: "Authentication Strategy 决策"
+    category: "SECURITY_DECISION"
+    current_reality: "认证策略不统一，存在多种认证方式"
+    existing_decision: "需要建立统一的认证策略"
+    expected_design: "建立清晰的认证和授权模型"
+    question: "如何认证用户？如何管理会话？如何处理多租户？"
+    decision_type: "SECURITY"
+    status: "PENDING_SECURITY"
+    options:
+      - id: "A"
+        name: "Session 认证"
+        description: "使用 Session 进行认证，服务端存储会话"
+        pros: ["实现简单", "安全性高"]
+        cons: ["扩展性差", "不支持分布式"]
+      - id: "B"
+        name: "JWT 认证"
+        description: "使用 JWT 进行认证，无状态令牌"
+        pros: ["无状态", "可扩展", "支持分布式"]
+        cons: ["令牌管理复杂", "无法主动失效"]
+      - id: "C"
+        name: "OAuth2 认证"
+        description: "使用 OAuth2 进行认证，支持第三方登录"
+        pros: ["标准化", "支持第三方", "安全性高"]
+        cons: ["实现复杂", "依赖外部服务"]
+    recommended_option: "B"
+    recommendation_reason: "JWT 认证最符合微服务架构，无状态且可扩展"
+    depends_on: []
+    blocks: ["用户管理", "权限控制"]
+    unlocks: ["单点登录", "第三方登录"]
+    affected_foundations: ["Authentication"]
+    affected_master_data: ["users", "roles", "permissions"]
+    affected_capabilities: ["用户认证", "权限管理", "会话管理"]
+    affected_transactions: ["登录", "注销", "权限验证"]
+    affected_domains: ["Security", "User"]
+    affected_tables: ["users", "roles", "permissions", "user_roles"]
+    affected_apis: ["/api/v1/auth", "/api/v1/users"]
+    affected_pages: ["Login.vue", "UserList.vue"]
+    affected_dialogs: ["LoginForm.vue", "UserForm.vue"]
+    requirements: ["REQ-017", "REQ-018"]
+    principles: ["最小权限", "安全第一"]
+    root_causes: ["历史系统设计", "缺乏安全规范"]
+    remediation_candidates: ["统一认证策略", "重构用户管理"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要重构认证和授权系统"
+    risk:
+      level: "HIGH"
+      description: "安全漏洞可能导致系统被攻击"
+    evidence: ["security-analysis.md", "authentication-analysis.md"]
+    confidence: "HIGH"
+
+  DEC-014:
+    decision_id: "DEC-014"
+    title: "Authorization Model 决策"
+    category: "SECURITY_DECISION"
+    current_reality: "授权模型不清晰，权限管理混乱"
+    existing_decision: "需要建立统一的授权模型"
+    expected_design: "建立清晰的权限控制模型"
+    question: "如何管理用户权限？如何控制数据访问？如何处理多租户？"
+    decision_type: "SECURITY"
+    status: "PENDING_SECURITY"
+    options:
+      - id: "A"
+        name: "RBAC 模型"
+        description: "基于角色的访问控制，用户通过角色获得权限"
+        pros: ["实现简单", "管理方便"]
+        cons: ["灵活性差", "权限粒度粗"]
+      - id: "B"
+        name: "ABAC 模型"
+        description: "基于属性的访问控制，根据属性动态计算权限"
+        pros: ["灵活性高", "支持细粒度控制"]
+        cons: ["实现复杂", "性能开销"]
+      - id: "C"
+        name: "混合模型"
+        description: "RBAC + ABAC 混合，核心用 RBAC，细粒度用 ABAC"
+        pros: ["平衡灵活性和复杂性", "支持多种场景"]
+        cons: ["实现复杂", "维护成本高"]
+    recommended_option: "A"
+    recommendation_reason: "RBAC 模型最符合当前业务需求，实现简单且管理方便"
+    depends_on: ["DEC-013"]
+    blocks: ["数据权限", "多租户"]
+    unlocks: ["细粒度权限控制", "数据隔离"]
+    affected_foundations: ["Authorization"]
+    affected_master_data: ["users", "roles", "permissions", "role_permissions"]
+    affected_capabilities: ["权限管理", "角色管理", "数据权限"]
+    affected_transactions: ["权限分配", "角色管理", "权限验证"]
+    affected_domains: ["Security", "User"]
+    affected_tables: ["users", "roles", "permissions", "role_permissions", "user_roles"]
+    affected_apis: ["/api/v1/permissions", "/api/v1/roles"]
+    affected_pages: ["RoleList.vue", "PermissionList.vue"]
+    affected_dialogs: ["RoleForm.vue", "PermissionForm.vue"]
+    requirements: ["REQ-019", "REQ-020"]
+    principles: ["最小权限", "职责分离"]
+    root_causes: ["历史系统设计", "缺乏权限规范"]
+    remediation_candidates: ["建立RBAC模型", "重构权限管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构权限管理模型"
+    risk:
+      level: "MEDIUM"
+      description: "权限错误可能导致数据泄露"
+    evidence: ["security-analysis.md", "authorization-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 工程执行决策 (ENGINEERING_EXECUTION)
+# ============================================================================
+  DEC-002:
+    decision_id: "DEC-002"
+    title: "Unit 管理模式决策"
+    category: "ENGINEERING_EXECUTION"
+    current_reality: "Unit 无独立表，存储在字段枚举或配置中"
+    existing_decision: "需要确定 Unit 的管理模式"
+    expected_design: "建立清晰的 Unit 管理模型"
+    question: "Unit 是独立主数据还是其他对象的属性？"
+    decision_type: "FOUNDATION"
+    status: "PENDING_ENGINEERING"
+    options:
+      - id: "A"
+        name: "独立表管理"
+        description: "创建 units 独立表，作为独立主数据"
+        pros: ["完整生命周期", "支持多单位", "属性独立维护"]
+        cons: ["增加维护成本", "需要迁移数据"]
+      - id: "B"
+        name: "枚举值"
+        description: "作为枚举值，硬编码在代码中"
+        pros: ["最简单", "无额外维护"]
+        cons: ["无法独立管理", "扩展性差"]
+      - id: "C"
+        name: "配置项"
+        description: "作为配置项，存储在配置文件中"
+        pros: ["配置灵活", "无需数据库"]
+        cons: ["管理分散", "版本控制"]
+    recommended_option: "A"
+    recommendation_reason: "独立表管理最符合主数据管理原则，支持完整生命周期和独立维护"
+    depends_on: []
+    blocks: ["物料管理", "菜品管理"]
+    unlocks: ["多单位支持", "单位换算"]
+    affected_foundations: ["Unit"]
+    affected_master_data: ["units", "material_archives", "foods"]
+    affected_capabilities: ["单位管理", "物料管理", "菜品管理"]
+    affected_transactions: ["单位创建", "单位修改", "单位删除"]
+    affected_domains: ["Inventory", "Product"]
+    affected_tables: ["units", "material_archives", "foods"]
+    affected_apis: ["/api/v1/units", "/api/v1/materials"]
+    affected_pages: ["UnitList.vue", "MaterialList.vue"]
+    affected_dialogs: ["UnitForm.vue"]
+    requirements: ["REQ-021", "REQ-022"]
+    principles: ["单一职责", "开闭原则"]
+    root_causes: ["历史系统设计", "缺乏主数据管理"]
+    remediation_candidates: ["创建 units 表", "重构物料管理"]
+    migration_impact:
+      level: "LOW"
+      description: "需要创建 units 表并迁移数据"
+    risk:
+      level: "LOW"
+      description: "单位管理相对独立，影响范围小"
+    evidence: ["foundation-map.md", "data-design-map.md"]
+    confidence: "HIGH"
+
+  DEC-003:
+    decision_id: "DEC-003"
+    title: "Payment Method 决策"
+    category: "ENGINEERING_EXECUTION"
+    current_reality: "支付方式不统一，缺乏统一的支付方式管理"
+    existing_decision: "需要建立统一的支付方式管理"
+    expected_design: "建立清晰的支付方式管理模型"
+    question: "支付方式如何管理？支持哪些支付方式？如何扩展？"
+    decision_type: "FOUNDATION"
+    status: "PENDING_ENGINEERING"
+    options:
+      - id: "A"
+        name: "枚举值"
+        description: "支付方式作为枚举值，硬编码在代码中"
+        pros: ["实现简单", "性能高"]
+        cons: ["扩展性差", "需要发版"]
+      - id: "B"
+        name: "配置表"
+        description: "创建 payment_methods 配置表，支持动态配置"
+        pros: ["配置灵活", "支持扩展"]
+        cons: ["管理复杂", "性能开销"]
+      - id: "C"
+        name: "插件化"
+        description: "支付方式作为插件，支持热插拔"
+        pros: ["扩展性强", "独立部署"]
+        cons: ["实现复杂", "维护成本高"]
+    recommended_option: "B"
+    recommendation_reason: "配置表管理最平衡灵活性和复杂性，支持动态配置且实现简单"
+    depends_on: []
+    blocks: ["支付集成", "订单管理"]
+    unlocks: ["支付方式扩展", "支付渠道管理"]
+    affected_foundations: ["PaymentMethod"]
+    affected_master_data: ["payment_methods", "payments"]
+    affected_capabilities: ["支付管理", "订单支付", "退款管理"]
+    affected_transactions: ["支付", "退款", "对账"]
+    affected_domains: ["Payment", "Order"]
+    affected_tables: ["payment_methods", "payments", "refunds"]
+    affected_apis: ["/api/v1/payment-methods", "/api/v1/payments"]
+    affected_pages: ["PaymentMethodList.vue", "PaymentList.vue"]
+    affected_dialogs: ["PaymentMethodForm.vue", "PaymentForm.vue"]
+    requirements: ["REQ-023", "REQ-024"]
+    principles: ["开闭原则", "配置化"]
+    root_causes: ["历史系统设计", "缺乏支付方式管理"]
+    remediation_candidates: ["创建 payment_methods 表", "重构支付管理"]
+    migration_impact:
+      level: "LOW"
+      description: "需要创建 payment_methods 表并迁移数据"
+    risk:
+      level: "LOW"
+      description: "支付方式管理相对独立，影响范围小"
+    evidence: ["payment-analysis.md", "data-design-map.md"]
+    confidence: "HIGH"
+
+  DEC-005:
+    decision_id: "DEC-005"
+    title: "Price Decision 决策"
+    category: "ENGINEERING_EXECUTION"
+    current_reality: "价格管理不统一，缺乏统一的价格模型"
+    existing_decision: "需要建立统一的价格管理"
+    expected_design: "建立清晰的价格管理模型"
+    question: "价格如何定义？如何计算？如何管理价格策略？"
+    decision_type: "FOUNDATION"
+    status: "PENDING_ENGINEERING"
+    options:
+      - id: "A"
+        name: "固定价格"
+        description: "价格固定，不支持动态定价"
+        pros: ["实现简单", "管理简单"]
+        cons: ["灵活性差", "不支持促销"]
+      - id: "B"
+        name: "价格策略"
+        description: "支持多种价格策略，如会员价、促销价、时段价"
+        pros: ["灵活性高", "支持营销"]
+        cons: ["实现复杂", "管理复杂"]
+      - id: "C"
+        name: "动态定价"
+        description: "支持动态定价，根据供需、时间等因素自动调整"
+        pros: ["智能化", "收益最大化"]
+        cons: ["实现复杂", "用户接受度"]
+    recommended_option: "B"
+    recommendation_reason: "价格策略最符合餐饮业务需求，支持会员价和促销价"
+    depends_on: []
+    blocks: ["订单管理", "营销管理"]
+    unlocks: ["价格策略", "促销管理"]
+    affected_foundations: ["Price"]
+    affected_master_data: ["prices", "price_strategies"]
+    affected_capabilities: ["价格管理", "促销管理", "会员管理"]
+    affected_transactions: ["价格设置", "促销活动", "会员优惠"]
+    affected_domains: ["Product", "Marketing", "Membership"]
+    affected_tables: ["prices", "price_strategies", "promotions"]
+    affected_apis: ["/api/v1/prices", "/api/v1/promotions"]
+    affected_pages: ["PriceList.vue", "PromotionList.vue"]
+    affected_dialogs: ["PriceForm.vue", "PromotionForm.vue"]
+    requirements: ["REQ-025", "REQ-026"]
+    principles: ["策略模式", "开闭原则"]
+    root_causes: ["历史系统设计", "缺乏价格管理"]
+    remediation_candidates: ["建立价格策略", "重构价格管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构价格管理模型"
+    risk:
+      level: "MEDIUM"
+      description: "价格错误可能导致财务损失"
+    evidence: ["price-analysis.md", "promotion-analysis.md"]
+    confidence: "HIGH"
+
+  DEC-012:
+    decision_id: "DEC-012"
+    title: "Inventory Location 决策"
+    category: "ENGINEERING_EXECUTION"
+    current_reality: "库存位置管理不清晰，缺乏统一的位置管理"
+    existing_decision: "需要建立统一的库存位置管理"
+    expected_design: "建立清晰的库存位置管理模型"
+    question: "库存位置如何管理？如何支持多级位置？"
+    decision_type: "FOUNDATION"
+    status: "PENDING_ENGINEERING"
+    options:
+      - id: "A"
+        name: "简单位置"
+        description: "只支持一级位置，如仓库、货架"
+        pros: ["实现简单", "管理简单"]
+        cons: ["灵活性差", "不支持复杂场景"]
+      - id: "B"
+        name: "多级位置"
+        description: "支持多级位置，如仓库-区域-货架-层"
+        pros: ["灵活性高", "支持复杂场景"]
+        cons: ["实现复杂", "管理复杂"]
+      - id: "C"
+        name: "树形结构"
+        description: "使用树形结构管理位置，支持任意层级"
+        pros: ["扩展性强", "支持复杂层级"]
+        cons: ["实现复杂", "查询性能"]
+    recommended_option: "B"
+    recommendation_reason: "多级位置最符合餐饮业务需求，支持仓库-区域-货架的层级管理"
+    depends_on: ["DEC-001"]
+    blocks: ["库存管理", "仓位管理"]
+    unlocks: ["多级位置管理", "仓位优化"]
+    affected_foundations: ["InventoryLocation"]
+    affected_master_data: ["inventory_locations", "warehouses"]
+    affected_capabilities: ["位置管理", "库存管理", "仓位管理"]
+    affected_transactions: ["位置创建", "库存分配", "库存转移"]
+    affected_domains: ["Inventory"]
+    affected_tables: ["inventory_locations", "inventory", "warehouses"]
+    affected_apis: ["/api/v1/inventory-locations", "/api/v1/inventory"]
+    affected_pages: ["InventoryLocationList.vue", "InventoryList.vue"]
+    affected_dialogs: ["InventoryLocationForm.vue"]
+    requirements: ["REQ-027", "REQ-028"]
+    principles: ["单一职责", "开闭原则"]
+    root_causes: ["历史系统设计", "缺乏位置管理"]
+    remediation_candidates: ["建立多级位置", "重构库存管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构库存位置管理模型"
+    risk:
+      level: "MEDIUM"
+      description: "位置管理错误可能导致库存混乱"
+    evidence: ["inventory-analysis.md", "location-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 新增隐含决策 (IMPLICIT_DECISION)
+# ============================================================================
+  IMPLICIT-001:
+    decision_id: "IMPLICIT-001"
+    title: "Product/Food/Material Boundary 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "Product、Food、Material 三者边界不清晰"
+    existing_decision: "需要明确三者边界"
+    expected_design: "建立清晰的产品-菜品-物料边界模型"
+    question: "Product、Food、Material 的边界是什么？如何划分？"
+    decision_type: "BOUNDARY"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "按业务场景划分"
+        description: "根据业务场景划分边界，如销售、生产、采购"
+        pros: ["符合业务逻辑", "职责清晰"]
+        cons: ["边界可能重叠", "管理复杂"]
+      - id: "B"
+        name: "按数据模型划分"
+        description: "根据数据模型划分边界，如属性、关系、生命周期"
+        pros: ["数据一致性", "模型清晰"]
+        cons: ["可能脱离业务", "实现复杂"]
+      - id: "C"
+        name: "按组织结构划分"
+        description: "根据组织结构划分边界，如部门、团队、角色"
+        pros: ["管理简单", "职责明确"]
+        cons: ["可能不符合业务", "扩展性差"]
+    recommended_option: "A"
+    recommendation_reason: "按业务场景划分最符合领域驱动设计，边界清晰且职责明确"
+    depends_on: []
+    blocks: ["产品管理", "菜品管理", "物料管理"]
+    unlocks: ["统一产品视图", "业务流程优化"]
+    affected_foundations: ["Product", "Food", "Material"]
+    affected_master_data: ["products", "foods", "material_archives"]
+    affected_capabilities: ["产品管理", "菜品管理", "物料管理"]
+    affected_transactions: ["产品创建", "菜品创建", "物料创建"]
+    affected_domains: ["Product", "Inventory", "Procurement"]
+    affected_tables: ["products", "foods", "material_archives"]
+    affected_apis: ["/api/v1/products", "/api/v1/foods", "/api/v1/materials"]
+    affected_pages: ["ProductList.vue", "FoodList.vue", "MaterialList.vue"]
+    affected_dialogs: ["ProductForm.vue", "FoodForm.vue", "MaterialForm.vue"]
+    requirements: ["REQ-029", "REQ-030"]
+    principles: ["边界清晰", "职责明确"]
+    root_causes: ["业务演进", "历史系统设计"]
+    remediation_candidates: ["明确业务边界", "重构产品模型"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要明确三者边界并重构相关模型"
+    risk:
+      level: "HIGH"
+      description: "边界不清晰可能导致业务逻辑混乱"
+    evidence: ["business-object-map.md", "product-food-material-analysis.md"]
+    confidence: "HIGH"
+
+  IMPLICIT-002:
+    decision_id: "IMPLICIT-002"
+    title: "Order State Machine 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "订单状态机不清晰，缺乏统一的状态流转定义"
+    existing_decision: "需要建立统一的订单状态机"
+    expected_design: "建立清晰的订单状态流转模型"
+    question: "订单状态如何流转？需要哪些状态？"
+    decision_type: "STATE_MACHINE"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "简单状态机"
+        description: "只有基本状态：待支付、已支付、已完成、已取消"
+        pros: ["简单易懂", "实现简单"]
+        cons: ["灵活性差", "无法处理复杂场景"]
+      - id: "B"
+        name: "完整状态机"
+        description: "包含完整状态：待确认、已确认、制作中、待配送、配送中、已完成、已取消、已退款"
+        pros: ["功能完整", "支持复杂业务"]
+        cons: ["实现复杂", "维护成本高"]
+      - id: "C"
+        name: "可配置状态机"
+        description: "状态可配置，支持不同业务场景自定义状态"
+        pros: ["灵活性高", "可扩展"]
+        cons: ["实现复杂", "配置管理"]
+    recommended_option: "B"
+    recommendation_reason: "完整状态机最符合餐饮业务需求，支持从下单到完成的完整流程"
+    depends_on: []
+    blocks: ["支付集成", "配送管理"]
+    unlocks: ["订单全流程管理"]
+    affected_foundations: ["OrderState"]
+    affected_master_data: ["orders", "order_items"]
+    affected_capabilities: ["订单管理", "支付管理", "配送管理"]
+    affected_transactions: ["下单", "支付", "配送", "完成"]
+    affected_domains: ["Order", "Payment", "Delivery"]
+    affected_tables: ["orders", "order_items", "order_status_logs"]
+    affected_apis: ["/api/v1/orders", "/api/v1/order-status"]
+    affected_pages: ["OrderList.vue", "OrderDetail.vue"]
+    affected_dialogs: ["OrderStatusChange.vue"]
+    requirements: ["REQ-031", "REQ-032"]
+    principles: ["状态模式", "单一职责"]
+    root_causes: ["业务流程不清晰", "缺乏统一状态管理"]
+    remediation_candidates: ["重构订单流程", "统一状态管理"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要重构订单状态管理逻辑"
+    risk:
+      level: "LOW"
+      description: "状态机相对独立，影响范围可控"
+    evidence: ["business-data-flow-map.md", "order-flow-analysis.md"]
+    confidence: "HIGH"
+
+  IMPLICIT-003:
+    decision_id: "IMPLICIT-003"
+    title: "Amount/Money Contract 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "金额合约不清晰，缺乏统一的金额计算规范"
+    existing_decision: "需要建立统一的金额合约"
+    expected_design: "建立清晰的金额计算和精度控制模型"
+    question: "金额如何计算？精度如何控制？货币如何处理？"
+    decision_type: "CONTRACT"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "固定精度"
+        description: "使用 Decimal(10,2) 固定精度，统一处理"
+        pros: ["简单易懂", "实现简单"]
+        cons: ["精度限制", "扩展性差"]
+      - id: "B"
+        name: "可配置精度"
+        description: "精度可配置，支持不同货币和业务场景"
+        pros: ["灵活性高", "支持多币种"]
+        cons: ["实现复杂", "配置管理"]
+      - id: "C"
+        name: "分单位存储"
+        description: "以最小单位（分）存储，显示时转换"
+        pros: ["精度高", "计算准确"]
+        cons: ["转换复杂", "显示处理"]
+    recommended_option: "A"
+    recommendation_reason: "餐饮业务金额计算相对简单，固定精度足够满足需求"
+    depends_on: []
+    blocks: ["支付集成", "财务报表"]
+    unlocks: ["金额计算一致性"]
+    affected_foundations: ["Amount", "Money"]
+    affected_master_data: ["orders", "order_items", "payments", "purchases"]
+    affected_capabilities: ["金额计算", "支付处理", "财务统计"]
+    affected_transactions: ["支付", "退款", "对账"]
+    affected_domains: ["Order", "Payment", "Finance"]
+    affected_tables: ["orders", "order_items", "payments", "purchase_orders"]
+    affected_apis: ["/api/v1/payments", "/api/v1/finance"]
+    affected_pages: ["PaymentList.vue", "FinanceReport.vue"]
+    affected_dialogs: ["PaymentForm.vue"]
+    requirements: ["REQ-033", "REQ-034"]
+    principles: ["精度控制", "一致性"]
+    root_causes: ["缺乏统一金额合约", "历史系统精度不一致"]
+    remediation_candidates: ["统一金额计算", "建立金额合约"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要统一所有金额字段的精度和计算逻辑"
+    risk:
+      level: "HIGH"
+      description: "金额计算错误可能导致财务问题"
+    evidence: ["data-design-map.md", "financial-analysis.md"]
+    confidence: "HIGH"
+
+  IMPLICIT-004:
+    decision_id: "IMPLICIT-004"
+    title: "Data Ownership 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "数据所有权不明确，缺乏统一的数据归属管理"
+    existing_decision: "需要明确数据所有权和管理责任"
+    expected_design: "建立清晰的数据所有权模型"
+    question: "数据归谁所有？谁负责维护？谁有权访问？"
+    decision_type: "GOVERNANCE"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "部门所有"
+        description: "数据归部门所有，部门负责维护"
+        pros: ["职责清晰", "管理简单"]
+        cons: ["跨部门共享复杂", "数据孤岛"]
+      - id: "B"
+        name: "业务域所有"
+        description: "数据归业务域所有，域负责维护"
+        pros: ["领域驱动", "职责清晰"]
+        cons: ["跨域协作复杂", "边界划分"]
+      - id: "C"
+        name: "平台所有"
+        description: "数据归平台所有，统一管理"
+        pros: ["统一管理", "数据共享"]
+        cons: ["平台负担重", "响应慢"]
+    recommended_option: "B"
+    recommendation_reason: "业务域所有最符合领域驱动设计，职责清晰且支持领域自治"
+    depends_on: []
+    blocks: ["数据治理", "权限管理"]
+    unlocks: ["数据质量管理", "数据安全"]
+    affected_foundations: ["DataOwnership"]
+    affected_master_data: ["all_tables"]
+    affected_capabilities: ["数据治理", "权限管理", "数据质量"]
+    affected_transactions: ["数据创建", "数据修改", "数据删除"]
+    affected_domains: ["All"]
+    affected_tables: ["all_tables"]
+    affected_apis: ["/api/v1/data-governance"]
+    affected_pages: ["DataOwnership.vue"]
+    affected_dialogs: ["DataOwnerForm.vue"]
+    requirements: ["REQ-035", "REQ-036"]
+    principles: ["数据治理", "最小权限"]
+    root_causes: ["缺乏数据治理", "历史系统无数据归属"]
+    remediation_candidates: ["建立数据治理体系", "明确数据归属"]
+    migration_impact:
+      level: "MEDIUM"
+      description: "需要建立数据归属管理机制"
+    risk:
+      level: "MEDIUM"
+      description: "数据归属变更可能影响业务流程"
+    evidence: ["data-governance-framework.md", "data-lineage-analysis.md"]
+    confidence: "HIGH"
+
+  IMPLICIT-005:
+    decision_id: "IMPLICIT-005"
+    title: "Cross-Domain Access 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "跨域访问缺乏统一规范，存在直接数据库访问"
+    existing_decision: "需要建立跨域访问规范"
+    expected_design: "建立清晰的跨域访问模型"
+    question: "跨域访问应该如何实现？直接访问还是通过API？"
+    decision_type: "ARCHITECTURE"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "直接数据库访问"
+        description: "允许直接访问其他域的数据库表"
+        pros: ["性能高", "实现简单"]
+        cons: ["耦合度高", "维护困难"]
+      - id: "B"
+        name: "API 访问"
+        description: "通过 API 访问其他域的服务"
+        pros: ["松耦合", "可维护性好"]
+        cons: ["性能开销", "实现复杂"]
+      - id: "C"
+        name: "事件驱动"
+        description: "通过事件进行跨域通信"
+        pros: ["异步解耦", "可扩展性好"]
+        cons: ["最终一致性", "调试困难"]
+    recommended_option: "B"
+    recommendation_reason: "API 访问最符合微服务架构原则，保证松耦合和可维护性"
+    depends_on: []
+    blocks: ["数据一致性", "性能优化"]
+    unlocks: ["服务独立部署", "技术异构"]
+    affected_foundations: ["CrossDomainAccess"]
+    affected_master_data: ["all_tables"]
+    affected_capabilities: ["跨域查询", "数据聚合", "业务流程"]
+    affected_transactions: ["跨域操作", "数据同步"]
+    affected_domains: ["All"]
+    affected_tables: ["all_tables"]
+    affected_apis: ["all_apis"]
+    affected_pages: ["all_pages"]
+    affected_dialogs: ["all_dialogs"]
+    requirements: ["REQ-037", "REQ-038"]
+    principles: ["松耦合", "单一职责"]
+    root_causes: ["历史系统设计", "缺乏架构规范"]
+    remediation_candidates: ["建立API网关", "重构跨域访问"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要重构所有跨域访问逻辑"
+    risk:
+      level: "HIGH"
+      description: "可能影响系统性能和稳定性"
+    evidence: ["architecture-analysis.md", "cross-domain-access-analysis.md"]
+    confidence: "HIGH"
+
+  IMPLICIT-006:
+    decision_id: "IMPLICIT-006"
+    title: "Event Architecture 决策"
+    category: "IMPLICIT_DECISION"
+    current_reality: "事件架构不清晰，缺乏统一的事件定义和处理机制"
+    existing_decision: "需要建立统一的事件架构"
+    expected_design: "建立清晰的事件架构模型"
+    question: "事件如何定义？如何发布和订阅？如何保证可靠性？"
+    decision_type: "ARCHITECTURE"
+    status: "PENDING_IDENTIFICATION"
+    options:
+      - id: "A"
+        name: "同步事件"
+        description: "使用同步事件，直接调用处理"
+        pros: ["实现简单", "调试容易"]
+        cons: ["耦合度高", "可靠性差"]
+      - id: "B"
+        name: "异步事件"
+        description: "使用异步事件，通过消息队列处理"
+        pros: ["解耦性好", "可靠性高"]
+        cons: ["实现复杂", "最终一致性"]
+      - id: "C"
+        name: "事件溯源"
+        description: "使用事件溯源，保存所有事件历史"
+        pros: ["可审计", "可回溯"]
+        cons: ["存储开销大", "实现复杂"]
+    recommended_option: "B"
+    recommendation_reason: "异步事件最符合微服务架构，保证解耦性和可靠性"
+    depends_on: []
+    blocks: ["数据一致性", "系统监控"]
+    unlocks: ["事件驱动架构", "实时数据处理"]
+    affected_foundations: ["EventArchitecture"]
+    affected_master_data: ["events", "event_logs"]
+    affected_capabilities: ["事件处理", "消息队列", "实时数据"]
+    affected_transactions: ["事件发布", "事件订阅", "事件处理"]
+    affected_domains: ["All"]
+    affected_tables: ["events", "event_logs", "message_queues"]
+    affected_apis: ["/api/v1/events", "/api/v1/event-logs"]
+    affected_pages: ["EventMonitor.vue"]
+    affected_dialogs: ["EventConfig.vue"]
+    requirements: ["REQ-039", "REQ-040"]
+    principles: ["事件驱动", "最终一致性"]
+    root_causes: ["缺乏事件架构", "历史系统无事件机制"]
+    remediation_candidates: ["建立事件总线", "重构事件处理"]
+    migration_impact:
+      level: "HIGH"
+      description: "需要建立事件架构和消息队列"
+    risk:
+      level: "MEDIUM"
+      description: "事件处理可能影响系统性能"
+    evidence: ["event-architecture-analysis.md", "message-queue-analysis.md"]
+    confidence: "HIGH"
+
+# ============================================================================
+# 决策依赖关系
+# ============================================================================
+decision_dependencies:
+  critical_path:
+    - "DEC-001 → DEC-012 (Warehouse → Inventory Location)"
+    - "DEC-006 → DEC-001, DEC-004 (Product/Food/Material → Warehouse, Customer/Member)"
+    - "DEC-013 → DEC-014 (Authentication → Authorization)"
+  
+  blocking_relationships:
+    - decision: "DEC-001"
+      blocks: ["DEC-012"]
+      reason: "Warehouse 决策影响 Inventory Location 设计"
+    - decision: "DEC-006"
+      blocks: ["DEC-001", "DEC-004"]
+      reason: "Product/Food/Material 边界影响 Warehouse 和 Customer/Member 设计"
+    - decision: "DEC-013"
+      blocks: ["DEC-014"]
+      reason: "Authentication 决策影响 Authorization 设计"
+
+# ============================================================================
+# 决策优先级
+# ============================================================================
+decision_priority:
+  P0_CRITICAL:
+    - "DEC-001 (Warehouse)"
+    - "DEC-004 (Customer/Member)"
+    - "DEC-006 (Product/Food/Material)"
+    - "DEC-007 (Order State Machine)"
+    - "DEC-008 (Amount/Money)"
+    - "DEC-009 (Data Ownership)"
+  
+  P1_HIGH:
+    - "DEC-002 (Unit)"
+    - "DEC-003 (Payment Method)"
+    - "DEC-005 (Price)"
+    - "DEC-010 (Cross-Domain Access)"
+    - "DEC-011 (Event Architecture)"
+    - "DEC-012 (Inventory Location)"
+    - "DEC-013 (Authentication)"
+    - "DEC-014 (Authorization)"
+  
+  P2_MEDIUM:
+    - "IMPLICIT-001 (Product/Food/Material Boundary)"
+    - "IMPLICIT-002 (Order State Machine)"
+    - "IMPLICIT-003 (Amount/Money Contract)"
+    - "IMPLICIT-004 (Data Ownership)"
+    - "IMPLICIT-005 (Cross-Domain Access)"
+    - "IMPLICIT-006 (Event Architecture)"
+
+# ============================================================================
+# 决策状态统计
+# ============================================================================
+decision_statistics:
+  total_decisions: 20
+  confirmed_decisions: 4
+  pending_product_decisions: 2
+  pending_architecture_decisions: 2
+  pending_security_decisions: 2
+  pending_engineering_decisions: 4
+  pending_identification_decisions: 6
+  
+  by_priority:
+    P0_CRITICAL: 6
+    P1_HIGH: 8
+    P2_MEDIUM: 6
+  
+  by_status:
+    CONFIRMED: 4
+    PENDING_PRODUCT: 2
+    PENDING_ARCHITECTURE: 2
+    PENDING_SECURITY: 2
+    PENDING_ENGINEERING: 4
+    PENDING_IDENTIFICATION: 6
+
+# ============================================================================
+# 决策执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "P0 Critical 决策确认"
+    duration: "1-2 周"
+    decisions: ["DEC-001", "DEC-004", "DEC-006", "DEC-007", "DEC-008", "DEC-009"]
+    milestones:
+      - "产品负责人确认 DEC-001, DEC-004"
+      - "架构师确认 DEC-006, DEC-007, DEC-008, DEC-009"
+      - "建立决策执行跟踪机制"
+  
+  phase_2:
+    name: "P1 High 决策确认"
+    duration: "2-3 周"
+    decisions: ["DEC-002", "DEC-003", "DEC-005", "DEC-010", "DEC-011", "DEC-012", "DEC-013", "DEC-014"]
+    milestones:
+      - "开发团队确认 DEC-002, DEC-003, DEC-005, DEC-012"
+      - "架构师确认 DEC-010, DEC-011"
+      - "安全团队确认 DEC-013, DEC-014"
+      - "建立决策依赖关系跟踪"
+  
+  phase_3:
+    name: "P2 Medium 决策识别"
+    duration: "1-2 周"
+    decisions: ["IMPLICIT-001", "IMPLICIT-002", "IMPLICIT-003", "IMPLICIT-004", "IMPLICIT-005", "IMPLICIT-006"]
+    milestones:
+      - "识别所有隐含决策"
+      - "明确决策边界和关系"
+      - "建立决策执行路线图"
+
+# ============================================================================
+# 风险和缓解措施
+# ============================================================================
+risks_and_mitigations:
+  high_risk_decisions:
+    - decision: "DEC-008 (Amount/Money)"
+      risk: "金额计算错误可能导致财务问题"
+      mitigation: "建立金额合约，统一计算逻辑，增加审计日志"
+    - decision: "DEC-013 (Authentication)"
+      risk: "安全漏洞可能导致系统被攻击"
+      mitigation: "实施安全审计，定期渗透测试，建立安全规范"
+    - decision: "IMPLICIT-003 (Amount/Money Contract)"
+      risk: "金额合约不清晰可能导致财务混乱"
+      mitigation: "建立金额合约文档，统一计算标准，增加验证逻辑"
+  
+  medium_risk_decisions:
+    - decision: "DEC-001 (Warehouse)"
+      risk: "可能影响现有库存管理流程"
+      mitigation: "分阶段实施，增加回滚机制，充分测试"
+    - decision: "DEC-004 (Customer/Member)"
+      risk: "可能影响现有客户和会员管理流程"
+      mitigation: "数据迁移方案，兼容性测试，用户培训"
+    - decision: "DEC-010 (Cross-Domain Access)"
+      risk: "可能影响系统性能和稳定性"
+      mitigation: "性能测试，监控告警，降级方案"
+    - decision: "DEC-011 (Event Architecture)"
+      risk: "事件处理可能影响系统性能"
+      mitigation: "异步处理，消息队列，监控告警"
+    - decision: "IMPLICIT-001 (Product/Food/Material Boundary)"
+      risk: "边界不清晰可能导致业务逻辑混乱"
+      mitigation: "明确业务边界，建立规范，代码审查"
+    - decision: "IMPLICIT-004 (Data Ownership)"
+      risk: "数据归属变更可能影响业务流程"
+      mitigation: "渐进式变更，兼容性方案，用户培训"
+    - decision: "IMPLICIT-005 (Cross-Domain Access)"
+      risk: "可能影响系统性能和稳定性"
+      mitigation: "性能测试，监控告警，降级方案"
+    - decision: "IMPLICIT-006 (Event Architecture)"
+      risk: "事件处理可能影响系统性能"
+      mitigation: "异步处理，消息队列，监控告警"
+
+# ============================================================================
+# 决策验证标准
+# ============================================================================
+validation_criteria:
+  architecture_decisions:
+    - "所有架构决策符合微服务架构原则"
+    - "跨域访问通过 API 实现，无直接数据库访问"
+    - "事件架构支持异步处理和最终一致性"
+    - "认证授权符合安全最佳实践"
+  
+  product_decisions:
+    - "所有产品决策符合业务需求"
+    - "产品-菜品-物料边界清晰"
+    - "客户-会员关系明确"
+    - "订单状态机支持完整业务流程"
+  
+  engineering_decisions:
+    - "所有工程决策可实施"
+    - "单位管理支持多单位"
+    - "支付方式支持扩展"
+    - "价格管理支持策略"
+    - "库存位置支持多级管理"
+  
+  security_decisions:
+    - "认证策略符合安全要求"
+    - "授权模型支持细粒度控制"
+    - "数据访问符合最小权限原则"
+    - "安全漏洞得到及时修复"
+
+# ============================================================================
+# 文档引用
+# ============================================================================
+documentation_references:
+  - "foundation-map.md"
+  - "business-object-map.md"
+  - "data-design-map.md"
+  - "db-reality-map.md"
+  - "upstream-dependency-map.md"
+  - "cross-domain-coordination-matrix.md"
+  - "business-data-flow-map.md"
+  - "architecture-analysis.md"
+  - "security-analysis.md"
+  - "payment-analysis.md"
+  - "price-analysis.md"
+  - "inventory-analysis.md"
+  - "customer-analysis.md"
+  - "event-architecture-analysis.md"
+  - "message-queue-analysis.md"
+  - "data-governance-framework.md"
+  - "data-lineage-analysis.md"
+  - "product-food-material-analysis.md"
+  - "order-flow-analysis.md"
+  - "financial-analysis.md"
+  - "location-analysis.md"
+  - "promotion-analysis.md"
+  - "authorization-analysis.md"
+  - "authentication-analysis.md"
+  - "cross-domain-access-analysis.md"

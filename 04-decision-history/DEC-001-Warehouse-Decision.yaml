@@ -1,0 +1,397 @@
+# ============================================================================
+# DEC-001: Warehouse Decision
+# ============================================================================
+# 决策编号: DEC-001
+# 决策标题: Warehouse 管理模式
+# 决策类别: Foundation
+# 生成日期: 2026-09-09
+# 状态: OPEN
+# 优先级: P0 (阻断库存管理能力)
+# ============================================================================
+
+meta:
+  id: DEC-001
+  title: "Warehouse 对象归属与定义"
+  category: FOUNDATION
+  status: OPEN
+  priority: P0
+  blocking: true
+  generated_from:
+    - foundation-map.md §10
+    - db-reality-map.md §5
+    - business-object-map.md §3-4
+    - upstream-dependency-map.md §3, §5.1
+    - data-design-map.md §5.2 #12
+    - master-data-source-map.md §2.6
+
+# ============================================================================
+# 一、问题定义
+# ============================================================================
+question: |
+  Warehouse 到底是什么？
+  - 独立 Foundation Object（需要独立管理表和生命周期）
+  - Store Location（门店内的存储位置，属于 Store 属性）
+  - Inventory Location（库存仓位，属于 Inventory 属性）
+  - Other（其他形式：配置项、枚举、或隐含在其他对象中）
+
+# ============================================================================
+# 二、当前现实
+# ============================================================================
+current_reality:
+  truth_source: "无独立表 — 通过 inventory.warehouse_id 引用"
+  evidence:
+    - location: "db-reality-map.md §5"
+      finding: "inventory 表有 warehouse_id 字段，但无对应的独立 warehouse 表"
+    - location: "foundation-map.md §10"
+      finding: "Warehouse 标记为 MISSING FOUNDATION，Confidence = LOW"
+    - location: "master-data-source-map.md §2.6"
+      finding: "仓库信息未发现独立主表，可能复用 stores_new 或独立表"
+    - location: "data-design-map.md §5.2 #12"
+      finding: "缺失主源 — 仓库信息无独立 Canonical Source"
+    - location: "upstream-dependency-map.md §3"
+      finding: "Inventory 追溯链断裂于 Warehouse → Material，Warehouse 为 MISSING"
+    - location: "db-reality-map.md §3"
+      finding: "employees 表有 warehouseId 字段，表明仓库与员工有归属关系"
+  confidence: LOW
+  current_implementation:
+    - inventory.warehouseId 字段引用（无外键约束）
+    - employees.warehouseId 字段引用（无外键约束）
+    - inventory_locations.warehouseId 引用（仓位关联）
+    - 前端有 warehouseApi 调用 (GET /api/v1/warehouses)
+  problem_indicators:
+    - "无独立 warehouse 表，warehouse_id 可能是硬编码或配置项"
+    - "无法独立管理仓库属性（名称、地址、类型、状态）"
+    - "无法支持多仓库管理"
+    - "仓库间调拨缺乏主数据支撑"
+    - "库存盘点无法按仓库维度统计"
+
+# ============================================================================
+# 三、业务对象关系分析
+# ============================================================================
+relationship_analysis:
+  entities_that_depend_on_warehouse:
+    - entity: Inventory (库存)
+      relationship: "warehouseId → 仓库标识"
+      role: "库存归属仓库"
+      truth_source: "inventory.warehouse_id"
+      impact: "库存查询按仓库筛选，库存统计按仓库聚合"
+    - entity: StoreInventory (门店库存)
+      relationship: "隐含依赖 — 门店即仓库？"
+      role: "门店级库存存储"
+      truth_source: "store_inventory.store_id"
+      impact: "门店库存是否等同于 Warehouse 管理的仓库？"
+    - entity: Employee (员工)
+      relationship: "warehouseId → 归属仓库"
+      role: "员工工作地点"
+      truth_source: "employees.warehouse_id"
+      impact: "员工可能分配到仓库工作"
+    - entity: InventoryTransfer (库存调拨)
+      relationship: "fromWarehouseId / toWarehouseId"
+      role: "调拨源仓/目标仓"
+      truth_source: "inventory_transfer 表"
+      impact: "调拨需要明确的仓库主数据"
+    - entity: InventoryLocations (仓位)
+      relationship: "warehouseId → 仓库"
+      role: "仓位归属仓库"
+      truth_source: "inventory_locations.warehouse_id"
+      impact: "仓位管理依赖仓库主数据"
+    - entity: PurchaseStockin (采购入库)
+      relationship: "需要指定入库仓库"
+      role: "入库目的地"
+      truth_source: "business-data-flow-map.md §2.1"
+      impact: "收货确认需指定仓库"
+
+  entities_that_warehouse_depends_on:
+    - entity: Organization (组织)
+      relationship: "可能归属某个组织/部门"
+      role: "仓库组织归属"
+      type: "推断 (inferred)"
+    - entity: Store (门店)
+      relationship: "可能是 Store 的子概念"
+      role: "门店即仓库"
+      type: "待确认"
+
+  key_question: |
+    Warehouse 与 Store 的关系是什么？
+    - 场景A: 中央仓库（非门店）独立管理，用于采购入库/调拨
+    - 场景B: 每个门店即一个仓库（Store = Warehouse）
+    - 场景C: 仓库是 Store 的属性（Store 内部有多个存储区域）
+    - 场景D: 混合模式（中央仓 + 门店仓并存）
+
+# ============================================================================
+# 四、选项分析
+# ============================================================================
+options:
+  A_independent_table:
+    name: "创建 warehouses 独立表（Independent Foundation）"
+    description: "Warehouse 作为独立的 Foundation Object，拥有完整生命周期"
+    schema: |
+      CREATE TABLE warehouses (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(50) UNIQUE NOT NULL,       -- 仓库编码
+        name VARCHAR(100) NOT NULL,              -- 仓库名称
+        type VARCHAR(20) DEFAULT 'CENTRAL',      -- 类型: CENTRAL/STORE/VIRTUAL
+        organizationId BIGINT,                   -- 归属组织
+        address VARCHAR(200),                    -- 地址
+        contact VARCHAR(50),                     -- 联系人
+        phone VARCHAR(20),                       -- 联系电话
+        status INT DEFAULT 1,                    -- 状态: 1启用/0停用
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP
+      );
+    pros:
+      - "完整生命周期管理（CRUD + 状态）"
+      - "支持多仓库管理，可扩展"
+      - "仓库属性独立维护（名称、地址、类型）"
+      - "支持仓库间调拨、库存盘点按仓库统计"
+      - "inventory.warehouse_id 可建立外键约束"
+      - "与 Foundation 设计一致（独立 Truth Source）"
+    cons:
+      - "增加数据维护成本"
+      - "需要迁移现有 warehouse_id 数据"
+      - "需要更新所有引用 warehouse_id 的服务"
+    effort: MEDIUM
+    risk: LOW
+    affected_domains: [Inventory, Procurement, HR]
+    affected_objects: [inventory, employees, inventory_transfer, inventory_locations]
+    migration_needed: true
+    migration_complexity: MEDIUM
+
+  B_store_location:
+    name: "作为 Store 的存储位置（Store Attribute）"
+    description: "Warehouse 是 Store 的子概念，不独立存在"
+    schema: |
+      ALTER TABLE stores_new ADD COLUMN warehouse_type VARCHAR(20);
+      -- 或创建 store_locations 表
+      CREATE TABLE store_locations (
+        id BIGINT PRIMARY KEY,
+        storeId BIGINT REFERENCES stores_new(id),
+        locationType VARCHAR(20),  -- KITCHEN/STOREROOM/COLD_CHAIN
+        name VARCHAR(100),
+        ...
+      );
+    pros:
+      - "符合餐饮行业实际（门店即仓库）"
+      - "数据模型简单，无需额外主数据"
+      - "与现有 store_inventory 一致"
+    cons:
+      - "无法管理独立于门店的中央仓库"
+      - "采购入库场景（中央仓）无法表达"
+      - "仓库间调拨失去语义"
+    effort: LOW
+    risk: MEDIUM
+    affected_domains: [Inventory, Store]
+    migration_needed: false
+    limitation: "不支持中央仓库场景"
+
+  C_inventory_attribute:
+    name: "作为 Inventory 的仓位属性（Inventory Location）"
+    description: "Warehouse 是库存仓位的一部分，不独立存在"
+    schema: |
+      -- 复用 inventory_locations 表
+      -- inventory_locations.warehouse_id 改为 location_id
+      CREATE TABLE inventory_locations (
+        id BIGINT PRIMARY KEY,
+        locationCode VARCHAR(50) UNIQUE,
+        locationName VARCHAR(100),
+        locationType VARCHAR(20),  -- ZONE/AISLE/SHELF
+        storeId BIGINT,
+        ...
+      );
+    pros:
+      - "仓位管理粒度更细"
+      - "与 inventory_locations 表一致"
+    cons:
+      - "丢失仓库级别的管理能力"
+      - "inventory.warehouse_id 语义被破坏"
+      - "无法按仓库维度统计库存"
+    effort: LOW
+    risk: HIGH
+    affected_domains: [Inventory]
+    migration_needed: true
+    limitation: "丢失仓库级管理能力"
+
+  D_config_enum:
+    name: "作为配置项/枚举（Config / Enum）"
+    description: "Warehouse 不是业务对象，仅是配置值"
+    schema: |
+      -- 在 application.yml 或 database config 中定义
+      warehouse:
+        types:
+          - CENTRAL: "中央仓库"
+          - STORE: "门店仓库"
+          - COLD: "冷库"
+    pros:
+      - "最简单，无额外维护"
+      - "适用于固定数量的仓库"
+    cons:
+      - "无法独立维护仓库属性"
+      - "无法审计仓库变更历史"
+      - "扩展性差"
+      - "与 foundation-map.md 的 MISSING 标记一致"
+    effort: NONE
+    risk: HIGH
+    affected_domains: [Inventory]
+    migration_needed: false
+    limitation: "无法独立管理仓库，扩展性极差"
+
+  E_hybrid:
+    name: "混合模式（Central Warehouse + Store Location）"
+    description: "中央仓库独立管理，门店内存储位置作为 Store 属性"
+    schema: |
+      CREATE TABLE warehouses (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        type VARCHAR(20) DEFAULT 'CENTRAL',  -- 只用于中央仓
+        address VARCHAR(200),
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      -- 门店内存储位置仍在 stores_new 或 store_inventory 中
+    pros:
+      - "支持中央仓库独立管理"
+      - "门店内存储位置不增加复杂度"
+      - "符合餐饮行业实际（中央仓 + 门店仓）"
+    cons:
+      - "两套存储位置概念（warehouse + store location）"
+      - "inventory.warehouse_id 仅指向中央仓"
+      - "门店库存仍使用 store_inventory"
+    effort: MEDIUM
+    risk: LOW
+    affected_domains: [Inventory, Procurement]
+    migration_needed: true
+    recommendation_fit: "最符合当前业务场景"
+
+# ============================================================================
+# 五、影响分析
+# ============================================================================
+impact_analysis:
+  if_A_independent_table:
+    inventory_domain:
+      - "inventory.warehouse_id 建立外键 → warehouses.id"
+      - "库存查询按仓库筛选 (findByWarehouse)"
+      - "库存统计按仓库聚合"
+      - "库存调拨 fromWarehouseId / toWarehouseId 指向 warehouses"
+    procurement_domain:
+      - "采购入库 (purchase_stockins) 需指定入库仓库"
+      - "收货确认 (receipt_confirmation) 需指定仓库"
+      - "采购到货 (purchase_arrivals) 需指定仓库"
+    hr_domain:
+      - "employees.warehouseId 建立外键 → warehouses.id"
+      - "员工可分配到仓库工作"
+    traceability:
+      - "追溯码可关联到仓库维度"
+    reporting:
+      - "库存报表按仓库维度统计"
+      - "仓库间调拨报表"
+
+  if_B_store_location:
+    inventory_domain:
+      - "store_inventory 保持不变（门店即仓库）"
+      - "中央仓场景无法表达"
+      - "调拨只能在门店间进行"
+    limitation:
+      - "采购入库时如果中央仓不是门店，无法记录"
+
+  if_C_inventory_attribute:
+    inventory_domain:
+      - "inventory_locations 表增强"
+      - "warehouse_id 语义变为 location_id"
+      - "仓库级统计丧失"
+
+  if_D_config:
+    inventory_domain:
+      - "warehouse_id 保持为字符串或枚举值"
+      - "无法动态管理仓库"
+      - "硬编码在代码中"
+
+  if_E_hybrid:
+    inventory_domain:
+      - "中央仓: warehouses 表独立管理"
+      - "门店仓: 通过 store_inventory 隐含管理"
+      - "inventory.warehouse_id 仅用于中央仓"
+    procurement_domain:
+      - "采购入库指定中央仓库"
+      - "调拨从中央仓到门店"
+
+# ============================================================================
+# 六、数据流影响
+# ============================================================================
+data_flow_impact:
+  procurement_chain:
+    before: "收货确认 → inventory (warehouse_id 硬编码)"
+    after_A: "收货确认 → warehouses (查询) → inventory (FK 引用)"
+    after_E: "收货确认 → warehouses (查询中央仓) → inventory (FK 引用)"
+  inventory_chain:
+    before: "inventory.warehouse_id 无约束引用"
+    after_A: "inventory.warehouse_id → warehouses.id (FK 约束)"
+    after_E: "inventory.warehouse_id → warehouses.id (仅中央仓)"
+  transfer_chain:
+    before: "inventory_transfer.fromStoreId / toStoreId (门店间)"
+    after_A: "inventory_transfer.fromWarehouseId / toWarehouseId (仓库间)"
+    after_E: "inventory_transfer.fromWarehouseId / toWarehouseId (中央仓间)"
+
+# ============================================================================
+# 七、推荐方案
+# ============================================================================
+recommendation:
+  primary: E_hybrid
+  rationale: |
+    1. 符合餐饮行业实际：中央仓库（采购/调拨）+ 门店仓库（日常运营）
+    2. 最小改动：中央仓独立管理，门店仓保持现有 store_inventory 模式
+    3. 支持核心场景：采购入库、仓库间调拨、库存盘点
+    4. 扩展性好：未来可升级为全面的 Warehouse 管理
+  fallback: A_independent_table
+  fallback_condition: "如果业务需要仓库内仓位管理或复杂仓库层级"
+
+# ============================================================================
+# 八、执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "创建 warehouses 表"
+    tasks:
+      - "创建 warehouses 表（含 id, code, name, type, address, status）"
+      - "插入默认中央仓库数据"
+      - "更新 inventory.warehouse_id 引用"
+    duration: "2-3 天"
+  phase_2:
+    name: "更新服务层"
+    tasks:
+      - "创建 WarehouseService (CRUD)"
+      - "创建 WarehouseRepository"
+      - "更新 InventoryService 支持仓库查询"
+      - "更新 PurchaseStockinService 指定仓库"
+    duration: "3-5 天"
+  phase_3:
+    name: "前端适配"
+    tasks:
+      - "仓库管理页面 (WarehouseList.vue, WarehouseForm.vue)"
+      - "采购入库选择仓库"
+      - "库存查询按仓库筛选"
+    duration: "3-5 天"
+  total_effort: "8-13 人天"
+
+# ============================================================================
+# 九、验证标准
+# ============================================================================
+acceptance_criteria:
+  - "warehouses 表存在且有默认数据"
+  - "inventory.warehouse_id 可关联 warehouses.id"
+  - "采购入库可指定仓库"
+  - "库存查询可按仓库筛选"
+  - "库存统计可按仓库聚合"
+  - "仓库间调拨有明确的仓库标识"
+
+# ============================================================================
+# 十、证据引用
+# ============================================================================
+evidence:
+  - "foundation-map.md §10: Warehouse 标记为 MISSING FOUNDATION"
+  - "db-reality-map.md §5: inventory.warehouse_id 存在但无独立表"
+  - "data-design-map.md §5.2 #12: 缺失主源"
+  - "upstream-dependency-map.md §3: Inventory 追溯链断裂于 Warehouse"
+  - "upstream-dependency-map.md §5.1: Warehouse MISSING FOUNDATION 详细分析"
+  - "master-data-source-map.md §2.6: 仓库信息未发现独立主表"
+  - "cross-domain-coordination-matrix.md: Inventory 域需要 Warehouse 支撑"

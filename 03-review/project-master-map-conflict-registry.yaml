@@ -1,0 +1,604 @@
+# PROJECT-MASTER-MAP-CONSISTENCY-001 冲突注册表
+# 基于项目一致性分析生成的冲突清单
+
+meta:
+  id: PROJECT-MASTER-MAP-CONSISTENCY-001
+  version: "1.0.0"
+  created: "2026-09-09"
+  status: active
+  scope: project-master-map-consistency
+  description: >
+    项目主图一致性检查发现的冲突注册表。
+    涵盖统计数字、数据血缘、身份追踪、断裂链路、
+    Foundation分类及跨域所有权等方面的一致性问题。
+
+conflicts:
+  # ============ 统计数字冲突 ============
+  - id: CONFLICT-STAT-001
+    type: statistical_discrepancy
+    severity: high
+    category: statistics
+    files:
+      - docs/architecture/project-master-map/project-master-map.yaml
+      - docs/architecture/project-master-map/project-master-map-overview.md
+    conflict:
+      metric: page_count
+      value_a: "200+"
+      value_b: "170+"
+      discrepancy: 30+
+    description: >
+      Pages 统计数字存在显著差异。
+      主图文件声明 200+ 页面，而概览文档声称 170+，
+      差距超过 15%，影响数据可信度。
+    impact: |
+      - 架构文档权威性受损
+      - 依赖此数据的规划决策可能偏差
+      - 团队对文档准确性产生质疑
+    resolution:
+      action: verify_and_reconcile
+      priority: immediate
+      assignee: documentation-owner
+      deadline: 2026-09-16
+      steps:
+        - 逐一统计实际页面数量
+        - 确定权威数据源
+        - 更新所有引用文档
+
+  - id: CONFLICT-STAT-002
+    type: statistical_discrepancy
+    severity: medium
+    category: statistics
+    files:
+      - docs/architecture/project-master-map/project-master-map.yaml
+      - docs/architecture/project-master-map/project-master-map-overview.md
+    conflict:
+      metric: foundation_object_count
+      value_a: "15"
+      value_b: "19"
+      discrepancy: 4
+    description: >
+      Foundation Objects 统计不一致。
+      声称 15 个但实际列出 19 个，
+      差异可能导致对象识别不完整。
+    impact: |
+      - 基础对象清单不完整
+      - 影响后续架构分析的完整性
+    resolution:
+      action: audit_and_update
+      priority: high
+      assignee: architecture-owner
+      deadline: 2026-09-20
+      steps:
+        - 审计所有 Foundation Objects
+        - 确定哪些属于此分类
+        - 统一文档数字
+
+  # ============ Upstream/Downstream 闭合冲突 ============
+  - id: CONFLICT-USDS-001
+    type: upstream_downstream_gap
+    severity: high
+    category: data_flow
+    files:
+      - docs/architecture/project-master-map/data-lineage.md
+      - docs/architecture/project-master-map/domain-models.md
+    conflict:
+      source: Warehouse
+      target: Inventory
+      issue: "downstream 未明确声明"
+    description: >
+      Warehouse 到 Inventory 的数据流向未在 downstream 关系中明确声明。
+      Warehouse 数据变更应触发 Inventory 更新，但当前血缘图未体现此依赖。
+    impact: |
+      - 数据同步可能遗漏
+      - 影响库存准确性
+      - 违反数据一致性原则
+    resolution:
+      action: add_explicit_relationship
+      priority: immediate
+      assignee: data-architect
+      deadline: 2026-09-13
+      steps:
+        - 在 data-lineage.md 中添加 Warehouse → Inventory 关系
+        - 确认同步机制（事件/轮询/Webhook）
+        - 验证现有实现是否支持此流
+
+  # ============ Identity 追踪冲突 ============
+  - id: CONFLICT-ID-001
+    type: identity_tracking_gap
+    severity: critical
+    category: identity
+    files:
+      - docs/architecture/project-master-map/data-lineage.md
+      - docs/architecture/project-master-map/identity-tracking.md
+    conflict:
+      identity: productId
+      issue: "Wrong Identity 未在 Data Lineage 中提及"
+    description: >
+      productId 的 Wrong Identity 问题在 Data Lineage 中未被记录和追踪。
+      这意味着可能存在错误的身份映射影响数据一致性。
+    impact: |
+      - 数据关联错误可能导致业务逻辑异常
+      - 影响订单、库存等关键业务流程
+      - 追溯问题根源困难
+    resolution:
+      action: document_and_track
+      priority: immediate
+      assignee: data-quality-owner
+      deadline: 2026-09-12
+      steps:
+        - 在 identity-tracking.md 中记录 productId Wrong Identity
+        - 在 data-lineage.md 中添加此风险点
+        - 评估影响范围并制定修复计划
+
+  - id: CONFLICT-ID-002
+    type: identity_tracking_gap
+    severity: high
+    category: identity
+    files:
+      - docs/architecture/project-master-map/data-lineage.md
+      - docs/architecture/project-master-map/identity-tracking.md
+    conflict:
+      identity: warehouseId
+      issue: "Identity Loss 未在 Data Lineage 中追踪"
+    description: >
+      warehouseId 的 Identity Loss 问题未在 Data Lineage 中追踪，
+      可能导致仓库关联数据丢失或错乱。
+    impact: |
+      - 仓库相关数据可能丢失关联
+      - 影响仓储管理和物流追踪
+    resolution:
+      action: add_tracking_entry
+      priority: high
+      assignee: data-architect
+      deadline: 2026-09-15
+      steps:
+        - 在 identity-tracking.md 中添加 warehouseId Identity Loss 记录
+        - 在 data-lineage.md 中标记此风险点
+        - 评估当前系统中的实际影响
+
+  # ============ Broken Chain 重复冲突 ============
+  - id: CONFLICT-BC-001
+    type: broken_chain_overlap
+    severity: medium
+    category: broken_chains
+    files:
+      - docs/architecture/project-master-map/broken-chains.md
+    conflict:
+      chains: ["BC-001", "BC-004", "BC-005"]
+      overlap_type: content_similarity
+    description: >
+      Broken Chain BC-001、BC-004、BC-005 内容存在重叠，
+      可能指向相同或相似的断裂问题，需要合并或明确区分。
+    impact: |
+      - 问题追踪混乱
+      - 可能重复修复相同问题
+      - 影响问题管理效率
+    resolution:
+      action: analyze_and_consolidate
+      priority: medium
+      assignee: chain-analyst
+      deadline: 2026-09-22
+      steps:
+        - 对比 BC-001、BC-004、BC-005 的具体内容
+        - 判断是否为同一问题的不同表现
+        - 合并或明确区分各条目
+
+  - id: CONFLICT-BC-002
+    type: broken_chain_overlap
+    severity: medium
+    category: broken_chains
+    files:
+      - docs/architecture/project-master-map/broken-chains.md
+    conflict:
+      chains: ["BC-003", "BC-030"]
+      overlap_type: content_similarity
+    description: >
+      Broken Chain BC-003 与 BC-030 内容存在重叠，
+      可能描述相同的链路断裂问题。
+    impact: |
+      - 问题定义模糊
+      - 影响修复优先级判断
+    resolution:
+      action: review_and_merge
+      priority: medium
+      assignee: chain-analyst
+      deadline: 2026-09-22
+      steps:
+        - 详细对比 BC-003 和 BC-030
+        - 确定是否合并或保留差异
+        - 更新文档避免混淆
+
+  # ============ Missing Foundation 分类冲突 ============
+  - id: CONFLICT-MF-001
+    type: foundation_classification_ambiguity
+    severity: medium
+    category: foundation_classification
+    files:
+      - docs/architecture/project-master-map/foundation-objects.md
+      - docs/architecture/project-master-map/domain-models.md
+    conflict:
+      objects: ["Warehouse", "Unit", "PaymentMethod"]
+      question: "是否应归类为 Embedded/Config"
+    description: >
+      Warehouse、Unit、PaymentMethod 的 Foundation 分类不明确。
+      它们可能是独立的 Foundation Object，也可能是嵌入式或配置型对象。
+    impact: |
+      - 架构边界不清晰
+      - 影响对象职责划分
+      - 可能导致过度设计或设计不足
+    resolution:
+      action: classify_and_document
+      priority: high
+      assignee: domain-expert
+      deadline: 2026-09-18
+      steps:
+        - 评估每个对象的独立性
+        - 确定是否需要独立生命周期
+        - 明确分类并更新文档
+
+  - id: CONFLICT-MF-002
+    type: foundation_decision_required
+    severity: high
+    category: foundation_classification
+    files:
+      - docs/architecture/project-master-map/foundation-objects.md
+      - docs/architecture/project-master-map/domain-models.md
+    conflict:
+      object: Customer
+      question: "需要 Product Decision"
+    description: >
+      Customer 的 Foundation 分类需要产品层面的决策。
+      当前状态可能导致架构设计方向不明确。
+    impact: |
+      - 影响客户域的整体设计
+      - 可能需要重新评估域边界
+    resolution:
+      action: request_product_decision
+      priority: immediate
+      assignee: product-owner
+      deadline: 2026-09-14
+      steps:
+        - 收集产品需求和约束
+        - 组织架构评审会议
+        - 产出决策并更新文档
+
+  - id: CONFLICT-MF-003
+    type: foundation_classification_ambiguity
+    severity: medium
+    category: foundation_classification
+    files:
+      - docs/architecture/project-master-map/foundation-objects.md
+      - docs/architecture/project-master-map/domain-models.md
+    conflict:
+      object: Price
+      classification: "Embedded 模式"
+    description: >
+      Price 被识别为 Embedded 模式，需要确认此分类是否正确，
+      以及是否需要调整其在架构中的定位。
+    impact: |
+      - 影响价格相关的域设计
+      - 可能影响定价策略的灵活性
+    resolution:
+      action: verify_classification
+      priority: medium
+      assignee: domain-expert
+      deadline: 2026-09-20
+      steps:
+        - 评估 Price 的业务复杂度
+        - 确认 Embedded 模式是否合适
+        - 必要时调整分类
+
+  # ============ Cross-Domain Ownership 冲突 ============
+  - id: CONFLICT-XDO-001
+    type: ownership_ambiguity
+    severity: critical
+    category: cross_domain_ownership
+    files:
+      - docs/architecture/project-master-map/domain-models.md
+      - docs/architecture/project-master-map/data-lineage.md
+      - docs/architecture/project-master-map/ownership-matrix.md
+    conflict:
+      entity: Order
+      issue: "多端写入时主数据所有权不明确"
+    description: >
+      Order 实体在多个端（如 Web、App、API）都可能进行写入操作，
+      但主数据所有权未明确定义，可能导致数据冲突和不一致。
+    impact: |
+      - 数据冲突和覆盖风险
+      - 影响订单数据准确性
+      - 可能导致财务对账问题
+      - 违反数据一致性原则
+    resolution:
+      action: define_ownership_and_governance
+      priority: immediate
+      assignee: data-architect
+      deadline: 2026-09-11
+      steps:
+        - 明确 Order 的主数据源
+        - 定义写入冲突解决策略
+        - 在 ownership-matrix.md 中记录
+        - 评估并调整现有写入逻辑
+
+  # ============ MAP-META-CONFLICT 新增冲突 ============
+  - id: CONFLICT-META-001
+    type: statistical_discrepancy
+    severity: high
+    category: statistics
+    files:
+      - docs/architecture/project-master-map/project-master-map-summary.md
+      - docs/architecture/project-master-map/foundation-map.md
+      - docs/architecture/project-master-map/project-master-registry.yaml
+    conflict:
+      metric: foundation_object_count
+      value_a: "15 (summary 声称)"
+      value_b: "19 (foundation-map 实际列出)"
+      value_c: "18 (registry 实际列出)"
+      discrepancy: "3-4"
+    description: >
+      Foundation Objects 数量在三个文件中不一致。
+      summary 声称 15 个，但 foundation-map 实际列出 19 个，
+      registry 列出 18 个。summary 的 "12 VERIFIED + 2 PARTIAL +
+      3 MISSING + 2 UNKNOWN" 加总也是 19，与其声称的 15 矛盾。
+    impact: |
+      - 架构完整性评估不准确
+      - 缺失对象可能被遗漏
+    resolution:
+      action: unify_to_19
+      priority: immediate
+      assignee: documentation-owner
+      deadline: 2026-09-16
+      steps:
+        - 统一 Foundation Objects 数量为 19
+        - 更新 summary 中的数字和描述
+        - 确认 registry 与 foundation-map 对齐
+
+  - id: CONFLICT-META-002
+    type: object_coverage_gap
+    severity: high
+    category: object_coverage
+    files:
+      - docs/architecture/project-master-map/business-object-map.md
+      - docs/architecture/project-master-map/foundation-map.md
+      - docs/architecture/project-master-map/master-data-source-map.md
+    conflict:
+      business_object_map: 28
+      foundation_map: 19
+      master_data_source_map: 15
+      issue: "三张地图的对象覆盖范围不一致"
+    description: >
+      business-object-map 有 28 个对象但缺少 Foundation 级对象
+      (Supplier, Store, Employee, Member 等)；
+      foundation-map 有 19 个对象但缺少业务级对象
+      (Inventory, Order, Voucher 等)；
+      master-data-source-map 有 15 个对象但缺少财务对象。
+    impact: |
+      - 对象在多地图中重复定义或遗漏
+      - 维护成本增加，一致性难以保证
+    resolution:
+      action: define_coverage_rules
+      priority: high
+      assignee: architecture-owner
+      deadline: 2026-09-20
+      steps:
+        - 定义每张地图的对象收录规则
+        - 将 Supplier/Store/Employee/Member 等补充到 BOM
+        - 创建对象归属矩阵
+
+  - id: CONFLICT-META-003
+    type: statistical_discrepancy
+    severity: medium
+    category: statistics
+    files:
+      - docs/architecture/project-master-map/project-master-map-summary.md
+      - docs/architecture/project-master-map/project-master-map.md
+    conflict:
+      metric: page_count
+      value_a: "200+ (summary)"
+      value_b: "170+ (main map 关键指标)"
+      discrepancy: "30+"
+    description: >
+      Pages 统计数字存在差异。summary 声称 200+ 包含所有终端，
+      main map 关键指标写 170+ 仅含管理后台路由。
+      两者的统计口径不同但未明确标注。
+    impact: |
+      - 文档可信度降低
+      - 读者无法确认实际页面规模
+    resolution:
+      action: clarify_scope
+      priority: medium
+      assignee: documentation-owner
+      deadline: 2026-09-20
+      steps:
+        - 明确统计口径：路由数 vs 页面数
+        - 在两处标注统计范围
+        - 统一为一个权威数字
+
+  - id: CONFLICT-META-004
+    type: warehouse_status_conflict
+    severity: medium
+    category: foundation_status
+    files:
+      - docs/architecture/project-master-map/capability-readiness-map.md
+      - docs/architecture/project-master-map/foundation-map.md
+      - docs/architecture/project-master-map/project-master-registry.yaml
+    conflict:
+      entity: Warehouse
+      capability_readiness: "✅ READY"
+      foundation_map: "MISSING"
+      registry: "MISSING (confidence: LOW)"
+      issue: "Warehouse 状态在不同地图中矛盾"
+    description: >
+      capability-readiness-map 将 Warehouse 标为 ✅ READY
+      （因 inventory 表有 warehouse_id），但 foundation-map 和
+      registry 均标记为 MISSING（无独立表）。状态矛盾。
+    impact: |
+      - 架构理解混乱
+      - 可能误导开发决策
+    resolution:
+      action: unify_status
+      priority: medium
+      assignee: architecture-owner
+      deadline: 2026-09-20
+      steps:
+        - 统一 Warehouse 状态为 "MISSING — 无独立表"
+        - 更新 capability-readiness-map 为 ⚠️ PARTIAL
+
+  - id: CONFLICT-META-005
+    type: layer_definition_inconsistency
+    severity: medium
+    category: hierarchy
+    files:
+      - docs/architecture/project-master-map/upstream-dependency-map.md
+      - docs/architecture/project-master-map/downstream-impact-map.md
+      - docs/architecture/project-master-map/foundation-map.md
+    conflict:
+      upstream_layers: "Layer 0-3 (ROOT → Depends on ROOT → Layer 1 → Layer 2)"
+      downstream_layers: "Foundation → Capability → Transaction → Settlement → Reporting"
+      foundation_categories: "ROOT → VERIFIED → MISSING"
+      issue: "三张地图使用不同的层级定义体系"
+    description: >
+      upstream-dependency-map 使用 Layer 0-3 分层；
+      downstream-impact-map 使用 Foundation → Capability → Transaction；
+      foundation-map 使用 ROOT/VERIFIED/MISSING 分类。
+      三者语义不同但存在交叉，跨地图引用时可能混淆。
+    impact: |
+      - 跨地图引用时层级不一致
+      - 影响依赖分析准确性
+    resolution:
+      action: define_unified_hierarchy
+      priority: medium
+      assignee: architecture-owner
+      deadline: 2026-09-25
+      steps:
+        - 定义标准层级：Layer 0 (ROOT) → Layer 1 (Foundation) → Layer 2 (Business) → Layer 3 (Derived) → Layer 4 (Reporting)
+        - 更新所有地图以符合标准层级
+        - 在每张地图中标注所用层级体系
+
+  - id: CONFLICT-META-006
+    type: event_count_discrepancy
+    severity: low
+    category: statistics
+    files:
+      - docs/architecture/project-master-map/project-master-map-summary.md
+      - docs/architecture/project-master-map/project-master-registry.yaml
+    conflict:
+      metric: domain_event_count
+      summary: "22 领域事件"
+      registry: "10 命名事件"
+      discrepancy: "12"
+    description: >
+      summary 声称 22 个领域事件，registry 仅列出 10 个命名事件。
+      差异可能来自 registry 仅列出主要事件类，未包含所有事件。
+    impact: |
+      - 事件覆盖范围不清晰
+    resolution:
+      action: verify_and_reconcile
+      priority: low
+      assignee: documentation-owner
+      deadline: 2026-09-30
+      steps:
+        - 核实实际事件数量
+        - 更新 registry 补充缺失事件
+
+statistics:
+  total_conflicts: 16
+  by_severity:
+    critical: 2
+    high: 4
+    medium: 8
+    low: 2
+  by_type:
+    statistical_discrepancy: 4
+    upstream_downstream_gap: 1
+    identity_tracking_gap: 2
+    broken_chain_overlap: 2
+    foundation_classification_ambiguity: 2
+    foundation_decision_required: 1
+    ownership_ambiguity: 1
+    object_coverage_gap: 1
+    warehouse_status_conflict: 1
+    layer_definition_inconsistency: 1
+  by_category:
+    statistics: 4
+    data_flow: 1
+    identity: 2
+    broken_chains: 2
+    foundation_classification: 3
+    cross_domain_ownership: 1
+    object_coverage: 1
+    foundation_status: 1
+    hierarchy: 1
+
+priority_matrix:
+  immediate:
+    - CONFLICT-ID-001
+    - CONFLICT-XDO-001
+    - CONFLICT-USDS-001
+    - CONFLICT-MF-002
+    - CONFLICT-META-001
+    deadline: "2026-09-14"
+    description: "需在一周内解决的关键和紧急冲突"
+
+  high:
+    - CONFLICT-STAT-001
+    - CONFLICT-ID-002
+    - CONFLICT-MF-001
+    - CONFLICT-META-002
+    deadline: "2026-09-20"
+    description: "需在两周内解决的高优先级冲突"
+
+  medium:
+    - CONFLICT-STAT-002
+    - CONFLICT-BC-001
+    - CONFLICT-BC-002
+    - CONFLICT-MF-003
+    - CONFLICT-META-003
+    - CONFLICT-META-004
+    - CONFLICT-META-005
+    deadline: "2026-09-30"
+    description: "可在三周内解决的中等优先级冲突"
+
+  low:
+    - CONFLICT-META-006
+    deadline: "2026-10-07"
+    description: "可在四周内解决的低优先级冲突"
+
+processing_workflow:
+  steps:
+    - phase: immediate
+      name: "紧急处理"
+      duration: "2026-09-09 至 2026-09-14"
+      focus: "Critical 和紧急 High 冲突"
+      owners: ["data-architect", "product-owner", "data-quality-owner"]
+
+    - phase: high
+      name: "高优先级处理"
+      duration: "2026-09-14 至 2026-09-20"
+      focus: "High 优先级冲突"
+      owners: ["architecture-owner", "domain-expert"]
+
+    - phase: medium
+      name: "中等优先级处理"
+      duration: "2026-09-20 至 2026-09-30"
+      focus: "Medium 优先级冲突"
+      owners: ["chain-analyst", "domain-expert"]
+
+    - phase: verification
+      name: "验证与关闭"
+      duration: "2026-09-30 至 2026-10-07"
+      focus: "验证所有冲突已解决，更新文档"
+      owners: ["project-manager"]
+
+review_schedule:
+  - date: "2026-09-14"
+    type: checkpoint
+    focus: "Immediate 冲突处理状态"
+  - date: "2026-09-20"
+    type: checkpoint
+    focus: "High 冲突处理状态"
+  - date: "2026-09-30"
+    type: review
+    focus: "全部冲突处理状态"
+  - date: "2026-10-07"
+    type: final_review
+    focus: "冲突关闭确认"

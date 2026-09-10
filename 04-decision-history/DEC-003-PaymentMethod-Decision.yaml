@@ -1,0 +1,388 @@
+# ============================================================================
+# DEC-003: PaymentMethod Decision
+# ============================================================================
+# 决策编号: DEC-003
+# 决策标题: PaymentMethod 管理模式
+# 决策类别: Foundation
+# 生成日期: 2026-09-09
+# 状态: OPEN
+# 优先级: P1 (影响支付流程完整性)
+# ============================================================================
+
+meta:
+  id: DEC-003
+  title: "PaymentMethod 对象归属与定义"
+  category: FOUNDATION
+  status: OPEN
+  priority: P1
+  blocking: false
+  generated_from:
+    - foundation-map.md §17
+    - business-object-map.md §13-14
+    - upstream-dependency-map.md §5.3
+    - business-data-flow-map.md §2.3
+    - db-reality-map.md §8-9
+    - cross-domain-coordination-matrix.md §2.1
+
+# ============================================================================
+# 一、问题定义
+# ============================================================================
+question: |
+  PaymentMethod（支付方式）到底是什么？
+  - Master Data（主数据，需要独立管理表）
+  - Configuration（配置项，系统级配置）
+  - Enum（枚举，代码中硬编码）
+  - Finance Policy（财务策略，与支付渠道绑定）
+  - External Payment Provider（外部支付提供商，由第三方定义）
+
+# ============================================================================
+# 二、当前现实
+# ============================================================================
+current_reality:
+  truth_source: "无独立表 — 可能存储在 orders 或 payment 表字段中"
+  evidence:
+    - location: "foundation-map.md §17"
+      finding: "PaymentMethod 标记为 MISSING FOUNDATION，可能是枚举值"
+    - location: "business-data-flow-map.md §2.3"
+      finding: "PaymentDialog 中 paymentMethod 从 supplier.settlementMethod 推导"
+    - location: "db-reality-map.md §8"
+      finding: "orders 表有 payment_status 字段，但无 payment_method 字段"
+    - location: "db-reality-map.md §9"
+      finding: "payment 表记录付款信息，但无支付方式定义"
+    - location: "cross-domain-coordination-matrix.md"
+      finding: "支付方式影响 POS、Mini Program、Finance 多个域"
+  confidence: LOW
+  current_implementation:
+    known_payment_methods:
+      - "现金 (Cash)"
+      - "微信支付 (WeChat Pay)"
+      - "支付宝 (Alipay)"
+      - "会员支付 (Member Payment)"
+      - "银行卡 (Bank Card)"
+    storage_location: "可能在代码枚举中，或在 orders/payment 表的某个字段"
+    external_integrations:
+      - "微信支付 API (api-map.md §6)"
+      - "支付宝 API (api-map.md §6)"
+      - "会员余额支付 (member_points_log / recharge_record)"
+  problem_indicators:
+    - "支付方式定义分散，无统一管理"
+    - "新增支付方式需改代码"
+    - "不同门店可能支持不同支付方式，无法配置"
+    - "支付方式与财务科目映射不明确"
+    - "退款时支付方式的处理逻辑不清晰"
+
+# ============================================================================
+# 三、依赖关系分析
+# ============================================================================
+dependency_analysis:
+  dependencies_on_payment_method:
+    - domain: POS (收银终端)
+      entity: Order
+      relationship: "下单时选择支付方式"
+      impact: "POS 终端需展示可用支付方式"
+      evidence: "cross-domain-coordination-matrix.md §2.1: Order 的 POS 角色为 OWNER"
+    - domain: Mini Program (小程序)
+      entity: Order
+      relationship: "在线下单时选择支付方式"
+      impact: "小程序需集成微信/支付宝支付"
+      evidence: "cross-domain-coordination-matrix.md §2.1: Mini Program 为 WRITE"
+    - domain: Finance (财务管理)
+      entity: Payment (付款)
+      relationship: "付款记录需关联支付方式"
+      impact: "财务对账需按支付方式统计"
+      evidence: "business-data-flow-map.md §2.3: PaymentDialog 需要 paymentMethod"
+    - domain: Finance
+      entity: Receipt (收款)
+      relationship: "收款记录需关联支付方式"
+      impact: "收款对账需按支付方式分类"
+      evidence: "business-object-map.md §13: Receipt.Dependencies 包含 BankAccount"
+    - domain: Finance
+      entity: FundFlow (资金流水)
+      relationship: "资金流水需关联支付方式"
+      impact: "资金报表需按支付方式统计"
+      evidence: "business-object-map.md §12: FundFlow.Dependencies 包含 BankAccount"
+    - domain: Finance
+      entity: FinanceRecord (财务流水)
+      relationship: "财务记录需关联支付方式"
+      impact: "财务报表需按支付方式分类"
+      evidence: "business-object-map.md §11: FinanceRecord.Dependencies 包含 Voucher"
+    - domain: Marketing (营销)
+      entity: Member (会员)
+      relationship: "会员支付（余额/积分）是一种支付方式"
+      impact: "会员支付需与财务科目映射"
+      evidence: "foundation-map.md §13: Member.Dependencies 包含 RechargeService"
+    - domain: Refund (退款)
+      entity: Order (退款)
+      relationship: "退款需原路返回（对应原始支付方式）"
+      impact: "退款处理需知道原始支付方式"
+      evidence: "business-data-flow-map.md §3.1: OrderRefundEvent → 生成退款支出"
+    - domain: Reporting (报表)
+      entity: 多个
+      relationship: "报表需按支付方式分类统计"
+      impact: "收入报表、对账报表需按支付方式维度"
+      evidence: "upstream-dependency-map.md §4.2: 销售链路涉及支付"
+
+  what_depends_on_payment_method:
+    - "POS 终端的支付方式选择"
+    - "小程序的在线支付集成"
+    - "财务对账（按支付方式统计收入）"
+    - "资金流水（按支付方式分类）"
+    - "退款处理（原路返回）"
+    - "会员支付（余额/积分抵扣）"
+    - "支付渠道管理（微信/支付宝商户号）"
+
+# ============================================================================
+# 四、选项分析
+# ============================================================================
+options:
+  A_enum:
+    name: "保持枚举/硬编码（Enum）"
+    description: "支付方式作为代码中的枚举值"
+    schema: |
+      // Java 枚举
+      public enum PaymentMethod {
+        CASH("现金"),
+        WECHAT("微信支付"),
+        ALIPAY("支付宝"),
+        MEMBER("会员支付"),
+        BANK_CARD("银行卡")
+      }
+    pros:
+      - "最简单，无额外维护"
+      - "类型安全，编译时检查"
+      - "适用于固定支付方式集合"
+    cons:
+      - "新增支付方式需改代码并重新部署"
+      - "无法分门店配置不同支付方式"
+      - "支付方式与财务科目映射硬编码"
+      - "无法审计支付方式变更历史"
+      - "与 foundation-map.md 的 MISSING 标记一致"
+    effort: NONE
+    risk: MEDIUM
+    affected_domains: [POS, Finance, Marketing]
+    migration_needed: false
+    limitation: "无法动态扩展，不支持分门店配置"
+
+  B_independent_table:
+    name: "创建 payment_methods 独立表（Master Data）"
+    description: "PaymentMethod 作为独立的 Foundation Object"
+    schema: |
+      CREATE TABLE payment_methods (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(50) UNIQUE NOT NULL,       -- 支付方式编码
+        name VARCHAR(100) NOT NULL,             -- 支付方式名称
+        type VARCHAR(20),                       -- 类型: CASH/CARD/ONLINE/MEMBER
+        accountingSubjectId BIGINT,             -- 关联会计科目
+        externalProvider VARCHAR(50),           -- 外部支付提供商
+        config JSON,                            -- 配置信息（商户号等）
+        sortOrder INT DEFAULT 0,               -- 排序
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      -- 示例数据
+      -- (1, 'CASH', '现金', 'CASH', NULL, NULL, '{}', 1)
+      -- (2, 'WECHAT', '微信支付', 'ONLINE', 1001, 'WECHAT', '{"mchId":"xxx"}', 2)
+      -- (3, 'ALIPAY', '支付宝', 'ONLINE', 1002, 'ALIPAY', '{"pid":"xxx"}', 3)
+      -- (4, 'MEMBER', '会员支付', 'MEMBER', 1003, NULL, '{}', 4)
+    pros:
+      - "统一管理所有支付方式"
+      - "可动态添加/停用支付方式"
+      - "支持分门店配置"
+      - "支付方式与财务科目可配置"
+      - "支持外部支付提供商配置"
+      - "Foundation 设计一致"
+    cons:
+      - "增加数据维护成本"
+      - "查询时需要 JOIN payment_methods 表"
+      - "支付渠道配置增加运维复杂度"
+    effort: MEDIUM
+    risk: LOW
+    affected_domains: [POS, Finance, Marketing, Order]
+    affected_objects: [orders, payment, receipt, fund_flows]
+    migration_needed: true
+    migration_complexity: MEDIUM
+
+  C_configuration:
+    name: "作为系统配置项（Configuration）"
+    description: "支付方式作为系统配置，通过管理界面配置"
+    schema: |
+      -- 在 system_config 表中存储
+      CREATE TABLE system_config (
+        config_key VARCHAR(100) PRIMARY KEY,
+        config_value TEXT,
+        config_type VARCHAR(20)
+      );
+      INSERT INTO system_config VALUES
+        ('payment.methods', '[
+          {"code":"CASH","name":"现金","enabled":true},
+          {"code":"WECHAT","name":"微信支付","enabled":true,"mchId":"xxx"},
+          {"code":"ALIPAY","name":"支付宝","enabled":true,"pid":"xxx"}
+        ]', 'JSON');
+    pros:
+      - "可通过管理界面配置"
+      - "无需改代码"
+      - "可分门店配置不同支付方式"
+    cons:
+      - "配置管理增加运维复杂度"
+      - "配置分散在 JSON 中，查询不便"
+      - "无法审计配置变更历史"
+      - "配置与业务逻辑耦合"
+    effort: LOW
+    risk: MEDIUM
+    affected_domains: [POS, Finance]
+    migration_needed: false
+    limitation: "查询不便，配置与业务逻辑耦合"
+
+  D_external_provider:
+    name: "外部支付提供商定义（External Payment Provider）"
+    description: "支付方式由外部支付渠道定义，系统只记录引用"
+    schema: |
+      -- 只记录外部支付ID
+      CREATE TABLE order_payments (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        orderId BIGINT REFERENCES orders(id),
+        externalPaymentId VARCHAR(100),  -- 外部支付ID
+        provider VARCHAR(50),            -- WECHAT/ALIPAY
+        amount DECIMAL(10,2),
+        status VARCHAR(20),
+        rawResponse JSON                 -- 外部返回原始数据
+      );
+    pros:
+      - "与外部支付系统解耦"
+      - "支持多种支付渠道"
+      - "原始数据可追溯"
+    cons:
+      - "无法统一管理支付方式"
+      - "财务对账需额外逻辑"
+      - "现金支付无法表达"
+    effort: MEDIUM
+    risk: MEDIUM
+    affected_domains: [POS, Finance]
+    migration_needed: true
+    limitation: "不支持现金/会员等非外部支付方式"
+
+  E_hybrid:
+    name: "混合模式（独立表 + 外部提供商配置）"
+    description: "支付方式独立管理，同时支持外部提供商配置"
+    schema: |
+      CREATE TABLE payment_methods (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        type VARCHAR(20),                      -- CASH/CARD/ONLINE/MEMBER
+        accountingSubjectId BIGINT,             -- 关联会计科目
+        requiresExternal BOOLEAN DEFAULT false, -- 是否需要外部支付
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE payment_method_configs (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        paymentMethodId BIGINT REFERENCES payment_methods(id),
+        storeId BIGINT,                        -- 门店级配置（NULL=全局）
+        configKey VARCHAR(100),
+        configValue TEXT,
+        UNIQUE(paymentMethodId, storeId, configKey)
+      );
+    pros:
+      - "统一管理支付方式"
+      - "支持外部支付渠道配置"
+      - "支持分门店配置"
+      - "支付方式与财务科目可配置"
+    cons:
+      - "复杂度较高"
+      - "配置管理增加运维工作"
+    effort: HIGH
+    risk: LOW
+    affected_domains: [POS, Finance, Marketing, Order]
+    migration_needed: true
+    migration_complexity: HIGH
+
+# ============================================================================
+# 五、支付方式与财务科目映射
+# ============================================================================
+accounting_subject_mapping:
+  description: "每种支付方式需要映射到财务科目"
+  examples:
+    - payment_method: "现金"
+      accounting_subject: "1001-库存现金"
+    - payment_method: "微信支付"
+      accounting_subject: "1002-银行存款-微信"
+    - payment_method: "支付宝"
+      accounting_subject: "1003-银行存款-支付宝"
+    - payment_method: "会员支付"
+      accounting_subject: "2001-预收账款-会员储值"
+  impact: "支付方式变更可能影响财务科目映射"
+
+# ============================================================================
+# 六、退款与支付方式关系
+# ============================================================================
+refund_relationship:
+  description: "退款需原路返回到原始支付方式"
+  scenarios:
+    - payment_method: "微信支付"
+      refund_behavior: "调用微信退款API，原路返回"
+    - payment_method: "支付宝"
+      refund_behavior: "调用支付宝退款API，原路返回"
+    - payment_method: "现金"
+      refund_behavior: "现金退还"
+    - payment_method: "会员支付"
+      refund_behavior: "退回会员余额"
+  impact: "退款处理需知道原始支付方式"
+
+# ============================================================================
+# 七、推荐方案
+# ============================================================================
+recommendation:
+  primary: A_enum
+  short_term_rationale: |
+    1. 当前阶段支付方式固定（现金/微信/支付宝/会员/银行卡）
+    2. 无分门店配置需求
+    3. 改动最小，风险最低
+    4. 如果未来需要动态扩展，再升级为 B 或 E
+  conditions_to_upgrade:
+    - "需要动态添加新支付方式"
+    - "需要分门店配置不同支付方式"
+    - "支付方式与财务科目需要可配置"
+  long_term: E_hybrid
+  long_term_condition: "当支付渠道增多或需要分门店配置时"
+
+# ============================================================================
+# 八、执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "支付方式枚举标准化"
+    tasks:
+      - "统一支付方式枚举值定义"
+      - "明确每种支付方式的财务科目映射"
+      - "文档化支付方式使用规范"
+    duration: "1 天"
+    effort: "低"
+  phase_2:
+    name: "评估支付方式管理需求"
+    tasks:
+      - "调研分门店支付方式配置需求"
+      - "评估外部支付渠道集成复杂度"
+      - "确认是否需要独立 payment_methods 表"
+    duration: "1-2 天"
+    effort: "低"
+
+# ============================================================================
+# 九、验证标准
+# ============================================================================
+acceptance_criteria:
+  - "支付方式枚举值统一定义"
+  - "每种支付方式有明确的财务科目映射"
+  - "退款逻辑与支付方式正确关联"
+  - "POS/小程序/财务使用统一的支付方式"
+
+# ============================================================================
+# 十、证据引用
+# ============================================================================
+evidence:
+  - "foundation-map.md §17: PaymentMethod 标记为 MISSING FOUNDATION"
+  - "business-data-flow-map.md §2.3: PaymentDialog paymentMethod 从 supplier 推导"
+  - "db-reality-map.md §8: orders 表无 payment_method 字段"
+  - "cross-domain-coordination-matrix.md §2.1: 支付方式影响多个域"
+  - "upstream-dependency-map.md §5.3: PaymentMethod MISSING FOUNDATION"
+  - "api-map.md §6: 微信支付/支付宝 API 集成"

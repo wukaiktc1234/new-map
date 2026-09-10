@@ -1,0 +1,790 @@
+# ============================================================================
+# 食品溯源系统 - 项目主注册表
+# FoodTraceability Project Master Registry
+# ============================================================================
+# 生成日期: 2026-09-09
+# 版本: 1.0.0
+# ============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 项目元信息
+# ──────────────────────────────────────────────────────────────────────────────
+project:
+  name: FoodTraceability
+  version: 1.0.0
+  description: 食品溯源系统
+  tech_stack:
+    backend: Spring Boot 3.2.0
+    frontend: Vue.js 3.5.x
+    database: PostgreSQL 18
+    messaging: RabbitMQ
+    cache: Redis
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 模块注册表
+# ──────────────────────────────────────────────────────────────────────────────
+modules:
+  backend:
+    name: 后端服务
+    path: backend
+    type: service
+    description: 核心业务逻辑服务，提供RESTful API
+
+  frontend:
+    name: 管理后台
+    path: frontend
+    type: web
+    description: 后台管理界面，支持菜品、库存、财务等管理功能
+
+  frontend-pos:
+    name: POS收银终端
+    path: frontend-pos
+    type: web
+    description: 门店收银终端，处理点餐和结算
+
+  frontend-kitchen:
+    name: 后厨终端
+    path: frontend-kitchen
+    type: web
+    description: 后厨显示终端，显示订单和制作进度
+
+  employee-frontend:
+    name: 员工门户
+    path: employee-frontend
+    type: web
+    description: 员工自助门户，查看排班、薪资等信息
+
+  miniprogram:
+    name: 微信小程序
+    path: miniprogram
+    type: mobile
+    description: C端用户小程序，支持扫码溯源、会员功能
+
+  receiving-mobile:
+    name: 收货验收移动端
+    path: receiving-mobile
+    type: mobile
+    description: 收货验收专用移动端，支持扫码验收和质检
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 业务对象注册表
+# ──────────────────────────────────────────────────────────────────────────────
+business_objects:
+  food:
+    name: 菜品
+    description: 菜品信息管理，包含菜品属性、分类、价格等
+    modules: [backend, frontend, frontend-pos, miniprogram]
+    crud_ops: [create, read, update, delete, list]
+
+  material:
+    name: 物料
+    description: 原材料和食材信息，包含供应商、批次、保质期等
+    modules: [backend, frontend, receiving-mobile]
+    crud_ops: [create, read, update, delete, list]
+
+  inventory:
+    name: 库存
+    description: 中央仓库库存管理
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, delete, list, adjust]
+
+  store_inventory:
+    name: 门店库存
+    description: 门店级库存管理
+    modules: [backend, frontend, frontend-pos]
+    crud_ops: [create, read, update, delete, list, adjust]
+
+  order:
+    name: 订单
+    description: 订单信息，包含点餐、结算、退款等全流程
+    modules: [backend, frontend, frontend-pos, miniprogram]
+    crud_ops: [create, read, update, cancel, refund]
+
+  voucher:
+    name: 凭证
+    description: 财务凭证，记录经济业务
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, post, void]
+
+  payable:
+    name: 应付
+    description: 应付账款，记录采购应付款项
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, pay]
+
+  receivable:
+    name: 应收
+    description: 应收账款，记录销售应收款项
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, collect]
+
+  accounting_subject:
+    name: 科目
+    description: 会计科目，财务核算的基础
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, delete, list]
+
+  material_trace_code:
+    name: 物料追溯
+    description: 物料追溯码，实现从原料到菜品的全链路追溯
+    modules: [backend, frontend, receiving-mobile, miniprogram]
+    crud_ops: [create, read, trace]
+
+  finance_record:
+    name: 财务流水
+    description: 财务流水记录，反映资金变动
+    modules: [backend, frontend]
+    crud_ops: [create, read, list]
+
+  fund_flow:
+    name: 资金流水
+    description: 资金流动记录，包含收入和支出
+    modules: [backend, frontend]
+    crud_ops: [create, read, list]
+
+  receipt:
+    name: 收款
+    description: 收款记录
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, list]
+
+  payment:
+    name: 付款
+    description: 付款记录
+    modules: [backend, frontend]
+    crud_ops: [create, read, update, list]
+
+  tax_record:
+    name: 税
+    description: 税务记录，包含增值税、所得税等
+    modules: [backend, frontend]
+    crud_ops: [create, read, list]
+
+  invoice_reimbursement:
+    name: 报销
+    description: 发票报销管理
+    modules: [backend, frontend, employee-frontend]
+    crud_ops: [create, read, update, approve, reject]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 数据库表注册表
+# ──────────────────────────────────────────────────────────────────────────────
+database_tables:
+  # ── 权限模块 ──
+  permissions:
+    users:
+      description: 用户表
+      module: backend
+      primary_key: id
+      indexes: [username, phone, email, status]
+
+    roles:
+      description: 角色表
+      module: backend
+      primary_key: id
+      indexes: [code, name]
+
+    permissions:
+      description: 权限表
+      module: backend
+      primary_key: id
+      indexes: [code, parent_id]
+
+    user_roles:
+      description: 用户角色关联表
+      module: backend
+      primary_key: [user_id, role_id]
+      indexes: [user_id, role_id]
+
+    role_permissions:
+      description: 角色权限关联表
+      module: backend
+      primary_key: [role_id, permission_id]
+      indexes: [role_id, permission_id]
+
+  # ── 组织模块 ──
+  organization:
+    departments:
+      description: 部门表
+      module: backend
+      primary_key: id
+      indexes: [parent_id, code]
+
+    positions:
+      description: 职位表
+      module: backend
+      primary_key: id
+      indexes: [department_id, code]
+
+    stores_new:
+      description: 门店表
+      module: backend
+      primary_key: id
+      indexes: [code, area_id, status]
+
+  # ── 产品模块 ──
+  products:
+    foods:
+      description: 菜品表
+      module: backend
+      primary_key: id
+      indexes: [code, category_id, status]
+
+    food_categories:
+      description: 菜品分类表
+      module: backend
+      primary_key: id
+      indexes: [parent_id, code, sort_order]
+
+    dish_recipes:
+      description: 菜品配方表（BOM）
+      module: backend
+      primary_key: id
+      indexes: [food_id, material_id]
+
+    dish_combos:
+      description: 套餐组合表
+      module: backend
+      primary_key: id
+      indexes: [combo_id, food_id]
+
+  # ── 库存模块 ──
+  inventory:
+    inventory:
+      description: 中央仓库库存表
+      module: backend
+      primary_key: id
+      indexes: [material_id, warehouse_id, batch_no]
+
+    store_inventory:
+      description: 门店库存表
+      module: backend
+      primary_key: id
+      indexes: [store_id, material_id, batch_no]
+
+    inventory_transactions:
+      description: 库存流水表
+      module: backend
+      primary_key: id
+      indexes: [material_id, store_id, transaction_type, created_at]
+
+  # ── 采购模块 ──
+  procurement:
+    purchase_orders:
+      description: 采购订单表
+      module: backend
+      primary_key: id
+      indexes: [order_no, supplier_id, status, order_date]
+
+    purchase_stockins:
+      description: 采购入库表
+      module: backend
+      primary_key: id
+      indexes: [purchase_order_id, stockin_no, status]
+
+    suppliers:
+      description: 供应商表
+      module: backend
+      primary_key: id
+      indexes: [code, name, status]
+
+  # ── 财务模块 ──
+  finance:
+    finance_vouchers:
+      description: 财务凭证表
+      module: backend
+      primary_key: id
+      indexes: [voucher_no, period, status]
+
+    accounting_subjects:
+      description: 会计科目表
+      module: backend
+      primary_key: id
+      indexes: [code, parent_id, type]
+
+    payables:
+      description: 应付账款表
+      module: backend
+      primary_key: id
+      indexes: [supplier_id, status, due_date]
+
+    payment:
+      description: 付款记录表
+      module: backend
+      primary_key: id
+      indexes: [payment_no, payable_id, status]
+
+    receipt:
+      description: 收款记录表
+      module: backend
+      primary_key: id
+      indexes: [receipt_no, receivable_id, status]
+
+  # ── 订单模块 ──
+  orders:
+    orders:
+      description: 订单主表
+      module: backend
+      primary_key: id
+      indexes: [order_no, store_id, status, created_at]
+
+    order_items:
+      description: 订单明细表
+      module: backend
+      primary_key: id
+      indexes: [order_id, food_id]
+
+  # ── 营销模块 ──
+  marketing:
+    members:
+      description: 会员表
+      module: backend
+      primary_key: id
+      indexes: [phone, member_no, level_id]
+
+    member_level:
+      description: 会员等级表
+      module: backend
+      primary_key: id
+      indexes: [code, min_points]
+
+    coupon_template:
+      description: 优惠券模板表
+      module: backend
+      primary_key: id
+      indexes: [code, status, valid_start, valid_end]
+
+  # ── 溯源模块 ──
+  traceability:
+    material_trace_code:
+      description: 物料追溯码表
+      module: backend
+      primary_key: id
+      indexes: [trace_code, material_id, batch_no]
+
+    food_trace_code:
+      description: 菜品追溯码表
+      module: backend
+      primary_key: id
+      indexes: [trace_code, food_id, order_id]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API注册表
+# ──────────────────────────────────────────────────────────────────────────────
+apis:
+  auth:
+    prefix: /v1/auth
+    description: 认证授权接口
+    endpoints:
+      - POST /v1/auth/login
+      - POST /v1/auth/logout
+      - POST /v1/auth/refresh
+      - GET  /v1/auth/user-info
+      - PUT  /v1/auth/change-password
+
+  product_center:
+    prefix: /v1/product-center
+    description: 产品中心接口
+    endpoints:
+      - GET    /v1/product-center/foods
+      - POST   /v1/product-center/foods
+      - PUT    /v1/product-center/foods/{id}
+      - DELETE /v1/product-center/foods/{id}
+      - GET    /v1/product-center/food-categories
+      - GET    /v1/product-center/dish-recipes/{foodId}
+
+  orders:
+    prefix: /v1/orders
+    description: 订单管理接口
+    endpoints:
+      - GET    /v1/orders
+      - POST   /v1/orders
+      - GET    /v1/orders/{id}
+      - PUT    /v1/orders/{id}/status
+      - POST   /v1/orders/{id}/refund
+
+  inventory:
+    prefix: /v1/inventory
+    description: 库存管理接口
+    endpoints:
+      - GET    /v1/inventory
+      - POST   /v1/inventory/adjust
+      - GET    /v1/inventory/transactions
+      - GET    /v1/inventory/store/{storeId}
+
+  purchase:
+    prefix: /v1/purchase
+    description: 采购管理接口
+    endpoints:
+      - GET    /v1/purchase/orders
+      - POST   /v1/purchase/orders
+      - PUT    /v1/purchase/orders/{id}/approve
+      - POST   /v1/purchase/stockins
+      - GET    /v1/purchase/suppliers
+
+  finance:
+    prefix: /v1/finance
+    description: 财务管理接口
+    endpoints:
+      - GET    /v1/finance/vouchers
+      - POST   /v1/finance/vouchers
+      - POST   /v1/finance/vouchers/{id}/post
+      - GET    /v1/finance/accounting-subjects
+      - GET    /v1/finance/payables
+      - GET    /v1/finance/receipts
+
+  employees:
+    prefix: /v1/employees
+    description: HR员工管理接口
+    endpoints:
+      - GET    /v1/employees
+      - POST   /v1/employees
+      - PUT    /v1/employees/{id}
+      - GET    /v1/employees/{id}/salary
+      - POST   /v1/employees/attendance
+
+  devices:
+    prefix: /v1/devices
+    description: 设备管理接口
+    endpoints:
+      - GET    /v1/devices
+      - POST   /v1/devices/register
+      - PUT    /v1/devices/{id}/status
+      - GET    /v1/devices/{id}/logs
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 事件注册表
+# ──────────────────────────────────────────────────────────────────────────────
+events:
+  order:
+    OrderCreatedEvent:
+      description: 订单创建事件
+      payload: { orderId: string, storeId: string, totalAmount: decimal, items: array }
+      consumers: [inventory, kitchen-display, notification]
+
+    OrderCompletedEvent:
+      description: 订单完成事件
+      payload: { orderId: string, completedAt: datetime, totalAmount: decimal }
+      consumers: [finance, settlement, notification]
+
+    OrderRefundEvent:
+      description: 订单退款事件
+      payload: { orderId: string, refundAmount: decimal, reason: string }
+      consumers: [finance, inventory, notification]
+
+  procurement:
+    PurchaseStockInEvent:
+      description: 采购入库事件
+      payload: { purchaseOrderId: string, stockinId: string, items: array }
+      consumers: [inventory, finance, notification]
+
+    ReceiptConfirmationCompletedEvent:
+      description: 收货确认完成事件
+      payload: { receiptId: string, supplierId: string, totalAmount: decimal }
+      consumers: [finance, payable, notification]
+
+  hr:
+    SalaryPaidEvent:
+      description: 薪资发放事件
+      payload: { employeeId: string, amount: decimal, period: string }
+      consumers: [finance, notification]
+
+  settlement:
+    StoreDailySettlementCompletedEvent:
+      description: 门店日结完成事件
+      payload: { storeId: string, settleDate: date, totalRevenue: decimal, totalOrders: integer }
+      consumers: [finance, notification, report]
+
+  finance:
+    VoucherPostedEvent:
+      description: 凭证过账事件
+      payload: { voucherId: string, voucherNo: string, period: string }
+      consumers: [report, notification]
+
+    PaymentCompletedEvent:
+      description: 付款完成事件
+      payload: { paymentId: string, amount: decimal, payeeId: string }
+      consumers: [payable, notification]
+
+    BudgetExceededEvent:
+      description: 预算超支事件
+      payload: { departmentId: string, budgetCode: string, exceedAmount: decimal }
+      consumers: [notification, report]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 调度器注册表
+# ──────────────────────────────────────────────────────────────────────────────
+schedulers:
+  MonthlyClosingScheduler:
+    name: 月末结账
+    description: 每月最后一天执行月末结账，生成月度财务报表
+    cron: "0 0 23 L * ?"
+    module: backend
+    timeout: 3600
+    retry: 3
+
+  BudgetCheckScheduler:
+    name: 预算检查
+    description: 每日检查各部门预算使用情况，超支时触发告警
+    cron: "0 30 8 * * ?"
+    module: backend
+    timeout: 600
+    retry: 2
+
+  AutoBackupScheduler:
+    name: 自动备份
+    description: 每日凌晨执行数据库自动备份
+    cron: "0 0 2 * * ?"
+    module: backend
+    timeout: 7200
+    retry: 1
+
+  OrderTimeoutTask:
+    name: 超时订单取消
+    description: 定时检查并取消超时未支付的订单
+    cron: "0 */5 * * * ?"
+    module: backend
+    timeout: 300
+    retry: 2
+
+  DailySettlementTask:
+    name: 日结对账
+    description: 每日营业结束后执行门店日结对账
+    cron: "0 0 23 * * ?"
+    module: backend
+    timeout: 1800
+    retry: 3
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Foundation 对象注册表 (MAP-002)
+# ──────────────────────────────────────────────────────────────────────────────
+foundation_objects:
+  organization:
+    name: 组织
+    status: ROOT
+    truth_source: enterprise_config
+    description: 企业组织信息，所有业务的根节点
+    dependencies: []
+    consumers: [store, department, employee, role, permission]
+    confidence: HIGH
+
+  store:
+    name: 门店
+    status: VERIFIED
+    truth_source: stores_new
+    description: 门店信息，业务执行的物理位置
+    dependencies: [organization]
+    consumers: [inventory, order, purchase, finance, employee]
+    confidence: HIGH
+
+  department:
+    name: 部门
+    status: VERIFIED
+    truth_source: departments
+    description: 组织架构中的部门
+    dependencies: [organization]
+    consumers: [employee, position, approval]
+    confidence: HIGH
+
+  employee:
+    name: 员工
+    status: VERIFIED
+    truth_source: employees
+    description: 企业员工信息
+    dependencies: [organization, department, position]
+    consumers: [schedule, attendance, salary, order]
+    confidence: HIGH
+
+  position:
+    name: 职位
+    status: VERIFIED
+    truth_source: positions
+    description: 职位定义
+    dependencies: [department]
+    consumers: [employee, salary]
+    confidence: HIGH
+
+  role:
+    name: 角色
+    status: ROOT
+    truth_source: roles
+    description: 权限角色定义
+    dependencies: []
+    consumers: [permission, user_role, data_scope]
+    confidence: HIGH
+
+  permission:
+    name: 权限
+    status: ROOT
+    truth_source: permissions
+    description: 系统权限定义
+    dependencies: []
+    consumers: [role_permission, api_access]
+    confidence: HIGH
+
+  category:
+    name: 分类
+    status: ROOT
+    truth_source: food_categories, material_categories
+    description: 产品和物料分类体系
+    dependencies: []
+    consumers: [food, material, inventory]
+    confidence: HIGH
+
+  food:
+    name: 菜品
+    status: VERIFIED
+    truth_source: foods
+    description: 菜品信息，销售的基本单位
+    dependencies: [category, material]
+    consumers: [order, inventory, menu, recipe]
+    confidence: HIGH
+
+  material:
+    name: 物料
+    status: VERIFIED
+    truth_source: material_archives
+    description: 原材料和食材信息
+    dependencies: [category, supplier]
+    consumers: [inventory, recipe, purchase, traceability]
+    confidence: HIGH
+
+  supplier:
+    name: 供应商
+    status: VERIFIED
+    truth_source: suppliers
+    description: 供应商信息
+    dependencies: [organization]
+    consumers: [purchase, material, payable]
+    confidence: HIGH
+
+  warehouse:
+    name: 仓库
+    status: MISSING
+    truth_source: null
+    description: 仓库信息（缺失，使用 store 兼任）
+    dependencies: [organization]
+    consumers: [inventory, purchase]
+    confidence: LOW
+
+  unit:
+    name: 单位
+    status: MISSING
+    truth_source: null
+    description: 计量单位（缺失，硬编码在代码中）
+    dependencies: []
+    consumers: [food, material, inventory]
+    confidence: LOW
+
+  payment_method:
+    name: 支付方式
+    status: MISSING
+    truth_source: null
+    description: 支付方式定义（缺失，硬编码在代码中）
+    dependencies: []
+    consumers: [order, payment, receipt]
+    confidence: LOW
+
+  customer:
+    name: 客户
+    status: MISSING
+    truth_source: null
+    description: 客户信息（缺失，使用 member 兼任）
+    dependencies: []
+    consumers: [order, receivable]
+    confidence: LOW
+
+  price:
+    name: 价格
+    status: MISSING
+    truth_source: null
+    description: 价格体系（缺失，分散在多个表中）
+    dependencies: [food, material]
+    consumers: [order, purchase, inventory]
+    confidence: LOW
+
+  accounting_subject:
+    name: 会计科目
+    status: ROOT
+    truth_source: accounting_subjects
+    description: 会计科目体系，财务核算的基础
+    dependencies: []
+    consumers: [voucher, finance_record, balance]
+    confidence: HIGH
+
+  bank_account:
+    name: 银行账户
+    status: ROOT
+    truth_source: bank_accounts
+    description: 银行账户信息
+    dependencies: [organization]
+    consumers: [payment, receipt, fund_flow]
+    confidence: HIGH
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 跨域协调矩阵 (MAP-002)
+# ──────────────────────────────────────────────────────────────────────────────
+cross_domain_coordination:
+  management_core:
+    name: Management Core
+    role: OWNER
+    owns: [food, material, inventory, purchase, finance, employee, store]
+    reads: [order, member]
+    writes: [all]
+    event_consumers: [order_completed, purchase_stockin, salary_paid]
+
+  pos:
+    name: POS
+    role: CONSUMER
+    owns: [orders_legacy]
+    reads: [food, store_inventory, member]
+    writes: [orders_legacy, order_items_legacy]
+    event_consumers: [order_created]
+
+  kitchen:
+    name: Kitchen
+    role: CONSUMER
+    owns: []
+    reads: [order, food]
+    writes: [kitchen_order_status]
+    event_consumers: [order_created]
+
+  employee:
+    name: Employee
+    role: CONSUMER
+    owns: []
+    reads: [schedule, attendance, salary, knowledge]
+    writes: [attendance, leave_request, approval]
+    event_consumers: [schedule_published]
+
+  miniprogram:
+    name: Mini Program
+    role: CONSUMER
+    owns: []
+    reads: [food, order, member, coupon]
+    writes: [order, member]
+    event_consumers: [order_created]
+
+  receiving_mobile:
+    name: Receiving Mobile
+    role: CONSUMER
+    owns: []
+    reads: [purchase_order, material, supplier]
+    writes: [receipt_confirmation, quality_check]
+    event_consumers: [purchase_order_created]
+
+  inventory:
+    name: Inventory
+    role: DOMAIN
+    owns: [inventory, store_inventory, inventory_transactions]
+    reads: [material, warehouse, store]
+    writes: [inventory_adjust, inventory_transfer]
+    event_consumers: [purchase_stockin, order_completed]
+
+  finance:
+    name: Finance
+    role: DOMAIN
+    owns: [voucher, payable, receivable, accounting_subject, fund_flow]
+    reads: [order, purchase, payment, receipt]
+    writes: [voucher, finance_record, fund_flow]
+    event_consumers: [order_completed, purchase_stockin, salary_paid, store_daily_settlement]

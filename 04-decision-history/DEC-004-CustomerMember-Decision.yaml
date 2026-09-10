@@ -1,0 +1,398 @@
+# ============================================================================
+# DEC-004: Customer/Member Decision
+# ============================================================================
+# 决策编号: DEC-004
+# 决策标题: Customer 与 Member 的关系
+# 决策类别: Foundation
+# 生成日期: 2026-09-09
+# 状态: OPEN
+# 优先级: P1 (影响客户管理和财务应收)
+# ============================================================================
+
+meta:
+  id: DEC-004
+  title: "Customer 与 Member 的边界关系"
+  category: FOUNDATION
+  status: OPEN
+  priority: P1
+  blocking: false
+  generated_from:
+    - foundation-map.md §13, §18
+    - business-object-map.md §5, §8, §13
+    - upstream-dependency-map.md §2, §7, §10
+    - cross-domain-coordination-matrix.md §2.1
+    - db-reality-map.md §9
+
+# ============================================================================
+# 一、问题定义
+# ============================================================================
+question: |
+  Customer（客户）与 Member（会员）的关系是什么？
+  - Customer = Member（合并：所有客户都是会员）
+  - Customer ≠ Member（分离：客户和会员是两个独立概念）
+  - Customer ⊂ Member（子集：客户是会员的一部分）
+  - Customer ⊃ Member（超集：会员是客户的子集）
+  - Other（其他关系）
+
+# ============================================================================
+# 二、当前现实
+# ============================================================================
+current_reality:
+  truth_source:
+    member: "members 表 (VERIFIED)"
+    customer: "无独立表 — 可能通过 members 表或 orders.customer_id 引用"
+  evidence:
+    - location: "foundation-map.md §13"
+      finding: "Member 为 VERIFIED Foundation，truth_source = members 表"
+    - location: "foundation-map.md §18"
+      finding: "Customer 为 UNKNOWN，无独立表，可能与 Member 合并"
+    - location: "business-object-map.md §5"
+      finding: "Order.Dependencies 包含 Customer（而非 Member）"
+    - location: "business-object-map.md §8"
+      finding: "Receivable.Dependencies 包含 Customer（而非 Member）"
+    - location: "upstream-dependency-map.md §2"
+      finding: "Order Input 包含 Customer，Source 为 members 表"
+    - location: "upstream-dependency-map.md §7"
+      finding: "Receivable Input 包含 Customer，Source 为 members 表"
+    - location: "db-reality-map.md §9"
+      finding: "members 表为会员主表，无独立 customers 表"
+  confidence: LOW
+  current_implementation:
+    orders:
+      field: "customerId"
+      references: "members.id"
+      nullable: "待确认"
+      note: "订单关联会员，非会员订单 customerId 可能为 NULL"
+    receivables:
+      field: "customerId"
+      references: "members.id"
+      note: "应收关联会员"
+    members:
+      table: "members"
+      status: "VERIFIED"
+      fields: ["id", "name", "phone", "memberLevelId", "storeId"]
+      note: "会员主表，包含会员等级、积分、优惠券等"
+  problem_indicators:
+    - "非会员客户（散客）下单时 customerId 如何处理？"
+    - "应收账款是否只能关联会员？散客如何处理？"
+    - "Customer 和 Member 语义不同但指向同一表"
+    - "业务对象地图中 Dependency 使用 Customer 但实际指向 Member"
+
+# ============================================================================
+# 三、Customer 与 Member 语义分析
+# ============================================================================
+semantic_analysis:
+  customer_definition: |
+    Customer（客户）：与企业有交易关系的任何实体。
+    - 可以是个人或企业
+    - 可以是一次性交易（散客）
+    - 可以是长期合作（会员）
+    - 核心属性：交易记录、应收账款
+  member_definition: |
+    Member（会员）：注册并加入会员体系的客户。
+    - 必须注册（手机号/微信）
+    - 享受会员权益（积分、优惠、等级）
+    - 核心属性：会员等级、积分、优惠券、储值
+  relationship_analysis:
+    option_A: "Customer = Member"
+      meaning: "所有客户必须是会员，散客不存在"
+      scenario: "纯会员制企业（如健身房、美容院）"
+      fit: "不适合餐饮行业（散客是主要客源）"
+    option_B: "Customer ≠ Member"
+      meaning: "客户和会员是两个独立概念"
+      scenario: "需要同时管理散客和会员"
+      fit: "可能增加复杂度（两套客户信息）"
+    option_C: "Customer ⊂ Member"
+      meaning: "客户是会员的一部分"
+      scenario: "所有客户都是会员"
+      fit: "同 option_A"
+    option_D: "Customer ⊃ Member"
+      meaning: "会员是客户的子集"
+      scenario: "客户是大概念，会员是其中一类"
+      fit: "最符合餐饮行业实际"
+      implementation: "Customer 作为通用概念，Member 作为特殊化"
+
+# ============================================================================
+# 四、业务场景分析
+# ============================================================================
+business_scenarios:
+  scenario_1_walk_in:
+    name: "散客到店消费"
+    description: "非会员客户到店点餐、支付、离开"
+    current_behavior: "orders.customerId = NULL 或临时客户ID"
+    problems:
+      - "无法关联散客的消费记录"
+      - "散客的应收账款无法管理"
+      - "散客的消费分析无法进行"
+    ideal_behavior: |
+      散客创建临时客户记录（或匿名客户），
+      订单关联此客户ID，但不强制注册会员。
+
+  scenario_2_member_order:
+    name: "会员下单"
+    description: "会员通过 POS/小程序下单"
+    current_behavior: "orders.customerId = members.id"
+    problems:
+      - "会员信息完整（积分、等级、优惠）"
+    ideal_behavior: "订单关联会员ID，享受会员权益"
+
+  scenario_3_member_recharge:
+    name: "会员储值/充值"
+    description: "会员充值储值金"
+    current_behavior: "recharge_record 关联 members.id"
+    problems:
+      - "储值金使用记录完整"
+    ideal_behavior: "充值记录关联会员ID"
+
+  scenario_4_receivable:
+    name: "应收账款管理"
+    description: "企业间赊账交易"
+    current_behavior: "receivables.customerId 关联 members.id"
+    problems:
+      - "企业客户不是会员，无法关联"
+      - "应收账款无法按客户维度管理"
+    ideal_behavior: |
+      应收账款应关联通用的 Customer 概念，
+      而非强制关联 Member。
+
+  scenario_5_mini_program:
+    name: "小程序下单"
+    description: "微信小程序在线下单"
+    current_behavior: "小程序用户关联 members 表"
+    problems:
+      - "小程序用户可能未注册会员"
+      - "游客模式如何处理？"
+    ideal_behavior: |
+      小程序用户可以是游客（临时客户）或会员，
+      下单时可选择注册会员或以游客身份下单。
+
+# ============================================================================
+# 五、选项分析
+# ============================================================================
+options:
+  A_merge:
+    name: "Customer = Member（合并）"
+    description: "所有客户都是会员，散客不存在或强制注册"
+    schema: |
+      -- 保持现状
+      orders.customerId → members.id (FK)
+      receivables.customerId → members.id (FK)
+      -- 散客处理：强制注册临时会员
+    pros:
+      - "数据模型最简单"
+      - "无需额外维护"
+      - "会员体系完整"
+    cons:
+      - "散客无法独立存在"
+      - "强制注册影响用户体验"
+      - "应收账款只能关联会员"
+      - "与业务对象地图的 Customer 语义不一致"
+    effort: NONE
+    risk: MEDIUM
+    affected_domains: [Order, Finance, Marketing, Mini Program]
+    migration_needed: false
+    limitation: "散客场景无法处理"
+
+  B_separate:
+    name: "Customer 独立于 Member（分离）"
+    description: "客户和会员是两个独立概念，各自有独立表"
+    schema: |
+      CREATE TABLE customers (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100),
+        phone VARCHAR(20),
+        type VARCHAR(20),           -- INDIVIDUAL/ENTERPRISE
+        source VARCHAR(20),         -- WALK_IN/ONLINE/PHONE
+        storeId BIGINT,
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      -- Member 保持不变
+      -- 订单关联 customers 而非 members
+      ALTER TABLE orders ADD COLUMN customerId BIGINT REFERENCES customers(id);
+      ALTER TABLE orders ADD COLUMN memberId BIGINT REFERENCES members(id);
+    pros:
+      - "支持散客和会员两种模式"
+      - "客户信息完整（来源、类型）"
+      - "应收账款可关联任意客户"
+      - "与业务对象地图的 Customer 语义一致"
+    cons:
+      - "增加数据复杂度"
+      - "需维护两套客户信息"
+      - "客户和会员可能重复"
+      - "迁移成本高"
+    effort: HIGH
+    risk: MEDIUM
+    affected_domains: [Order, Finance, Marketing, Mini Program]
+    migration_needed: true
+    migration_complexity: HIGH
+
+  C_alias_view:
+    name: "Customer 为 Member 的别名视图（Alias View）"
+    description: "保持 Member 为主表，Customer 作为逻辑视图"
+    schema: |
+      -- 保持 members 表不变
+      -- 创建 customers 视图
+      CREATE VIEW customers AS
+      SELECT id, name, phone, 'MEMBER' as type, storeId, status
+      FROM members;
+      -- 散客也插入 members 表（标记为 GUEST）
+      ALTER TABLE members ADD COLUMN memberType VARCHAR(20) DEFAULT 'MEMBER';
+      -- GUEST: 散客, MEMBER: 会员
+    pros:
+      - "保持合并，但提供客户视角"
+      - "数据模型简单"
+      - "散客可作为 GUEST 类型存储"
+    cons:
+      - "散客仍占用 members 表"
+      - "members 表语义被扩展（不再是纯会员）"
+      - "查询散客需过滤 memberType"
+      - "与 foundation-map.md §18 的 MISSING 标记不一致"
+    effort: LOW
+    risk: LOW
+    affected_domains: [Order, Finance, Marketing]
+    migration_needed: true
+    migration_complexity: LOW
+
+  D_unified_customer:
+    name: "统一 Customer 概念（Unified Customer）"
+    description: "创建 customers 表作为通用客户，Member 作为特殊化"
+    schema: |
+      CREATE TABLE customers (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100),
+        phone VARCHAR(20),
+        type VARCHAR(20),           -- GUEST/MEMBER/ENTERPRISE
+        source VARCHAR(20),         -- WALK_IN/ONLINE/PHONE
+        storeId BIGINT,
+        status INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      -- Member 表关联 customers
+      ALTER TABLE members ADD COLUMN customerId BIGINT REFERENCES customers(id);
+      -- 订单关联 customers
+      ALTER TABLE orders ADD COLUMN customerId BIGINT REFERENCES customers(id);
+      -- 应收关联 customers
+      ALTER TABLE receivables ADD COLUMN customerId BIGINT REFERENCES customers(id);
+    pros:
+      - "通用客户概念，支持所有场景"
+      - "散客、会员、企业客户统一管理"
+      - "客户分析完整"
+      - "与业务对象地图的 Customer 语义一致"
+    cons:
+      - "增加数据复杂度"
+      - "Member 与 Customer 关系需维护"
+      - "迁移成本高"
+    effort: HIGH
+    risk: MEDIUM
+    affected_domains: [Order, Finance, Marketing, Mini Program]
+    migration_needed: true
+    migration_complexity: HIGH
+
+  E_guest_member:
+    name: "Guest-Member 模式（Guest as Special Customer）"
+    description: "会员是客户的子集，散客作为 GUEST 类型"
+    schema: |
+      -- 在 members 表中增加 memberType
+      ALTER TABLE members ADD COLUMN memberType VARCHAR(20) DEFAULT 'MEMBER';
+      -- GUEST: 散客, MEMBER: 会员
+      -- 散客下单时创建 GUEST 类型记录
+      INSERT INTO members (name, phone, memberType, storeId)
+      VALUES ('散客', 'anonymous', 'GUEST', 1);
+    pros:
+      - "改动最小"
+      - "散客可独立存在"
+      - "客户分析统一"
+    cons:
+      - "members 表语义被扩展"
+      - "散客信息不完整（无手机号等）"
+      - "与 foundation-map.md §18 的 MISSING 标记不一致"
+    effort: LOW
+    risk: LOW
+    affected_domains: [Order, Finance, Marketing]
+    migration_needed: true
+    migration_complexity: LOW
+
+# ============================================================================
+# 六、非会员客户独立性分析
+# ============================================================================
+non_member_customer_analysis:
+  question: "非会员客户（散客）能否独立存在？"
+  current_state: |
+    orders.customerId 关联 members 表。
+    如果散客下单，customerId 可能为 NULL 或关联一个临时会员记录。
+  analysis:
+    can_exist_independently: "取决于业务需求"
+    scenarios:
+      - scenario: "纯线下餐饮"
+        non_member_needed: "是 — 散客是主要客源"
+        implementation: "散客需要某种形式的客户记录"
+      - scenario: "纯会员制"
+        non_member_needed: "否 — 所有客户必须是会员"
+        implementation: "强制注册"
+      - scenario: "线上线下混合"
+        non_member_needed: "是 — 线上游客 + 会员"
+        implementation: "游客模式 + 会员模式"
+  recommendation: |
+    餐饮行业散客是主要客源，非会员客户必须能独立存在。
+    建议采用 Guest-Member 模式（选项 E）或统一 Customer 概念（选项 D）。
+
+# ============================================================================
+# 七、推荐方案
+# ============================================================================
+recommendation:
+  primary: E_guest_member
+  short_term_rationale: |
+    1. 改动最小，风险最低
+    2. 散客可作为 GUEST 类型存储在 members 表
+    3. 不破坏现有数据模型
+    4. 客户分析统一
+    5. 未来可升级为 D_unified_customer
+  fallback: C_alias_view
+  fallback_condition: "如果需要更清晰的 Customer/Member 边界"
+  long_term: D_unified_customer
+  long_term_condition: "当散客管理需求增加或需要企业客户管理时"
+
+# ============================================================================
+# 八、执行计划
+# ============================================================================
+execution_plan:
+  phase_1:
+    name: "散客处理标准化"
+    tasks:
+      - "确认散客下单时的 customerId 处理逻辑"
+      - "如果 customerId 可为 NULL，确认下游系统处理"
+      - "如果需要客户记录，创建 GUEST 类型成员"
+    duration: "2-3 天"
+    effort: "中"
+  phase_2:
+    name: "评估 Customer 独立管理需求"
+    tasks:
+      - "调研散客管理需求（来源分析、消费分析）"
+      - "评估企业客户管理需求"
+      - "确认是否需要独立 customers 表"
+    duration: "1-2 天"
+    effort: "低"
+
+# ============================================================================
+# 九、验证标准
+# ============================================================================
+acceptance_criteria:
+  - "散客下单流程正常"
+  - "会员下单流程正常"
+  - "应收账款可关联任意客户"
+  - "客户分析报表完整"
+  - "小程序游客模式可用"
+
+# ============================================================================
+# 十、证据引用
+# ============================================================================
+evidence:
+  - "foundation-map.md §13: Member 为 VERIFIED Foundation"
+  - "foundation-map.md §18: Customer 为 UNKNOWN，可能与 Member 合并"
+  - "business-object-map.md §5: Order.Dependencies 包含 Customer"
+  - "business-object-map.md §8: Receivable.Dependencies 包含 Customer"
+  - "upstream-dependency-map.md §2: Order Input 包含 Customer"
+  - "upstream-dependency-map.md §7: Receivable Input 包含 Customer"
+  - "cross-domain-coordination-matrix.md §2.1: Member 为 Marketing OWNER"
+  - "conflict-registry.md: CONFLICT-MF-002 需要 Product Decision"

@@ -1,0 +1,525 @@
+# ============================================================================
+# PROJECT-MASTER-REVIEW-001 - 产品/架构决策注册表
+# Architecture & Product Decision Register
+# ============================================================================
+# 生成日期: 2026-09-09
+# 版本: 1.0.0
+# 基于: 静态分析 + 已确认 Product Decisions (PD-031, PD-033 等)
+# ============================================================================
+
+meta:
+  id: PROJECT-MASTER-REVIEW-001
+  type: decision_register
+  scope: architecture_product_decisions
+  total_decisions: 14
+  by_status:
+    OPEN: 9
+    PARTIAL: 3
+    RECOMMENDED: 2
+    CONFIRMED: 0
+    BLOCKED: 0
+  by_category:
+    PRODUCT: 5
+    DATA_MODEL: 4
+    ARCHITECTURE: 3
+    SECURITY: 2
+
+decisions:
+  # ==========================================================================
+  # Foundation 决策
+  # ==========================================================================
+
+  DEC-001:
+    title: "Warehouse 是否需要独立管理"
+    category: PRODUCT
+    question: "Warehouse 是否需要独立的管理表和生命周期？"
+    current_reality: |
+      无独立 warehouses 表。inventory.warehouse_id 通过引用存在，
+      但 warehouse 可能是硬编码或配置项。foundation-map.md 标记为
+      MISSING (LOW confidence)。inventory 表和 employees 表都有
+      warehouseId 字段，但无对应的 master data。
+    why_decision_needed: |
+      采购入库、库存调拨、出库等场景需要区分不同仓库。当前无独立仓库主数据，
+      导致无法独立管理仓库属性（名称、地址、类型）。未来可能需要多仓库管理。
+    options:
+      A_config: "作为配置项管理（不建表）"
+        pros: "简单，适用于固定数量仓库"
+        cons: "无法独立维护，扩展性差"
+      B_independent_table: "创建 warehouses 独立表"
+        pros: "完整生命周期，支持多仓库，可扩展"
+        cons: "增加数据维护成本"
+    affected_domains: [Inventory, Procurement, Management Core]
+    affected_objects: [inventory, employees, purchase_stockins]
+    upstream_impact: "采购入库、收货确认需指定仓库"
+    downstream_impact: "库存查询需按仓库筛选，报表需按仓库统计"
+    recommendation: "B_independent_table"
+    decision_status: OPEN
+    evidence:
+      - "foundation-map.md §10: Warehouse 标记为 MISSING"
+      - "db-reality-map.md §5: inventory.warehouse_id 存在但无独立表"
+      - "data-design-map.md §5.2 #12: 缺失主源"
+
+  DEC-002:
+    title: "Unit 是否需要统一管理"
+    category: PRODUCT
+    question: "计量单位是否需要独立的 units 表管理？"
+    current_reality: |
+      无独立 units 表。foods.unit 字段默认值为 '份'，material_archives.unit
+      存储单位字符串。单位可能是枚举值或硬编码在代码中。foundation-map.md
+      标记为 MISSING (LOW confidence)。
+    why_decision_needed: |
+      菜品和物料使用不同单位（份、斤、kg、L等），未来可能需要单位换算
+      （如1斤=500g）。无统一管理导致单位定义分散、不一致。
+    options:
+      A_enum: "保持枚举/硬编码"
+        pros: "简单，无额外维护"
+        cons: "无法动态扩展，单位换算困难"
+      B_independent_table: "创建 units 独立表"
+        pros: "统一管理，支持单位换算"
+        cons: "增加数据维护成本"
+    affected_domains: [Product, Inventory, Procurement]
+    affected_objects: [foods, material_archives, inventory]
+    upstream_impact: "物料采购需指定单位，菜品销售需指定单位"
+    downstream_impact: "库存统计需按单位聚合，财务需按单位换算"
+    recommendation: "A_enum (当前阶段)"
+    decision_status: OPEN
+    evidence:
+      - "foundation-map.md §15: Unit 标记为 MISSING"
+      - "data-design-map.md §3.1: foods.unit 默认 '份'"
+
+  DEC-003:
+    title: "PaymentMethod 是否需要统一管理"
+    category: PRODUCT
+    question: "支付方式是否需要独立的 payment_methods 表管理？"
+    current_reality: |
+      无独立 payment_methods 表。支付方式可能是枚举值（现金/微信/支付宝/
+      会员支付），存储在 orders 或 payment 表字段中。foundation-map.md
+      标记为 MISSING (LOW confidence)。
+    why_decision_needed: |
+      支付方式需要可扩展（新增支付渠道）、可配置（不同门店支持不同方式）。
+      无统一管理导致支付方式定义分散。
+    options:
+      A_enum: "保持枚举/硬编码"
+        pros: "简单，无额外维护"
+        cons: "新增支付方式需改代码"
+      B_independent_table: "创建 payment_methods 独立表"
+        pros: "动态管理，支持多门店配置"
+        cons: "增加数据维护成本"
+    affected_domains: [Finance, Order, Marketing]
+    affected_objects: [orders, payment, receipt]
+    upstream_impact: "下单需选择支付方式，收银需支持多种支付"
+    downstream_impact: "财务对账需按支付方式统计，报表需按支付方式分类"
+    recommendation: "A_enum (当前阶段)"
+    decision_status: OPEN
+    evidence:
+      - "foundation-map.md §17: PaymentMethod 标记为 MISSING"
+      - "permission-data-scope-map.md §5: 公开端点包含支付相关接口"
+
+  DEC-004:
+    title: "Customer 是否需要独立于 Member"
+    category: PRODUCT
+    question: "Customer（客户）是否需要独立于 Member（会员）管理？"
+    current_reality: |
+      无独立 customers 表。orders.customerId 关联 members 表，
+      receivables.customerId 也关联 members 表。Customer 可能与
+      Member 合并。foundation-map.md 标记为 MISSING (LOW confidence)。
+    why_decision_needed: |
+      业务上可能存在非会员客户（散客），需要区分会员和非会员。
+      当前强制关联 member 表，可能导致散客无法下单。
+    options:
+      A_merge: "Customer = Member（合并）"
+        pros: "简单，所有客户都是会员"
+        cons: "无法处理散客场景"
+      B_separate: "Customer 独立于 Member"
+        pros: "支持散客和会员两种模式"
+        cons: "增加数据复杂度，需维护两套客户信息"
+      C_alias: "Customer 为 Member 的别名视图"
+        pros: "保持合并，但提供客户视角"
+        cons: "本质还是合并，散客问题未解决"
+    affected_domains: [Order, Finance, Marketing]
+    affected_objects: [orders, receivables, members]
+    upstream_impact: "下单时需确认客户身份，财务需区分客户类型"
+    downstream_impact: "会员管理需区分散客，报表需按客户类型统计"
+    recommendation: "A_merge (当前阶段，散客需求待确认)"
+    decision_status: OPEN
+    evidence:
+      - "foundation-map.md §18: Customer 标记为 MISSING"
+      - "cross-domain-coordination-matrix.md §2.2: Member 写入涉及 MiniProgram"
+      - "conflict-registry.md CONFLICT-MF-002: 需要 Product Decision"
+
+  DEC-005:
+    title: "Price 是否需要统一管理"
+    category: PRODUCT
+    question: "价格体系是否需要独立的 price_list 表统一管理？"
+    current_reality: |
+      无独立价格表。foods.price 存储菜品价格，material_archives.price
+      存储物料价格，分散在各业务表中。foundation-map.md 标记为
+      MISSING (LOW confidence)。
+    why_decision_needed: |
+      当前价格随对象创建，无独立价格历史、价格策略管理。
+      未来可能需要价格审计、价格变更记录、多级价格（会员价、批发价）。
+    options:
+      A_inline: "价格内联在业务表中"
+        pros: "简单，查询直接"
+        cons: "无价格历史，无法审计价格变更"
+      B_price_list: "创建 price_list 统一管理"
+        pros: "价格历史可追溯，支持多级价格"
+        cons: "增加查询复杂度"
+    affected_domains: [Product, Order, Procurement]
+    affected_objects: [foods, material_archives, orders, purchase_orders]
+    upstream_impact: "菜品定价、物料采购价需从价格表获取"
+    downstream_impact: "订单价格需记录快照，财务成本需按价格计算"
+    recommendation: "A_inline (当前阶段)"
+    decision_status: OPEN
+    evidence:
+      - "foundation-map.md §19: Price 标记为 MISSING"
+      - "data-design-map.md §3.1: foods.price 为 decimal(10,2)"
+
+  # ==========================================================================
+  # Data Model 决策
+  # ==========================================================================
+
+  DEC-006:
+    title: "food/foods 如何统一"
+    category: DATA_MODEL
+    question: "food（旧表）和 foods（新表）如何完成统一？"
+    current_reality: |
+      food 和 foods 双表并存，下单/退款/超时同时写两表（双写）。
+      truth-conflict-map.md §7: foods 为真相源，food 为兼容旧模块的过渡方案。
+      foundation-map.md: foods 为唯一真相源 (HIGH confidence)。
+    why_decision_needed: |
+      双写导致库存/状态可能不一致，写入顺序依赖。废弃 food 表写入
+      需要确认旧模块（POS legacy）是否已完全迁移。
+    options:
+      A_keep_dual: "保持双写"
+        pros: "兼容旧模块，无迁移风险"
+        cons: "持续的不一致风险，技术债"
+      B_migrate_and_drop: "完成迁移后废弃 food 表"
+        pros: "消除不一致，简化数据模型"
+        cons: "需要评估旧模块迁移状态"
+    affected_domains: [Product, Order, POS]
+    affected_objects: [food, foods, orders, order_items]
+    upstream_impact: "菜品管理需统一入口，订单需统一查询菜品"
+    downstream_impact: "POS 终端需迁移至 foods 表，库存需统一"
+    recommendation: "B_migrate_and_drop"
+    decision_status: RECOMMENDED
+    evidence:
+      - "truth-conflict-map.md §7: foods 为真相源"
+      - "data-design-map.md §5.1 #1: P0 级问题"
+      - "legacy-map.md §1: food 标记为已废弃"
+
+  DEC-007:
+    title: "金额单位如何统一（分 or 元）"
+    category: DATA_MODEL
+    question: "全链路金额单位统一为「分」还是「元」？"
+    current_reality: |
+      新表统一用「分」存储（orders.amount, finance_records.amount），
+      但 tax_record、account_balance 等遗留表仍用「元」。
+      truth-conflict-map.md §1: 跨表 JOIN 时单位不一致，差 100 倍。
+    why_decision_needed: |
+      金额单位双轨导致跨表查询必须显式转换，极易出错。
+      新增代码如果不知道单位约定，会产生严重 Bug。
+    options:
+      A_yuan: "统一为「元」"
+        pros: "符合人类直觉，前端展示友好"
+        cons: "需要修改所有新表，涉及面广"
+      B_fen: "统一为「分」"
+        pros: "避免浮点精度问题，新表已是「分」"
+        cons: "前端展示需转换"
+      C_hybrid: "保持现状，添加转换层"
+        pros: "改动最小"
+        cons: "持续风险，每处查询都需转换"
+    affected_domains: [Finance, Order, Procurement, Inventory]
+    affected_objects: [orders, finance_records, payables, tax_record, account_balance]
+    upstream_impact: "所有涉及金额的接口需统一单位"
+    downstream_impact: "报表、对账、税务申报需明确单位"
+    recommendation: "B_fen"
+    decision_status: RECOMMENDED
+    evidence:
+      - "truth-conflict-map.md §1: 已裁决新表以「分」为准"
+      - "data-design-map.md §5.1 #5: P0 级问题"
+      - "data-design-map.md §6.3: 金额字段类型 decimal(10,2)，单位为分"
+
+  DEC-008:
+    title: "订单状态机如何统一"
+    category: DATA_MODEL
+    question: "订单三套状态机（order_status, payment_status, legacy_status）如何统一？"
+    current_reality: |
+      order_status (0-6)、payment_status (0-3)、legacy_status (-1~7)
+      三套并存。truth-conflict-map.md §5: PADR 裁决三套并存，
+      每个字段有独立生命周期。sales_order 也有独立状态且无映射。
+    why_decision_needed: |
+      状态机分散导致状态流转逻辑难以维护，跨表状态可能不一致。
+      新增业务场景需同时更新三套状态，容易遗漏。
+    options:
+      A_keep_triple: "保持三套并存（PADR 裁决）"
+        pros: "符合历史裁决，改动最小"
+        cons: "持续复杂度"
+      B_unified_sm: "建立统一状态机"
+        pros: "简化状态管理，一致性好"
+        cons: "改动大，需重新设计状态映射"
+      C_migration_plan: "制定迁移计划，逐步统一"
+        pros: "渐进式改进，风险可控"
+        cons: "需要明确迁移路径和时间表"
+    affected_domains: [Order, POS, Finance]
+    affected_objects: [orders, sales_order]
+    upstream_impact: "下单、支付、退款等操作需维护多套状态"
+    downstream_impact: "订单查询、对账、报表需多状态联合筛选"
+    recommendation: "C_migration_plan"
+    decision_status: PARTIAL
+    evidence:
+      - "truth-conflict-map.md §5: PADR 裁决三套并存"
+      - "state-machine-map.md §1.5: sales_order 无映射"
+      - "data-design-map.md §5.1 #4: P0 级问题"
+
+  DEC-009:
+    title: "stores/stores_new 如何统一"
+    category: DATA_MODEL
+    question: "stores（旧表）和 stores_new（新表）如何完成统一？"
+    current_reality: |
+      stores_new 为唯一真相源，stores 仅用于兼容旧查询。
+      truth-conflict-map.md §4: 新旧表并存，字段结构不同。
+      foundation-map.md: Store.truth_source = stores_new (HIGH confidence)。
+    why_decision_needed: |
+      读错表导致门店信息不一致（地址、经营范围、状态等）。
+      需确认旧模块是否已完全迁移至 stores_new。
+    options:
+      A_keep_both: "保持双表"
+        pros: "兼容旧模块"
+        cons: "持续的不一致风险"
+      B_migrate_and_drop: "完成迁移后废弃 stores 表"
+        pros: "消除不一致，简化数据模型"
+        cons: "需要评估旧模块迁移状态"
+    affected_domains: [Management Core, POS, Employee, Inventory]
+    affected_objects: [stores, stores_new, employees, orders]
+    upstream_impact: "门店管理需统一入口"
+    downstream_impact: "所有引用门店的模块需迁移到 stores_new"
+    recommendation: "B_migrate_and_drop"
+    decision_status: PARTIAL
+    evidence:
+      - "truth-conflict-map.md §4: stores_new 为唯一真相源"
+      - "data-design-map.md §5.2 #8: P1 级问题"
+      - "legacy-map.md §1: stores 标记为已废弃"
+
+  # ==========================================================================
+  # Architecture 决策
+  # ==========================================================================
+
+  DEC-010:
+    title: "跨域数据所有权如何划分"
+    category: ARCHITECTURE
+    question: "Order、Inventory 等跨域对象的数据所有权如何明确划分？"
+    current_reality: |
+      cross-domain-coordination-matrix.md §5.1: Order 的 OWNER 为 POS 和
+      MiniProgram（多端写入），Inventory 的 OWNER 为 Inventory 模块，
+      StoreInventory 的 OWNER 为 POS。
+      conflict-registry.md CONFLICT-XDO-001: Order 多端写入时主数据所有权不明确。
+    why_decision_needed: |
+      多端写入同一表可能导致数据冲突和不一致，影响订单数据准确性和财务对账。
+      需明确每个业务对象的唯一OWNER，其他终端只读或通过事件更新。
+    options:
+      A_centralized: "集中式所有权（单一OWNER）"
+        pros: "简单明确，一致性好"
+        cons: "可能增加跨域调用"
+      B_distributed: "分布式所有权（多OWNER + 冲突解决）"
+        pros: "灵活性好，各端自治"
+        cons: "冲突解决复杂"
+      C_event_driven: "事件驱动（OWNER + EVENT CONSUMER）"
+        pros: "松耦合，可扩展"
+        cons: "事件可靠性要求高"
+    affected_domains: [Order, Inventory, POS, Mini Program]
+    affected_objects: [orders, order_items, inventory, store_inventory]
+    upstream_impact: "需明确数据写入入口和事件触发点"
+    downstream_impact: "数据一致性依赖事件可靠性"
+    recommendation: "C_event_driven"
+    decision_status: OPEN
+    evidence:
+      - "cross-domain-coordination-matrix.md §2.2: Order 为多端写入"
+      - "conflict-registry.md CONFLICT-XDO-001: Critical 级冲突"
+      - "project-master-registry.yaml §cross_domain_coordination: 各域角色定义"
+
+  DEC-011:
+    title: "事件驱动架构是否需要加强"
+    category: ARCHITECTURE
+    question: "当前 RabbitMQ 事件驱动是否需要加强可靠性保障？"
+    current_reality: |
+      project-master-registry.yaml §events: 定义了 10+ 领域事件
+      （OrderCreated, OrderCompleted, PurchaseStockIn 等）。
+      cross-domain-coordination-matrix.md §7.1: 事件驱动架构存在事件丢失风险。
+    why_decision_needed: |
+      跨域协调依赖事件驱动，如果事件丢失会导致数据不一致
+      （如订单完成但财务未收到事件）。
+    options:
+      A_current: "保持当前实现"
+        pros: "简单，无额外开发"
+        cons: "事件丢失风险"
+      B_enhanced: "加强事件可靠性（持久化+重试+死信）"
+        pros: "事件不丢失，数据一致"
+        cons: "增加复杂度和运维成本"
+      C_saga: "引入 Saga 模式"
+        pros: "完整的分布式事务保障"
+        cons: "复杂度高，学习成本"
+    affected_domains: [Order, Inventory, Finance, Procurement]
+    affected_objects: [所有事件相关的业务对象]
+    upstream_impact: "事件生产者需确保事件持久化"
+    downstream_impact: "事件消费者需实现幂等和重试"
+    recommendation: "B_enhanced"
+    decision_status: OPEN
+    evidence:
+      - "project-master-registry.yaml §events: 10+ 领域事件"
+      - "cross-domain-coordination-matrix.md §7.1: 事件丢失风险"
+      - "event-job-map.md: 事件消费链路"
+
+  DEC-012:
+    title: "Legacy 系统如何隔离"
+    category: ARCHITECTURE
+    question: "遗留代码（Legacy 服务、控制器、表）如何隔离和清理？"
+    current_reality: |
+      legacy-map.md: 8 个 Legacy 服务实现、13 个 Legacy 控制器、
+      8 个 Legacy 数据库表。包含死体系（voucher_header/line）、
+      直接数据库写入（DatabaseFixConfig）。
+    why_decision_needed: |
+      Legacy 代码与新代码混合，增加维护成本和 Bug 风险。
+      直接数据库写入绕过 ORM，可能导致数据不一致。
+    options:
+      A_little_by_little: "渐进式清理"
+        pros: "风险可控，不影响业务"
+        cons: "清理周期长"
+      B_big_bang: "一次性大清理"
+        pros: "快速消除技术债"
+        cons: "风险高，可能影响业务"
+      C_isolation_layer: "建立隔离层"
+        pros: "新旧代码解耦"
+        cons: "增加架构复杂度"
+    affected_domains: [Finance, System, Inventory]
+    affected_objects: [voucher_header, voucher_line, stores, food, product]
+    upstream_impact: "需评估各 Legacy 组件的依赖关系"
+    downstream_impact: "清理后需验证所有依赖模块"
+    recommendation: "A_little_by_little"
+    decision_status: PARTIAL
+    evidence:
+      - "legacy-map.md §1-7: Legacy 组件清单"
+      - "legacy-map.md §建议处理优先级: 高/中/低优先级划分"
+
+  # ==========================================================================
+  # Security 决策
+  # ==========================================================================
+
+  DEC-013:
+    title: "裸接口权限如何归属"
+    category: SECURITY
+    question: "25 个无 @RequiresPermission 注解的裸接口如何分配权限码？"
+    current_reality: |
+      permission-data-scope-map.md §7.1: 25 个方法无权限注解保护，
+      涉及 self-purchase (6), plan-items (7), tasks (12) 三个接口域。
+      这些接口存在安全缺口，任何用户都可访问。
+    why_decision_needed: |
+      裸接口可能导致未授权访问，违反最小权限原则。
+      需要为这些接口分配正确的域归属和权限码。
+    options:
+      A_assign_existing: "分配已有权限码"
+        pros: "复用现有权限体系"
+        cons: "可能语义不匹配"
+      B_create_new: "创建新权限码"
+        pros: "精确匹配业务语义"
+        cons: "增加权限码数量"
+      C_remove_unused: "评估后移除无用接口"
+        pros: "减少攻击面"
+        cons: "需确认接口是否仍被使用"
+    affected_domains: [System, Procurement, Inventory]
+    affected_objects: [permissions, roles, role_permissions]
+    upstream_impact: "需确认接口用途和归属域"
+    downstream_impact: "前端路由守卫需同步更新"
+    recommendation: "A_assign_existing (优先) + C_remove_unused (评估)"
+    decision_status: OPEN
+    evidence:
+      - "permission-data-scope-map.md §7.1: 25 裸接口"
+      - "api-map.md: 零消费 API 清单"
+      - "conflict-registry.md PD-006: BLOCKED_PRODUCT_DECISION"
+
+  DEC-014:
+    title: "供应商 H5 外部认证如何实现"
+    category: SECURITY
+    question: "SupplierPortalController H5 端点如何实现外部供应商认证？"
+    current_reality: |
+      permission-data-scope-map.md §7.2: 6 个 H5 端点
+      (/h5/contract, /h5/view, /h5/verify, /h5/sign, /h5/reject) 无认证。
+      外部供应商无系统账号，H5 端点暴露在公网。
+    why_decision_needed: |
+      无认证的 H5 端点可被任意访问，存在数据泄露和未授权操作风险。
+      需要设计适合外部用户的认证机制。
+    options:
+      A_token_link: "Token + 邀请链接"
+        pros: "简单，无需注册"
+        cons: "Token 安全性需保障"
+      B_sms_verify: "短信验证码认证"
+        pros: "二次验证，安全性高"
+        cons: "用户体验稍差"
+      C_wechat_auth: "微信授权登录"
+        pros: "用户体验好，可获取微信身份"
+        cons: "依赖微信生态"
+      D_supplier_account: "供应商注册账号"
+        pros: "完整账号体系"
+        cons: "供应商使用门槛高"
+    affected_domains: [Procurement, System]
+    affected_objects: [suppliers, users, permissions]
+    upstream_impact: "需设计外部认证流程和 Token 管理"
+    downstream_impact: "前端需实现认证流程，后端需实现 Token 校验"
+    recommendation: "A_token_link"
+    decision_status: OPEN
+    evidence:
+      - "permission-data-scope-map.md §7.2: 6 H5 端点无认证"
+      - "permission-data-scope-map.md §11: P0 级风险"
+      - "conflict-registry.md PD-008: BLOCKED_PRODUCT_DECISION"
+
+decision_dependencies:
+  - id: DEP-001
+    from: DEC-006
+    to: DEC-009
+    description: "food/foods 统一后，stores/stores_new 统一的迁移策略可复用"
+  - id: DEP-002
+    from: DEC-007
+    to: DEC-010
+    description: "金额单位统一后，跨域数据所有权划分的事件 payload 需明确单位"
+  - id: DEP-003
+    from: DEC-011
+    to: DEC-010
+    description: "事件驱动架构加强后，跨域数据所有权可更清晰划分"
+
+priority_matrix:
+  immediate:
+    - DEC-006
+    - DEC-007
+    - DEC-010
+    deadline: "2026-09-16"
+    description: "数据模型关键问题，影响开发正确性"
+
+  high:
+    - DEC-001
+    - DEC-008
+    - DEC-009
+    - DEC-013
+    - DEC-014
+    deadline: "2026-09-23"
+    description: "Foundation 和安全关键问题"
+
+  medium:
+    - DEC-002
+    - DEC-003
+    - DEC-004
+    - DEC-005
+    - DEC-011
+    - DEC-012
+    deadline: "2026-09-30"
+    description: "Foundation 和架构问题，可分阶段处理"
+
+review_schedule:
+  - date: "2026-09-16"
+    type: checkpoint
+    focus: "DEC-006, DEC-007, DEC-010 决策状态"
+  - date: "2026-09-23"
+    type: checkpoint
+    focus: "高优先级决策状态"
+  - date: "2026-09-30"
+    type: review
+    focus: "全部决策状态"
