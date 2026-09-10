@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** DECISION-BASELINE-RECOVERY-001
+
 # Decision Baseline Recovery: 已验证锁定决策 (VERIFIED LOCKs)
 
 > **生成时间**: 2026-09-09
