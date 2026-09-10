@@ -1,8 +1,9 @@
-registry_version: "2.0"
+registry_version: "2.1"
 registry_date: "2026-09-10"
 registry_status: "OPEN"
 task_id: "BUSINESS-ITEM-CANONICAL-SEMANTIC-REASSESSMENT-001"
 finalization_task: "PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001"
+boundary_final_check_task: "BUSINESS-ITEM-CANONICAL-DECISION-BOUNDARY-FINAL-CHECK-001"
 
 conflicts:
   - conflict_id: "CONFLICT-A"
@@ -50,7 +51,8 @@ conflicts:
   - conflict_id: "CONFLICT-D"
     title: "INGREDIENT 是 Item Role 还是 Recipe Relationship"
     severity: "MEDIUM"
-    status: "RECONCILED"
+    status: "RESOLVED"
+    resolution_type: "RECONCILED"
     source_files:
       - "06-business-item-model/ingredient-analysis.md"
     description_a: "INGREDIENT 是 Item Role，代表物品在配方中的角色"
@@ -59,7 +61,7 @@ conflicts:
     evidence_b: "ingredient 表连接 material 和 recipe 表"
     judgment: "已明确为 Recipe Relationship，通过外键定义关系"
     decision_boundary: null
-    note: "RECONCILED SEMANTIC INVARIANT, NOT_BLOCKING"
+    note: "RECONCILED SEMANTIC INVARIANT, NOT_BLOCKING, Decision Status = N/A"
 
   - conflict_id: "CONFLICT-E"
     title: "CONSUMABLE 的三种消费场景"
@@ -117,55 +119,56 @@ decision_boundaries:
   - boundary_id: "PD-CANONICAL-001"
     type: "PRODUCT_DECISION"
     title: "Canonical Business Item 定义"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "PD-CANONICAL-002"
     type: "PRODUCT_DECISION"
     title: "Product 语义"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "PD-CANONICAL-003"
     type: "PRODUCT_DECISION"
     title: "Food 语义"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "PD-CANONICAL-004"
     type: "PRODUCT_DECISION"
     title: "Material 语义"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "PD-CANONICAL-005"
     type: "PRODUCT_DECISION"
     title: "Ingredient 定义"
-    status: "RECONCILED"
-    note: "NOT_BLOCKING, Semantic Invariant"
+    decision_status: "N/A"
+    assessment_status: "RECONCILED"
+    note: "NOT_BLOCKING, Semantic Invariant, 不再作为未解决 Product Decision"
 
   - boundary_id: "PD-CANONICAL-006"
     type: "PRODUCT_DECISION"
     title: "Consumable 定义"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "AD-IDENTITY-001"
     type: "ARCHITECTURE_DECISION"
     title: "Identity Storage"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "AD-LOCATION-001"
     type: "ARCHITECTURE_DECISION"
     title: "Location Model"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "AD-UOM-001"
     type: "ARCHITECTURE_DECISION"
     title: "UOM Foundation"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "AD-INVENTORY-001"
     type: "ARCHITECTURE_DECISION"
     title: "Inventory Truth"
-    status: "OPEN"
+    decision_status: "OPEN"
 
   - boundary_id: "AD-INVENTORY-002"
     type: "ARCHITECTURE_DECISION"
     title: "Inventory Object"
-    status: "OPEN"
+    decision_status: "OPEN"
