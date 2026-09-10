@@ -15,7 +15,7 @@
 
  | 决策ID | 决策标题 | 优先级 | 截止日期 | 负责人 | 状态 |
  |--------|----------|--------|----------|--------|------|
- | PD-CANONICAL-001 | Canonical Business Identity 语义 | P0 | 2026-09-10 | Product Owner | 🟡 RECOMMENDED (NOT CONFIRMED) |
+ | PD-CANONICAL-001 | Canonical Business Identity 语义 | P0 | 2026-09-11 | Product Owner | 🟡 RECOMMENDED (NOT CONFIRMED) |
  | DEC-004 | Customer/Member 关系定义 | P0 | 2026-09-30 | Product Owner | 🟡 OPEN |
  | DEC-006 | Product/Food/Material 边界 | P1 | 2026-10-15 | Product Owner | 🟡 OPEN |
 
