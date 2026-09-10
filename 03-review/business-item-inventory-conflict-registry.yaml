@@ -1,0 +1,215 @@
+# Business Item × Inventory Conflict Registry
+
+> **版本**: 1.0
+> **生成日期**: 2026-09-10
+> **状态**: OPEN
+> **任务**: BUSINESS-ITEM-INVENTORY-INTEGRATION-001
+
+---
+
+## Conflict A: Product 语义冲突
+
+| 字段 | 值 |
+|------|-----|
+| **Conflict ID** | CONFLICT-A |
+| **标题** | Product 的语义：废弃概念 vs Base Type |
+| **严重程度** | HIGH |
+| **状态** | OPEN |
+
+### 两种表述
+
+**表述 A** — Product 是已废弃的 Legacy Concept：
+- 来源：`06-business-item-model/product-semantic-analysis.md`
+- Evidence：`product` 表标记为 LEGACY，Java Entity 无活跃引用
+- 结论：Product 应被废弃，由 Material 替代
+
+**表述 B** — Product 是 Base Type：
+- 来源：`06-business-item-model/concept-taxonomy.md`
+- Evidence：Product 作为业务化的物品表达（可交易和管理的物品）
+- 结论：Food/Material 是 Product 的 Subtype
+
+### Evidence 分析
+
+| 维度 | 表述 A | 表述 B |
+|------|--------|--------|
+| 数据库证据 | product 表存在但无活跃 Service 引用 | product 表有残留数据 |
+| 代码证据 | MaterialService 替代 ProductService | 无活跃代码路径使用 Product |
+| 业务语义 | 废弃概念，不再需要 | 商业定义层，支撑集团化 |
+
+### 判断
+
+- **Current Reality**：Product 表存在但无活跃业务角色 → 表述 A 更接近现实
+- **Recommendation**：Product 作为 Commercial Definition 可能有长期价值，但当前无业务必要性
+- **是否需要 Decision**：**是** — DEC-006 已覆盖此问题，状态 OPEN
+
+### Decision Gap
+
+需要 Product Owner 决定：Product 是否作为 Commercial Definition 保留，还是彻底废弃。
+
+---
+
+## Conflict B: Model C 命名一致性
+
+| 字段 | 值 |
+|------|-----|
+| **Conflict ID** | CONFLICT-B |
+| **标题** | Model C 在 06 和 07 中的含义不同 |
+| **严重程度** | MEDIUM |
+| **状态** | RESOLVED |
+
+### 两种表述
+
+**06-business-item-model**：
+- Model C = Hybrid Domain Model
+- 核心：Canonical Identity + Commercial Definition + Operational Definition + Roles
+
+**07-inventory-semantic-model**：
+- Model C-Hybrid = Canonical Item + Unified Location + Ledger-First
+- 核心：Canonical Item × Location × Inventory Instance
+
+### 分析
+
+两个 Model C **不是同一个模型**：
+- 06 的 Model C 是 Business Item 的全域模型
+- 07 的 Model C-Hybrid 是 Inventory 域的专用模型
+- 编号相同是因为 07 继承了 06 的编号方案，但语义已分化
+
+### 解决方案
+
+- **已收敛的概念**：Canonical Identity、Role-based、Location-scoped
+- **未收敛的概念**：Inventory Instance vs Inventory Fact、Ledger-First vs Balance-First
+- **建议**：取消模型编号继承，改用统一 Candidate ID（如 CAND-BI-001, CAND-INV-001）
+
+### Decision Gap
+
+无需 Product Decision，但需要在整合文档中统一命名。
+
+---
+
+## Conflict C: Material vs Canonical Item
+
+| 字段 | 值 |
+|------|-----|
+| **Conflict ID** | CONFLICT-C |
+| **标题** | Material 是 Canonical Identity 还是 Legacy Implementation Object |
+| **严重程度** | HIGH |
+| **状态** | OPEN |
+
+### 两种表述
+
+**表述 A** — Material 是 Canonical Identity：
+- 来源：`07-inventory-semantic-model/inventory-truth-analysis.md`
+- Evidence：inventory.material_id 贯穿采购→库存→配方全生命周期
+- 结论：Material 是跨域统一身份
+
+**表述 B** — Material 是 Legacy Implementation Object：
+- 来源：`06-business-item-model/candidate-semantic-models.md`
+- Evidence：Material 是当前数据库表名，不应等同于目标业务模型
+- 结论：需要 Canonical Item 作为更高层抽象
+
+### Evidence 分析
+
+| 维度 | 表述 A | 表述 B |
+|------|--------|--------|
+| 当前事实 | material_id 贯穿全系统 | material_archives 是数据库表名 |
+| 目标模型 | Material 作为 Canonical Identity | Canonical Item 作为统一抽象 |
+| 迁移成本 | 低（保持现有） | 高（需要新建 Canonical Item） |
+
+### 判断
+
+- **Current Reality**：Material 是事实上的 Canonical Identity（LOCK-A002 已锁定）
+- **Recommendation**：Material 作为当前 Canonical Identity，但目标模型应引入 Canonical Item 作为更高层抽象
+- **关键区分**：Material 是 Type（"原料"），不是 Identity（"这瓶可口可乐330ml"）
+- **是否需要 Decision**：**是** — 需要 DEC-006-REFINED 覆盖
+
+### Decision Gap
+
+需要 Product Owner 决定：Material 是否作为 Canonical Identity 保留，还是引入 Canonical Item 替代。
+
+---
+
+## Conflict D: Role vs Capability
+
+| 字段 | 值 |
+|------|-----|
+| **Conflict ID** | CONFLICT-D |
+| **标题** | SELLABLE/PURCHASABLE/STOCKABLE/CONSUMABLE/INGREDIENT 的分类 |
+| **严重程度** | HIGH |
+| **状态** | PARTIAL RESOLVED |
+
+### 五个概念的分类
+
+| 概念 | 06 结论 | 07 结论 | 统一结论 | 状态 |
+|------|---------|---------|----------|------|
+| SELLABLE | Capability + Role | - | Capability（全局）+ Role（场景） | RECONCILED |
+| PURCHASABLE | Capability + Profile | - | Capability（全局）+ Profile（采购配置） | RECONCILED |
+| STOCKABLE | Role（Location-scoped） | Role（Location-scoped） | Role（Location-scoped） | RECONCILED |
+| CONSUMABLE | Role | - | Role（Recipe 场景） | RECONCILED |
+| INGREDIENT | Relationship | - | Recipe ↔ Item Relationship | RECONCILED |
+
+### INGREDIENT 的特殊分析
+
+- **06 结论**：Ingredient 是 Material 在 Recipe 场景中的 Role
+- **07 结论**：Ingredient 是 RecipeComponent 的业务名称
+- **统一结论**：Ingredient **不是** Item 自身的 Role，而是 Recipe ↔ Item 之间的 Relationship 参与方身份
+- **证据**：同一个 Item（鸡翅）可以参与多个 Recipe（可乐鸡翅、香辣鸡翅），Ingredient 身份随 Recipe 变化
+
+### Decision Gap
+
+无需 Product Decision，语义已收敛。
+
+---
+
+## Conflict E: Inventory Truth
+
+| 字段 | 值 |
+|------|-----|
+| **Conflict ID** | CONFLICT-E |
+| **标题** | Stock Ledger / Inventory Instance / Balance 的关系 |
+| **严重程度** | HIGH |
+| **状态** | RECONCILED |
+
+### 五种概念的关系
+
+```
+Stock Ledger (Movement entries)
+    ↓ 聚合
+Inventory Instance (Current Fact at Location)
+    ↓ 查询
+Balance (Derived View)
+    ↓ 报表
+Snapshot (Point-in-time)
+    ↓ 汇总
+Aggregation (Total across Locations)
+```
+
+### 统一结论
+
+| 概念 | 定义 | 是否 Truth | 说明 |
+|------|------|------------|------|
+| Stock Ledger | 不可变的库存变动记录 | **YES** | 唯一 Truth Source |
+| Inventory Instance | Item × Location 的当前状态 | **Derived** | 可从 Ledger 重建 |
+| Balance | 可用数量 | **Derived** | Instance 的子集 |
+| Snapshot | 某时刻的库存快照 | **Derived** | 用于报表 |
+| Aggregation | 跨 Location 汇总 | **Derived** | 用于总览 |
+
+### Decision Gap
+
+无需 Product Decision，语义已收敛。
+
+---
+
+## 冲突状态汇总
+
+| Conflict | 标题 | 状态 | 需要 Decision |
+|----------|------|------|---------------|
+| A | Product 语义 | OPEN | **是** (DEC-006) |
+| B | Model C 命名 | RESOLVED | 否 |
+| C | Material vs Canonical Item | OPEN | **是** (DEC-006-REFINED) |
+| D | Role vs Capability | RECONCILED | 否 |
+| E | Inventory Truth | RECONCILED | 否 |
+
+---
+
+**文档状态**: OPEN
+**下一步**: 进入 Decision Gap 分析
