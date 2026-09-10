@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # Inventory Model Stress Points (Phase 22 Extension)
 
 > **核心问题**：库存模型在哪些地方被迫"打补丁"？这些补丁是孤立问题还是系统性模型缺陷的症状？
