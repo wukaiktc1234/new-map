@@ -1,3 +1,7 @@
+> **DOCUMENT STATUS:** SUPERSEDED
+> **SUPERSEDED BY:** 03-review/business-item-canonical-semantic-reassessment.md
+> **SOURCE TASK:** INVENTORY-SEMANTIC-MODEL-001
+
 # Inventory Semantic Recommendation (Phase 22 Final)
 
 > **核心问题**：基于所有库存域分析，推荐的 Inventory Semantic Model 是什么？
