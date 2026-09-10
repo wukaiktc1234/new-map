@@ -1,0 +1,687 @@
+# ============================================================================
+# BUSINESS ITEM CANONICAL - CONFLICT BOUNDARY REVIEW 001
+# Clash Classification Registry (A / B / C / D)
+# ============================================================================
+# 任务性质: 矛盾边界收口审查 (CLOSURE REVIEW)
+# 生成日期: 2026-09-11
+# 代码/schema/迁移改动: 无
+# 本地文档路径: docs/architecture/
+#
+# 本文件不做: 不提出新架构 / 不设计表或 API / 不创建新 Option /
+#             不把 Recommendation 写成 Decision
+#
+# 分类规则:
+#   A - 必须由业务/架构负责人决策 (工程无法替代; 选错改变业务世界模型)
+#   B - 已有充分事实, 可直接工程修复 (不依赖未决业务语义; 不改业务含义)
+#   C - 必须先取得生产证据 (本地证据不足; 贸然决定会误判环境差异)
+#   D - 当前判断本身可能错误 (不能进决策, 也不能进工程)
+#
+# 证据等级:
+#   LIVE_LOCAL_INSTANCE_EVIDENCE - 本机 PostgreSQL 实例实测
+#   CODE_EVIDENCE               - 代码 / DDL / 日志
+#   HISTORICAL_EVIDENCE         - 既有文档
+#   PRODUCTION_EVIDENCE         - 生产库查询 + 结果 (本次: 0 条, 生产不可达)
+# ============================================================================
+
+registry_version: "1.0"
+registry_status: "CLOSURE_REVIEW"
+review_task: "CONFLICT-BOUNDARY-CLOSURE-REVIEW-001"
+review_date: "2026-09-11"
+review_role: "INDEPENDENT_REVIEWER (NOT engineer, NOT architecture decision maker)"
+local_docs_path: "docs/architecture"
+code_or_schema_changes: 0
+writes_performed: 0
+
+governance_state_at_review:
+  pd_canonical_001_status: "RECOMMENDED / NOT CONFIRMED"
+  pd_canonical_001_modified: false
+  production_evidence_gate_0: "BLOCKED"
+  local_evidence_label: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+  promotion_of_local_to_production: false
+  foods_locked_as: "Dish/Sales Food Truth"
+  material_archives_locked_as: "Material Truth"
+  orders_locked_as: "canonical order truth"
+
+# ============================================================================
+# SECTION A - OWNER DECISIONS REQUIRED
+# ============================================================================
+owner_decisions:
+
+  - id: "A1"
+    question: "Product Definition / Commercial Unit / Inventory Holding 是否分层; 若分层, 哪一层作为库存计量基准"
+    classification: "A"
+    why_not_engineering: >
+      Commercial Unit 层在工程中完全不存在 (无 sku 列, 无 uom, 无换算列,
+      无任何物料含多个包装层级)。是否需要该层取决于业务是否要求
+      「同一物品多交易单位」, 属业务模型主张。
+    why_not_production_evidence_only: "生产数据可降低不确定性, 但不能替代负责人的模型选择。"
+    why_not_further_validation: "问题表述清楚, 不存在『问题本身错误』的情形。"
+    current_facts:
+      - evidence: "inventory.material_id 填充 11/11; product_id 填充 1/11"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "三张主数据表 (foods / material_archives / product) 之间无任何 FK 或映射表"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "全库无 sku / uom / conversion / pack_size 列 (仅命中 orders.packaging_fee)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "本地无任何一个物料拥有多个包装层级"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    linked_production_evidence: ["C1", "C4"]
+    blocks: ["Identity Resolution Model", "PD-CANONICAL-001", "AD-IDENTITY-001", "AD-INVENTORY-002"]
+
+  - id: "A2"
+    question: "inventory.product_id 与 material_id 命名空间冲突的处置方向"
+    classification: "A"
+    why_not_engineering: >
+      「谁是物品真相」是业务主张; 且实测两列所在唯一同时填充的行指向
+      语义无关的不同物品, 说明可能是「二者本就不应出现在同一行」,
+      而非简单的二选一。
+    current_facts:
+      - evidence: "inventory_id=4 -> material_id=1(娃娃菜) 与 product_id=1(测试物料A)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "fk_inv_product_id 是全库唯一指向 product 的物理外键; material_id 无 FK"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "Inventory.java:382-388 将 getProductId() 实现为 materialId 的别名"
+        grade: "CODE_EVIDENCE"
+    linked_production_evidence: ["C1", "C6"]
+    blocks: ["PD-CANONICAL-001", "DS-001", "DS-002", "AD-IDENTITY-001"]
+
+  - id: "A3"
+    question: "仓库持仓 (inventory) 与门店持仓 (store_inventory) 是同一持仓的两个视图, 还是两个独立持仓"
+    classification: "A"
+    why_not_engineering: "决定两处数量差异是缺陷还是业务常态; 决定对账规则。"
+    current_facts:
+      - evidence: "store_only=7, warehouse_only=2, both=7, both_divergent=4"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "差异实例: 娃娃菜 101 vs 71; 虾滑 40 vs 70; 汤桶 0 vs 2; 洗剂 0 vs 20"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "两表精度不同: integer vs numeric(15,3)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "同一动作多处 dual-write 两张表; InventorySummaryMapper 以 UNION ALL 相加"
+        grade: "CODE_EVIDENCE"
+    linked_production_evidence: ["C2"]
+    blocks: ["AD-INVENTORY-002", "AD-LOCATION-001", "DS-017"]
+
+  - id: "A4"
+    question: "批次 / 效期是否构成持仓身份维度"
+    classification: "A"
+    why_not_engineering: "涉及食品安全召回责任归属与库存粒度, 属业务/合规主张。"
+    current_facts:
+      - evidence: "inventory.batch_no 填充 4/11, expiry_date 0/11, production_date 0/11"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "store_inventory 无任何 batch / expiry / production 列"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "material_trace_code 18 行 (batch 13, expiry 8) 持有另一套批次事实"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "inventory_transactions 无批次列"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "效期预警逻辑读取实测填充率为 0 的列"
+        grade: "CODE_EVIDENCE"
+    linked_production_evidence: ["C3"]
+    blocks: ["DS-016", "AD-INVENTORY-002"]
+
+  - id: "A5"
+    question: "orders_legacy / 旧 POS 链路在业务上是否仍在服役"
+    classification: "A"
+    why_not_engineering: "是否仍有旧 POS 端写入该表属部署与业务事实, 工程无法从本地判定。"
+    current_facts:
+      - evidence: "OrderMapper.java 含 18 处 orders_legacy 引用, 11 个 legacy 统计方法均无调用方"
+        grade: "CODE_EVIDENCE"
+      - evidence: "本地 orders_legacy = 0 行; order_items_legacy = 0 行"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "OrderServiceImpl 仍使用 Order 实体 (@TableName(\"orders_legacy\"))"
+        grade: "CODE_EVIDENCE"
+      - evidence: "在用的日结聚合 (aggregateByPaymentMethod 等) 全部查 orders 表"
+        grade: "CODE_EVIDENCE"
+    linked_production_evidence: ["C7"]
+    blocks: ["order truth 收敛"]
+
+  - id: "A6"
+    question: "dish_recipe (单数) 与 dish_recipes (复数) 的业务归属, 以及 dish_id <-> food_id 的对应关系"
+    classification: "A"
+    why_not_engineering: "两表键空间不同 (VARCHAR(50) vs BIGINT) 且无任何映射表; 对应关系属业务事实。"
+    current_facts:
+      - evidence: "dish_recipe = 0 行; dish_recipes 活跃 1 行 + 软删 4 行"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "DishRecipe 实体映射 21 列, dish_recipe 实际仅 13 列; 缺 ingredient_id / sort_order / estimated_cost 等"
+        grade: "CODE_EVIDENCE"
+      - evidence: "DishRecipeMapper 4 条查询必然失败; 被 3 个服务注入"
+        grade: "CODE_EVIDENCE"
+      - evidence: "FoodServiceImpl / OrderNewServiceImpl / RecipeServiceImpl / StockForecastServiceImpl 均使用 dish_recipes"
+        grade: "CODE_EVIDENCE"
+    linked_production_evidence: []
+    linked_engineering: ["B3"]
+    blocks: ["DS-010", "配方真相"]
+
+  - id: "A7"
+    question: "foods.stock 是否计入『库存』范畴 (限量标记 vs 库存管理)"
+    classification: "A"
+    why_not_engineering: "成品库存是否进入库存口径属业务定义问题。"
+    current_facts:
+      - evidence: "foods.stock 有值 (本地 99) 且存在专门的库存回补代码路径"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "foods 列注释为『库存数量（可选，用于限量菜品）』"
+        grade: "CODE_EVIDENCE"
+      - evidence: "无任何台账记录 foods.stock 变动"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    linked_production_evidence: []
+    blocks: ["库存真相范围"]
+
+# ============================================================================
+# SECTION B - ENGINEERING ACTIONS ALLOWED
+# ============================================================================
+engineering_actions:
+
+  - id: "B1"
+    defect: "precision mismatch: inventory.current_stock 与 store_inventory.current_stock 精度不一致"
+    current_facts:
+      - evidence: "inventory.current_stock = integer(32,0); safety_stock = integer"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "store_inventory.current_stock = numeric(15,3)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "chk_inventory_stock_nonneg 亦为整数比较"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "将 inventory.current_stock / safety_stock 精度对齐至与门店一致; 不改变任何数值"
+    forbidden: ["改名", "改业务含义", "删除数据"]
+    depends_on_decision: null
+    blocks_decision: false
+
+  - id: "B2"
+    defect: "missing FK: inventory.material_id / store_inventory.material_id 无外键"
+    current_facts:
+      - evidence: "pg_constraint 实测无任何指向 material_archives 的 FK"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "在无孤儿的前提下补充 FK"
+    forbidden: ["在有孤儿时强行加约束", "清洗孤儿数据"]
+    depends_on_decision: null
+    precondition: "先执行 B4 同类孤儿检查"
+    blocks_decision: false
+
+  - id: "B3"
+    defect: "dish_recipe 代码查询不存在的列 (必然失败)"
+    current_facts:
+      - evidence: "DishRecipeMapper 查询 ingredient_id / sort_order / estimated_cost"
+        grade: "CODE_EVIDENCE"
+      - evidence: "dish_recipe 实际列: id, recipe_id, dish_id, dish_name, material_id, material_name, quantity, unit, is_required, create_time, update_time, deleted, version"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "端点 POST /v1/inventory-deduction/recipe 存在; 前端调用方 0"
+        grade: "CODE_EVIDENCE"
+    allowed_action: "移除或停用该必然失败的代码路径, 或明确标注为不可用"
+    forbidden: ["表间语义迁移 (属 A6)", "改变配方业务含义"]
+    depends_on_decision: "A6 (仅限制迁移; 停用旁证缺陷不需要)"
+    blocks_decision: false
+
+  - id: "B4"
+    defect: "dangling inventory_transactions.inventory_id"
+    current_facts:
+      - evidence: "17/27 (62.96%) inventory_id 指向不存在的持仓行"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "悬挂 id 集合: 9,12,15,16,24,26,28"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "3 行持仓无任何流水: inventory_id 5,30,34"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "登记悬挂清单并暴露; 加 FK 前先处理孤儿"
+    forbidden: ["删除历史流水", "改写流水指向"]
+    depends_on_decision: null
+    blocks_decision: false
+
+  - id: "B5"
+    defect: "inventory_transactions.transaction_type 为 NULL"
+    current_facts:
+      - evidence: "2 行 NULL (transaction_id 2 与 3, 均 reference_type=adjust)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "补枚举值, 或显式声明允许 NULL 并加注释"
+    forbidden: ["猜测业务含义"]
+    depends_on_decision: null
+    blocks_decision: false
+
+  - id: "B6"
+    defect: "store_inventory_log.store_id 含孤儿值"
+    current_facts:
+      - evidence: "值 584 不匹配 stores(1,2), 也不匹配 warehouses(1..10)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "store_inventory_log 无任何外键"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "增加来源/类型校验并登记孤儿值"
+    forbidden: ["改写历史值"]
+    depends_on_decision: null
+    blocks_decision: false
+
+  - id: "B7"
+    defect: "product 残留调用点映射可疑"
+    current_facts:
+      - evidence: "ProductMapper 5 处调用; PurchaseOrderServiceImpl.java:638 以 dto.getMaterialId() 查 product"
+        grade: "CODE_EVIDENCE"
+      - evidence: "product 表仅 1 行测试数据 (测试物料A)"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "增加断言/日志以暴露映射不匹配"
+    forbidden: ["删除调用点 (退役属 A1/A5 决策)"]
+    depends_on_decision: "A1/A2 (仅限制删除)"
+    blocks_decision: false
+
+  - id: "B8"
+    defect: "purchase_request_item.food_id 无输入校验, 解析失败静默写 0L"
+    current_facts:
+      - evidence: "46/50 (92%) 实为 material ID"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "3 行不可解析, 1 行无匹配"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "服务层 Long.parseLong 失败时静默写入 0L"
+        grade: "CODE_EVIDENCE"
+    allowed_action: "增加输入校验, 消除静默降级, 改为显式失败"
+    forbidden: ["改列名", "改业务语义 (属 A2)"]
+    depends_on_decision: null
+    blocks_decision: false
+
+  - id: "B9"
+    defect: "inventory_unit / inventory_category 端点必然失败"
+    current_facts:
+      - evidence: "to_regclass 对两表均返回 NULL"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "实体 + Mapper + Service + Controller 全套存在, 各 6 个端点"
+        grade: "CODE_EVIDENCE"
+      - evidence: "前端调用方 0"
+        grade: "CODE_EVIDENCE"
+      - evidence: "2026-06-30 日志显示曾被 Web 端调用且返回成功 (96 条)"
+        grade: "CODE_EVIDENCE"
+    allowed_action: "使端点不再暴露 (下线或遮蔽)"
+    forbidden: ["建表 (属业务语义, 见 C5)"]
+    depends_on_decision: "C5 (仅限制建表)"
+    blocks_decision: false
+
+  - id: "B10"
+    defect: "inventory 缺业务唯一约束"
+    current_facts:
+      - evidence: "仅 inventory_pkey(inventory_id); 无 (material_id, warehouse_id) 唯一键"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "实测当前 0 重复组"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+      - evidence: "对照 store_inventory 有 uk_store_inventory_store_material"
+        grade: "LIVE_LOCAL_INSTANCE_EVIDENCE"
+    allowed_action: "增加仅防重复的唯一约束 (不建跨表同步)"
+    forbidden: ["建立两余额表同步机制 (属 A3)"]
+    depends_on_decision: "A3 (仅限制同步机制)"
+    blocks_decision: false
+
+engineering_red_lines:
+  - "不得顺手改名"
+  - "不得合并表"
+  - "不得删除 legacy 数据"
+  - "不得宣布任何表为 truth"
+  - "不得补齐业务含义"
+
+# ============================================================================
+# SECTION C - PRODUCTION EVIDENCE REQUIRED
+# ============================================================================
+production_evidence_required:
+
+  - id: "C1"
+    needed: "inventory 中 product_id / material_id 填充率与不一致行数 (两列分别 JOIN 到不同名称的行)"
+    related_decision: "A2"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C2"
+    needed: "inventory 与 store_inventory 同物料差异规模"
+    related_decision: "A3"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C3"
+    needed: "inventory.expiry_date / batch_no / production_date 填充率"
+    related_decision: "A4"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C4"
+    needed: "material_archives 重复命名规模 (同物多名 / 多名一物)"
+    related_decision: "A1"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C5"
+    needed: "是否存在调用 /v1/inventory/unit 与 /v1/inventory/category 的真实客户端"
+    related_decision: "B9"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C6"
+    needed: "purchase_request_item.food_id 不可解析比例"
+    related_decision: "A2"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C7"
+    needed: "orders_legacy 行数与最近写入时间"
+    related_decision: "A5"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+  - id: "C8"
+    needed: "是否存在按 version = 0 过滤的视图或客户端查询"
+    related_decision: "version 双语义风险真伪"
+    gate: "PRODUCTION-EVIDENCE-GATE-001"
+    status: "NOT_COLLECTED"
+    reason: "生产不可达"
+
+production_evidence_discipline:
+  - "C 类只降低不确定性, 不替代 A 类决策"
+  - "不得因生产数据『看起来干净』而跳过 A 类"
+  - "不得将本地证据重新命名为生产证据"
+
+# ============================================================================
+# SECTION D - FURTHER VALIDATION REQUIRED
+# ============================================================================
+further_validation:
+
+  - id: "D1"
+    current_judgement: "product 是 Commercial Concept / 商业抽象"
+    why_unreliable: "建立在 1 行测试数据 + 一个定价键之上"
+    convergence_path: "C1/C7 同批取生产行数与引用情况"
+    usable_for_decision: false
+    usable_for_engineering: false
+  - id: "D2"
+    current_judgement: "Material 是 Canonical Identity"
+    why_unreliable: "material_id 在 5 张表中宽度/类型不一 (VARCHAR(50) / VARCHAR(32) / BIGINT), 同一值是否指同一物未验证"
+    convergence_path: "生产跨表 material_id 一致性抽样"
+    usable_for_decision: false
+    usable_for_engineering: false
+  - id: "D3"
+    current_judgement: "foods 是 Dish/Sales Food Truth"
+    why_unreliable: "本地活跃 foods 仅 1 行; food 遗留表仍有调用点 (OrderTimeoutTask.java:121-124 以数值 food_id 当 food_code)"
+    convergence_path: "生产 foods / food 行数与是否双写"
+    usable_for_decision: false
+    usable_for_engineering: false
+  - id: "D4"
+    current_judgement: "orders 是 canonical order truth"
+    why_unreliable: "本地成立, 但 OrderServiceImpl 仍使用映射到 orders_legacy 的 Order 实体"
+    convergence_path: "生产双表行数 + 日结口径核对"
+    usable_for_decision: false
+    usable_for_engineering: false
+  - id: "D5"
+    current_judgement: "三层模型 (Definition / Commercial Unit / Holding) 是可能的正确解"
+    why_unreliable: "Commercial Unit 层零实现; 『三层』缺任一现实实现佐证"
+    convergence_path: "需先确认业务是否要求多商业单位 (属 A1 输入)"
+    usable_for_decision: false
+    usable_for_engineering: false
+  - id: "D6"
+    current_judgement: "inventory_unit 曾真实存在"
+    why_unreliable: "仅由 2026-06-30 单日日志支持, 该日志可能来自已废弃测试环境"
+    convergence_path: "生产 to_regclass + 生产日志检索"
+    usable_for_decision: false
+    usable_for_engineering: false
+
+# ============================================================================
+# ENGINEERING PROBLEM LIST (separated from business architecture)
+# ============================================================================
+engineering_problems:
+
+  - id: "E1"
+    problem: "purchase_request_item.food_id"
+    technical_facts:
+      - "列类型 character varying(32)"
+      - "46/50 实为 material ID"
+      - "3 行不可解析, 1 行无匹配"
+      - "服务层 parseLong 失败静默写 0L"
+    blocks_business_decision: false
+    note: "列名与语义不符属 A2; 校验缺失属工程"
+    mapped_action: "B8"
+  - id: "E2"
+    problem: "dish_recipe / dish_recipes"
+    technical_facts:
+      - "两表并存, 单数表缺 8 个被映射列"
+      - "DishRecipeMapper 4 条查询必然失败"
+      - "3 个服务依赖该 Mapper"
+    blocks_business_decision: false
+    note: "表间语义归属属 A6"
+    mapped_action: "B3"
+  - id: "E3"
+    problem: "precision mismatch"
+    technical_facts:
+      - "inventory.current_stock = integer"
+      - "store_inventory.current_stock = numeric(15,3)"
+    blocks_business_decision: false
+    mapped_action: "B1"
+  - id: "E4"
+    problem: "missing FK"
+    technical_facts:
+      - "inventory.material_id 无 FK"
+      - "store_inventory.material_id 无 FK"
+      - "inventory_transactions 零 FK"
+      - "store_inventory_log 零 FK"
+    blocks_business_decision: false
+    mapped_action: "B2"
+  - id: "E5"
+    problem: "dangling inventory_transactions"
+    technical_facts:
+      - "17/27 (62.96%) 悬挂"
+      - "3 行持仓无流水"
+      - "2 行 transaction_type NULL"
+    blocks_business_decision: false
+    mapped_action: "B4, B5"
+  - id: "E6"
+    problem: "broken inventory unit / category endpoints"
+    technical_facts:
+      - "两表 to_regclass = NULL"
+      - "实体/Mapper/Service/Controller 齐全, 各 6 端点"
+      - "前端调用方 0"
+    blocks_business_decision: false
+    mapped_action: "B9"
+  - id: "E7"
+    problem: "active product legacy residue"
+    technical_facts:
+      - "ProductMapper 5 处调用"
+      - "PurchaseOrderServiceImpl.java:638 以 materialId 查 product"
+      - "product 表 1 行测试数据"
+    blocks_business_decision: false
+    note: "退役属 A1/A5"
+    mapped_action: "B7"
+  - id: "E8"
+    problem: "store_inventory_log.store_id orphan"
+    technical_facts:
+      - "值 584 不匹配任何 stores 或 warehouses"
+    blocks_business_decision: false
+    mapped_action: "B6"
+  - id: "E9"
+    problem: "inventory missing business unique constraint"
+    technical_facts:
+      - "仅 PK; 无 (material_id, warehouse_id) 唯一键"
+      - "当前 0 重复组"
+    blocks_business_decision: false
+    mapped_action: "B10"
+  - id: "E10"
+    problem: "orders_legacy dead code"
+    technical_facts:
+      - "OrderMapper 18 处引用, 11 个方法无调用方"
+      - "Order.java 仍映射 orders_legacy"
+      - "本地 0 行"
+    blocks_business_decision: false
+    note: "退役属 A5"
+    mapped_action: "none (waiting on A5)"
+
+# ============================================================================
+# FALSIFICATION RECORD (A-class only)
+# ============================================================================
+falsification_record:
+  - id: "F-A1"
+    target: "A1 分层身份"
+    if_adopt_X_breaks:
+      - "需新建一个当前完全不存在层; 所有库存写入路径须改写以带商业单位"
+      - "两张余额表只有单值 current_stock + 自由文本 unit; 历史数值需逐个重新归属"
+      - "foods.stock / inventory / store_inventory 三处既有数量须重新定位, 否则出现第四套口径"
+    if_not_adopt_X_produces:
+      - "跨模块仍无法可靠串接 (food_id 实存 material ID, 靠 parseLong 桥接)"
+      - "『以箱采购、以罐核算』不可表达 (无换算, unit 为自由文本)"
+      - "多商业单位只能靠多建物料行规避, 而本库已有同物多行实例"
+    evidence_supporting_X:
+      - "inventory 行同时携带 unit 与 batch_no"
+      - "销售侧已用 (product_type in {FOOD,COMBO}, product_id) 判别式多态"
+      - "store_inventory 与 inventory 键空间不同, 说明持仓至少二态"
+    evidence_opposing_X:
+      - "Commercial Unit 层零实现 (无 sku / uom / 换算列)"
+      - "无任何一个物料拥有多个包装层级"
+      - "material_archives 仅单值 spec / unit / barcode"
+      - "本地数据规模极小 (11/16/1/35 行)"
+    evidence_needed: "生产同物多包装实例; 生产两列语义分歧行; 业务是否存在多单位作业要求"
+
+  - id: "F-A2"
+    target: "A2 命名空间处置"
+    if_adopt_X_breaks:
+      - "破坏 fk_inv_product_id (全库唯一指向 product 的物理外键)"
+      - "product 表 5 处调用点失去目标, 其中 638 行逻辑须重写而非删除"
+      - "若生产 product 有真实行且被引用, 历史库存行的物品归属不可还原"
+    if_not_adopt_X_produces:
+      - "双口径持续, 『一行两物』无法被系统发现"
+      - "完整性约束指向近乎空转的列, 实际写入列无约束保护"
+    evidence_supporting_X:
+      - "material_id 填充 11/11 vs product_id 1/11"
+      - "Inventory.java:382-388 已单方面认定二者等价"
+      - "无任何代码路径写入 product_id"
+    evidence_opposing_X:
+      - "唯一物理外键在 product_id 上"
+      - "product 仍被 5 处调用"
+      - "唯一同时填充行两列所指物品不同, 说明二者非同一命名空间"
+    evidence_needed: "生产两列填充率与不一致行数; 生产 product 行数与引用数"
+
+  - id: "F-A3"
+    target: "A3 两余额表关系"
+    if_adopt_X_breaks:
+      - "现有 4 例数量差异须判为数据错误并修正, 会改变账面库存"
+      - "store_inventory.store_id (VARCHAR) 与 inventory.store_id (BIGINT, 0 填充) 须先统一"
+      - "门店独有的 7 个物料在仓库侧无行, 收敛后须补建仓库持仓行 (新增业务事实)"
+    if_not_adopt_X_produces:
+      - "总库存只能继续以 UNION ALL 相加, 两口径差异不被发现"
+      - "调拨对账基准不明确"
+    evidence_supporting_X:
+      - "同一动作同时写两张表 (多处 dual-write)"
+      - "两表都持有同一 material_id 的 current_stock"
+    evidence_opposing_X:
+      - "门店独有 7 个物料在仓库侧完全不存在"
+      - "store_inventory.store_id 实测含仓库 ID (584), 键空间已混乱"
+      - "两表精度不同, 若为同一持仓不应有此差异"
+    evidence_needed: "生产两表差异规模; 调拨单据在两表的记账口径; 是否存在只入门店不入仓库的流程"
+
+  - id: "F-A4"
+    target: "A4 批次/效期身份"
+    if_adopt_X_breaks:
+      - "store_inventory 无批次列, 须新增列并重定唯一键, 历史行需回填批次"
+      - "inventory 现为一行一批次单值覆盖式写入, 改为批次维度后同 (物料,仓库) 将多行"
+      - "召回口径改变会影响追溯与损耗记账"
+    if_not_adopt_X_produces:
+      - "效期预警继续读取填充率 0% 的列 (本地恒为空集)"
+      - "召回无法以库存行为凭据, 只能依赖追溯码空间"
+    evidence_supporting_X:
+      - "inventory 行自带 batch_no / production_date / expiry_date 列"
+      - "追溯码空间持有完整批次与效期"
+      - "recall_record.batch_no 为 NOT NULL"
+    evidence_opposing_X:
+      - "库存侧 expiry_date 填充 0%, batch_no 仅 36%"
+      - "inventory_transactions 完全没有批次列"
+      - "门店侧完全没有批次概念"
+    evidence_needed: "生产库存侧批次/效期填充率; 是否存在按批次执行的召回或临期处置记录"
+
+  - id: "F-A5"
+    target: "A5 orders_legacy 退役"
+    if_adopt_X_breaks:
+      - "OrderServiceImpl 仍以 Order (orders_legacy) 做 CRUD, 若仍被调用则写入失败"
+      - "11 个 legacy 统计方法虽无调用方, 但属已发布接口面"
+    if_not_adopt_X_produces:
+      - "死代码与 18 处 legacy 引用持续存在"
+      - "Order 与 OrderNew 并存映射不同表, 构成持续误用风险"
+    evidence_supporting_X:
+      - "本地 orders_legacy 0 行; order_items_legacy 0 行"
+      - "所有在用日结聚合均查 orders 表"
+      - "11 个 legacy 方法实测无调用方"
+    evidence_opposing_X:
+      - "OrderServiceImpl 仍引用该实体"
+      - "OrderMapper.java 仍保留 18 处引用"
+      - "生产是否存在旧 POS 写入未知"
+    evidence_needed: "生产 orders_legacy 行数与最近写入时间; 是否仍有旧 POS 端运行"
+
+  - id: "F-A6"
+    target: "A6 recipe 表归属"
+    if_adopt_X_breaks:
+      - "键空间不同 (VARCHAR(50) vs BIGINT), 迁移需建立无映射表的对应关系"
+      - "DishRecipeMapper 4 条查询与实体 21 列基于不存在列, 迁移等于重写"
+      - "3 个依赖服务行为会改变"
+    if_not_adopt_X_produces:
+      - "库存扣减 /recipe 路径持续必然失败"
+      - "配方真相继续不可判定"
+    evidence_supporting_X:
+      - "dish_recipe 0 行; dish_recipes 有 1 行活跃"
+      - "四个在用服务均使用 dish_recipes (复数)"
+      - "dish_recipe 实体与表结构已不一致到无法运行"
+    evidence_opposing_X:
+      - "仍有 3 个服务注入 DishRecipeMapper"
+      - "本地样本极小 (1 行活跃配方)"
+    evidence_needed: "生产两表行数; dish_recipe.dish_id 是否可映射到 foods.food_code"
+
+  - id: "F-A7"
+    target: "A7 foods.stock 是否为库存真相"
+    if_adopt_X_breaks:
+      - "需定义与 inventory / store_inventory 的换算与同步规则, 而三者单位体系不同"
+      - "成品库存进入库存口径会改变成本与损耗计算基准"
+    if_not_adopt_X_produces:
+      - "『成品是否有库存』在系统内无单一答案"
+      - "OrderTimeoutTask 双表改 stock 的路径继续存在"
+    evidence_supporting_X:
+      - "foods.stock 与 foods.min_stock 为真实列且有值"
+      - "存在专门的库存回补代码路径"
+    evidence_opposing_X:
+      - "foods 列注释为『库存数量（可选，用于限量菜品）』, 语义是限量"
+      - "无任何台账记录 foods.stock 变动"
+    evidence_needed: "foods.stock 在生产是否被业务实际使用 (属 A 类业务语义确认)"
+
+# ============================================================================
+# SUMMARY
+# ============================================================================
+summary:
+  owner_decisions_count: 7
+  engineering_actions_count: 10
+  production_evidence_count: 8
+  further_validation_count: 6
+  engineering_problems_count: 10
+  falsification_records_count: 7
+  owner_decision_ids: ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
+  engineering_action_ids: ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"]
+  production_evidence_ids: ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
+  further_validation_ids: ["D1", "D2", "D3", "D4", "D5", "D6"]
+  evidence_grade_usage:
+    LIVE_LOCAL_INSTANCE_EVIDENCE: true
+    CODE_EVIDENCE: true
+    HISTORICAL_EVIDENCE: true
+    PRODUCTION_EVIDENCE: false
+  production_evidence_entries_collected: 0
+  local_evidence_renamed_as_production: false
+  new_options_created: 0
+  recommendation_written_as_decision: false
+
+# ============================================================================
+# CURRENT DECISION STATUS
+# ============================================================================
+current_decision_status:
+  pd_canonical_001_still_not_confirmed: true
+  pd_canonical_001_became_confirmed: false
+  pd_canonical_001_became_locked: false
+  ready_for_formal_engineering_modeling: false
+  reason_not_ready:
+    - "A1..A7 七项负责人决策全部未决"
+    - "生产证据 Gate-0 = BLOCKED, C1..C8 全部未取"
+    - "D1..D6 六项当前判断不可信"
+    - "在 A1 (是否分层) 与 A2 (命名空间处置) 裁决前, 任何正式身份建模会把未验证假设固化进 schema"
+  minimal_next_step:
+    - "由 DBA/运维在生产库执行 production-evidence-gate-001.md 第16节的 12 条只读查询并回填 (解除 Gate-0)"
+    - "同时由负责人就 A1 与 A2 作出方向性裁决"
+  parallelism_note: "上述两步互不依赖, 可并行; A3..A7 可在其后跟进"
+  engineering_may_proceed_in_parallel: ["B1", "B3", "B4", "B5", "B6", "B7", "B8", "B9"]
+
+declarations:
+  new_architecture_proposed: false
+  database_designed: false
+  api_designed: false
+  code_modified: false
+  schema_modified: false
+  migrations_executed: false
+  legacy_data_deleted: false
+  new_options_created: 0
+  owner_authority_usurped: false
+  recommendation_treated_as_decision: false
