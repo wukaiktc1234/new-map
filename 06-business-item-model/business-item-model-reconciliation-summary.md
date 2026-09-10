@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** BUSINESS-ITEM-MODEL-002
+
 # Business Item Model Reconciliation Summary
 
 ## Executive Summary
