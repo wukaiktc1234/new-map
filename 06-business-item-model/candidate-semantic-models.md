@@ -1,3 +1,7 @@
+> **DOCUMENT STATUS:** SUPERSEDED
+> **SUPERSEDED BY:** 03-review/business-item-canonical-semantic-reassessment.md
+> **SOURCE TASK:** BUSINESS-ITEM-MODEL-002
+
 # 候选语义模型比较
 
 ## 1. 分析框架
