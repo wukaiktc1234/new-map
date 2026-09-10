@@ -1,0 +1,985 @@
+# Business Item Model Reconciliation Registry
+# 餐饮ERP系统概念注册表
+# Generated for reconciliation analysis
+
+registry_version: "1.0.0"
+domain: "restaurant-erp"
+generated_date: "2026-09-10"
+purpose: "Concept reconciliation and alignment for business item modeling"
+
+concepts:
+  product:
+    name: "Product"
+    classification:
+      - ENTITY
+    definition: "Generic business item that can be sold, purchased, or tracked in inventory"
+    canonical_identity: "ProductCode"
+    type: "BusinessItem"
+    roles: []
+    capabilities:
+      - "sellable"
+      - "purchasable"
+      - "stockable"
+    relationships:
+      - "parent_of: food"
+      - "parent_of: material"
+      - "parent_of: beverage"
+    profiles: []
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream: []
+    downstream:
+      - "food"
+      - "material"
+      - "beverage"
+    current_objects:
+      - "products_table"
+      - "product_master"
+    target_concept: "Product"
+    examples:
+      - "菜单上的菜品"
+      - "厨房使用的原料"
+      - "销售的饮料"
+    counterexamples:
+      - "员工（不是产品）"
+      - "设备（不是产品）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "现有数据库表结构"
+        - "业务流程文档"
+    status: "CONFIRMED"
+
+  food:
+    name: "Food"
+    classification:
+      - ENTITY
+      - TYPE
+    definition: "Edible product prepared and sold in restaurant operations"
+    canonical_identity: "FoodCode"
+    type: "Product"
+    roles:
+      - "prepared_dish"
+      - "ingredient"
+    capabilities:
+      - "sellable"
+      - "stockable"
+      - "consumable"
+    relationships:
+      - "is_a: product"
+      - "composed_of: ingredient"
+      - "prepared_in: recipe"
+    profiles:
+      - "food_safety"
+      - "preparation_time"
+    scope:
+      global: true
+      store: true
+      warehouse: false
+      recipe: true
+    upstream:
+      - "product"
+    downstream:
+      - "ingredient"
+      - "recipe_component"
+    current_objects:
+      - "food_items_table"
+      - "menu_items_table"
+    target_concept: "Food"
+    examples:
+      - "红烧牛肉"
+      - "炒青菜"
+      - "汉堡包"
+    counterexamples:
+      - "生蔬菜（不是成品食物）"
+      - "调味品（属于ingredient）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "菜单管理模块"
+        - "厨房生产流程"
+    status: "CONFIRMED"
+
+  material:
+    name: "Material"
+    classification:
+      - ENTITY
+      - TYPE
+    definition: "Non-food item used in restaurant operations for production or maintenance"
+    canonical_identity: "MaterialCode"
+    type: "Product"
+    roles:
+      - "consumable_supply"
+      - "maintenance_item"
+    capabilities:
+      - "purchasable"
+      - "stockable"
+      - "consumable"
+    relationships:
+      - "is_a: product"
+      - "used_in: operations"
+      - "stored_in: warehouse"
+    profiles:
+      - "non_perishable"
+      - "bulk_storage"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "product"
+    downstream:
+      - "stock_item"
+    current_objects:
+      - "materials_table"
+      - "supplies_table"
+    target_concept: "Material"
+    examples:
+      - "清洁用品"
+      - "包装材料"
+      - "厨房工具"
+    counterexamples:
+      - "食材（属于food或ingredient）"
+      - "饮料（属于beverage）"
+    evidence:
+      confidence: "MEDIUM"
+      sources:
+        - "采购管理模块"
+        - "库存管理系统"
+    status: "CONFIRMED"
+
+  beverage:
+    name: "Beverage"
+    classification:
+      - ENTITY
+      - TYPE
+    definition: "Drink product sold in restaurant operations"
+    canonical_identity: "BeverageCode"
+    type: "Product"
+    roles:
+      - "drink_product"
+      - "ingredient"
+    capabilities:
+      - "sellable"
+      - "stockable"
+      - "consumable"
+    relationships:
+      - "is_a: product"
+      - "composed_of: ingredient"
+      - "served_in: recipe"
+    profiles:
+      - "temperature_control"
+      - "shelf_life"
+    scope:
+      global: true
+      store: true
+      warehouse: false
+      recipe: true
+    upstream:
+      - "product"
+    downstream:
+      - "ingredient"
+      - "recipe_component"
+    current_objects:
+      - "beverages_table"
+      - "drinks_table"
+    target_concept: "Beverage"
+    examples:
+      - "可乐"
+      - "咖啡"
+      - "鲜榨果汁"
+    counterexamples:
+      - "汤类（属于food）"
+      - "调味汁（属于ingredient）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "饮品管理模块"
+        - "销售点系统"
+    status: "CONFIRMED"
+
+  ingredient:
+    name: "Ingredient"
+    classification:
+      - ENTITY
+      - ROLE
+    definition: "Component used in food or beverage preparation"
+    canonical_identity: "IngredientCode"
+    type: "Product"
+    roles:
+      - "recipe_component"
+      - "raw_material"
+    capabilities:
+      - "purchasable"
+      - "stockable"
+      - "consumable"
+    relationships:
+      - "is_a: product"
+      - "used_in: food"
+      - "used_in: beverage"
+      - "part_of: recipe_component"
+    profiles:
+      - "perishable"
+      - "measured_quantity"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: true
+    upstream:
+      - "product"
+      - "food"
+      - "beverage"
+    downstream:
+      - "recipe_component"
+      - "stock_item"
+    current_objects:
+      - "ingredients_table"
+      - "raw_materials_table"
+    target_concept: "Ingredient"
+    examples:
+      - "牛肉"
+      - "面粉"
+      - "牛奶"
+    counterexamples:
+      - "成品菜肴（属于food）"
+      - "调味料（也是ingredient）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "配方管理模块"
+        - "采购订单系统"
+    status: "CONFIRMED"
+
+  sellable:
+    name: "Sellable"
+    classification:
+      - ROLE
+      - CAPABILITY
+    definition: "Capability indicating an item can be sold to customers"
+    canonical_identity: "SellableFlag"
+    type: "Capability"
+    roles:
+      - "sales_item"
+    capabilities:
+      - "has_price"
+      - "appears_on_menu"
+      - "tracked_in_pos"
+    relationships:
+      - "applied_to: product"
+      - "requires: price"
+      - "displayed_in: menu"
+    profiles:
+      - "customer_facing"
+      - "revenue_generating"
+    scope:
+      global: true
+      store: true
+      warehouse: false
+      recipe: false
+    upstream:
+      - "product"
+      - "price"
+    downstream:
+      - "sales_transaction"
+      - "menu_item"
+    current_objects:
+      - "sellable_products_view"
+      - "menu_items_table"
+    target_concept: "Sellable"
+    examples:
+      - "菜单上的菜品"
+      - "柜台销售的饮料"
+      - "外卖平台商品"
+    counterexamples:
+      - "内部使用的清洁用品"
+      - "未定价的新产品"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "销售点系统"
+        - "菜单管理"
+    status: "CONFIRMED"
+
+  purchasable:
+    name: "Purchasable"
+    classification:
+      - ROLE
+      - CAPABILITY
+    definition: "Capability indicating an item can be purchased from suppliers"
+    canonical_identity: "PurchasableFlag"
+    type: "Capability"
+    roles:
+      - "procurement_item"
+    capabilities:
+      - "has_supplier"
+      - "has_purchase_price"
+      - "tracked_in_procurement"
+    relationships:
+      - "applied_to: product"
+      - "sourced_from: supplier"
+      - "tracked_in: purchase_order"
+    profiles:
+      - "vendor_managed"
+      - "cost_tracked"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "product"
+      - "supplier"
+    downstream:
+      - "purchase_order"
+      - "inventory_receipt"
+    current_objects:
+      - "purchasable_items_view"
+      - "supplier_products_table"
+    target_concept: "Purchasable"
+    examples:
+      - "从供应商采购的食材"
+      - "批发购买的饮料"
+      - "订购的清洁用品"
+    counterexamples:
+      - "自制的调味料"
+      - "顾客自带的食材"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "采购管理模块"
+        - "供应商管理系统"
+    status: "CONFIRMED"
+
+  stockable:
+    name: "Stockable"
+    classification:
+      - ROLE
+      - CAPABILITY
+    definition: "Capability indicating an item can be stored in inventory"
+    canonical_identity: "StockableFlag"
+    type: "Capability"
+    roles:
+      - "inventory_item"
+    capabilities:
+      - "tracked_in_inventory"
+      - "has_stock_level"
+      - "supports_warehouse_management"
+    relationships:
+      - "applied_to: product"
+      - "stored_in: warehouse"
+      - "tracked_by: inventory_system"
+    profiles:
+      - "countable"
+      - "location_trackable"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "product"
+      - "warehouse"
+    downstream:
+      - "inventory_transaction"
+      - "stock_level"
+    current_objects:
+      - "stockable_items_view"
+      - "inventory_master_table"
+    target_concept: "Stockable"
+    examples:
+      - "仓库中的原料"
+      - "货架上的包装材料"
+      - "冰柜里的冷冻食品"
+    counterexamples:
+      - "即时消耗的鲜切水果"
+      - "按需制作的菜品"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "库存管理系统"
+        - "仓库管理模块"
+    status: "CONFIRMED"
+
+  consumable:
+    name: "Consumable"
+    classification:
+      - ROLE
+      - CAPABILITY
+    definition: "Capability indicating an item is used up during operations or sales"
+    canonical_identity: "ConsumableFlag"
+    type: "Capability"
+    roles:
+      - "consumption_item"
+    capabilities:
+      - "depletes_with_use"
+      - "requires_reordering"
+      - "tracked_in_consumption"
+    relationships:
+      - "applied_to: product"
+      - "used_in: operations"
+      - "depleted_by: sales_or_production"
+    profiles:
+      - "perishable"
+      - "finite_lifespan"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: true
+    upstream:
+      - "product"
+      - "stock_item"
+    downstream:
+      - "consumption_record"
+      - "reorder_trigger"
+    current_objects:
+      - "consumable_items_view"
+      - "consumption_logs_table"
+    target_concept: "Consumable"
+    examples:
+      - "烹饪用的油"
+      - "一次性餐具"
+      - "调味料"
+    counterexamples:
+      - "厨房设备（可重复使用）"
+      - "餐具（可清洗重复使用）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "消耗品管理"
+        - "库存消耗记录"
+    status: "CONFIRMED"
+
+  recipe_component:
+    name: "Recipe Component"
+    classification:
+      - ENTITY
+      - RELATIONSHIP
+    definition: "Link between a finished product and its ingredients with quantities"
+    canonical_identity: "RecipeComponentID"
+    type: "Relationship"
+    roles:
+      - "ingredient_specification"
+      - "portion_definition"
+    capabilities:
+      - "defines_quantity"
+      - "links_food_to_ingredients"
+      - "supports_cost_calculation"
+    relationships:
+      - "belongs_to: food"
+      - "uses: ingredient"
+      - "defines: quantity"
+      - "calculates: portion_cost"
+    profiles:
+      - "recipe_management"
+      - "cost_accounting"
+    scope:
+      global: false
+      store: true
+      warehouse: false
+      recipe: true
+    upstream:
+      - "food"
+      - "ingredient"
+      - "unit"
+    downstream:
+      - "food_cost"
+      - "portion_control"
+    current_objects:
+      - "recipe_components_table"
+      - "food_ingredients_table"
+    target_concept: "RecipeComponent"
+    examples:
+      - "红烧牛肉需要500g牛肉"
+      - "汉堡包含200g面包胚"
+      - "咖啡需要30ml咖啡豆"
+    counterexamples:
+      - "菜单描述（不是精确配方）"
+      - "供应商推荐用量"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "配方管理系统"
+        - "成本核算模块"
+    status: "CONFIRMED"
+
+  stock_item:
+    name: "Stock Item"
+    classification:
+      - ENTITY
+      - DERIVED
+    definition: "Physical item tracked in inventory with location and quantity"
+    canonical_identity: "StockItemID"
+    type: "InventoryEntity"
+    roles:
+      - "inventory_record"
+      - "warehouse_content"
+    capabilities:
+      - "tracks_quantity"
+      - "tracks_location"
+      - "supports_reorder"
+    relationships:
+      - "represents: product"
+      - "located_in: warehouse"
+      - "has: stock_level"
+      - "tracked_by: inventory_system"
+    profiles:
+      - "perishable_management"
+      - "batch_tracking"
+    scope:
+      global: false
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "product"
+      - "warehouse"
+      - "unit"
+    downstream:
+      - "inventory_transaction"
+      - "reorder_alert"
+    current_objects:
+      - "stock_items_table"
+      - "inventory_records_table"
+    target_concept: "StockItem"
+    examples:
+      - "冷库中的牛肉批次"
+      - "货架上的面粉袋"
+      - "仓库里的包装箱"
+    counterexamples:
+      - "菜单上的菜品（不是库存项目）"
+      - "已售出的商品（库存已减少）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "库存管理系统"
+        - "仓库管理模块"
+    status: "CONFIRMED"
+
+  sku:
+    name: "SKU"
+    classification:
+      - IDENTITY
+      - ATTRIBUTE
+    definition: "Stock Keeping Unit - unique identifier for inventory tracking"
+    canonical_identity: "SKUCode"
+    type: "Identifier"
+    roles:
+      - "inventory_identifier"
+      - "tracking_code"
+    capabilities:
+      - "uniquely_identifies_item"
+      - "supports_barcode_generation"
+      - "enables_inventory_tracking"
+    relationships:
+      - "identifies: stock_item"
+      - "linked_to: barcode"
+      - "assigned_to: product_variant"
+    profiles:
+      - "inventory_management"
+      - "point_of_sale"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "product"
+      - "variant"
+    downstream:
+      - "barcode"
+      - "stock_item"
+    current_objects:
+      - "sku_table"
+      - "product_variants_table"
+    target_concept: "SKU"
+    examples:
+      - "SKU-001-牛肉-500g"
+      - "SKU-002-可乐-330ml"
+      - "SKU-003-面粉-1kg"
+    counterexamples:
+      - "产品名称（不是唯一标识）"
+      - "条形码数字（是另一个标识）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "库存管理系统"
+        - "产品主数据"
+    status: "CONFIRMED"
+
+  barcode:
+    name: "Barcode"
+    classification:
+      - IDENTITY
+      - ATTRIBUTE
+    definition: "Machine-readable code for product identification and scanning"
+    canonical_identity: "BarcodeNumber"
+    type: "Identifier"
+    roles:
+      - "scan_identifier"
+      - "pos_input_method"
+    capabilities:
+      - "enables_quick_scan"
+      - "links_to_sku"
+      - "supports_pos_operations"
+    relationships:
+      - "represents: sku"
+      - "scanned_at: pos"
+      - "linked_to: product"
+    profiles:
+      - "retail_operations"
+      - "quick_service"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "sku"
+      - "product"
+    downstream:
+      - "pos_transaction"
+      - "scan_event"
+    current_objects:
+      - "barcodes_table"
+      - "product_barcodes_table"
+    target_concept: "Barcode"
+    examples:
+      - "6901234567890"
+      - "内部编码-001"
+      - "二维码-菜单项"
+    counterexamples:
+      - "产品描述（不是机器可读）"
+      - "价格标签（包含多个信息）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "销售点系统"
+        - "条形码管理"
+    status: "CONFIRMED"
+
+  unit:
+    name: "Unit"
+    classification:
+      - ENTITY
+      - ATTRIBUTE
+    definition: "Measurement standard for quantifying products"
+    canonical_identity: "UnitCode"
+    type: "MeasurementStandard"
+    roles:
+      - "quantity_measure"
+      - "recipe_measure"
+    capabilities:
+      - "defines_measurement"
+      - "enables_conversion"
+      - "supports_pricing"
+    relationships:
+      - "measures: product"
+      - "used_in: recipe_component"
+      - "converted_to: other_unit"
+    profiles:
+      - "metric_system"
+      - "imperial_system"
+    scope:
+      global: true
+      store: true
+      warehouse: true
+      recipe: true
+    upstream:
+      - "measurement_system"
+    downstream:
+      - "recipe_component"
+      - "pricing"
+    current_objects:
+      - "units_table"
+      - "unit_conversions_table"
+    target_concept: "Unit"
+    examples:
+      - "千克 (kg)"
+      - "升 (L)"
+      - "份 (portion)"
+      - "个 (piece)"
+    counterexamples:
+      - "价格（货币单位不同）"
+      - "时间（不同量纲）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "计量管理系统"
+        - "配方管理系统"
+    status: "CONFIRMED"
+
+  warehouse:
+    name: "Warehouse"
+    classification:
+      - ENTITY
+      - CONTEXT
+    definition: "Physical location for storing inventory items"
+    canonical_identity: "WarehouseID"
+    type: "Location"
+    roles:
+      - "storage_location"
+      - "inventory_hub"
+    capabilities:
+      - "stores_inventory"
+      - "manages_stock_levels"
+      - "supports_receiving_shipping"
+    relationships:
+      - "contains: stock_item"
+      - "manages: inventory"
+      - "receives: purchase_order"
+    profiles:
+      - "cold_storage"
+      - "dry_storage"
+      - "freezer"
+    scope:
+      global: false
+      store: true
+      warehouse: true
+      recipe: false
+    upstream:
+      - "store"
+      - "location"
+    downstream:
+      - "stock_item"
+      - "inventory_transaction"
+    current_objects:
+      - "warehouses_table"
+      - "storage_locations_table"
+    target_concept: "Warehouse"
+    examples:
+      - "中央厨房冷库"
+      - "门店后厨储藏室"
+      - "干货仓库"
+    counterexamples:
+      - "销售区域（不是存储区域）"
+      - "厨房操作台（不是仓库）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "仓库管理系统"
+        - "门店布局设计"
+    status: "CONFIRMED"
+
+  price:
+    name: "Price"
+    classification:
+      - ATTRIBUTE
+      - STATE
+    definition: "Monetary value assigned to a product for sale or purchase"
+    canonical_identity: "PriceID"
+    type: "MonetaryValue"
+    roles:
+      - "selling_price"
+      - "cost_price"
+      - "purchase_price"
+    capabilities:
+      - "defines_product_value"
+      - "enables_transactions"
+      - "supports_financial_reporting"
+    relationships:
+      - "assigned_to: product"
+      - "varies_by: context"
+      - "recorded_in: transaction"
+    profiles:
+      - "fixed_price"
+      - "dynamic_pricing"
+      - "promotional_price"
+    scope:
+      global: false
+      store: true
+      warehouse: false
+      recipe: false
+    upstream:
+      - "product"
+      - "market_conditions"
+      - "cost_structure"
+    downstream:
+      - "sales_transaction"
+      - "financial_report"
+    current_objects:
+      - "prices_table"
+      - "product_pricing_table"
+    target_concept: "Price"
+    examples:
+      - "红烧牛肉售价 ¥38"
+      - "可乐进价 ¥2.5"
+      - "促销价 ¥25"
+    counterexamples:
+      - "成本（不是售价）"
+      - "预算（计划值不是实际价格）"
+    evidence:
+      confidence: "HIGH"
+      sources:
+        - "定价管理系统"
+        - "财务核算模块"
+    status: "CONFIRMED"
+
+reconciliation_rules:
+  identity_resolution:
+    - rule_id: "IR-001"
+      description: "Each concept must have a unique canonical identity"
+      implementation: "Natural key or surrogate key with business meaning"
+      examples:
+        - "ProductCode for Product"
+        - "FoodCode for Food"
+        - "SKUCode for SKU"
+    - rule_id: "IR-002"
+      description: "Identities must be stable across system boundaries"
+      implementation: "Global uniqueness with namespace prefix"
+      examples:
+        - "GLOBAL-PROD-001"
+        - "STORE-FOOD-001"
+    - rule_id: "IR-003"
+      description: "Identities must support human readability"
+      implementation: "Meaningful prefixes and sequential numbering"
+      examples:
+        - "PROD-001-牛肉"
+        - "SKU-002-可乐"
+
+  type_role_capability_distinction:
+    - distinction: "Type defines WHAT something is"
+      examples:
+        - "Food is a type of Product"
+        - "Beverage is a type of Product"
+    - distinction: "Role defines HOW something is used"
+      examples:
+        - "Sellable role for customer-facing items"
+        - "Purchasable role for supplier-sourced items"
+    - distinction: "Capability defines WHAT something can do"
+      examples:
+        - "Stockable capability for inventory management"
+        - "Consumable capability for usage tracking"
+
+  candidate_model_comparison:
+    - model: "Single Product Table"
+      pros:
+        - "Simple implementation"
+        - "Easy querying"
+      cons:
+        - "Overloaded columns"
+        - "Poor domain separation"
+      verdict: "NOT_RECOMMENDED"
+    - model: "Type-Specific Tables"
+      pros:
+        - "Clear domain separation"
+        - "Type-specific attributes"
+      cons:
+        - "Complex joins"
+        - "Data synchronization challenges"
+      verdict: "RECOMMENDED"
+    - model: "Event Sourcing"
+      pros:
+        - "Complete audit trail"
+        - "Temporal queries"
+      cons:
+        - "Complex implementation"
+        - "Performance overhead"
+      verdict: "FUTURE_STATE"
+
+  dec_006_escalation:
+    original_issue: "Product vs Food vs Ingredient classification"
+    resolution: "Adopt hierarchical type system with capability flags"
+    recommendation: "Implement Product → Food/Beverage/Material hierarchy with Sellable/Purchasable/Stockable/Consumable capabilities"
+    confidence: "HIGH"
+    supporting_evidence:
+      - "Current database analysis"
+      - "Business process mapping"
+      - "User interview insights"
+
+owner_decisions_required:
+  product_owner:
+    - decision: "Menu item classification rules"
+      options:
+        - "Food items always sellable"
+        - "Allow non-sellable food items for internal use"
+      recommendation: "Allow flexible classification based on business needs"
+    - decision: "Ingredient vs Product boundary"
+      options:
+        - "Ingredients are separate product type"
+        - "Ingredients are product role/capability"
+      recommendation: "Ingredients as Product type with Consumable and Purchasable capabilities"
+
+  architecture_owner:
+    - decision: "Database schema strategy"
+      options:
+        - "Single product table with type discriminator"
+        - "Separate tables per product type"
+        - "Hybrid approach with core + extension tables"
+      recommendation: "Hybrid approach for flexibility and performance"
+    - decision: "Identity generation strategy"
+      options:
+        - "UUID for global uniqueness"
+        - "Sequential codes for human readability"
+        - "Composite keys for context-specific identification"
+      recommendation: "Composite approach: UUID for system, human-readable codes for business users"
+
+next_steps:
+  - action: "Validate recommendations with business stakeholders"
+    priority: "HIGH"
+    timeline: "1-2 weeks"
+    owner: "Product Owner"
+  - action: "Prototype hybrid schema approach"
+    priority: "HIGH"
+    timeline: "2-3 weeks"
+    owner: "Development Team"
+  - action: "Conduct data migration impact analysis"
+    priority: "MEDIUM"
+    timeline: "1 week"
+    owner: "Data Architecture Team"
+  - action: "Update system documentation with new model"
+    priority: "MEDIUM"
+    timeline: "1 week"
+    owner: "Technical Writing Team"
+  - action: "Plan phased implementation approach"
+    priority: "HIGH"
+    timeline: "2 weeks"
+    owner: "Solution Architect"
+
+evidence_summary:
+  database_analysis:
+    - finding: "Multiple product-related tables with overlapping columns"
+      confidence: "HIGH"
+      tables_identified:
+        - "products"
+        - "food_items"
+        - "ingredients"
+        - "beverages"
+        - "stock_items"
+    - finding: "Inconsistent naming conventions across modules"
+      confidence: "HIGH"
+      examples:
+        - "product_id vs item_code vs sku"
+        - "price vs cost vs value"
+
+  business_process_mapping:
+    - finding: "Complex approval workflows for product changes"
+      confidence: "HIGH"
+      workflows:
+        - "New product introduction"
+        - "Price changes"
+        - "Recipe modifications"
+    - finding: "Cross-module dependencies for inventory management"
+      confidence: "MEDIUM"
+      dependencies:
+        - "Sales to inventory deduction"
+        - "Purchase to inventory addition"
+        - "Production to ingredient consumption"
+
+  user_interview_insights:
+    - finding: "Staff confusion about product classification"
+      confidence: "HIGH"
+      quotes:
+        - "Is this a food item or an ingredient?"
+        - "Do we stock this or order it as needed?"
+    - finding: "Need for flexible product attributes"
+      confidence: "HIGH"
+      requirements:
+        - "Some items sellable in-store but not online"
+        - "Some ingredients used in multiple recipes"
+        - "Seasonal product availability changes"

@@ -1,0 +1,414 @@
+# Inventory Semantic Model Registry
+# 版本: 1.0
+# 日期: 2026-09-10
+# 任务: INVENTORY-SEMANTIC-MODEL-001
+# 状态: RECOMMENDATION, NOT CONFIRMED
+
+registry_version: "1.0"
+registry_date: "2026-09-10"
+registry_status: "RECOMMENDATION_NOT_CONFIRMED"
+
+concepts:
+
+  - concept_id: "INV-001"
+    name: "Inventory Truth"
+    classification:
+      - ENTITY
+      - CONCEPT
+    definition: "库存的唯一事实来源，基于 Stock Ledger"
+    canonical_identity: "Inventory Fact = Material × Location × Quantity"
+    type: "Stock Ledger"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Truth Source"
+    location_scope: "Global"
+    quantity: "Base UOM Quantity"
+    canonical_uom: "Base Unit (ml/g/pcs)"
+    purchase_uom: "Purchase Unit (箱/瓶/kg)"
+    stock_uom: "Stock Unit (瓶/kg)"
+    sales_uom: "Sales Unit (杯/瓶/份)"
+    recipe_uom: "Recipe Unit (ml/g)"
+    conversion_rule: "Base UOM → Display UOM via conversion table"
+    movement_types:
+      - RECEIPT
+      - TRANSFER_IN
+      - TRANSFER_OUT
+      - SALE
+      - CONSUMPTION
+      - WASTE
+      - ADJUSTMENT
+      - STOCKTAKE
+      - RETURN
+      - REVERSAL
+    states:
+      - ON_HAND
+      - AVAILABLE
+      - RESERVED
+      - IN_TRANSIT
+      - DAMAGED
+      - EXPIRED
+      - BLOCKED
+    batch: "Optional (Batch/Lot as Fact attributes)"
+    lot: "Optional"
+    expiry: "Optional (Expiry Date as Fact attribute)"
+    upstream: "Purchase Receipt, Transfer In, Adjustment"
+    downstream: "Sale, Consumption, Waste, Transfer Out, Adjustment"
+    current_objects:
+      - "inventory"
+      - "store_inventory"
+      - "inventory_transactions"
+    target_semantic_concept: "Inventory Fact (Ledger-first)"
+    evidence: "Phase 1 analysis: Stock Ledger is Truth Source"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-002"
+    name: "Stockable Object"
+    classification:
+      - ENTITY
+      - CONCEPT
+    definition: "库存管理的对象，即 Material"
+    canonical_identity: "Material (material_archives.material_id)"
+    type: "Material"
+    capabilities:
+      - "CanStock"
+    roles:
+      - "STOCKABLE"
+    profiles:
+      - "Stockable Profile (location-specific config)"
+    inventory_role: "Inventory Subject"
+    location_scope: "LOCATION-SCOPED"
+    quantity: "Material Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "Purchase Unit"
+    stock_uom: "Stock Unit"
+    sales_uom: "N/A (Material not directly sold)"
+    recipe_uom: "Recipe Unit"
+    conversion_rule: "Purchase → Stock → Recipe via conversion table"
+    movement_types: []
+    states: []
+    batch: "Material attribute"
+    lot: "Material attribute"
+    expiry: "Material attribute"
+    upstream: "Canonical Identity"
+    downstream: "Inventory Fact, Purchase, Recipe"
+    current_objects:
+      - "material_archives"
+    target_semantic_concept: "Stockable Item (Material)"
+    evidence: "Phase 2 analysis: Inventory manages Material"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-003"
+    name: "Inventory Location"
+    classification:
+      - ENTITY
+      - TYPE
+    definition: "库存发生的物理位置"
+    canonical_identity: "Location ID"
+    type: "Location Type Enum"
+    capabilities: []
+    roles: []
+    profiles:
+      - "Location Profile (config per location)"
+    inventory_role: "Location Dimension"
+    location_scope: "Global (location_type)"
+    quantity: "Location-specific Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "N/A"
+    stock_uom: "Stock Unit"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "N/A"
+    movement_types: []
+    states: []
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "N/A"
+    downstream: "Inventory Fact"
+    current_objects:
+      - "warehouse"
+      - "store"
+    target_semantic_concept: "Unified Inventory Location"
+    evidence: "Phase 4 analysis: Store, Warehouse, Kitchen, Transit all are Locations"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-004"
+    name: "Stock Quantity"
+    classification:
+      - ATTRIBUTE
+      - DERIVED
+    definition: "库存数量，包含多个维度"
+    canonical_identity: "Quantity = Base UOM Amount"
+    type: "Quantity Dimension"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Quantity Dimension"
+    location_scope: "Location-specific"
+    quantity: "Multi-dimensional"
+    canonical_uom: "Base Unit"
+    purchase_uom: "Purchase Unit"
+    stock_uom: "Stock Unit"
+    sales_uom: "Sales Unit"
+    recipe_uom: "Recipe Unit"
+    conversion_rule: "All quantities convertible to Base UOM"
+    movement_types: []
+    states: []
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "Inventory Fact"
+    downstream: "Aggregated Views"
+    current_objects:
+      - "inventory.current_stock"
+      - "inventory.locked_quantity"
+      - "store_inventory.current_stock"
+    target_semantic_concept: "Stock Quantity (multi-dimensional)"
+    evidence: "Phase 6 analysis: Quantity has Truth/Derived/Operational layers"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-005"
+    name: "UOM System"
+    classification:
+      - ENTITY
+      - FOUNDATION
+    definition: "计量单位体系，支持多层级转换"
+    canonical_identity: "UOM ID"
+    type: "Foundation"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Unit Dimension"
+    location_scope: "Global"
+    quantity: "N/A"
+    canonical_uom: "Base Unit (ml/g/pcs)"
+    purchase_uom: "Purchase Unit (箱/瓶/kg)"
+    stock_uom: "Stock Unit (瓶/kg)"
+    sales_uom: "Sales Unit (杯/瓶/份)"
+    recipe_uom: "Recipe Unit (ml/g)"
+    conversion_rule: "Conversion table: Purchase → Stock → Recipe → Sales"
+    movement_types: []
+    states: []
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "N/A"
+    downstream: "All Quantity dimensions"
+    current_objects:
+      - "inventory_unit"
+      - "material_archives.unit"
+      - "inventory.unit"
+      - "store_inventory.unit"
+      - "dish_recipe.unit"
+    target_semantic_concept: "UOM Foundation"
+    evidence: "Phase 7 analysis: 5 separate unit fields with no conversion"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-006"
+    name: "Inventory Movement"
+    classification:
+      - ENTITY
+      - EVENT
+    definition: "库存变动事件，记录数量变化原因"
+    canonical_identity: "Movement ID"
+    type: "Movement Type"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Movement Dimension"
+    location_scope: "Location-specific"
+    quantity: "Delta Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "N/A"
+    stock_uom: "N/A"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "N/A"
+    movement_types:
+      - RECEIPT
+      - TRANSFER_IN
+      - TRANSFER_OUT
+      - SALE
+      - CONSUMPTION
+      - WASTE
+      - ADJUSTMENT
+      - STOCKTAKE
+      - RETURN
+      - REVERSAL
+      - LOCK
+      - UNLOCK
+      - EXPIRE
+      - DAMAGE
+      - CANCEL
+    states: []
+    batch: "Optional"
+    lot: "Optional"
+    expiry: "Optional"
+    upstream: "Business Event"
+    downstream: "Inventory Fact Update"
+    current_objects:
+      - "inventory_transactions"
+    target_semantic_concept: "Inventory Movement (Ledger entries)"
+    evidence: "Phase 10 analysis: Movement is Ledger, not just Event"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-007"
+    name: "Inventory State"
+    classification:
+      - ATTRIBUTE
+      - STATE
+    definition: "库存状态维度，非单一 status 字段"
+    canonical_identity: "State = Quantity Dimension + Location + Time"
+    type: "State Dimension"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "State Dimension"
+    location_scope: "Location-specific"
+    quantity: "State-specific Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "N/A"
+    stock_uom: "N/A"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "N/A"
+    movement_types: []
+    states:
+      - ON_HAND
+      - AVAILABLE
+      - RESERVED
+      - IN_TRANSIT
+      - DAMAGED
+      - EXPIRED
+      - BLOCKED
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "Inventory Fact"
+    downstream: "Derived Views"
+    current_objects:
+      - "inventory.locked_quantity"
+    target_semantic_concept: "Inventory State (multi-dimensional)"
+    evidence: "Phase 14 analysis: State is dimension, not status field"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-008"
+    name: "Batch/Lot/Expiry"
+    classification:
+      - ATTRIBUTE
+      - CONTEXT
+    definition: "批次、保质期等上下文信息"
+    canonical_identity: "Batch ID (optional)"
+    type: "Context Attribute"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Context Dimension"
+    location_scope: "Location-specific"
+    quantity: "N/A"
+    canonical_uom: "N/A"
+    purchase_uom: "N/A"
+    stock_uom: "N/A"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "N/A"
+    movement_types: []
+    states: []
+    batch: "Optional (Batch No)"
+    lot: "Optional (Lot No)"
+    expiry: "Optional (Expiry Date)"
+    upstream: "Purchase Receipt"
+    downstream: "Inventory Fact"
+    current_objects:
+      - "inventory.batch_no"
+      - "inventory.production_date"
+      - "inventory.expiry_date"
+    target_semantic_concept: "Batch/Lot Context (optional)"
+    evidence: "Phase 15 analysis: Batch is context, not core model"
+    confidence: "MEDIUM"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-009"
+    name: "Cost Interaction"
+    classification:
+      - CONCEPT
+      - DERIVED
+    definition: "库存与成本的交互关系"
+    canonical_identity: "Cost = Quantity × Unit Cost"
+    type: "Cost Dimension"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Cost Dimension"
+    location_scope: "Location-specific"
+    quantity: "Cost Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "N/A"
+    stock_uom: "N/A"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "Cost flows through UOM conversion"
+    movement_types: []
+    states: []
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "Inventory Movement"
+    downstream: "Finance"
+    current_objects:
+      - "inventory.unit_cost"
+      - "inventory.total_cost"
+      - "store_inventory.unit_cost"
+      - "store_inventory.total_cost"
+    target_semantic_concept: "Inventory Cost (derived from Movement)"
+    evidence: "Phase 17 analysis: Cost is derived from Quantity × Unit Cost"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+  - concept_id: "INV-010"
+    name: "Cross-Domain Flow"
+    classification:
+      - CONCEPT
+      - RELATIONSHIP
+    definition: "库存与其他业务域的交互流"
+    canonical_identity: "Flow = Domain Event → Inventory Movement"
+    type: "Flow Dimension"
+    capabilities: []
+    roles: []
+    profiles: []
+    inventory_role: "Integration Dimension"
+    location_scope: "Global"
+    quantity: "Flow Quantity"
+    canonical_uom: "Base Unit"
+    purchase_uom: "N/A"
+    stock_uom: "N/A"
+    sales_uom: "N/A"
+    recipe_uom: "N/A"
+    conversion_rule: "N/A"
+    movement_types: []
+    states: []
+    batch: "N/A"
+    lot: "N/A"
+    expiry: "N/A"
+    upstream: "Business Domains"
+    downstream: "Inventory Truth"
+    current_objects:
+      - "purchase_order_items"
+      - "order_items"
+      - "dish_recipe"
+      - "material_consumption"
+    target_semantic_concept: "Cross-Domain Integration"
+    evidence: "Phase 19 analysis: All business chains use same Inventory Truth"
+    confidence: "HIGH"
+    status: "RECOMMENDATION"
+
+version: "1.0"
+status: "RECOMMENDATION_NOT_CONFIRMED"
