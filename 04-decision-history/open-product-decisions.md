@@ -11,16 +11,173 @@
 
 ---
 
-## 决策概览
+ ## 决策概览
 
-| 决策ID | 决策标题 | 优先级 | 截止日期 | 负责人 |
-|--------|----------|--------|----------|--------|
-| DEC-004 | Customer/Member 关系定义 | P0 | 2026-09-30 | Product Owner |
-| DEC-006 | Product/Food/Material 边界 | P1 | 2026-10-15 | Product Owner |
+ | 决策ID | 决策标题 | 优先级 | 截止日期 | 负责人 | 状态 |
+ |--------|----------|--------|----------|--------|------|
+ | PD-CANONICAL-001 | Canonical Business Item 定义 | P0 | 2026-09-10 | Product Owner | 🟡 RECOMMENDED (NOT CONFIRMED) |
+ | DEC-004 | Customer/Member 关系定义 | P0 | 2026-09-30 | Product Owner | 🟡 OPEN |
+ | DEC-006 | Product/Food/Material 边界 | P1 | 2026-10-15 | Product Owner | 🟡 OPEN |
 
----
+ ---
 
-## DEC-004: Customer/Member 关系定义
+ ## PD-CANONICAL-001: Canonical Business Item 定义
+
+ | 字段 | 值 |
+ |------|-----|
+ | **决策ID** | PD-CANONICAL-001 |
+ | **决策标题** | Canonical Business Item 定义 |
+ | **状态** | 🟡 RECOMMENDED (NOT CONFIRMED) |
+ | **优先级** | P0 |
+ | **负责人** | Product Owner |
+ | **截止日期** | 2026-09-10 |
+ | **阻塞影响** | 阻塞所有后续 Product / Architecture 语义决策 (PD-CANONICAL-002~006, AD-IDENTITY-001, DE-PK-001, DE-SKU-001) |
+
+ ---
+
+ ### 1. 问题描述
+
+ 餐饮 ERP 系统中，Business Item（业务物品）在不同模块中有不同的表示方式：
+ - POS 模块使用 `foods` 表
+ - 采购模块使用 `material_archives` 表
+ - 库存模块使用 `inventory` 表（以 material_id 关联）
+ - 配方模块使用 `dish_recipe` 表（连接 food 和 material）
+
+ 这导致同一物理实体（如 Coca-Cola 330ml）在系统中有多个独立的表示，跨模块统计需要复杂的多表 JOIN 和人工匹配。
+
+ **需决策：是否引入统一 Canonical Business Item Identity 层？**
+
+ ---
+
+ ### 2. 当前现实
+
+ - 各模块自行维护 Identity，无统一 Canonical Identity
+ - 同一物理实体在不同模块有不同 ID 和 Name
+ - 跨模块统计需复杂多表 JOIN + 人工匹配
+ - 新增模块无法直接引用同一业务对象
+
+ **Evidence 状态**: ✅ VERIFIED (多个证据源支持)
+
+ ---
+
+ ### 3. 选项分析
+
+ #### Option A: Type-specific Entity (每个类型独立 Identity)
+
+ | 维度 | 评估 |
+ |------|------|
+ | **描述** | Food / Material / Ingredient 各自定义 Identity 表，无统一 Canonical 层 |
+ | **优点** | 与现有实现最接近，改动最小 |
+ | **缺点** | 跨模块统计仍需复杂 JOIN + 人工匹配；无法解决同一物理实体多表重复的问题 |
+ | **Invariant 验证** | 3/3 FAIL |
+ | **风险** | HIGH — 根本问题未解决 |
+
+ #### Option B: Unified Canonical Identity (统一 Canonical 层) ⭐ RECOMMENDED
+
+ | 维度 | 评估 |
+ |------|------|
+ | **描述** | 引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags |
+ | **优点** | 满足 3 Invariant；跨模块统计只需 Canonical Identity JOIN；新增模块直接引用 Canonical Identity |
+ | **缺点** | 需要新增 Canonical Identity 表；需要迁移现有数据建立 Canonical 映射 |
+ | **Invariant 验证** | 3/3 PASS |
+ | **风险** | MEDIUM — 数据迁移复杂度可控 |
+
+ #### Option C: Hybrid (混合模式)
+
+ | 维度 | 评估 |
+ |------|------|
+ | **描述** | 部分类型共享 Canonical Identity，部分类型保持独立 |
+ | **优点** | 折中方案，改动适中 |
+ | **缺点** | Decision Boundary 模糊；无法满足 Invariant 3；仍然存在跨模块统计的 JOIN 复杂度 |
+ | **Invariant 验证** | 1 PASS / 1 PARTIAL / 1 FAIL |
+ | **风险** | HIGH — 边界不清 |
+
+ ---
+
+ ### 4. 推荐方案
+
+ **推荐方案**: Option B — Unified Canonical Identity
+
+ **推荐理由**:
+ 1. **满足 3 个 Business Invariant**: 只有 Option B 能同时满足多角色共存、Identity 稳定性、概念分离
+ 2. **10 个业务案例全部验证通过**: 每个案例都指向 Canonical Identity 的必要性
+ 3. **当前现实已证明不足**: 各模块自行维护 Identity 导致跨模块统计复杂、数据冗余
+ 4. **目标模型清晰**: Canonical Identity + Context-specific Profile 是业界成熟模式
+
+ **Confidence**: HIGH
+
+ **Status**: RECOMMENDED (NOT CONFIRMED — 等待 Product Owner 正式确认)
+
+ ---
+
+ ### 5. 依赖关系
+
+ | 依赖类型 | 依赖项 | 说明 |
+ |----------|--------|------|
+ | ⚡ 强依赖 | 无 | 此为 Phase 1 第一个决策 |
+ | 🔗 影响 | PD-CANONICAL-002~006 | 所有后续 Product 语义决策 |
+ | 🔗 影响 | AD-IDENTITY-001 | Identity Storage 设计 |
+ | 🔗 影响 | DE-PK-001 | Primary Key 设计 |
+ | 🔗 影响 | DE-SKU-001 | SKU 生成规则 |
+
+ ---
+
+ ### 6. 影响范围
+
+ | 影响域 | 影响模块 | 影响程度 |
+ |--------|----------|----------|
+ | 商品域 | 商品模块 | 高 — 新增 Canonical Identity 层 |
+ | 订单域 | 订单模块 | 中 — 订单需引用 Canonical Identity |
+ | 库存域 | 库存模块 | 中 — 库存需引用 Canonical Identity |
+ | 采购域 | 采购模块 | 中 — 采购需引用 Canonical Identity |
+ | 配方域 | 配方模块 | 低 — 配方通过 Material 关联 |
+ | 数据域 | 数据分析 | 高 — 跨模块统计简化 |
+ | 基础设施 | 数据库 | 中 — 新增表 + 数据迁移 |
+
+ ---
+
+ ### 7. 证据状态
+
+ | 证据类型 | 状态 | 说明 |
+ |----------|------|------|
+ | 业务需求 | ✅ CONFIRMED | 10 个业务案例验证通过 |
+ | 技术可行性 | ✅ CONFIRMED | Canonical Identity + Context-specific Profile 模式已验证 |
+ | Invariant 验证 | ✅ CONFIRMED | 3/3 Invariant 全部 PASS |
+ | 数据迁移 | ⏳ PENDING | 需制定迁移计划 |
+ | 性能影响 | ⏳ PENDING | 需评估 Canonical 查询性能 |
+
+ ---
+
+ ### 8. 决策记录
+
+ | 版本 | 日期 | 决策者 | 决策内容 |
+ |------|------|--------|----------|
+ | v1.0 | 2026-09-10 | 架构总控 | 初始提案，标记为 RECOMMENDED (NOT CONFIRMED) |
+
+ ---
+
+ ### 9. 下一步行动
+
+ | 行动 | 负责人 | 截止时间 | 优先级 |
+ |------|--------|----------|--------|
+ | 确认 PD-CANONICAL-001 Option B | Product Owner | 2026-09-10 | P0 |
+ | 进入 PD-CANONICAL-002 (Product 语义) | Product Owner | Week 2 | P1 |
+ | 进入 PD-CANONICAL-003 (Food 语义) | Product Owner | Week 2 | P1 |
+ | 进入 PD-CANONICAL-004 (Material 语义) | Product Owner | Week 2 | P1 |
+ | 进入 AD-IDENTITY-001 (Identity Storage) | Architecture Owner | Week 1 | P1 |
+ | 进入 DE-PK-001 (Primary Key) | Architecture Owner | Week 1 | P1 |
+
+ ---
+
+ **相关文档**:
+ - [PD-CANONICAL-001 Decision YAML](./PD-CANONICAL-001-Decision.yaml)
+ - [PD-CANONICAL-001 Decision Record](./PD-CANONICAL-001-decision-record.md)
+ - [Canonical Business Item Semantic Reassessment](../03-review/business-item-canonical-semantic-reassessment.md)
+ - [Decision Boundary](../03-review/business-item-canonical-decision-boundary.md)
+
+ ---
+
+ ## DEC-004: Customer/Member 关系定义
 
 | 字段 | 值 |
 |------|-----|
@@ -407,23 +564,25 @@ ALTER TABLE product RENAME TO product_archived;
 
 ---
 
-## 决策汇总
+ ## 决策汇总
 
-| 决策ID | 决策标题 | 推荐方案 | 状态 | 截止日期 |
-|--------|----------|----------|------|----------|
-| DEC-004 | Customer/Member 关系定义 | Guest Member（散客类型） | 🟡 OPEN | 2026-09-30 |
-| DEC-006 | Product/Food/Material 边界 | 废弃 Product，保留 Food + Material | 🟡 OPEN | 2026-10-15 |
+ | 决策ID | 决策标题 | 推荐方案 | 状态 | 截止日期 |
+ |--------|----------|----------|------|----------|
+ | PD-CANONICAL-001 | Canonical Business Item 定义 | B_unified_canonical | 🟡 RECOMMENDED (NOT CONFIRMED) | 2026-09-10 |
+ | DEC-004 | Customer/Member 关系定义 | Guest Member（散客类型） | 🟡 OPEN | 2026-09-30 |
+ | DEC-006 | Product/Food/Material 边界 | 废弃 Product，保留 Food + Material | 🟡 OPEN | 2026-10-15 |
 
 ---
 
-## 下一步行动
+ ## 下一步行动
 
-| 行动 | 负责人 | 截止时间 | 优先级 |
-|------|--------|----------|--------|
-| 确认 DEC-004 Guest Member 方案 | Product Owner | 2026-09-30 | P0 |
-| 确认 DEC-006 Food + Material 方案 | Product Owner | 2026-10-15 | P1 |
-| 制定数据迁移计划 | 技术团队 | 2026-10-01 | P1 |
-| 评估事件驱动架构兼容性 | 架构团队 | 2026-09-25 | P0 |
+ | 行动 | 负责人 | 截止时间 | 优先级 |
+ |------|--------|----------|--------|
+ | 确认 PD-CANONICAL-001 Option B | Product Owner | 2026-09-10 | P0 |
+ | 确认 DEC-004 Guest Member 方案 | Product Owner | 2026-09-30 | P0 |
+ | 确认 DEC-006 Food + Material 方案 | Product Owner | 2026-10-15 | P1 |
+ | 制定数据迁移计划 | 技术团队 | 2026-10-01 | P1 |
+ | 评估事件驱动架构兼容性 | 架构团队 | 2026-09-25 | P0 |
 
 ---
 
