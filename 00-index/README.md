@@ -14,8 +14,8 @@
 | [`03-review`](../03-review/) | Review | 事实、需求、原则、问题、冲突与整改评审 | **Current Baseline** |
 | [`04-decision-history`](../04-decision-history/) | Decision History | Product / Architecture Decision 及其历史 | Reference |
 | [`05-governance`](../05-governance/) | Governance | ID、状态、Provenance、层级、Gate | Canonical |
-| [`06-business-item-model`](../06-business-item-model/) | Business Item Model | Product / Food / Material / Item 等业务语义分析 | Analysis (Historical) |
-| [`07-inventory-semantic-model`](../07-inventory-semantic-model/) | Inventory Semantic Model | Inventory、Location、Quantity、UOM、Movement 等语义分析 | Analysis (Historical) |
+| [`06-business-item-model`](../06-business-item-model/) | Business Item Model | Product / Food / Material / Item 等业务语义分析 | Analysis / Reference |
+| [`07-inventory-semantic-model`](../07-inventory-semantic-model/) | Inventory Semantic Model | Inventory、Location、Quantity、UOM、Movement 等语义分析 | Analysis / Reference |
 | [`99-archive/delivery-history`](../99-archive/delivery-history/) | Delivery History | 已完成 Wave、Production Gate 等历史材料 | Archive |
 
 ---
