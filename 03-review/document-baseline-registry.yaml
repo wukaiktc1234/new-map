@@ -113,7 +113,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Canonical identity analysis"
@@ -124,7 +124,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Concept taxonomy"
@@ -135,7 +135,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Identity type role capability"
@@ -146,7 +146,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Sellable capability analysis"
@@ -157,7 +157,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Purchasable capability analysis"
@@ -168,7 +168,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Stockable capability analysis"
@@ -179,10 +179,21 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Ingredient recipe relationship"
+    can_be_used_as_current_input: true
+
+  - document_id: "DOC-BIM-IDENTITY-RULES-001"
+    path: "06-business-item-model/identity-resolution-rules.md"
+    source_task: "BUSINESS-ITEM-MODEL-002"
+    document_status: "ACTIVE_REFERENCE"
+    evidence_status: "VERIFIED"
+    decision_status: "N/A"
+    supersedes: []
+    superseded_by: []
+    scope: "Identity resolution rules (Candidate Rules, not Current Baseline)"
     can_be_used_as_current_input: true
 
   # 07-inventory-semantic-model - Historical Analysis
@@ -203,7 +214,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "RECONCILED"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory truth analysis"
@@ -214,7 +225,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory identity analysis"
@@ -225,7 +236,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory location model"
@@ -236,7 +247,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "RECONCILED"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory quantity model"
@@ -247,7 +258,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "RECONCILED"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory UOM model"
@@ -258,7 +269,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory state model"
@@ -440,7 +451,7 @@ documents:
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Business Item model summary"
@@ -449,20 +460,21 @@ documents:
   - document_id: "DOC-BIM-CANDIDATE-MODELS-001"
     path: "06-business-item-model/candidate-semantic-models.md"
     source_task: "BUSINESS-ITEM-MODEL-001"
-    document_status: "ACTIVE_REFERENCE"
+    document_status: "SUPERSEDED"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
-    superseded_by: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
     scope: "Candidate semantic models"
-    can_be_used_as_current_input: true
+    can_be_used_as_current_input: false
 
   - document_id: "DOC-BIM-RECONCILIATION-001"
     path: "06-business-item-model/business-item-model-reconciliation-summary.md"
     source_task: "BUSINESS-ITEM-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Business Item model reconciliation"
@@ -472,20 +484,21 @@ documents:
   - document_id: "DOC-ISM-CANDIDATE-MODELS-001"
     path: "07-inventory-semantic-model/candidate-inventory-models.md"
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
-    document_status: "ACTIVE_REFERENCE"
+    document_status: "SUPERSEDED"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
-    superseded_by: []
+    superseded_by:
+      - "03-review/business-item-canonical-semantic-reassessment.md"
     scope: "Candidate inventory models"
-    can_be_used_as_current_input: true
+    can_be_used_as_current_input: false
 
   - document_id: "DOC-ISM-SUMMARY-001"
     path: "07-inventory-semantic-model/inventory-semantic-summary.md"
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory semantic summary"
@@ -496,7 +509,7 @@ documents:
     source_task: "INVENTORY-SEMANTIC-MODEL-001"
     document_status: "ACTIVE_REFERENCE"
     evidence_status: "VERIFIED"
-    decision_status: "OPEN"
+    decision_status: "N/A"
     supersedes: []
     superseded_by: []
     scope: "Inventory movement model"
