@@ -1,3 +1,6 @@
+> **DOCUMENT STATUS:** ACTIVE_REFERENCE
+> **SOURCE TASK:** DECISION-RECON-001
+
 # Open Product Decisions
 
 > **文档类型**: 产品决策清单  
