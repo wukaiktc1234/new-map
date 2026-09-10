@@ -1,13 +1,37 @@
 # Business Item Canonical Decision Boundary
 
+> **任务**: BUSINESS-ITEM-CANONICAL-DECISION-BOUNDARY-FINAL-CHECK-001
+> **版本**: 2.0 (Finalized)
+> **日期**: 2026-09-10
+> **状态**: BOUNDARY-FINAL-CHECK = PASS_WITH_CORRECTIONS
+> **基线来源**: 03-review/current-business-semantic-baseline.md (v2.0)
+
 ## 一、Decision Boundary 概述
 
-本文档将餐饮 ERP 系统中 Business Item 相关的决策重新划分为 **Product Decisions**、**Architecture Decisions** 和 **Data / Engineering Decisions** 三个独立边界。每个决策拥有明确的状态标识：`REASSESSED` / `PARTIAL` / `OPEN`。
+本文档将餐饮 ERP 系统中 Business Item 相关的决策划分为 **Product Decisions**、**Architecture Decisions** 和 **Data / Engineering Decisions** 三个独立边界。
+
+### Decision Status 定义
+
+每个决策只允许使用以下 Decision Status：
+
+| Status | 定义 |
+|--------|------|
+| `OPEN` | 需要决策 |
+| `RECOMMENDED` | 有推荐方案，待确认 |
+| `CONFIRMED` | 已确认 |
+| `LOCKED` | 已锁定，不可更改 |
+| `SUPERSEDED` | 被新决策取代 |
+| `INVALIDATED` | 已废止 |
+
+**禁止**：`REASSESSED`、`PARTIAL`、`RECONCILED` 作为 Decision Status。
+
+如果需要表达分析状态，使用 **Assessment Status**：`REASSESSED` / `PARTIAL` / `PASS`。
 
 核心原则：
 - 不得继续将所有决策全部塞入 DEC-006
 - 必须明确区分 Product / Architecture / Engineering Decisions
 - 保持决策之间的依赖关系可见
+- Recommendation ≠ Decision，必须明确分离
 
 ---
 
@@ -19,9 +43,9 @@
 - **选项分析：**
   - Option A: 每个 Business Item 类型（Food / Material / Ingredient）独立定义 Identity，无统一 Canonical 层
   - Option B: 引入统一 Canonical Business Item Identity 层，所有子类型共享 UUID + canonical_name + domain_tags
-- **推荐：** Option B — 统一 Canonical Identity 层
-- **阻塞影响：** 阻塞 PD-CANONICAL-002 ~ PD-CANONICAL-006 的所有后续 Product 语义决策
-- **状态：** `REASSESSED`
+- **Recommendation：** Option B — 统一 Canonical Identity 层（NOT CONFIRMED）
+- **阻塞影响：** 阻塞 PD-CANONICAL-002 ~ PD-CANONICAL-004, PD-CANONICAL-006 的所有后续 Product 语义决策
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -30,11 +54,11 @@
 - **问题：** Product 是 Umbrella Concept / Commercial Definition / Legacy Concept？
 - **选项分析：**
   - Option A: Product 作为 Umbrella Concept — 包含所有可售实体，不区分 Food / Non-food
-  - Option B: Product 作为 Commercial Definition — 仅包含具有商业定价属性的可售项
+  - Option B: Product 作为 Commercial Definition — 仅包含具有商业定价属性的可售项（含 SKU、unit_price、tax_category、status）
   - Option C: Product 作为 Legacy Concept — 仅保留历史兼容，不新增语义
-- **推荐：** Option B — Product 定义为 Commercial Definition（含 SKU、unit_price、tax_category、status）
+- **Recommendation：** Option B — Product 定义为 Commercial Definition（NOT CONFIRMED）
 - **阻塞影响：** 阻塞 DE-SKU-001（SKU 生成规则）、阻塞 Inventory Object 设计
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -42,12 +66,12 @@
 
 - **问题：** Food 是 Entity / Type / Commercial Profile？
 - **选项分析：**
-  - Option A: Food 作为独立 Entity — 拥有完整 Identity + 属性集（recipe、shelf_life、storage_req）
+  - Option A: Food 作为独立 Entity — 拥有完整 Identity + 属性集（recipe、shelf_life、storage_req）[Candidate / Historical Recommendation]
   - Option B: Food 作为 Type Tag — 仅标记 Business Item 的食品属性
   - Option C: Food 作为 Commercial Profile — 扩展 Product 的商业属性（含 recipe、costing）
-- **推荐：** Option A — Food 作为独立 Entity
+- **注意：** Option A 为候选方案 / 历史推荐，不得作为当前已采用语义。Food 的最终 Canonical Semantics 尚未正式 Decision。
 - **阻塞影响：** 阻塞 PD-CANONICAL-006（Consumable 定义）、阻塞 Recipe 建模
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -55,24 +79,22 @@
 
 - **问题：** Material 是 Identity / Type / Procurement Profile？
 - **选项分析：**
-  - Option A: Material 作为 Identity — 独立 Identity + 采购属性（supplier、lead_time、MOQ）
+  - Option A: Material 作为 Identity — 独立 Identity + 采购属性（supplier、lead_time、MOQ）[Candidate / Historical Recommendation]
   - Option B: Material 作为 Type Tag — 仅标记 Business Item 的物料属性
   - Option C: Material 作为 Procurement Profile — 扩展 Business Item 的采购维度
-- **推荐：** Option A — Material 作为独立 Identity（含采购属性、供应商关联）
+- **注意：** Option A 为候选方案 / 历史推荐，不得作为当前已采用语义。Material 的最终 Canonical Semantics 尚未正式 Decision。
 - **阻塞影响：** 阻塞 PD-CANONICAL-006（Consumable 定义）、阻塞 Procurement 模块设计
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
 ### PD-CANONICAL-005: Ingredient 定义
 
 - **问题：** Ingredient 是 Item Role / Recipe Relationship？
-- **选项分析：**
-  - Option A: Ingredient 作为 Item Role — Business Item 在 Recipe 上下文中的角色标识
-  - Option B: Ingredient 作为 Recipe Relationship — 独立实体，关联 Business Item 与 Recipe
-- **推荐：** Option B — Ingredient 作为 Recipe Relationship（含 quantity、uom、sequence、substitution_group）
-- **阻塞影响：** 阻塞 PD-CANONICAL-006（Consumable 定义）
-- **状态：** `OPEN`
+- **收敛结论：** INGREDIENT = Recipe ↔ Business Item Relationship（RECONCILED SEMANTIC INVARIANT）
+- **Assessment Status：** `RECONCILED`
+- **Decision Status：** `N/A`
+- **说明：** 不再作为未解决 Product Decision，不阻塞后续决策
 
 ---
 
@@ -82,10 +104,10 @@
 - **选项分析：**
   - Option A: Consumable 作为 Recipe Role — 仅在 Recipe 层面定义消耗
   - Option B: Consumable 作为 Supply Role — 关联 Supply Chain 的消耗属性
-  - Option C: Consumable 作为 Operational Role — 统一 Recipe + Supply + Operational 消耗维度
-- **推荐：** Option C — Consumable 作为 Operational Role
+  - ~~Option C: Consumable 作为 Operational Role — 统一 Recipe + Supply + Operational 消耗维度~~ [HISTORICAL / SUPERSEDED RECOMMENDATION]
+- **当前语义方向：** Consumable = Capability。Consumption Context（Recipe / Supply / Operational）属于 Context / Consumption Event。
 - **阻塞影响：** 阻塞 Inventory Truth 设计（AD-INVENTORY-001）
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -96,11 +118,11 @@
 - **问题：** Canonical Identity 如何存储？
 - **选项分析：**
   - Option A: 每个子类型独立 Identity 表（food_identity、material_identity 等）
-  - Option B: 统一 business_item 表 + 子类型扩展表
+  - Option B: 统一 business_item 表 + 子类型扩展表 [Candidate]
   - Option C: 统一 business_item 表 + JSONB 扩展字段
-- **推荐：** Option B — 统一 business_item 表 + 子类型扩展表（兼顾查询性能与扩展性）
+- **注意：** Option B 为候选方案，不得作为已经决定的数据库架构。
 - **阻塞影响：** 阻塞 DE-PK-001（Primary Key 设计）
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -111,9 +133,9 @@
   - Option A: 统一 Location 表 + location_type 区分（Store / Warehouse / Kitchen / Transit）
   - Option B: 分离独立实体表（Store、Warehouse、Kitchen 各自独立）
   - Option C: 统一 Location 表 + 多态关联（polymorphic association）
-- **推荐：** Option A — 统一 Location 表 + location_type 枚举
+- **当前语义方向：** Unified Location，Store / Warehouse / Kitchen 可为 Location Type。Transit 的最终 ontology 仍为 OPEN。
 - **阻塞影响：** 阻塞 Inventory Object 设计（AD-INVENTORY-002）
-- **状态：** `REASSESSED`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -124,9 +146,9 @@
   - Option A: UOM 作为独立 Foundation — 独立 unit_of_measure 表 + conversion_factor
   - Option B: UOM 作为 Business Item 属性 — 内嵌于 Business Item 表
   - Option C: UOM 作为全局枚举 — 预定义枚举 + 自定义扩展
-- **推荐：** Option A — UOM 作为独立 Foundation
+- **当前语义方向：** UOM / Conversion / Context-specific UOM 是已确认的业务语义需求。禁止把 Base → Purchase → Stock → Recipe → Sales 作为固定 Ontology。
 - **阻塞影响：** 阻塞 Inventory Quantity 计算、阻塞 Costing 模块
-- **状态：** `REASSESSED`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -137,9 +159,9 @@
   - Option A: Ledger-First — 所有库存变动通过 Ledger 事件驱动，Balance 为衍生视图
   - Option B: Balance-First — Balance 为主要存储，Ledger 为审计日志
   - Option C: 混合模式 — Balance 为热数据 + Ledger 为冷数据归档
-- **推荐：** Option A — Ledger-First（保证数据一致性与可审计性）
+- **Recommendation：** Option A — Ledger-First（保证数据一致性与可审计性）（NOT CONFIRMED）
 - **阻塞影响：** 阻塞 DE-STORAGE-001（存储方案）
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -149,10 +171,10 @@
 - **选项分析：**
   - Option A: Inventory 管理 Business Item — 以 Business Item 粒度管理库存
   - Option B: Inventory 管理 Stockable Profile — 以 Stockable Profile 粒度管理库存
-  - Option C: Inventory 管理 Item × Location — 以 Business Item × Location 粒度管理库存
-- **推荐：** Option C — Item × Location 粒度（支持多仓库、多门店库存管理）
+  - Option C: Inventory 管理 Item × Location — 以 Business Item × Location 粒度管理库存 [Candidate]
+- **注意：** Option C 为候选方案，不得直接决定 Inventory = Item × Location。
 - **阻塞影响：** 阻塞 Ledger 表设计、阻塞 DE-STORAGE-001
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -165,9 +187,9 @@
   - Option A: UUID v7 — 全局唯一 + 时间有序
   - Option B: Auto-Increment BigInt — 自增整型
   - Option C: Composite Key — 多字段组合
-- **推荐：** Option A — UUID v7
+- **Recommendation：** Option A — UUID v7（NOT CONFIRMED）
 - **阻塞影响：** 影响所有表结构设计
-- **状态：** `REASSESSED`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -178,9 +200,9 @@
   - Option A: 前缀 + 序列号（如 FOOD-000001）
   - Option B: 分类编码 + 序列号（如 FD-A-001）
   - Option C: 全局序列号（无分类前缀）
-- **推荐：** Option A — 前缀 + 序列号
+- **Recommendation：** Option A — 前缀 + 序列号（NOT CONFIRMED）
 - **阻塞影响：** 阻塞 Product 表 SKU 字段设计
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -191,9 +213,9 @@
   - Option A: 全量重建 — 清空后重新导入
   - Option B: 增量迁移 — 按时间段/业务线增量迁移
   - Option C: 双写过渡 — 新旧系统并行写入
-- **推荐：** Option B — 增量迁移
+- **Recommendation：** Option B — 增量迁移（NOT CONFIRMED）
 - **阻塞影响：** 阻塞上线时间线
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -204,9 +226,9 @@
   - Option A: 纯关系表存储 — 所有字段独立列
   - Option B: JSON 扩展字段 — 核心字段独立列 + 扩展字段 JSONB
   - Option C: Materialized View — 预计算聚合视图
-- **推荐：** Option A — 纯关系表存储（兼顾查询性能与数据完整性）
+- **Recommendation：** Option A — 纯关系表存储（兼顾查询性能与数据完整性）（NOT CONFIRMED）
 - **阻塞影响：** 影响数据库性能与扩展性
-- **状态：** `OPEN`
+- **Decision Status：** `OPEN`
 
 ---
 
@@ -219,12 +241,14 @@ PD-CANONICAL-001 (Canonical Identity)
   │     └── AD-INVENTORY-002 (Inventory Object)
   ├── PD-CANONICAL-003 (Food 语义)
   │     └── PD-CANONICAL-006 (Consumable 定义)
-  ├── PD-CANONICAL-004 (Material 语义)
-  │     └── PD-CANONICAL-006 (Consumable 定义)
-  └── PD-CANONICAL-005 (Ingredient 定义)
+  └── PD-CANONICAL-004 (Material 语义)
         └── PD-CANONICAL-006 (Consumable 定义)
-              └── AD-INVENTORY-001 (Inventory Truth)
-                    └── DE-STORAGE-001 (存储方案)
+
+PD-CANONICAL-005 (Ingredient 定义) [RECONCILED, NOT BLOCKING]
+
+PD-CANONICAL-006 (Consumable 定义)
+  └── AD-INVENTORY-001 (Inventory Truth)
+        └── DE-STORAGE-001 (存储方案)
 
 AD-IDENTITY-001 (Identity Storage)
   └── DE-PK-001 (Primary Key 设计)
@@ -243,23 +267,24 @@ DE-MIGRATION-001 (数据迁移策略)
 
 ## 六、Decision Timeline
 
-| 阶段 | 决策 ID | 决策名称 | 状态 | 预计完成 |
-|------|---------|----------|------|----------|
-| Phase 1 | PD-CANONICAL-001 | Canonical Identity 定义 | REASSESSED | Week 1 |
+| 阶段 | 决策 ID | 决策名称 | Decision Status | 预计完成 |
+|------|---------|----------|-----------------|----------|
+| Phase 1 | PD-CANONICAL-001 | Canonical Identity 定义 | OPEN | Week 1 |
 | Phase 1 | AD-IDENTITY-001 | Identity Storage | OPEN | Week 1 |
-| Phase 1 | DE-PK-001 | Primary Key 设计 | REASSESSED | Week 1 |
-| Phase 1 | AD-UOM-001 | UOM Foundation | REASSESSED | Week 1 |
-| Phase 1 | AD-LOCATION-001 | Location Model | REASSESSED | Week 1 |
+| Phase 1 | DE-PK-001 | Primary Key 设计 | OPEN | Week 1 |
+| Phase 1 | AD-UOM-001 | UOM Foundation | OPEN | Week 1 |
+| Phase 1 | AD-LOCATION-001 | Location Model | OPEN | Week 1 |
 | Phase 2 | PD-CANONICAL-002 | Product 语义 | OPEN | Week 2 |
 | Phase 2 | PD-CANONICAL-003 | Food 语义 | OPEN | Week 2 |
 | Phase 2 | PD-CANONICAL-004 | Material 语义 | OPEN | Week 2 |
-| Phase 2 | PD-CANONICAL-005 | Ingredient 定义 | OPEN | Week 2 |
 | Phase 3 | PD-CANONICAL-006 | Consumable 定义 | OPEN | Week 3 |
 | Phase 3 | AD-INVENTORY-001 | Inventory Truth | OPEN | Week 3 |
 | Phase 3 | AD-INVENTORY-002 | Inventory Object | OPEN | Week 3 |
 | Phase 4 | DE-SKU-001 | SKU 生成规则 | OPEN | Week 4 |
 | Phase 4 | DE-STORAGE-001 | 存储方案 | OPEN | Week 4 |
 | Phase 5 | DE-MIGRATION-001 | 数据迁移策略 | OPEN | Week 5 |
+
+**注：** PD-CANONICAL-005 (Ingredient 定义) 已 RECONCILED，不再纳入 Decision Timeline。
 
 ---
 
@@ -276,13 +301,13 @@ DE-MIGRATION-001 (数据迁移策略)
 
 **关键变更：**
 1. DEC-006 中的 Business Item Identity 决策 → 迁移至 PD-CANONICAL-001
-2. DEC-006 中的 Product/Food/Material 语义 → 迁移至 PD-CANONICAL-002 ~ PD-CANONICAL-005
+2. DEC-006 中的 Product/Food/Material 语义 → 迁移至 PD-CANONICAL-002 ~ PD-CANONICAL-004
 3. DEC-006 中的 Architecture 决策 → 迁移至 AD-* 系列
 4. DEC-006 中的 Engineering 决策 → 迁移至 DE-* 系列
 5. 新增 Consumable 定义决策（PD-CANONICAL-006）
 6. 新增 Inventory Truth 与 Inventory Object 决策（AD-INVENTORY-001 ~ 002）
+7. PD-CANONICAL-005 (Ingredient) 已 RECONCILED，不再作为阻塞项
 
 **状态总览：**
-- `REASSESSED`: PD-CANONICAL-001, AD-IDENTITY-001, AD-LOCATION-001, AD-UOM-001, DE-PK-001
-- `PARTIAL`: （暂无）
-- `OPEN`: PD-CANONICAL-002 ~ 006, AD-INVENTORY-001 ~ 002, DE-SKU-001, DE-MIGRATION-001, DE-STORAGE-001
+- `OPEN`: PD-CANONICAL-001 ~ 004, 006, AD-IDENTITY-001, AD-LOCATION-001, AD-UOM-001, AD-INVENTORY-001 ~ 002, DE-PK-001, DE-SKU-001, DE-MIGRATION-001, DE-STORAGE-001
+- `RECONCILED (N/A)`: PD-CANONICAL-005 (NOT BLOCKING)
