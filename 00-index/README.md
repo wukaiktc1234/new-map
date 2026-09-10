@@ -11,12 +11,22 @@
 |---|---|---|---|
 | [`01-engineering-reality`](../01-engineering-reality/) | Engineering Reality | 当前系统工程现实 | Active |
 | [`02-business-dependency`](../02-business-dependency/) | Business Dependency | Foundation、上下游、数据依赖与业务流 | Active |
-| [`03-review`](../03-review/) | Review | 事实、需求、原则、问题、冲突与整改评审 | Active |
+| [`03-review`](../03-review/) | Review | 事实、需求、原则、问题、冲突与整改评审 | **Current Baseline** |
 | [`04-decision-history`](../04-decision-history/) | Decision History | Product / Architecture Decision 及其历史 | Reference |
 | [`05-governance`](../05-governance/) | Governance | ID、状态、Provenance、层级、Gate | Canonical |
-| [`06-business-item-model`](../06-business-item-model/) | Business Item Model | Product / Food / Material / Item 等业务语义分析 | Analysis |
-| [`07-inventory-semantic-model`](../07-inventory-semantic-model/) | Inventory Semantic Model | Inventory、Location、Quantity、UOM、Movement 等语义分析 | Analysis |
+| [`06-business-item-model`](../06-business-item-model/) | Business Item Model | Product / Food / Material / Item 等业务语义分析 | Analysis (Historical) |
+| [`07-inventory-semantic-model`](../07-inventory-semantic-model/) | Inventory Semantic Model | Inventory、Location、Quantity、UOM、Movement 等语义分析 | Analysis (Historical) |
 | [`99-archive/delivery-history`](../99-archive/delivery-history/) | Delivery History | 已完成 Wave、Production Gate 等历史材料 | Archive |
+
+---
+
+## Current Baseline
+
+Business Item / Inventory 当前任务统一入口：
+
+[`03-review/current-business-semantic-baseline.md`](../03-review/current-business-semantic-baseline.md)
+
+后续相关任务默认从该文件开始，再按需要回查 06 / 07 历史分析。
 
 ---
 
@@ -299,16 +309,29 @@ Remediation / Engineering
 
 # 状态定义
 
-| 状态             | 含义         |
-| -------------- | ---------- |
-| Active         | 当前有效参考     |
-| Canonical      | 当前正式基线     |
-| Analysis       | 分析材料       |
+## Document Status
+
+| 状态 | 含义 | 说明 |
+|------|------|------|
+| **CURRENT_BASELINE** | 当前基线 | 最新综合结论，可作为下一任务直接输入 |
+| **ACTIVE_REFERENCE** | 有效参考 | 仍有证据价值，但不是最终综合结论 |
+| **SUPERSEDED** | 已替代 | 内容已被新的分析/Reassessment 替代 |
+| **HISTORICAL** | 历史追溯 | 用于历史追溯 |
+| **INVALIDATED** | 已废止 | 明确证明错误或废止 |
+
+## Legacy Status（旧分类，仍可用于非 Business Item 目录）
+
+| 状态 | 含义 |
+|------|------|
+| Active | 当前有效参考 |
+| Canonical | 当前正式基线 |
+| Analysis | 分析材料 |
 | Recommendation | 推荐方案，未正式锁定 |
-| Reference      | 历史/辅助参考    |
-| Archive        | 历史交付材料     |
-| Invalidated    | 已明确失效      |
+| Reference | 历史/辅助参考 |
+| Archive | 历史交付材料 |
+| Invalidated | 已明确失效 |
 
 > 文档状态以各目录及具体文档中的声明为准。
+> Business Item / Inventory 相关任务以 `03-review/current-business-semantic-baseline.md` 为统一入口。
 
 ````
