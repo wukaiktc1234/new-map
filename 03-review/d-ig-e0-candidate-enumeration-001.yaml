@@ -3,8 +3,10 @@ e0_metadata:
   execution_owner: ENGINEERING_TEAM
   completeness_reviewer: BUSINESS_OWNER
   status: OPEN
-  execution_state: STRUCTURALLY_CORRECTED_PENDING_OWNER_REVIEW
+  execution_state: COMPLETED_PENDING_E1_E4
   enumeration_date: 2026-09-12
+  owner_review_reference: "03-review/d-ig-business-capability-owner-review-001.md"
+  pre_screen_result_reference: "03-review/d-ig-e0-prescreen-result-001.yaml"
   evidence_scope:
     - LOCAL_DOCUMENTED_EVIDENCE
     - LIVE_LOCAL_INSTANCE_EVIDENCE_AS_RECORDED_IN_EXISTING_EVIDENCE_DOCS
@@ -31,8 +33,8 @@ e0_metadata:
     orphan_candidates: NONE_IDENTIFIED
     e0f_executed: YES
     yaml_generated: YES
-    business_owner_completeness_review: PENDING
-    overall_e0_completion: NOT_COMPLETE
+    business_owner_completeness_review: COMPLETED
+    overall_e0_completion: COMPLETE
   methodology_boundary:
     identity_semantics_decision: NOT_MADE
     h1_h2_decision: NOT_MADE
@@ -475,7 +477,7 @@ e0f_counterfactuals:
     evidence_source:
       - "03-review/current-business-semantic-baseline.md §III L2-004 / L2-008 / L2-009"
       - "03-review/d-ig-kickoff-001.md §3 / §4"
-    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
+    evidence_class: LOCAL_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
     production_dependent: true
     provisional: true
 
