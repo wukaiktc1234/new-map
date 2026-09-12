@@ -55,6 +55,7 @@ candidate-level PASS
 其余状态保持：
 
 ```text
+PASS        = E-stage 在适用测试范围内满足该阶段判定条件
 FAIL        = 任一 E-stage 明确 FAIL
 INCONCLUSIVE = 未满足 PASS/FAIL 且至少一个 E-stage INCONCLUSIVE
 BLOCKED     = 必要前置条件或证据状态明确阻断判定
@@ -63,7 +64,26 @@ NOT_READY   = 尚未满足 candidate-level PASS 前置条件
 
 `NOT_READY` 不与 `FAIL` 或 `BLOCKED` 同义；应记录具体原因和 remediation class。
 
-### 4.1 Blocking evidence gap — operational criteria
+### 4.1 Transitional review label — `INCONCLUSIVE_UNTIL_REEVALUATED`
+
+`INCONCLUSIVE_UNTIL_REEVALUATED` **不是独立的最终 E-stage / Candidate-level 状态**，而是 `INCONCLUSIVE` 的过渡性治理标签，用于表示当前证据已不足以支撑 PASS，且已知存在必须完成的定向证据修复 / 定向重评估。
+
+状态关系固定为：
+
+```text
+INCONCLUSIVE_UNTIL_REEVALUATED
+        = INCONCLUSIVE + REEVALUATION_REQUIRED
+
+reevaluation completed
+  ├─ PASS         → PASS
+  ├─ FAIL         → FAIL
+  ├─ BLOCKED      → BLOCKED
+  └─ INCONCLUSIVE → INCONCLUSIVE
+```
+
+因此，该标签不得成为无出口的悬空状态，也不得被用于绕过 `INCONCLUSIVE` 的既有语义。Candidate-level Disposition 可以使用该标签描述修复中阶段，但正式复评结果必须回落到标准状态机。
+
+### 4.2 Blocking evidence gap — operational criteria
 
 `blocking evidence gap` 指满足以下任一条件、且该条件直接承重 candidate-level combined claim 的未闭合证据缺口：
 
