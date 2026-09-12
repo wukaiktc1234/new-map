@@ -55,7 +55,7 @@ E1–E4 的目标是分别检验候选对象是否满足：
 | Candidate | Name | Pre-Screen | Test Status | Order |
 |---|---|---|---|---|
 | C-001 | Food / Menu Item | NEEDS_TESTING | E3 OWNER-RULE PENDING | 1 |
-| C-002 | Material / Procurement Material | NEEDS_TESTING | IN_PROGRESS | 2 |
+| C-002 | Material / Procurement Material | NEEDS_TESTING | E1–E4 COMPLETE — CANDIDATE REVIEW PENDING | 2 |
 
 The Pre-Screen result explicitly places C-001 and C-002 in `NEEDS_TESTING`; it does not make an Identity Decision. See `03-review/d-ig-e0-prescreen-result-001.yaml`.
 
@@ -345,73 +345,164 @@ This register is intentionally kept separate from the C-001 test conclusion.
 
 ### 7.1 Candidate grounding
 
-C-002 当前 E0 证据记录：
+C-002 current E0/evidence grounding is:
 
-- `material_archives` 为文档记录的 Material truth source；
-- `purchase_order_items.material_id` 直接引用 Material；
-- `inventory.material_id`、`material_trace_code.materialId`、`material_consumption.materialId` 等路径传播 Material reference；
-- 当前证据还记录了独立 Material CRUD/read paths。
+- `material_archives` is the documented Material truth source;
+- `purchase_orders.materialId`, `inventory.materialId`, `material_trace_code.materialId`, and `material_consumption.materialId` propagate the Material reference;
+- the object map documents independent Material create/update/read paths;
+- Material is used across procurement, inventory, traceability, and consumption behavior paths.
 
-Primary evidence: `01-engineering-reality/business-object-map.md §2`; E0 C-002 in `03-review/d-ig-e0-candidate-enumeration-001.yaml`.
+Primary evidence: `01-engineering-reality/business-object-map.md §2`; `02-business-dependency/business-data-flow-map.md §2.1 and §2.4`; `02-business-dependency/business-identity-propagation-map.md §2.3`; E0 C-002 in `03-review/d-ig-e0-candidate-enumeration-001.yaml`.
 
-### 7.2 C-002 execution kickoff
+### 7.2 E1 — Inexpressibility / Non-Substitutability
 
-C-002 is now the active candidate. The execution must remain independent from C-001.
+**Test question**
 
-#### 7.2.1 E1 — Inexpressibility / Non-Substitutability
+> If Material is removed, can the confirmed Material-dependent business behavior be represented losslessly by A1 semantic layers without introducing an equivalent independently addressable object?
 
-Test against confirmed Material-dependent capability paths. Required attack condition remains:
+**Confirmed behavior paths used**
 
-> Can the confirmed Material-dependent behavior be expressed losslessly through A1 layers without introducing an equivalent independently addressable object?
+1. Purchase request/order: `items[].materialId → material_archives`.
+2. Receipt confirmation: `items[].materialId → material_archives`.
+3. Inventory stock-in/out: `materialId → material_archives`.
+4. Material trace code: `materialId → material_archives`.
+5. Material consumption: `materialId → material_archives`.
 
-Current evidence provides direct Material references in procurement and inventory/traceability paths, including `purchase_order_items.material_id`, `inventory.materialId`, `material_trace_code.materialId`, and `material_consumption.materialId`. These are initial signals, not yet an E1 conclusion.
+These paths span different business stages: procurement, receipt, inventory, traceability, and consumption. The same Material reference is carried across those stages.
 
-**Status**: `IN_PROGRESS_PENDING_COUNTERFACTUAL_EXECUTION`
+**A1 compensation attack**
 
-#### 7.2.2 E2 — Independent Direct Reference
+| Proposed replacement | Result | Failure point |
+|---|---|---|
+| Classification + Role + Domain | LOSS NOT COMPENSATED | Describes what kind of material it is and its role/domain, but does not provide the stable target referenced by purchase, inventory, traceability, and consumption records. |
+| Commercial Unit + Quantity + UOM | LOSS NOT COMPENSATED | Describes transaction quantity/measurement, not the stable material object that persists across business stages. |
+| Classification + Commercial Unit + Role | LOSS NOT COMPENSATED | Still cannot identify the same material object across procurement, inventory, and traceability. |
+| Domain + Commercial Unit + Temporal | LOSS NOT COMPENSATED | Context and time do not supply an independently addressable stable material referent. |
+| Classification + Domain + Temporal | LOSS NOT COMPENSATED | Still descriptive, not a stable cross-capability identity. |
+| Role + Commercial Unit + Temporal | LOSS NOT COMPENSATED | Same deficiency. |
+| All A1 layers combined | LOSS NOT COMPENSATED | A descriptive tuple would have to be registered as an independently addressable object to support cross-stage references, which is equivalent to retaining an independent Material identity under another name. |
+| `materialName` / description snapshots only | LOSS NOT COMPENSATED | Purchase/order records can snapshot names, but inventory, traceability, and consumption require the same stable referent across lifecycle stages. |
 
-Initial candidate evidence identifies multiple direct-reference paths:
+**Adversarial E1 result**
 
-- `purchase_order_items.material_id → material_archives`
-- `inventory.materialId → material_archives`
-- `material_trace_code.materialId → material_archives`
-- `material_consumption.materialId → material_archives`
+The strongest counterargument is that a sufficiently rich commercial-unit definition could itself identify a material. That does not satisfy the test because the moment downstream records need to refer to that definition consistently across procurement, inventory, traceability, and consumption, an independently addressable registry/object is required. The evidence package already identifies that registry as `material_archives`.
 
-The submitted propagation map explicitly classifies these as `REFERENCE`.
+**Result**: `PASS`
 
-A candidate-level E2 result will only be recorded after verifying the path/operation semantics, rather than treating the existence of repeated fields as sufficient.
+**What this proves**
 
-**Status**: `IN_PROGRESS_PENDING_SEMANTIC_CHECK`
+The current evidence supports that Material cannot be compressed into A1 semantic attributes without reintroducing an independently addressable stable object carrying the same cross-capability referential role.
 
-#### 7.2.3 E3 — Independent Lifecycle
+**What this does not prove**
 
-Current object-map evidence shows Material create/update/read paths and `ACTIVE / INACTIVE` states. Business consequences of those states are not yet established.
+- It does not prove Material is the final Canonical Identity name.
+- It does not resolve whether Food and Material can refer to the same real-world item in some contexts.
+- It does not resolve FM-001–FM-004.
+- It does not authorize Schema/Migration.
 
-The C-002 E3 test therefore remains open pending the same distinction used for C-001:
+### 7.3 E2 — Independent Direct Reference
 
-- technical lifecycle evidence;
-- explicit business lifecycle semantics;
-- state transition consequences;
-- historical-reference behavior.
+**Direct-reference evidence table**
 
-**Status**: `QUEUED_AFTER_E1_E2`
+| Confirmed capability / path | Business operation | Field | Target | Evidence | Reference type | Semantic role | Strength |
+|---|---|---|---|---|---|---|---|
+| Procurement request | Create purchase request | `purchase_request.items[].materialId` | `material_archives` | `02-business-dependency/business-data-flow-map.md §2.1` | `DIRECT_OBJECT_REFERENCE` | Identifies procurement material in request | STRONG |
+| Purchase order | Create/confirm purchase order | `purchase_orders.materialId` | `material_archives` | `02-business-dependency/business-data-flow-map.md §2.1`; propagation map §2.3 | `DIRECT_OBJECT_REFERENCE` | Identifies ordered material | STRONG |
+| Receipt confirmation | Receive purchased material | `receipt_confirmation.items[].materialId` | `material_archives` | `02-business-dependency/business-data-flow-map.md §2.1` | `DIRECT_OBJECT_REFERENCE` | Carries material identity into receipt/inventory | STRONG |
+| Inventory | Stock-in/out | `inventory.materialId` | `material_archives` | propagation map §2.3; business object map §3 | `DIRECT_OBJECT_REFERENCE` | Identifies inventory material | STRONG |
+| Traceability | Material trace code | `material_trace_code.materialId` | `material_archives` | data-flow map §2.4; propagation map §2.3 | `DIRECT_OBJECT_REFERENCE` | Identifies material being traced | STRONG |
+| Consumption | Material consumption | `material_consumption.materialId` | `material_archives` | propagation map §2.3; E0 C-002 | `DIRECT_OBJECT_REFERENCE` | Identifies consumed material | STRONG |
 
-#### 7.2.4 E4 — Stable Semantic Consistency
+**Result**: `PASS`
 
-Material is used in procurement, inventory, traceability, and consumption paths in the current evidence package. The required test is to verify that those references denote one stable business concept rather than multiple context-specific objects accidentally sharing a field name.
+**E2 reasoning**
 
-**Status**: `QUEUED_AFTER_E2_E3`
+The same `materialId` reference is explicitly classified as `REFERENCE` across multiple independent business stages. This is stronger than a single table field and demonstrates repeated direct reference to the same Material truth source.
 
-### 7.3 C-002 preliminary evidence table
+**What this proves**
 
-| Capability / path | Business operation | Material reference | Target | Reference type | Evidence status |
-|---|---|---|---|---|---|
-| Procurement | Purchase request/order | `purchase_order_items.material_id` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
-| Inventory | Inventory quantity | `inventory.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
-| Traceability | Material trace code | `material_trace_code.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
-| Consumption | Material consumption | `material_consumption.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
+Material has independent direct-reference use in procurement, receipt, inventory, traceability, and consumption.
 
-These rows establish the C-002 test surface, not the candidate-level Identity result.
+**What this does not prove**
+
+It does not prove every Material consumer is independently evidenced, nor does it settle Food/Material boundary semantics.
+
+### 7.4 E3 — Independent Lifecycle
+
+**Initial evidence**
+
+The object map documents:
+
+- Material create/update/read paths;
+- `ACTIVE / INACTIVE` state;
+- dedicated `material:read` and `material:write` permissions;
+- independent Material truth source `material_archives`.
+
+**Business lifecycle test**
+
+The current package does not establish the business consequences of `ACTIVE` versus `INACTIVE`, including:
+
+- whether `INACTIVE` prevents new procurement;
+- whether it prevents new inventory movements;
+- whether it prevents new consumption;
+- whether historical procurement/inventory/traceability/consumption references remain valid;
+- whether reactivation is a business operation or merely a technical flag change.
+
+Therefore, as with Food, the correct classification is not “keep searching forever”; it is:
+
+`INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
+
+**Owner questions — no decision recorded yet**
+
+**E3M-A — INACTIVE meaning**
+
+- A: 停止新增采购，但历史记录和库存仍可查询/使用
+- B: 禁止所有新业务引用，历史记录只读
+- C: 仅技术开关
+- D: 暂不决定
+
+**E3M-B — historical references**
+
+- A: 历史采购/库存/追溯/消耗继续保留 `materialId`
+- B: 历史记录主要依赖名称/规格快照
+- C: `materialId + snapshot` 双保留
+- D: 暂不决定
+
+**Result**: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
+
+### 7.5 E4 — Stable Semantic Consistency
+
+**Cross-capability mapping**
+
+| Capability | Material meaning | Evidence | Consistency result |
+|---|---|---|---|
+| Procurement request/order | Material being procured from supplier | `materialId → material_archives` | Same referent |
+| Receipt confirmation | Material actually received | `materialId → material_archives` | Same referent |
+| Inventory | Material held in inventory | `inventory.materialId` | Same referent |
+| Traceability | Material associated with trace code/batch | `material_trace_code.materialId` | Same referent |
+| Consumption | Material consumed by production/business operation | `material_consumption.materialId` | Same referent |
+
+**Consistency attack**
+
+1. Material = procurement-only concept — contradicted by inventory, traceability, and consumption references.
+2. Material = inventory-only concept — contradicted by procurement and receipt references.
+3. Material = traceability-only concept — contradicted by procurement/inventory/consumption references.
+4. Material changes semantic identity between procurement and consumption — no evidence supports such a change; the same `materialId` propagates through the chain.
+5. `product_id` as an alternative identity — rejected as an identity conflict because the propagation map explicitly identifies `product_id` as a legacy/wrong semantic label that actually points to Material.
+
+**Result**: `PASS` (limited to the evidenced capability set)
+
+**Basis**
+
+The same Material truth source and reference semantics persist across procurement, receipt, inventory, traceability, and consumption. No evidence-supported semantic split was found within these tested paths. The legacy `product_id` column is treated as a conflicting technical label, not as evidence of a second business identity.
+
+### 7.6 C-002 current test state
+
+`C-002 = E1 PASS; E2 PASS; E3 INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE; E4 PASS`
+
+`C-002 = NOT COMPLETE FOR CANDIDATE-LEVEL CONCLUSION`
+
+The candidate-level Identity conclusion remains pending because E3 business semantics are unresolved and the Food/Material boundary register remains open.
 
 ## 8. Decision Safety Gates
 
@@ -432,22 +523,25 @@ The following transitions remain prohibited:
 
 Two parallel tracks now exist:
 
-**Track A — Owner**: answer C-001 E3A/E3B/E3C business-rule questions. These remain unanswered in the governance record until explicitly confirmed.
+**Track A — Owner**: answer C-001 E3A/E3B/E3C and C-002 E3M-A/E3M-B business-rule questions. These remain unanswered in the governance record until explicitly confirmed.
 
-**Track B — Executor**: continue C-002 E1 → E2 → E3 → E4 independently, with adversarial counterfactual review and explicit evidence references.
+**Track B — Executor**: after C-002 E1–E4 execution, perform the required candidate-level adversarial review before deriving the Required Identity Object Set.
 
-After both candidate-level test records are complete, process FM-001 through FM-004 as a separate Food/Material boundary review.
+Only after C-001 and C-002 candidate-level conclusions are complete should FM-001 through FM-004 be processed as a separate Food/Material boundary review.
 
 ## 10. Governance State
 
 - D-IG: `OPEN`
 - E0: `COMPLETED_PENDING_E1_E4`
-- E1–E4: `IN_PROGRESS — C-002; C-001 E3 OWNER-RULE PENDING`
+- E1–E4: `CANDIDATE TESTING COMPLETE — OWNER BUSINESS RULES PENDING`
 - C-001 E1: `PASS`
 - C-001 E2: `PASS`
 - C-001 E3: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
 - C-001 E4: `PASS`
-- C-002: `IN_PROGRESS`
+- C-002 E1: `PASS`
+- C-002 E2: `PASS`
+- C-002 E3: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
+- C-002 E4: `PASS`
 - Identity Decision: `NOT_MADE`
 - H1/H2: `NOT_MADE`
 - Schema: `BLOCKED`
