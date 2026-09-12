@@ -41,6 +41,8 @@ Capability Set 只允许三类来源状态：
 3. 标记无法确认的 capability boundary 为 `UNKNOWN`，但不得自行发明其具体业务定义；
 4. 为每项能力建立 evidence/reference 链。
 
+如果 Owner-declared capability 记录不存在，ENGINEERING_TEAM 必须在 metadata 记录 `REQUIREMENT_DRIVEN_INCOMPLETE`，不得以工程推测填充 `DECLARED`。
+
 ### 3.2 Completeness Reviewer
 
 `BUSINESS_OWNER` 负责：
@@ -86,9 +88,23 @@ Capability Set 按以下顺序建立：
 
 技术证据只能作为能力存在的证据，不直接成为 Capability 名称。
 
+能力证据的最低要求是：至少存在一条**业务行为路径**的证据，而不是仅仅存在表、字段、endpoint 或 Service。
+
+“表 X 存在”不是能力证据；“系统可以通过某路径完成某业务动作”才可作为已实现能力的证据。字段或 endpoint 只能在能够与实际业务行为路径建立可定位联系时作为辅助证据。
+
 ### Step 3 — Deduplication and Boundary Check
 
 合并仅在两个记录表达同一业务能力且没有不同生命周期、不同业务责任或不同业务结果时允许。
+
+判断两条记录是否为同一业务能力，必须逐项检查：
+
+1. 业务动作是否相同（动词 + 宾语）；
+2. 触发条件是否相同；
+3. 业务结果是否相同；
+4. 责任人是否相同；
+5. 生命周期是否相同。
+
+五项全部相同才允许合并；任一项不同则保持分离，除非有更高层、可定位业务证据证明两者本质上是同一能力。
 
 不得为了减少数量而合并不同能力，也不得因为不同表/endpoint 就自动拆成不同能力。
 
@@ -135,6 +151,13 @@ Capability Set 正式产出文件：
 - `production_dependency`；
 - `notes`。
 
+`owner_review_status` 取值：`PENDING` / `CONFIRMED` / `REJECTED` / `NOT_APPLICABLE`。
+
+- `PENDING`：尚未完成 Owner review；
+- `CONFIRMED`：BUSINESS_OWNER 已确认该能力记录；
+- `REJECTED`：BUSINESS_OWNER 明确否定该记录；
+- `NOT_APPLICABLE`：该能力来自已验证工程行为或当前阶段不要求 Owner 对其逐项作业务声明确认；但该取值不得掩盖来源缺失。
+
 Capability Set metadata 必须同时记录：
 
 - `requirement_driven_status`；
@@ -142,6 +165,12 @@ Capability Set metadata 必须同时记录：
 - `establishment_status`；
 - `completeness_review_status`；
 - `pre_screen_authorization`。
+
+`pre_screen_authorization` 取值：`READY` / `BLOCKED` / `NOT_EVALUATED`。
+
+- `NOT_EVALUATED`：Capability Set 建立中，尚未完成 Completion Gate；
+- `BLOCKED`：Completion Gate 未通过；
+- `READY`：Completion Gate 全部通过，可进入 Pre-Screen。
 
 ## 6. Completion Gate
 
@@ -156,6 +185,16 @@ Capability Set 只有同时满足以下条件，才可进入 Pre-Screen：
 7. 若 Requirement-driven sources 不完整，状态仍明确保持 `REQUIREMENT_DRIVEN_INCOMPLETE`；
 8. 若生产证据仍不可得，生产依赖项必须保持 `BLOCKED/PROVISIONAL`，不得伪装为生产事实。
 
+### 6.1 Meaning of “Completeness” in Condition 6
+
+Condition 6 的“完整性”仅指：
+
+1. 相对当前 evidence package：所有能定位到的已实现业务行为都已提取为 `IMPLEMENTED` 能力；
+2. 相对 Owner 已记录材料：所有 Owner 已声明的业务能力都已登记为 `DECLARED`；
+3. 不宣称对“业务世界所有可能的业务能力”完整。
+
+BUSINESS_OWNER 的确认因此是“在已声明来源与当前 evidence package 边界内的完整性确认”，不是对现实业务世界全部能力的穷尽性确认。
+
 完成后：
 
 `pre_screen_authorization = READY`
@@ -163,6 +202,10 @@ Capability Set 只有同时满足以下条件，才可进入 Pre-Screen：
 否则：
 
 `pre_screen_authorization = BLOCKED`
+
+在 Completion Gate 尚未完成评估前：
+
+`pre_screen_authorization = NOT_EVALUATED`
 
 ## 7. Relationship to Pre-Screen
 
@@ -180,8 +223,14 @@ Capability Set 不得提前把某个候选定义为 Identity，也不得为了�
 - Business Capability Set = METHOD_DEFINED;
 - Capability Set v1 = NOT_YET_ESTABLISHED;
 - BUSINESS_OWNER completeness review = PENDING;
+- Pre-Screen Rule 001 = ESTABLISHED;
+- Charter Amendment 001 = ACTIVE_REFERENCE;
 - Pre-Screen execution = NOT_STARTED;
 - E1–E4 = BLOCKED_PENDING_PRE_SCREEN;
 - H1/H2 = NOT_MADE;
 - Schema = BLOCKED;
 - Migration = BLOCKED。
+
+## 9. Freeze Boundary
+
+本 Charter 的建立方法与执行契约完成后，除发现新的结构性矛盾或与 A1/A2、D-IG Charter 发生不可消解的接口冲突外，不再新增方法论层面的规则。后续工作直接进入 Capability Set v1 建立、BUSINESS_OWNER 完整性审核与 Pre-Screen 执行。
