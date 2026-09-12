@@ -24,6 +24,16 @@ Pre-Screen 必须使用：
 
 单一案例（例如采购→库存→配方→销售）不得作为全局业务能力全集。测试案例只是业务能力集合中的验证案例。
 
+### 2.1 Business Capability Set Establishment
+
+Business Capability Set 是 Pre-Screen 的正式输入，必须在 Pre-Screen 执行前建立并经 BUSINESS_OWNER 完整性确认。建立方法另由：
+
+`03-review/d-ig-business-capability-set-charter-001.md`
+
+规定。本 Rule 不重复定义其提取流程，仅要求遵守其来源边界、状态模型与完成门槛。
+
+在 Capability Set 完整性未确认前，Pre-Screen Execution = `NOT_STARTED`，不得用未完成的 Capability Set 形成 `OBSERVED_ONLY` 排除结论。
+
 ## 3. Business Capability Source Boundary
 
 Business Capability Set 必须区分来源，不得把当前系统能力等同于完整业务需求：
@@ -33,6 +43,8 @@ Business Capability Set 必须区分来源，不得把当前系统能力等同�
 - `UNKNOWN`: 业务上可能存在但尚未被 Owner 或可靠证据确认的能力。
 
 Pre-Screen 只可使用 `IMPLEMENTED` 与 `DECLARED` 作为排除候选的依据。
+
+当候选在 `IMPLEMENTED` 和 `DECLARED` 能力下均无不可补偿损失，但在 `UNKNOWN` 能力下可能存在损失时，outcome 必须为 `PENDING_CAPABILITY_CONFIRMATION`，不得判为 `OBSERVED_ONLY`。
 
 `UNKNOWN` 不得用于证明某候选“不需要”；相关候选应标记 `PENDING_CAPABILITY_CONFIRMATION`，等待 Owner 裁定。
 
@@ -52,15 +64,30 @@ Pre-Screen 只可使用 `IMPLEMENTED` 与 `DECLARED` 作为排除候选的依据
 
 上述损失必须同时满足：
 
-> 无法通过 Attribute / Role / Relationship / Quantity / Location / Tracking / Event 等已允许的非-Identity 语义组合进行无损补偿。
+> 无法通过 A1 §2.1 已定义的 12 个语义层中的任意组合进行无损补偿。
+
+补偿能力检查允许使用 A1 §2.1 的以下全部语义层：
+
+`Classification / Role / Domain / Organization / Temporal / Quantity / UOM / Conversion / Commercial Unit / Inventory Holding / Tracking / Transformation`
 
 “实现困难”“当前代码没有”“需要更多字段”“未来可能方便”均不足以构成不可补偿损失。
+
+### 4.1 Compensation Attempt Method
+
+对每个候选 O 和业务能力 B，执行者必须：
+
+1. 明确列出移除 O 后，B 中受影响的具体操作、引用或稳定语义；
+2. 尝试使用 A1 §2.1 已定义的 12 个语义层及其组合进行替代表达；
+3. 记录实际尝试的组合、可表达部分、失败点及失败原因；
+4. 只有在所有合理可行的补偿组合均无法无损表达该能力时，才可判定“不可补偿”。
+
+`compensation_attempt` 必须记录实际尝试，不得以“直觉认为不可替代”代替执行记录。
 
 ## 5. Outcomes
 
 每个候选必须得到以下之一：
 
-- `OBSERVED_ONLY`: 当前证据下没有发现不可补偿语义损失；不进入 E1–E4，但保留在 E0；
+- `OBSERVED_ONLY`: 当前已确认 `IMPLEMENTED` + `DECLARED` 能力下没有发现不可补偿语义损失，且不存在未裁定的 `UNKNOWN` 依赖；不进入 E1–E4，但保留在 E0；
 - `NEEDS_TESTING`: 至少一个已确认业务能力出现不可补偿语义损失信号；进入 E1–E4；
 - `PENDING_CAPABILITY_CONFIRMATION`: 结论依赖 `UNKNOWN` 能力；不得据此排除候选；
 - `PROVISIONAL_NEEDS_PRODUCTION`: 判断依赖生产证据，而 Production Gate-0 仍 BLOCKED。
@@ -86,10 +113,10 @@ Pre-Screen 结果应记录：
 - `candidate_id`；
 - `capability_id`；
 - `capability_source`；
-- `removal_effect`；
+- `removal_effect`：移除候选 O 后对能力 B 的具体影响，包括受影响操作、引用或稳定语义；
 - `loss_type`（`UNEXPRESSIBLE` / `UNREFERENCABLE` / `SEMANTIC_INCONSISTENCY`）；
-- `compensation_attempt`；
-- `compensation_result`；
+- `compensation_attempt`：实际尝试的 A1 §2.1 语义层组合及其表达结果；
+- `compensation_result`：`LOSS_COMPENSATED` / `LOSS_NOT_COMPENSATED`，并记录关键失败点；
 - `evidence_reference`；
 - `outcome`；
 - `production_dependency`；
@@ -105,9 +132,10 @@ Pre-Screen 结果应记录：
 
 - D-IG = OPEN；
 - E0 = STRUCTURALLY_CORRECTED_PENDING_OWNER_REVIEW；
+- Charter Amendment 001 = ACTIVE_REFERENCE；
 - Business Capability Set = NOT_YET_ESTABLISHED；
 - Pre-Screen execution = NOT_STARTED；
-- E1–E4 = BLOCKED_PENDING_PRE_SCREEN;
+- E1–E4 = BLOCKED_PENDING_PRE_SCREEN；
 - H1/H2 = NOT_MADE；
 - Schema = BLOCKED；
 - Migration = BLOCKED。
