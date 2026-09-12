@@ -36,8 +36,9 @@ Charter 001 原有“`E1 = 是 且 E2 = 是` 才默认进入 Required Identity O
 
 1. E3/E4 继续作为一致性检查，不因本 Amendment 自动改变入集阈值；
 2. 若 E1/E2 未同时满足但 E3/E4 显示强独立语义证据，继续触发 `IDENTITY_EXCEPTION_REVIEW`；
-3. 已完成的旧版 E1–E4 记录不被自动删除或宣告无效，但在进入 Required Identity Object Set 前必须进行一次“定义对齐核验”，确认其测试实际覆盖本 Amendment §2 的语义；
-4. 定义对齐核验若发现实质性测试目标不同，必须重新执行受影响 E-stage，而不能只修改文字。
+3. 已完成的旧版 E1–E4 记录不被自动删除或宣告无效，但在 **Candidate-level PASS 之前** 必须进行一次“定义对齐核验”，确认其测试实际覆盖本 Amendment §2 的语义；
+4. 定义对齐核验若发现实质性测试目标不同，必须重新执行受影响 E-stage，而不能只修改文字；
+5. 定义对齐核验未完成时，候选可以继续保持 `CANDIDATE_PASS_NOT_YET_PROVEN`，但不得写入 `CANDIDATE_PASS_SURVIVES`。
 
 ## 4. Candidate-level Gate Relationship
 
@@ -46,6 +47,7 @@ Candidate-level gate 采用以下结构：
 ```text
 candidate-level PASS
   = E1 PASS ∧ E2 PASS ∧ E3 PASS ∧ E4 PASS
+  ∧ E-definition alignment check completed
   ∧ candidate-level adversarial review completed
   ∧ no unresolved blocking evidence gap in the combined claim
 ```
@@ -60,6 +62,27 @@ NOT_READY   = 尚未满足 candidate-level PASS 前置条件
 ```
 
 `NOT_READY` 不与 `FAIL` 或 `BLOCKED` 同义；应记录具体原因和 remediation class。
+
+### 4.1 Blocking evidence gap — operational criteria
+
+`blocking evidence gap` 指满足以下任一条件、且该条件直接承重 candidate-level combined claim 的未闭合证据缺口：
+
+1. **Referent uncertainty**：候选在一个进入 E2/E4 正证明集的核心路径中，实际指称对象尚不能被证据包唯一或条件性明确；
+2. **Contradictory referent evidence**：同一核心路径存在相互冲突的对象指称、真相源或语义定性，且尚未完成调和；
+3. **Unresolved business-truth dependency**：候选级正证明依赖一个尚未完成的 Business Owner / Product Owner 业务真相裁决，而该裁决结果可能使相关 E-stage 证据成立、失效或改写；
+4. **Required stage-input invalidation**：某项 E-stage PASS 的关键输入已被同层级证据部分否证，而尚未完成定向复核、重定级或重测；
+5. **Scope-defining omission**：核心正证明使用了过宽量词，且已知存在合法子场景可能不满足该主张，尚未完成范围收敛；
+6. **Evidence provenance failure**：某项被宣称为候选级承重证据的事实无法确定其来源、版本或证据级别，以至于无法判断是否可用于当前结论。
+
+以下情况本身 **不自动构成** blocking evidence gap：
+
+- 尚未测试但明确属于 later-stage 的边界问题；
+- 仅影响增强性说明而不改变 combined claim 的证据；
+- 未经验证的外部模型/LOCAL_ONLY 观察本身；
+- 生产证据 BLOCKED（除非当前命题明确依赖生产事实）；
+- Requirement-driven incomplete 本身。
+
+任何 blocking 判定必须在 Candidate-level Disposition 中点名其**候选、E-stage、证据对象、影响方式和 remediation owner**，不得只写“evidence incomplete”。
 
 ## 5. Evidence Composition Requirement
 
