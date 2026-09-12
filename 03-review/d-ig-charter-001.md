@@ -49,13 +49,38 @@ D-IG 第一项必须回答：
 D-IG 不以“先投票 H1 还是 H2”为唯一判定流程，而采用以下顺序：
 
 1. E0：枚举候选业务对象 / 粒度集合；
-2. E1–E4：逐一测试候选对象是否必须保留为 Identity；
-3. 汇总得到 `Required Identity Object Set`；
-4. 若该集合为空，则 H1；
-5. 若该集合包含两个或以上不同抽象粒度且存在稳定层间关系，则 H2；
-6. 只有完成上述判断后，才确定 H1/H2 的正式结构与 Identity Resolution Matrix。
+2. E0-F：对“Required Identity Object Set 为空”的假设执行一次反例测试；
+3. E1–E4：逐一测试候选对象是否必须保留为 Identity；
+4. 汇总得到 `Required Identity Object Set`；
+5. 若该集合为空，则 H1；
+6. 若该集合包含两个或以上不同抽象粒度且存在稳定层间关系，则 H2；
+7. 只有完成上述判断后，才确定 H1/H2 的正式结构与 Identity Resolution Matrix。
 
 H1/H2 判断阶段允许临时构建最小结构示例，用于比较表达能力，但不得将试建结构写成 Decision、Canonical Model 或 Schema Authorization。
+
+### 2.2 Required Identity Object Set — Definition and Admission Rule
+
+`Required Identity Object Set` 的定义为：
+
+> **除最终选定的基础 Identity Grain 之外，仍必须以独立业务对象保留的上层或下层 Identity 对象集合。**
+
+因此：
+
+- 集合为空 → 表示没有额外 Identity 层级 → H1；
+- 集合包含一个对象，但该对象与基础 Grain 属于同一抽象粒度 → H1；
+- 集合包含一个与基础 Grain 不同抽象粒度的对象 → 倾向 H2，需确认稳定关系；
+- 集合包含多个不同抽象粒度的对象，且对象之间存在稳定、可验证的关系 → H2。
+
+**默认进入规则：**
+
+> 候选对象 O 当且仅当 **E1 = 是 且 E2 = 是** 时，默认进入 `Required Identity Object Set`。
+>
+> - E1 = 独立生命周期：O 可以被独立创建、停用、重启、版本化或治理，而不要求同步重建下层 Identity；
+> - E2 = 独立业务引用：业务流程、规则或治理可以直接引用 O，而不必仅通过下层对象的属性间接引用。
+>
+> E3（独立变化）与 E4（稳定关系）默认作为一致性检查，而不是独立的入集阈值。若 E1/E2 未同时满足，但 E3 或 E4 显示出强烈的独立语义证据，则不得自动判定为非-Identity；该候选必须进入 `IDENTITY_EXCEPTION_REVIEW`，由 Owner / 独立审阅显式裁决其是否保留为 Identity。
+
+该规则的作用是把 E1–E4 的观察转化为可重复的 Set 产出规则；它本身不是最终业务 Decision，若业务证据证明该阈值不足，可在 D-IG 决策记录中修订，但不得在单个候选测试过程中临时改变。
 
 ---
 
@@ -91,15 +116,60 @@ E0 的目标不是套用预设的 Brand / Family / Variant / SKU 名称，而是
 
 通用行业对象名称（如 Brand / Product Family / Variant / SKU / Trade Item）可以作为**候选搜索词**，但不能因为名称存在就视为本项目已有业务对象。
 
-E0 必须记录：
+### 4.1.1 E0 Execution Method
+
+E0 不得以“GPT / Reviewer 觉得应该有某对象”为枚举依据。必须先从证据源提取候选，再做候选归并。
+
+每个输入源至少执行以下步骤：
+
+1. **提取对象信号**：识别可能代表业务对象或粒度的字段、引用参数、API 入参、聚合维度、唯一/近唯一业务代码、重复但被区别处理的值集合，以及显式业务命名；
+2. **形成来源内候选集**：在不预先判断 Identity 与否的情况下，记录该来源暴露出的候选对象；
+3. **跨来源合并去重**：按语义描述而不是仅按表名、字段名或数字 ID 合并候选；无法证明同一语义的候选保持分离；
+4. **记录出现证据**：记录每个候选出现在哪些输入源、出现频率或样本规模、可见的引用路径，以及是否有明确业务命名共识；
+5. **优先级标记**：出现频率低、仅单点出现或缺少业务命名的候选标记 `LOW_PRIORITY_CANDIDATE`，但不得仅因频率低而删除；
+6. **假设状态**：对尚不能证明真实存在的候选标记 `HYPOTHESIS_ONLY`，不得与已观察对象混列。
+
+### 4.1.2 E0 Evidence Record Minimum
+
+E0 Candidate Object List 至少包含：
 
 - Candidate Object；
-- 来源；
-- 所代表的抽象粒度；
-- 已观察到的业务行为；
-- 是否存在独立引用路径；
-- 当前证据等级；
-- 是否仍只是待验证假设。
+- Source；
+- Source Evidence Reference；
+- Observed Field / API / Code Path / Business Statement；
+- Abstraction Grain（仅描述观察到的粒度，不提前命名为最终 Identity Grain）；
+- Observed Behavior；
+- Independent Reference Path；
+- Appearance Frequency / Sample Size（若可获得）；
+- Business Naming Consensus（若可获得）；
+- Evidence Level；
+- Candidate Status。
+
+Candidate Status 至少允许：
+
+- `OBSERVED_LOCAL_CANDIDATE`
+- `LOW_PRIORITY_CANDIDATE`
+- `HYPOTHESIS_ONLY`
+- `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`
+
+### 4.1.3 E0-F — Empty-Set Counterfactual Test
+
+E0 完成候选枚举后、E1 开始前，必须执行一次反事实推演：
+
+> **假设 `Required Identity Object Set = ∅`，即除一个基础 Identity Grain 外，不保留任何额外 Identity 层级；哪些真实或典型业务场景会因此无法表达、无法引用、无法治理或只能通过复制/重写下层 Identity 来勉强表达？**
+
+该测试的目的不是直接证明 H2，而是寻找“如果不存在额外 Identity 层，什么业务语义首先失效”的反证入口。
+
+对每个发现的失效场景，必须记录：
+
+- Failure Scenario；
+- 如果 Set 为空，为什么无法表达；
+- 需要被独立保留的候选对象；
+- 可验证预测（应在代码、数据、业务规则或访谈中观察到什么）；
+- Evidence Source；
+- 是否达到 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`。
+
+若 Empty-Set Counterfactual 未发现任何无法表达的业务场景，则该结果作为支持 H1 的证据之一，但不替代 E1–E4。
 
 ## 4.2 Semantic Compression — Operational Definition
 
@@ -306,6 +376,6 @@ Execution Status = BLOCKED
 Schema Authorization = NO
 Migration Authorization = NO
 
-First Agenda = E0 Candidate Enumeration → E1–E4 Identity Necessity Tests
+First Agenda = E0 Candidate Enumeration → E0-F Empty-Set Counterfactual → E1–E4 Identity Necessity Tests
 Required Identity Object Set = NOT YET DETERMINED
 ```
