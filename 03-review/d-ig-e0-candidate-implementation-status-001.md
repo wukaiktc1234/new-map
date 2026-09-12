@@ -7,6 +7,10 @@
 - Identity decision: NOT_MADE
 - Capability Set impact: NONE
 
+## Scope restriction
+
+This record carries **exactly one E0 status type**: `NO_IMPLEMENTED_BEHAVIOR_PATH_FOUND` for the implementation-evidence state of an E0 candidate. It must not evolve into a parallel E0 lifecycle/status system. Candidate entry, Pre-Screen state, E1-E4 test state, Required Set status, and H1/H2 decision remain owned by `d-ig-e0-candidate-enumeration-001.yaml` and the subsequent D-IG records defined by the Charter.
+
 ## E0-CIS-001
 
 - Related candidates: `C-007` Commercial Unit; `C-008` Variant / Specification Grain
