@@ -47,17 +47,21 @@
 - Sellable + Recipe input
 - Role 随 Organization / Temporal 改变
 
-## 5. 当前证据边界
+## 5. 已知本地事实与解读限制
 
-### 已知本地证据
+### 已知本地事实
 
-- `foods` 与 `material_archives` 分别存在明确的当前真相源角色；这不等于它们是最终 Identity 层级。
-- `inventory` / `store_inventory` 使用不同的持有结构；这不等于存在多个 Identity 层级。
-- `purchase_request_item.food_id` 存在大量实际匹配 material ID 的本地记录；这证明存在跨 namespace 语义漂移，但不能证明 H1 或 H2。
-- `product` 仍有 active-code residue；不得因为表名推导 Identity。
+- `foods` 与 `material_archives` 分别存在明确的当前真相源角色。
+- `inventory` / `store_inventory` 使用不同的持有结构。
+- `purchase_request_item.food_id` 存在大量实际匹配 material ID 的本地记录。
+- `product` 仍有 active-code residue。
 
-### 当前不可用作结论的证据
+### 解读限制
 
+- `foods` 与 `material_archives` 的当前真相源角色，不等于它们已经被证明为最终 Identity 层级。
+- `inventory` / `store_inventory` 的持有结构差异，不等于存在多个 Identity 层级。
+- `purchase_request_item.food_id` 的 namespace 漂移证明存在语义冲突，但不能单独证明 H1 或 H2。
+- `product` 表存在 active-code residue，不得因为表名直接推导 Identity。
 - 未取得独立 Production DB，因此生产数据不能用于证明 H1/H2。
 - 合成业务案例只能用于反证和需求压力测试，不能伪装为生产事实。
 
@@ -73,6 +77,8 @@
 - 当前证据；
 - 反证条件；
 - 是否 provisional。
+
+在 H1/H2 判断阶段，允许临时构建最小结构示例，用于比较两种模型的表达能力；但任何此类试建结构均不得写成 Decision、Canonical Model 或 Schema Authorization。
 
 ## 7. Current Status
 
