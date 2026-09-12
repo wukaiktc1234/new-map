@@ -146,3 +146,18 @@ Requirement-driven status = `REQUIREMENT_DRIVEN_INCOMPLETE` 时：
 - 不创建 Canonical Identity Name；
 - 不授权 Schema/Migration；
 - 不把外部模型的 LOCAL_ONLY 观察自动升级为 repository fact。
+
+## 11. Execution Ordering
+
+为避免在旧版 E-stage 输入上先做证据修补、随后才发现测试定义需要重跑，Candidate-level execution 必须遵循以下顺序：
+
+```text
+1. E-definition alignment check
+2. If required: re-execute affected E-stage(s)
+3. Targeted evidence repair against the aligned E-stage set
+4. Candidate-level evidence-corpus mapping / wording repair
+5. Candidate-level adversarial re-review
+6. Candidate-level verdict
+```
+
+因此，任何依赖旧 E1–E4 定义的 targeted evidence repair 都不得被视为已完成的 Candidate-level 前置条件；只有在 alignment check 完成并确认无需重跑、或受影响 E-stage 已重跑后，repair 才进入有效状态。
