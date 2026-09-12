@@ -1,7 +1,7 @@
 # Current Business Semantic Baseline
 
 > **任务**: PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001
-> **版本**: 3.0
+> **版本**: 3.1
 > **日期**: 2026-09-12
 > **状态**: CURRENT BASELINE
 
@@ -115,6 +115,8 @@
 
 ### Product Decisions
 - PD-CANONICAL-001: Canonical Business Item 定义 → SUPERSEDED by A1/A2 + D-IG sequence
+  - 状态：**不再作为独立决策存在**
+  - 原始问题已拆解为：A1/A2（已确认） + D-IG（OPEN）+ D-QUANTITY（OPEN）+ D-ROLE-SCOPE（OPEN）+ 后续 Canonical Business Item Model
 - PD-CANONICAL-002: Product 语义 → OPEN
 - PD-CANONICAL-003: Food 语义 → OPEN
 - PD-CANONICAL-004: Material 语义 → OPEN
@@ -187,6 +189,7 @@ Production Evidence Gate-0 remains BLOCKED. Production-dependent conclusions mus
 - `03-review/business-item-semantic-layering-decision-001.md`
 - `03-review/d-ig-charter-001.md`
 - `03-review/d-ig-decision-provenance-001.md`
+- `03-review/d-ig-kickoff-001.md`
 - `03-review/business-item-canonical-semantic-reassessment.md`
 - `03-review/business-item-canonical-decision-boundary.md`
 - `03-review/business-item-canonical-conflict-registry.yaml`
