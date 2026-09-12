@@ -129,10 +129,10 @@ candidate-level conclusion = BLOCKED
 
 因此：
 
-- Owner 回答当前 7 个问题后，不保证 E3 PASS；
-- 任一问题选择“暂不决定”，只要该问题仍是 E3 判定必要条件，E3 继续为 `INCONCLUSIVE`；
+- Owner 已确认本记录所列 E3 业务规则；相应问题不再作为“未回答”缺口处理。
+- Owner 规则确认本身不自动等于 E3 PASS；E3 PASS 必须经过本次复评记录 `03-review/d-ig-e3-reevaluation-001.md`。
 - 任一 E-stage FAIL 时，candidate-level conclusion 直接为 `FAIL`；
-- 全部 E-stage PASS 后，candidate 才有资格进入 Required Identity Object Set；
+- 全部 E-stage PASS 后，candidate 才有资格进入候选级复核及后续 Required Identity Object Set；
 - candidate-level conclusion 本身仍不等于最终 Identity Decision。
 
 ## 6. Other E-stage inconclusive handling
@@ -151,18 +151,20 @@ candidate-level conclusion = BLOCKED
 
 FM-001～FM-004 当前继续 `OPEN`。
 
-在 C-001 / C-002 完成 candidate-level conclusion 之前，不使用未解决的 E3 生命周期语义去预判 Food/Material 边界。
+E3 业务规则确认与复评不得提前关闭这些边界问题，也不得使用 E3 结果预判 Food/Material 最终 Identity 关系。
 
 当前顺序保持：
 
-`Owner E3 rules → C-001/C-002 candidate-level conclusion → Required Identity Object Set → FM-001–FM-004 boundary review → H1/H2 → Identity Decision`
+`Owner E3 rules → E3 re-evaluation → C-001/C-002 candidate-level conclusion → Required Identity Object Set → FM-001–FM-004 boundary review → H1/H2 → Identity Decision`
 
 ## 8. Governance state
 
-- C-001 E3: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
-- C-002 E3: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
-- C-001 candidate-level conclusion: `NOT_READY`
-- C-002 candidate-level conclusion: `NOT_READY`
+- C-001 E3 Owner rules: `CONFIRMED_IN_CHAT`
+- C-002 E3 Owner rules: `CONFIRMED_IN_CHAT`
+- C-001 E3: `PASS`（见 `03-review/d-ig-e3-reevaluation-001.md`）
+- C-002 E3: `PASS`（见 `03-review/d-ig-e3-reevaluation-001.md`）
+- C-001 candidate-level conclusion: `PENDING_CANDIDATE_ADVERSARIAL_REVIEW`
+- C-002 candidate-level conclusion: `PENDING_CANDIDATE_ADVERSARIAL_REVIEW`
 - Required Identity Object Set: `NOT_STARTED`
 - FM-001–FM-004: `OPEN`
 - H1/H2: `NOT_MADE`
