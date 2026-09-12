@@ -8,7 +8,7 @@
   - `03-review/d-ig-business-capability-set-review-001.md` — mandatory review dispositions
   - `03-review/d-ig-business-capability-set-v2-logical-001.md` — deterministic Logical v2 composition
 - Adversarial review of Capability Set: `COMPLETED_PASSED`
-- Owner completeness review: `IN_PROGRESS`
+- Owner completeness review: `READY_FOR_EXECUTION`
 - Requirement-driven status: `REQUIREMENT_DRIVEN_INCOMPLETE`
 - Production evidence status: `BLOCKED`
 - Pre-Screen authorization: `BLOCKED_PENDING_OWNER_REVIEW`
@@ -53,7 +53,7 @@ owner_review_metadata:
   review_scope_confirmed: PENDING
 ```
 
-`owner_identifier`, `review_date`, and `review_session_context` are mandatory for recording a substantive Owner supplemental requirement input.
+`owner_identifier`, `review_date`, and `review_session_context` are mandatory for recording a substantive Owner output. `review_scope_confirmed` must be explicitly recorded before the review is marked complete.
 
 ## 4. Completeness review output
 
@@ -72,7 +72,27 @@ Allowed `status` values:
 - `OBVIOUS_OMISSIONS_FOUND`
 - `PENDING_OWNER_REVIEW`
 
-Each omission must receive a stable review ID such as `OR-001`, `OR-002`, etc.
+Each omission is a distinct Owner review output and must use a stable `OM-*` identifier.
+
+Each omission entry must use the following structure:
+
+```yaml
+obvious_omissions:
+  - review_output_type: OMISSION
+    review_id: OM-001
+    owner_identifier: PENDING
+    review_date: PENDING
+    review_session_context: PENDING
+    omission_summary: ""
+    omission_quote_or_faithful_summary: ""
+    candidate_reference: NOT_APPLICABLE
+    recording_status: ORAL_UNLOCATED_PENDING_OWNER_RECORD
+    capability_set_effect: NOT_APPLIED
+```
+
+`candidate_reference` may point to an existing E0 candidate when the Owner identifies a relationship; it does not create or resolve an E0 candidate.
+
+An omission may be used by a later Capability Set revision only after the revision separately establishes the evidence and status required by the active Capability Set governance rules.
 
 ### 4.2 Supplemental requirement inputs
 
@@ -82,7 +102,8 @@ Each entry must use the following structure:
 
 ```yaml
 supplemental_requirement_inputs:
-  - review_id: OR-001
+  - review_output_type: SUPPLEMENTAL_INPUT
+    review_id: SI-001
     owner_identifier: PENDING
     review_date: PENDING
     review_session_context: PENDING
@@ -101,6 +122,8 @@ A supplemental input may move toward `DECLARED` only after a locatable Owner sou
 ### 4.3 Existing capability/boundary confirmations
 
 Owner may explicitly confirm that an already-recorded capability or boundary appears complete within the review scope. Such confirmations do not change `source_status` and do not create implementation evidence.
+
+Each confirmation is a substantive Owner review output and is bound by the `owner_review_metadata` in §3 for reviewer identity, date, session context, and scope.
 
 ```yaml
 existing_boundary_confirmations:
@@ -135,7 +158,7 @@ Allowed `enumerated_capability_boundary` values:
 
 `requirement_driven_status` must remain `REQUIREMENT_DRIVEN_INCOMPLETE` unless the repository receives the required locatable requirement-driven source records through the established governance process. This Owner review document cannot independently change that status.
 
-`future_or_supplemental_inputs` should point to the relevant `OR-*` records and their current recording state.
+`future_or_supplemental_inputs` should point to the relevant `OM-*` and/or `SI-*` records and their current recording state.
 
 ## 6. Prohibitions
 
@@ -158,7 +181,7 @@ completion_gate:
   owner_identity_recorded: PENDING
   review_scope_confirmed: PENDING
   enumerated_capability_boundary_reviewed: PENDING
-  every_obvious_omission_has_or_id: PENDING
+  every_obvious_omission_has_id: PENDING
   supplemental_inputs_separated_from_completeness_result: PENDING
   every_supplemental_input_has_owner_context: PENDING
   requirement_driven_status_preserved: YES
@@ -174,9 +197,12 @@ When the Owner review is complete, its output becomes input to the next governan
 A later Capability Set revision may reference omission records directly, for example:
 
 ```text
-OR-003 -> Capability Set v3 disposition
+OM-003 -> Capability Set v3 disposition
+SI-002 -> Requirement record / later Capability Set disposition
 ```
 
-Such a revision must separately establish the evidence and status required for the resulting capability record. The Owner review ID is a provenance reference, not implementation evidence by itself.
+Such a revision must separately establish the evidence and status required for the resulting capability record. The Owner review ID is a provenance reference, not implementation evidence.
+
+For an IMPLEMENTED capability, the promotion/evidence conditions remain those established in `d-ig-business-capability-set-charter-001.md` §4; an Owner review `OM-*` or `SI-*` identifier is not implementation evidence by itself.
 
 After Owner review completion, Pre-Screen may proceed only under the active governance rules and must preserve `PENDING_REQUIREMENT_INPUT` wherever requirement-driven evidence remains incomplete.
