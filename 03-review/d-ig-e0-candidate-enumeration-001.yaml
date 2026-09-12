@@ -1,0 +1,508 @@
+e0_metadata:
+  decision_id: D-IG
+  execution_owner: ENGINEERING_TEAM
+  completeness_reviewer: BUSINESS_OWNER
+  status: OPEN
+  execution_state: INITIAL_ENUMERATION_COMPLETE_PENDING_OWNER_REVIEW
+  enumeration_date: 2026-09-12
+  evidence_scope:
+    - LOCAL_DOCUMENTED_EVIDENCE
+    - LIVE_LOCAL_INSTANCE_EVIDENCE_AS_RECORDED_IN_EXISTING_EVIDENCE_DOCS
+    - CODE_EVIDENCE_AS_RECORDED_IN_EXISTING_EVIDENCE_DOCS
+    - HISTORICAL_EVIDENCE
+    - SYNTHETIC_COUNTEREXAMPLE
+  production_evidence_status: BLOCKED
+  production_dependent_conclusions: PROVISIONAL_PENDING_PRODUCTION_EVIDENCE
+  requirement_driven_source_status:
+    business_owner_interview: NOT_OBTAINED_IN_REPOSITORY
+    store_operating_rules: NOT_OBTAINED_IN_REPOSITORY
+    pricing_rules: NOT_OBTAINED_IN_REPOSITORY
+    compliance_traceability_requirements: NOT_OBTAINED_IN_REPOSITORY
+    approved_future_planning: NOT_OBTAINED_IN_REPOSITORY
+  completion_gate_status:
+    evidence_sources_executed: PARTIAL
+    requirement_sources_statused: YES
+    orphan_candidates: NONE_IDENTIFIED
+    e0f_executed: YES
+    yaml_generated: YES
+    business_owner_completeness_review: PENDING
+    overall_e0_completion: NOT_COMPLETE
+  methodology_boundary:
+    identity_semantics_decision: NOT_MADE
+    h1_h2_decision: NOT_MADE
+    schema_authorization: NO
+    migration_authorization: NO
+
+candidates:
+  - candidate_id: C-001
+    candidate_name: Food / Menu Item
+    candidate_class: POSSIBLE_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §1 菜品 (Food)"
+      - "03-review/current-business-semantic-baseline.md §II LOCK-A001 / order_items.food_id"
+      - "03-review/d-ig-kickoff-001.md §5 已知本地事实"
+    observed_field_or_api_or_code_path:
+      - "foods.food_id / foods.code / foods.name"
+      - "order_items.foodId"
+      - "FoodService create/update/delete paths"
+      - "GET/POST/PUT/DELETE /api/v1/foods"
+    abstraction_grain: "可被订单明细直接引用并具有销售名称、编码、价格、状态等属性的菜品/菜单条目粒度；最终 Identity 含义未判定。"
+    observed_behavior: "foods 被记录为当前菜品真相源；order_items 使用 food_id；销售路径直接引用该对象。"
+    independent_reference_path: "order_items.foodId -> foods；销售/订单业务路径直接引用。"
+    appearance_frequency_or_sample_size: "当前地图确认存在；既有本地 evidence 文档记录至少 1 条当前 foods 数据。"
+    business_naming_consensus: "文档层存在明确命名‘菜品 / Food’，但不是最终 Identity 决策。"
+    related_candidates: [C-002, C-003, C-006, C-009]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED; production UNVERIFIED"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-002
+    candidate_name: Material / Procurement Material
+    candidate_class: POSSIBLE_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §2 物料 (Material)"
+      - "01-engineering-reality/db-reality-map.md §6 采购体系"
+      - "03-review/current-business-semantic-baseline.md §II LOCK-A002 / purchase_order_items.material_id"
+      - "03-review/d-ig-kickoff-001.md §5 已知本地事实"
+      - "03-review/business-item-canonical-independent-review.md §1.1 / §2"
+    observed_field_or_api_or_code_path:
+      - "material_archives.material_id / code / name / supplierId / unit"
+      - "purchase_order_items.material_id"
+      - "inventory.material_id"
+      - "material_trace_code.materialId"
+      - "material_consumption.materialId"
+    abstraction_grain: "可在采购、库存、追溯和物料档案路径中被直接引用的物料主数据粒度；最终 Identity 含义未判定。"
+    observed_behavior: "material_archives 被确认记录为物料真相源；material_id 在采购、库存、追溯等路径传播。"
+    independent_reference_path: "purchase_order_items.material_id; inventory.material_id; material_trace_code.materialId; material_consumption.materialId"
+    appearance_frequency_or_sample_size: "当前地图显示进入 5+ 传播位置；本地 inventory evidence 记录 material_id 在 11/11 非删除 inventory 行填充。"
+    business_naming_consensus: "文档层存在明确命名‘物料 / Material’，但 A2/D-IG 禁止据此直接认定 Identity。"
+    related_candidates: [C-001, C-003, C-004, C-005, C-006, C-009]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED_AND_LOCAL_INSTANCE_AS_REPORTED; production UNVERIFIED"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-003
+    candidate_name: Product Master Definition / Product Namespace Residue
+    candidate_class: POSSIBLE_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §业务对象总览 product"
+      - "01-engineering-reality/db-reality-map.md §4 产品与菜品体系"
+      - "03-review/business-item-canonical-independent-review.md §1.2 CONF-05 / §1.3 Ghost Object Audit"
+      - "03-review/d-ig-kickoff-001.md §5 解读限制"
+      - "03-review/current-business-semantic-baseline.md §II product 表"
+    observed_field_or_api_or_code_path:
+      - "product.product_id"
+      - "ProductMapper active callers"
+      - "purchase_orders.product_id legacy path as recorded by identity propagation map"
+      - "inventory.product_id with physical FK to product(product_id) as recorded in production evidence gate"
+    abstraction_grain: "名称上是产品主数据定义，当前实际系统中的语义边界不清；不得由表名直接视为 Canonical Identity。"
+    observed_behavior: "product 表存在 active-code residue；本地实例证据记录 1 行测试数据，ProductMapper 有活跃调用；同时独立审查确认 product_id 与 material_id 可能指向语义不同对象。"
+    independent_reference_path: "ProductMapper callers; inventory.product_id FK -> product.product_id; legacy procurement product_id path。"
+    appearance_frequency_or_sample_size: "本地实例 evidence：product 1 行；ProductMapper 5 处活跃调用；生产侧未知。"
+    business_naming_consensus: "存在‘Product/产品’命名，但其业务语义未收敛。"
+    related_candidates: [C-001, C-002, C-007, C-008]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED; semantics CONFLICT/PARTIAL; production UNVERIFIED"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-004
+    candidate_name: Warehouse-side Inventory Holding
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §3 库存 (Inventory)"
+      - "03-review/business-item-canonical-independent-review.md §1.1 CONF-03 / §2.1 observed object graph"
+      - "03-review/production-evidence-gate-001.md §4 BE-03"
+      - "03-review/current-business-semantic-baseline.md §III L2-002 / AD-INVENTORY-002"
+    observed_field_or_api_or_code_path:
+      - "inventory.inventory_id"
+      - "inventory.material_id"
+      - "inventory.warehouse_id"
+      - "inventory.current_stock"
+      - "inventory_transactions.inventory_id"
+    abstraction_grain: "某物料在仓库持有空间中的库存持有/存量记录粒度；A1 禁止自动将 Holding 升格为 Identity。"
+    observed_behavior: "inventory 以 material_id + warehouse 维度承载库存；本地 evidence 记录 product_id/material_id 双口径及 inventory_transactions 悬空引用问题。"
+    independent_reference_path: "inventory_id 被 inventory_transactions 引用；material_id 被 material_archives 关联。"
+    appearance_frequency_or_sample_size: "本地实例 evidence 记录 11 条非删除 inventory 行；生产未知。"
+    business_naming_consensus: "‘Inventory/库存’明确，但 holding 是否为 Identity 未定。"
+    related_candidates: [C-002, C-005, C-009, C-010, C-011]
+    evidence_quality: "HIGH_LOCAL_INSTANCE_AS_RECORDED; identity interpretation OPEN"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-005
+    candidate_name: Store Inventory Holding
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §4 门店库存 (StoreInventory)"
+      - "03-review/production-evidence-gate-001.md §4 BE-03"
+      - "03-review/business-item-canonical-independent-review.md §1.1 CONF-02 / §2.1"
+      - "03-review/current-business-semantic-baseline.md §II store_inventory"
+    observed_field_or_api_or_code_path:
+      - "store_inventory.store_id"
+      - "store_inventory.material_id / food_id (path differs across documented versions)"
+      - "store_inventory.current_stock"
+      - "uk_store_inventory_store_material"
+    abstraction_grain: "门店空间中的存量持有记录粒度；与仓库库存存在独立结构，但不等于独立 Identity。"
+    observed_behavior: "store_inventory 被用于门店库存；本地 evidence 记录其 current_stock 可为 numeric(15,3)，与 inventory 的 integer 精度不同；数量与仓库侧存在差异。"
+    independent_reference_path: "store_inventory.store_id / material_id；门店库存 API 与报表路径。"
+    appearance_frequency_or_sample_size: "本地 BE-03 evidence 记录 7 个共同 material、2 个仓库独有、7 个门店独有；生产未知。"
+    business_naming_consensus: "‘门店库存’明确；Holding/Location/Scope 语义仍 OPEN。"
+    related_candidates: [C-002, C-004, C-010, C-011]
+    evidence_quality: "HIGH_LOCAL_INSTANCE_AS_RECORDED; identity interpretation OPEN"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-006
+    candidate_name: Recipe Participant / Transformation Input Item
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/db-reality-map.md §4 产品与菜品体系 / dish_recipe + dish_recipes"
+      - "03-review/business-item-canonical-independent-review.md §1.2 CONF-12"
+      - "03-review/current-business-semantic-baseline.md §III L2-007"
+      - "06-business-item-model/canonical-identity-analysis.md §2 Business Object Tracking（仅作为历史参考，不作为事实真源）"
+    observed_field_or_api_or_code_path:
+      - "dish_recipe.dish_id + material_id"
+      - "dish_recipes.food_id + material_id"
+      - "recipe relationship paths"
+    abstraction_grain: "参与 Recipe/Transformation 的输入或关系端对象粒度；当前证据不足以证明其是独立 Identity。"
+    observed_behavior: "存在并行 recipe 表结构且语义不一致；独立审查确认真实在用的表与旧表之间存在差异，不能继续断言一个统一 food↔material 表。"
+    independent_reference_path: "dish_id/food_id -> material_id relationship paths；具体 active usage 仍需进一步核实。"
+    appearance_frequency_or_sample_size: "既有独立审查记录：dish_recipe 0 行；dish_recipes 5 行且大部分 soft-deleted。"
+    business_naming_consensus: "‘Ingredient/配料’更适合作为关系/上下文概念；是否存在独立 Identity 尚未证明。"
+    related_candidates: [C-001, C-002, C-007]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED; semantics CONFLICT/UNVERIFIED"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-007
+    candidate_name: Commercial Unit
+    candidate_class: HYPOTHESIS_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - E0-F discovered hypothesis
+    source_reference:
+      - "03-review/d-ig-kickoff-001.md §4 必须使用的案例 — each / pack / case"
+      - "03-review/business-item-canonical-independent-review.md §2 ontology findings / identity layering challenge"
+    observed_field_or_api_or_code_path:
+      - "No canonical current implementation found in the evidence package; must be treated as hypothesis."
+    abstraction_grain: "可销售/采购/配送/包装中的商业交易单位粒度，例如 each / pack / case；不是当前已确认对象。"
+    observed_behavior: "仅作为需要解释不同交易/包装层级的候选假设；当前仓库没有可证明其为独立业务对象的生产实现。"
+    independent_reference_path: "NONE_ESTABLISHED"
+    appearance_frequency_or_sample_size: "未从当前仓库证据中获得实际实现样本。"
+    business_naming_consensus: "行业常用词，但项目业务 Owner 尚未确认。"
+    related_candidates: [C-001, C-002, C-008, C-011]
+    evidence_quality: "HYPOTHESIS_ONLY"
+    candidate_status: HYPOTHESIS_ONLY
+
+  - candidate_id: C-008
+    candidate_name: Variant / Specification Grain
+    candidate_class: HYPOTHESIS_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - E0-F discovered hypothesis
+    source_reference:
+      - "03-review/d-ig-kickoff-001.md §4 必须使用的案例 — 同品牌不同容量 330ml vs 500ml"
+      - "03-review/business-item-canonical-independent-review.md §1.3 real local examples — single spec field conflates shape/capacity"
+    observed_field_or_api_or_code_path:
+      - "Local historical evidence mentions spec fields but no canonical variant model is proven."
+    abstraction_grain: "同一产品家族/名义商品下因容量、配方、规格等差异形成的可区分粒度；是否为独立 Identity 未定。"
+    observed_behavior: "E0-F 用于检验 330ml vs 500ml 是否需要比基础对象更细的稳定对象；当前证据只支持问题存在，不支持最终层级。"
+    independent_reference_path: "NONE_ESTABLISHED"
+    appearance_frequency_or_sample_size: "无统一 canonical variant entity；独立审查指出本地‘圆形打包盒(500ml)’与‘长方形打包盒(750ml)’等 spec 语义混合。"
+    business_naming_consensus: "Industry term only; Owner confirmation unavailable."
+    related_candidates: [C-003, C-007, C-009]
+    evidence_quality: "HYPOTHESIS_WITH_LOCAL_PROBLEM_SIGNAL"
+    candidate_status: HYPOTHESIS_ONLY
+
+  - candidate_id: C-009
+    candidate_name: Batch / Lot Tracking Object
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+      - E0-F scenario
+    source_reference:
+      - "01-engineering-reality/db-reality-map.md §10 食品溯源体系"
+      - "03-review/production-evidence-gate-001.md BE-02 / inventory batch discussion"
+      - "03-review/d-ig-kickoff-001.md §4 Batch / Lot"
+    observed_field_or_api_or_code_path:
+      - "material_trace_code.batchNo"
+      - "inventory.batch_no (as recorded in local evidence package)"
+      - "material_trace_code / food_trace_code paths"
+    abstraction_grain: "对某物品具体生产/到货批次的追踪维度；A1 要求 Tracking 与 Identity 分离，不得自动升格。"
+    observed_behavior: "批次出现在物料追溯与库存证据中；expiry/production date 当前本地 inventory evidence 填充不足。"
+    independent_reference_path: "material_trace_code.materialId + batchNo; traceability paths。"
+    appearance_frequency_or_sample_size: "本地 evidence 中存在 batch 字段/追溯路径；生产未知。"
+    business_naming_consensus: "‘批次/批号’语义明确，但身份层级地位未确认。"
+    related_candidates: [C-002, C-004, C-006, C-011]
+    evidence_quality: "MEDIUM-HIGH_LOCAL_DOCUMENTED; identity interpretation OPEN"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-010
+    candidate_name: Location / Store-Warehouse Operating Space
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "01-engineering-reality/db-reality-map.md §2 stores_new / §5 inventory / §8 orders"
+      - "02-business-dependency/business-identity-propagation-map.md §2.4 storeId / §2.5 warehouseId"
+      - "03-review/current-business-semantic-baseline.md §III L2-005"
+      - "03-review/d-ig-kickoff-001.md §4 Store / Warehouse"
+    observed_field_or_api_or_code_path:
+      - "stores_new.id / businessScope"
+      - "inventory.warehouse_id"
+      - "store_inventory.store_id"
+      - "orders.storeId"
+    abstraction_grain: "业务运营空间/持有空间的定位粒度；可能包含 Store/Warehouse/Kitchen 等类型，但正式 Location Model 仍 OPEN。"
+    observed_behavior: "store 与 warehouse 在不同业务表中被引用；warehouseId 的 canonical source 在现有 evidence 中仍存在 identity loss。"
+    independent_reference_path: "orders.storeId -> stores_new; store_inventory.store_id -> store; inventory.warehouse_id -> unresolved canonical source in existing evidence."
+    appearance_frequency_or_sample_size: "多表传播；生产侧未知。"
+    business_naming_consensus: "Store/Warehouse 是现有业务名称；是否统一 Location 是开放架构决策。"
+    related_candidates: [C-004, C-005, C-011]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED; target semantics OPEN"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-011
+    candidate_name: Unit of Measure / Quantity Context
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+      - E0-F scenario
+    source_reference:
+      - "03-review/current-business-semantic-baseline.md §III L2-006"
+      - "03-review/production-evidence-gate-001.md BE-03"
+      - "03-review/business-item-canonical-independent-review.md §1.1 CONF-04 / §1.3 ghost object audit"
+      - "03-review/d-ig-kickoff-001.md §4 不同采购单位"
+    observed_field_or_api_or_code_path:
+      - "material_archives.unit"
+      - "inventory.current_stock"
+      - "store_inventory.current_stock"
+      - "inventory.current_stock integer vs store_inventory numeric(15,3) as recorded in local evidence"
+    abstraction_grain: "数量与单位的上下文表达粒度；A1 已明确 Quantity/UOM 不等于 Identity。"
+    observed_behavior: "同一物料在不同持有空间存在不同数量精度；多 UOM/conversion 已被识别为业务需求，但正式 UOM foundation 未决定。"
+    independent_reference_path: "material/unit and inventory/store_inventory quantity fields; no canonical UOM object established."
+    appearance_frequency_or_sample_size: "多个库存/物料路径；生产未知。"
+    business_naming_consensus: "单位/数量语义明确；Identity 地位未确认。"
+    related_candidates: [C-002, C-004, C-005, C-007]
+    evidence_quality: "HIGH_LOCAL_INSTANCE_AS_RECORDED; identity interpretation OPEN"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+  - candidate_id: C-012
+    candidate_name: Trade Item / Sellable-Purchasable Item Reference
+    candidate_class: HYPOTHESIS_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - E0-F discovered hypothesis
+      - Evidence-driven semantic conflict
+    source_reference:
+      - "03-review/d-ig-kickoff-001.md §4 Sellable + Purchasable / Product-Food-Material cross-domain reference"
+      - "03-review/business-item-canonical-independent-review.md §1.2 CONF-07 / namespace conflict"
+      - "03-review/production-evidence-gate-001.md BE-01 purchase/inventory namespace evidence"
+    observed_field_or_api_or_code_path:
+      - "purchase_request_item.food_id semantic drift as recorded in independent review"
+      - "purchase_order_items.material_id"
+      - "order_items.foodId"
+      - "inventory.product_id + material_id"
+    abstraction_grain: "可能代表可跨销售、采购、库存引用的商业交易对象粒度；当前没有证据证明这是独立对象，而不是多种 Role/Reference 对同一对象的不同表现。"
+    observed_behavior: "不同业务路径使用 food/material/product 命名空间，且本地 evidence 存在 namespace drift；该候选用于检验是否存在跨域稳定业务对象。"
+    independent_reference_path: "order_items.foodId; purchase_order_items.material_id; purchase_request_item.food_id; inventory.product_id/material_id。"
+    appearance_frequency_or_sample_size: "独立审查记录 purchase_request_item.food_id 本地 50 行中 46 行以 material IDs 语义使用；生产未知。"
+    business_naming_consensus: "Trade Item/Sellable-Purchasable Item 为候选术语，项目尚无 Owner 确认命名。"
+    related_candidates: [C-001, C-002, C-003, C-007]
+    evidence_quality: "HIGH_LOCAL_DOCUMENTED; semantic conflict; production UNVERIFIED"
+    candidate_status: HYPOTHESIS_ONLY
+
+  - candidate_id: C-013
+    candidate_name: Product Family / Brand / Upstream Definition Grain
+    candidate_class: HYPOTHESIS_IDENTITY_GRAIN_CANDIDATE
+    source:
+      - E0-F discovered hypothesis
+    source_reference:
+      - "03-review/d-ig-kickoff-001.md §2 / §4 330ml vs 500ml case"
+      - "03-review/d-ig-charter-001.md §4.1 通用行业对象名称仅作为候选搜索词"
+    observed_field_or_api_or_code_path:
+      - "No canonical project implementation established."
+    abstraction_grain: "可能高于具体可销售/库存对象的定义粒度，用于表达同一上层定义下多个规格/交易实例；目前仅为假设。"
+    observed_behavior: "用于 E0-F 渐进式反事实时检验是否必须保留比下层对象更高的定义层；不是当前项目事实。"
+    independent_reference_path: "NONE_ESTABLISHED"
+    appearance_frequency_or_sample_size: "无本项目已验证样本。"
+    business_naming_consensus: "行业候选词；无项目 Owner 访谈证据。"
+    related_candidates: [C-003, C-008, C-007]
+    evidence_quality: "HYPOTHESIS_ONLY"
+    candidate_status: HYPOTHESIS_ONLY
+
+  - candidate_id: C-014
+    candidate_name: Inventory Event / Ledger Reference Object
+    candidate_class: IDENTITY_ADJACENT_OBJECT_CANDIDATE
+    source:
+      - Evidence-driven
+    source_reference:
+      - "03-review/business-item-canonical-independent-review.md §1.2 CONF-06"
+      - "03-review/current-business-semantic-baseline.md §III L2-001"
+      - "01-engineering-reality/db-reality-map.md §5 inventory_transactions"
+    observed_field_or_api_or_code_path:
+      - "inventory_transactions.inventory_id"
+      - "inventory_transactions.transaction_type"
+      - "inventory_transactions reference paths"
+    abstraction_grain: "库存变更事件/流水记录粒度；不应直接视为 Item Identity。"
+    observed_behavior: "本地 evidence 记录 27 条 transaction，17 条引用 dangling inventory；2 条 transaction_type NULL；无完整可重建 ledger。"
+    independent_reference_path: "inventory_transactions.inventory_id -> inventory (部分引用悬空)"
+    appearance_frequency_or_sample_size: "独立审查记录 27 条本地交易记录；生产未知。"
+    business_naming_consensus: "库存事务/流水语义存在；Identity 地位否定方向更强，但 D-IG 仍只登记候选对象边界。"
+    related_candidates: [C-004, C-005, C-009]
+    evidence_quality: "HIGH_LOCAL_INSTANCE_AS_RECORDED"
+    candidate_status: OBSERVED_LOCAL_CANDIDATE
+
+# E0-F is part of E0. Scenarios are counterfactuals, not Identity decisions.
+e0f_counterfactuals:
+  - e0f_id: E0F-001
+    failure_scenario: "同名/同品牌对象存在 330ml 与 500ml 两个容量版本。"
+    empty_set_failure: "若只有一个基础 Identity Grain 且不允许任何额外 Identity 对象，无法确定是否需要一个稳定的上层定义/下层可区分对象来表达两个容量版本，同时避免复制或重写基础对象。"
+    required_object_hypothesis: "Variant / Specification Grain 或 Commercial Unit；具体是哪一种尚未决定。"
+    candidate_already_exists: true
+    candidate_id: [C-007, C-008, C-013]
+    verifiable_prediction: "若业务必须独立管理不同容量的定价、销售编码、采购/库存规则或稳定引用，应在代码、业务规则或 Owner 访谈中观察到独立引用/生命周期/治理证据。"
+    evidence_source:
+      - "03-review/d-ig-kickoff-001.md §4"
+      - "03-review/business-item-canonical-independent-review.md §1.3"
+    evidence_class: SYNTHETIC_COUNTEREXAMPLE_WITH_LOCAL_PROBLEM_SIGNAL
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-002
+    failure_scenario: "同一物品需要 each / pack / case 三种包装/交易表达。"
+    empty_set_failure: "若只有一个基础 Identity 且不能保留额外对象，商业销售/采购/配送单位变化可能被错误压入数量、包装或单一属性，难以表达稳定商业引用。"
+    required_object_hypothesis: "Commercial Unit / Packaging Level；是否为 Identity 层未决定。"
+    candidate_already_exists: true
+    candidate_id: [C-007, C-008]
+    verifiable_prediction: "若 each/pack/case 需要独立业务编码、定价、采购或配送引用，应存在直接引用或独立治理证据。"
+    evidence_source:
+      - "03-review/d-ig-kickoff-001.md §4"
+    evidence_class: SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-003
+    failure_scenario: "同一业务对象在采购、库存、Recipe、销售中使用不同单位。"
+    empty_set_failure: "若所有差异都被迫压入基础 Identity，数量语义可能与单位/上下文语义耦合。"
+    required_object_hypothesis: "UOM / Quantity Context / Commercial Unit；不是直接的 Identity 结论。"
+    candidate_already_exists: true
+    candidate_id: [C-007, C-011]
+    verifiable_prediction: "应观察到 purchase/stock/recipe/sales unit 的独立规则、换算、精度或上下文引用。"
+    evidence_source:
+      - "03-review/current-business-semantic-baseline.md §III L2-006"
+      - "03-review/production-evidence-gate-001.md BE-03"
+    evidence_class: LOCAL_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-004
+    failure_scenario: "同一物料分别存在仓库持有与门店持有。"
+    empty_set_failure: "若只有基础 Identity 而不允许 Holding/Location 等独立语义，库存数量与位置关系必须被压进 Identity 本身，容易将同一物品的持有状态误当 Identity。"
+    required_object_hypothesis: "Location / Inventory Holding；A1 明确其不应自动升格为 Identity。"
+    candidate_already_exists: true
+    candidate_id: [C-004, C-005, C-010]
+    verifiable_prediction: "应在库存/调拨/门店规则中观察到位置或持有空间独立变化，而基础业务对象保持不变。"
+    evidence_source:
+      - "03-review/production-evidence-gate-001.md BE-03"
+      - "03-review/current-business-semantic-baseline.md §III L2-005"
+    evidence_class: LIVE_LOCAL_INSTANCE_EVIDENCE_AS_RECORDED
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-005
+    failure_scenario: "同一物品需要 Batch/Lot 追踪，但批次随采购/生产/到货发生变化。"
+    empty_set_failure: "若只有基础 Identity 且无 Tracking 维度，追溯信息可能被错误并入 Identity。"
+    required_object_hypothesis: "Batch / Lot Tracking Object；不作为 Identity 结论。"
+    candidate_already_exists: true
+    candidate_id: [C-009]
+    verifiable_prediction: "应存在批次独立引用、追溯码、到期/生产日期或批次级治理规则。"
+    evidence_source:
+      - "01-engineering-reality/db-reality-map.md §10"
+      - "03-review/d-ig-kickoff-001.md §4"
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-006
+    failure_scenario: "Product / Food / Material 在销售、采购、库存路径中交叉引用，且存在 namespace drift。"
+    empty_set_failure: "若强制单层且不允许额外稳定关系，系统可能只能复制/重写不同 namespace 的引用，或者无法确定跨域是否指向同一业务对象。"
+    required_object_hypothesis: "跨域 Business Item / Trade Item / Canonical Identity 对象，或明确的非-Identity mapping relationship；二者未决。"
+    candidate_already_exists: true
+    candidate_id: [C-001, C-002, C-003, C-012]
+    verifiable_prediction: "应在订单、采购、库存、Recipe 路径观察到稳定 cross-domain reference，或观察到相反证据证明这些只是不同 Role。"
+    evidence_source:
+      - "03-review/business-item-canonical-independent-review.md §1.1 / §2"
+      - "03-review/production-evidence-gate-001.md BE-01"
+      - "03-review/d-ig-kickoff-001.md §4"
+    evidence_class: LIVE_LOCAL_INSTANCE_EVIDENCE_AS_RECORDED
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-007
+    failure_scenario: "某对象同时可销售、可采购、可库存。"
+    empty_set_failure: "若把这些能力直接当 Identity，会把上下文 Role/Capability 当成 Identity；空集测试反而应优先检验是否能由同一基础对象上的多角色表示。"
+    required_object_hypothesis: "None required by default; Role/Capability explanation may suffice."
+    candidate_already_exists: true
+    candidate_id: [C-001, C-002, C-012]
+    verifiable_prediction: "应观察到 sellable/purchasable/stockable 状态随业务上下文变化，而不要求独立生命周期或直接 Identity 引用。"
+    evidence_source:
+      - "03-review/current-business-semantic-baseline.md §III L2-004 / L2-008 / L2-009"
+      - "03-review/d-ig-kickoff-001.md §3 / §4"
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-008
+    failure_scenario: "某对象既是可销售对象，又作为 Recipe 输入。"
+    empty_set_failure: "若将 Recipe 输入资格提升为独立 Identity，可能错误地把 Relationship/Capability 变成 Identity。"
+    required_object_hypothesis: "None required by default; Recipe relationship/capability may suffice."
+    candidate_already_exists: true
+    candidate_id: [C-001, C-002, C-006]
+    verifiable_prediction: "应观察到同一业务对象可在不同上下文承担不同角色，而不需要独立 Identity 生命周期。"
+    evidence_source:
+      - "03-review/current-business-semantic-baseline.md §III L2-007 / L2-008"
+      - "03-review/d-ig-kickoff-001.md §4"
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_PLUS_SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: true
+    provisional: true
+
+  - e0f_id: E0F-009
+    failure_scenario: "同一业务对象在不同 Organization 或 Temporal Context 中角色变化。"
+    empty_set_failure: "若角色变化被误建为 Identity 层，Identity 会随上下文变化，违反 A1 的 Identity/Role 分离。"
+    required_object_hypothesis: "None required by default; Role Scope / Organization / Temporal semantics may suffice."
+    candidate_already_exists: false
+    candidate_id: []
+    verifiable_prediction: "应观察到角色配置随组织/时间变化，而对象本体不发生 Identity 重建。"
+    evidence_source:
+      - "03-review/d-ig-kickoff-001.md §3 / §4"
+      - "03-review/current-business-semantic-baseline.md §III L2-008 / L2-009"
+    evidence_class: SYNTHETIC_COUNTEREXAMPLE
+    production_dependent: false
+    provisional: false
+    discovery_action: "No new candidate added; this scenario acts as a negative-control case against promoting Role Scope to Identity."
+
+  - e0f_id: E0F-010
+    failure_scenario: "库存事件/流水独立发生，但并不改变业务对象本身的 Identity。"
+    empty_set_failure: "若把每个库存流水当作新的 Identity，会导致事件与对象本体混淆。"
+    required_object_hypothesis: "Inventory Event / Ledger Reference, not an Identity object."
+    candidate_already_exists: true
+    candidate_id: [C-014]
+    verifiable_prediction: "库存事件应引用持有对象/业务对象，并拥有独立事件时间与类型，而不作为业务对象 Identity。"
+    evidence_source:
+      - "03-review/business-item-canonical-independent-review.md §1.2 CONF-06"
+      - "03-review/current-business-semantic-baseline.md §III L2-001"
+    evidence_class: LIVE_LOCAL_INSTANCE_EVIDENCE_AS_RECORDED
+    production_dependent: true
+    provisional: true
+
+notes:
+  - "E0 当前只回答候选枚举，不回答 H1/H2。"
+  - "C-001/C-002/C-003 是当前最重要的跨命名空间候选信号，但不得直接合并或直接视为多个 Identity 层。"
+  - "C-004/C-005/C-009/C-010/C-011/C-014 明显属于 Identity-adjacent 观察对象，登记它们是为了防止后续把 Holding/Tracking/Location/UOM/Event 错误提升为 Identity。"
+  - "C-007/C-008/C-012/C-013 是由 E0-F 形成的假设候选；没有当前 canonical implementation，应保持 HYPOTHESIS_ONLY。"
+  - "Requirement-driven candidate enumeration remains incomplete because Business Owner interviews and approved business documents are not present in the repository evidence set. This file must not fabricate such requirements."
+  - "All statements derived from production-dependent evidence remain provisional because Production Evidence Gate-0 is BLOCKED."
+  - "The repository itself is a knowledge/evidence package, not a mirror of the full application source tree; direct code/DB claims here are inherited only where existing evidence documents recorded and reproduced them."
