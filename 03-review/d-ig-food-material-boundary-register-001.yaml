@@ -68,13 +68,19 @@ items:
       inventory semantics. Do not assume same identity from matching IDs or
       names.
     candidate_impact: >-
-      Explicit dependency on C-002 E4 consumption-path scope: if Recipe input
-      is a different grain, only the consumption segment of the current E4
-      argument must be re-scoped; procurement/receipt/inventory/traceability
-      segments do not automatically fail.
+      Explicit dependency on C-002 E4 consumption-path scope and potentially on
+      the cross-context referent-stability claim where Recipe intersects the
+      Food/Material boundary. If Recipe input is a different grain, the E4
+      consumption segment must be re-scoped and any candidate-level claim that
+      relies on stable referent equivalence across that Recipe/Material
+      intersection must be re-evaluated. Procurement, receipt, inventory and
+      traceability segments do not automatically fail solely because FM-003 is
+      unresolved.
     known_dependency: >-
       C-002 E4 consumption evidence is not fully self-contained until the
-      consumable-object semantics are clarified.
+      consumable-object semantics are clarified. A change in Recipe grain may
+      also require re-scoping the cross-context consistency argument rather than
+      only the consumption path.
     decision_owner: BUSINESS_OWNER
     decision_state: OPEN
 
