@@ -5,7 +5,7 @@
 - Physical capability set: `03-review/d-ig-business-capability-set-001.yaml` (V1 baseline)
 - Revision record: `03-review/d-ig-business-capability-set-review-001.md`
 - Logical v2 status: `ESTABLISHED_FROM_V1_PLUS_REVIEW_001`
-- Adversarial review status: `PENDING`
+- Adversarial review status: `READY_FOR_FINAL_QUICK_CHECK`
 - Owner completeness review: `BLOCKED_PENDING_ADVERSARIAL_REVIEW`
 - Requirement-driven status: `REQUIREMENT_DRIVEN_INCOMPLETE`
 - Production evidence status: `BLOCKED`
@@ -39,31 +39,56 @@ The logical v2 composition applies exactly these Review-001 dispositions:
   - `Manage member levels`
   - `Manage member coupon operations`
   - `Process member recharge operations`
-- Points remain `EVIDENCE_CHECK_REQUIRED` and are not counted in v2 until an independent business behavior path is evidenced.
 - `CAP-IMPL-026`: 1 -> 2 IMPLEMENTED capabilities:
   - `Record receipts`
   - `Record fund flows`
 - `UNKNOWN-008` is removed from Capability Set UNKNOWN boundaries and preserved only as E0 candidate implementation status.
-- Recipe, Pricing, Inventory Count/Adjustment, and Inventory Transaction Query/Trace remain explicit UNKNOWN capability checks and are not promoted to IMPLEMENTED.
+
+### 2.1 UNKNOWN capability checks
+
+The term **UNKNOWN capability check** is a distinct classification from **UNKNOWN business-capability boundary**.
+
+- An **UNKNOWN business-capability boundary** is an existing entry in the V1 `unknown_boundaries` collection whose business-capability boundary itself is known to be relevant but whose implementation/owner status remains unresolved.
+- An **UNKNOWN capability check** is a newly registered evidence-gap check for a capability boundary that was not represented in the V1 capability collections and therefore must not be counted as an existing UNKNOWN boundary merely by being discovered during Review-001.
+- `unknown_boundary_count` counts only the former collection.
+- `unknown_capability_check_count` counts only the latter collection.
+- Neither count is an IMPLEMENTED capability count and neither count makes an Identity decision.
+
+V2 registers these **new** UNKNOWN capability checks:
+
+| Check ID | Capability boundary | Classification |
+|---|---|---|
+| `UCC-001` | Recipe | `UNKNOWN_REQUIRES_BEHAVIOR_PATH` |
+| `UCC-002` | Pricing | `UNKNOWN_REQUIRES_OWNER_AND_BEHAVIOR_EVIDENCE` |
+| `UCC-003` | Inventory Count / Adjustment | `UNKNOWN_REQUIRES_BEHAVIOR_PATH` |
+| `UCC-004` | Inventory Transaction Query / Trace | `UNKNOWN_REQUIRES_BEHAVIOR_PATH` |
+| `UCC-005` | Member Points / Loyalty Points | `EVIDENCE_CHECK_REQUIRED` |
+
+These five checks are v2 evidence-gap records only. They are not backfilled into the V1 `unknown_boundaries` collection and therefore do not change `unknown_boundary_count`.
 
 ## 3. Counts
 
 ```text
 IMPLEMENTED = 32 - 3 + 2 + 4 + 2 = 37
 
-Potential future IMPLEMENTED after independent points evidence = 37 + 1 = 38
+Potential future IMPLEMENTED after independent member-points evidence = 37 + 1 = 38
 
-UNKNOWN business-capability boundaries = 7
+unknown_boundary_count = 7
+unknown_capability_check_count = 5
 ```
 
-Count changes are bookkeeping effects of the Review-001 split dispositions only; they do not create or modify Identity conclusions.
+The five UNKNOWN capability checks are newly registered evidence-gap checks, not additional V1 UNKNOWN boundaries.
 
-## 4. Owner review basis
+Count changes are bookkeeping effects of the Review-001 split dispositions and explicit evidence-gap registration only; they do not create or modify Identity conclusions.
 
-The next completeness review may use this logical v2 record together with:
+## 4. Owner review basis and merge method
 
-1. the untouched V1 physical baseline YAML; and
-2. the complete Review-001 remediation record.
+Owner completeness review uses the three records in a deterministic order:
+
+1. Start from the untouched V1 physical baseline YAML.
+2. Apply every mandatory disposition in `D-IG Business Capability Set Review-001`.
+3. The resulting composition is Capability Set v2 (LOGICAL) as defined by this record.
+4. For any ambiguity in the composition, this logical v2 record §2 is authoritative for the v2 governance composition.
 
 The Owner review must not be interpreted as requirement confirmation where requirement-driven source records remain unavailable. `REQUIREMENT_DRIVEN_INCOMPLETE` remains in force.
 
@@ -71,7 +96,7 @@ The Owner review must not be interpreted as requirement confirmation where requi
 
 ```yaml
 D-IG: OPEN
-Capability_Set: V2_LOGICAL_ESTABLISHED_PENDING_ADVERSARIAL_REVIEW
+Capability_Set: V2_LOGICAL_ESTABLISHED_PENDING_FINAL_QUICK_CHECK
 Owner_Review: BLOCKED_PENDING_ADVERSARIAL_REVIEW
 Requirement_Driven: INCOMPLETE
 Production_Evidence: BLOCKED
@@ -84,4 +109,11 @@ Identity_Decision: NOT_MADE
 
 ## 6. Physical v2 plan
 
-A physical V2 YAML is intentionally deferred to a local byte-preserving patch operation. The planned patch must modify only the agreed metadata/count fields and the three split capability blocks plus removal of `UNKNOWN-008`, while preserving all unrelated V1 evidence text byte-for-byte.
+A physical V2 YAML is intentionally deferred to the local byte-preserving patch operation recorded by `03-review/d-ig-business-capability-set-v2-patch.py`. The planned patch must modify only the agreed metadata/count fields and the three split capability blocks plus removal of `UNKNOWN-008`, while preserving all unrelated V1 evidence text byte-for-byte.
+
+## 7. Non-effects
+
+- The distinction between UNKNOWN capability checks and UNKNOWN business-capability boundaries is a governance bookkeeping distinction only.
+- Registering an UNKNOWN capability check does not imply that the capability exists in production or that it is required.
+- Splitting IMPLEMENTED capabilities and registering evidence-gap checks do not promote or reject any E0 Identity candidate.
+- `C-007`, `C-008`, `C-012`, `C-013`, and all other E0 candidates remain governed by the E0 Candidate Enumeration and subsequent Identity tests, not by Capability Set counts.
