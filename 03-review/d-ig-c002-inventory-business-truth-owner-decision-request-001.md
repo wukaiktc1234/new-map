@@ -13,7 +13,26 @@
 
 本记录不根据字段名、外键数量、数值相等或工程实现自行推导业务真相。
 
-## 2. Evidence Already Established
+## 2. Evidence Pack for Owner Review
+
+Owner 裁决输入已经由以下正式证据记录组成：
+
+1. `03-review/d-ig-targeted-evidence-reconnaissance-report-001.md`
+   - `inventory` 双列存在性；
+   - `material_id` / `product_id` 的数据库约束差异；
+   - 代表性本地双身份实例；
+   - `purchase_request_item` 46/50 与 4/50 异常概况。
+2. `03-review/d-ig-e1-e4-targeted-reclassification-001.md`
+   - C-002 E2/E4 定向重定级；
+   - inventory 冲突为何属于 candidate-level blocking business-truth dependency。
+3. `03-review/d-ig-candidate-level-adversarial-disposition-001.md`
+   - C-002 blocking condition；
+   - Engineering 与 Business Owner / Product Owner 的责任边界；
+   - Candidate-level re-review 前置条件。
+
+因此，本 Decision Request **已有可供 Owner 裁决的正式 evidence pack**。其中涉及的数据库/代码观察保持其正式记录所标注的 local/documentary provenance；Production Evidence 仍为 `BLOCKED`，不得将本地实例当作生产事实。
+
+## 3. Evidence Already Established
 
 当前已提交定向实勘记录确认：
 
@@ -21,11 +40,12 @@
 - `product_id` 存在数据库外键指向 `product(product_id)`；
 - `material_id` 当前无对应数据库外键；
 - ORM 层存在将 Product 访问器映射到 `material_id` 的历史/兼容性实现；
-- 至少存在一个本地实例，其中同一库存记录的 `material_id=1` 与 `product_id=1` 分别对应不同业务对象。
+- 至少存在一个本地实例，其中同一库存记录的 `material_id=1` 与 `product_id=1` 分别对应不同业务对象；
+- 定向重定级已将该冲突分类为 C-002 E2/E4 的 blocking business-truth dependency，而不是自动推导 Material 或 Product 为业务真相。
 
 以上是技术/本地证据事实，不等于业务真相裁决。
 
-## 3. Owner Decision Questions
+## 4. Owner Decision Questions
 
 ### Q1 — `inventory` 的业务对象范围是什么？
 
@@ -41,7 +61,7 @@
 
 **C. 两者都合法，按明确类型规则区分**
 
-`inventory` 可以承载两类不同业务对象；Material 与 Product 都是合法库存对象，但必须存在可验证、稳定且业务明确的区分规则。该选项成立的前提是 Owner 能同时给出 Q2 的类型区分规则。
+`inventory` 可以承载两类不同业务对象；Material 与 Product 都是合法库存对象。但本选项只有在同时给出 Q2 的稳定、可验证的类型区分规则时才视为完成裁决。
 
 **D. 当前证据不足，暂不裁决业务真相**
 
@@ -68,7 +88,7 @@
 - **R4：特定流程临时字段，但不代表库存主对象**
 - **R5：其他** — 请描述。
 
-## 4. Decision Constraints
+## 5. Decision Constraints
 
 Owner 的回答只解决 `inventory` 的业务语义问题，不直接决定：
 
@@ -79,7 +99,7 @@ Owner 的回答只解决 `inventory` 的业务语义问题，不直接决定：
 - Migration 方案；
 - 现有实现是否需要重构。
 
-## 5. Effect on C-002 Gate
+## 6. Effect on C-002 Gate
 
 在 Q1/Q2/Q3 所需业务真相未闭合前：
 
@@ -90,7 +110,7 @@ C-002 candidate-level = CANDIDATE_PASS_NOT_YET_PROVEN
 
 即使 Owner 完成裁决，也**不自动使 C-002 E2/E4 PASS**；定向证据重定级、E-definition 对齐及 candidate-level adversarial re-review 仍必须完成。
 
-## 6. Required Response Record
+## 7. Required Response Record
 
 请至少记录：
 
@@ -104,6 +124,6 @@ Business rationale: <brief but explicit>
 Evidence provenance accepted by Owner: <optional reference>
 ```
 
-## 7. Current Non-Decision
+## 8. Current Non-Decision
 
 在 Owner 正式回答前，本记录不选择 A/B/C/D，不把技术外键或当前 ORM 行为升级为业务语义，不关闭 C-002 inventory blocking condition。
