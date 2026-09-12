@@ -78,7 +78,7 @@ H1/H2 判断阶段允许临时构建最小结构示例，用于比较表达能�
 > - E1 = 独立生命周期：O 可以被独立创建、停用、重启、版本化或治理，而不要求同步重建下层 Identity；
 > - E2 = 独立业务引用：业务流程、规则或治理可以直接引用 O，而不必仅通过下层对象的属性间接引用。
 >
-> E3（独立变化）与 E4（稳定关系）默认作为一致性检查，而不是独立的入集阈值。若 E1/E2 未同时满足，但 E3 或 E4 显示出强烈的独立语义证据，则不得自动判定为非-Identity；该候选必须进入 `IDENTITY_EXCEPTION_REVIEW`，由 Owner / 独立审阅显式裁决其是否保留为 Identity。
+> E3（独立变化）与 E4（稳定关系）默认作为一致性检查，而不是独立的入集阈值。若 E1/E2 未同时满足，但 E3/E4 同时显示独立语义证据，则触发 `IDENTITY_EXCEPTION_REVIEW`，不得自动判定为非-Identity。
 
 该规则的作用是把 E1–E4 的观察转化为可重复的 Set 产出规则；它本身不是最终业务 Decision，若业务证据证明该阈值不足，可在 D-IG 决策记录中修订，但不得在单个候选测试过程中临时改变。
 
@@ -101,18 +101,32 @@ Production Evidence Gate-0 当前为 BLOCKED，因此任何仅依赖 Production 
 
 # 4. Candidate Enumeration and Semantic Compression Test
 
+> **执行性质说明**：§4.1 E0、§4.1.3 E0-F、§4.2 的规则属于**方法论**；§4.1.4 E0 Deliverable、§4.1.5 E0 Completion Gate 以及 `IDENTITY_EXCEPTION_REVIEW` 属于**治理机制**，具有明确执行责任与完成标准。
+
 ## 4.1 Candidate Enumeration — E0
 
 E0 的目标不是套用预设的 Brand / Family / Variant / SKU 名称，而是从当前业务证据中枚举**真实需要被业务表达、引用或治理的对象粒度**。
 
-候选来源至少包括：
+候选来源分为两类，必须独立枚举后再合并：
+
+### A. Evidence-driven sources
 
 - `foods` 当前数据与业务引用；
 - `material_archives` 当前数据与业务引用；
 - `product` 的 active-code residue；
 - 订单、采购、库存、Recipe、定价等业务路径中的对象引用；
 - 已记录的跨 namespace 冲突；
-- 业务 Owner 提供的业务对象清单。
+- 本地代码中的字段、API 入参、引用参数、聚合维度、唯一/近唯一业务代码、重复但被区别处理的值集合。
+
+### B. Requirement-driven sources
+
+- Business Owner 访谈；
+- 门店运营规则；
+- 定价规则；
+- 合规 / 追踪要求；
+- 已批准或明确记录的未来业务规划。
+
+两类来源必须分别形成候选集，不能相互压制。一个候选若只出现在需求驱动来源中，也必须保留并标记 `REQUIREMENT_ONLY`，不得因为当前系统没有对应字段或表而删除。
 
 通用行业对象名称（如 Brand / Product Family / Variant / SKU / Trade Item）可以作为**候选搜索词**，但不能因为名称存在就视为本项目已有业务对象。
 
@@ -124,7 +138,7 @@ E0 不得以“GPT / Reviewer 觉得应该有某对象”为枚举依据。必�
 
 1. **提取对象信号**：识别可能代表业务对象或粒度的字段、引用参数、API 入参、聚合维度、唯一/近唯一业务代码、重复但被区别处理的值集合，以及显式业务命名；
 2. **形成来源内候选集**：在不预先判断 Identity 与否的情况下，记录该来源暴露出的候选对象；
-3. **跨来源合并去重**：按语义描述而不是仅按表名、字段名或数字 ID 合并候选；无法证明同一语义的候选保持分离；
+3. **跨来源合并去重**：按语义描述而不是仅按表名、字段名或数字 ID 合并；无法证明同一语义的候选保持分离；
 4. **记录出现证据**：记录每个候选出现在哪些输入源、出现频率或样本规模、可见的引用路径，以及是否有明确业务命名共识；
 5. **优先级标记**：出现频率低、仅单点出现或缺少业务命名的候选标记 `LOW_PRIORITY_CANDIDATE`，但不得仅因频率低而删除；
 6. **假设状态**：对尚不能证明真实存在的候选标记 `HYPOTHESIS_ONLY`，不得与已观察对象混列。
@@ -133,24 +147,28 @@ E0 不得以“GPT / Reviewer 觉得应该有某对象”为枚举依据。必�
 
 E0 Candidate Object List 至少包含：
 
-- Candidate Object；
-- Source；
-- Source Evidence Reference；
-- Observed Field / API / Code Path / Business Statement；
-- Abstraction Grain（仅描述观察到的粒度，不提前命名为最终 Identity Grain）；
-- Observed Behavior；
-- Independent Reference Path；
-- Appearance Frequency / Sample Size（若可获得）；
-- Business Naming Consensus（若可获得）；
-- Evidence Level；
-- Candidate Status。
+- `candidate_id`；
+- `candidate_name`；
+- `source`；
+- `source_reference`；
+- `observed_field_or_api_or_code_path`；
+- `abstraction_grain`（仅描述观察到的粒度，不提前命名为最终 Identity Grain）；
+- `observed_behavior`；
+- `independent_reference_path`；
+- `appearance_frequency_or_sample_size`（若可获得）；
+- `business_naming_consensus`（若可获得）；
+- `related_candidates`；
+- `evidence_quality`；
+- `candidate_status`。
 
 Candidate Status 至少允许：
 
 - `OBSERVED_LOCAL_CANDIDATE`
+- `REQUIREMENT_ONLY`
 - `LOW_PRIORITY_CANDIDATE`
 - `HYPOTHESIS_ONLY`
 - `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`
+- `DISCOVERED_BY_E0F`
 
 ### 4.1.3 E0-F — Empty-Set Counterfactual Test
 
@@ -160,16 +178,72 @@ E0 完成候选枚举后、E1 开始前，必须执行一次反事实推演：
 
 该测试的目的不是直接证明 H2，而是寻找“如果不存在额外 Identity 层，什么业务语义首先失效”的反证入口。
 
-对每个发现的失效场景，必须记录：
+每个 E0-F 场景必须记录：
 
-- Failure Scenario；
-- 如果 Set 为空，为什么无法表达；
-- 需要被独立保留的候选对象；
-- 可验证预测（应在代码、数据、业务规则或访谈中观察到什么）；
-- Evidence Source；
+- `failure_scenario`；
+- 在空集假设下无法表达的具体业务动作；
+- 假设要表达该场景所需要的对象/粒度 `required_object_hypothesis`；
+- 该对象是否已存在于 E0 Candidate Object List；
+- 若不存在，必须进入候选清单并标记 `DISCOVERED_BY_E0F`，同时记录发现理由；
+- `candidate_id` 映射（若已有候选）；
+- 可验证预测：应在代码、数据、业务规则或访谈中观察到什么；
+- `evidence_source`；
 - 是否达到 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`。
 
 若 Empty-Set Counterfactual 未发现任何无法表达的业务场景，则该结果作为支持 H1 的证据之一，但不替代 E1–E4。
+
+### 4.1.4 E0 Deliverable
+
+E0 必须产出以下结构化文件：
+
+`03-review/d-ig-e0-candidate-enumeration-001.yaml`
+
+该 YAML 为 E0 的**唯一结构化候选清单**。如需说明复杂证据、长文本或分析过程，可另附 Markdown，但 Markdown 不得成为候选清单的第二个并行事实源。
+
+至少包含三个区段：
+
+```yaml
+e0_metadata:
+  decision_id: D-IG
+  execution_owner: ENGINEERING_TEAM
+  completeness_reviewer: BUSINESS_OWNER
+  status: OPEN
+
+candidates: []
+
+e0f_counterfactuals: []
+```
+
+### 4.1.5 E0 Execution Ownership and Completion Gate
+
+**执行责任：**
+
+- `ENGINEERING_TEAM`：负责从证据驱动来源完成提取、归并、证据引用和初始 Candidate Object List；
+- `D-IG OWNER / BUSINESS_OWNER`：负责审核需求驱动来源、检查候选是否遗漏业务上独立存在的对象，并审核 E0 完整性；
+- `INDEPENDENT_REVIEWER`：不得作为 E0 的唯一枚举者，但可在后续 adversarial review 中检查遗漏与偏差。
+
+**E0 完成标准：**
+
+1. 已声明的 Evidence-driven sources 全部执行；
+2. 已声明的 Requirement-driven sources 均有明确状态：已获取 / 不可获取 / 尚未获取；
+3. 每个候选均有可定位的 `source_reference`，或明确标记为 `HYPOTHESIS_ONLY`；
+4. 每个候选已记录其来源、抽象粒度、观察行为和独立引用路径（若可观察）；
+5. E0-F 已执行，其发现均已映射回 Candidate Object List，新增项使用 `DISCOVERED_BY_E0F`；
+6. E0 YAML 已生成；
+7. `BUSINESS_OWNER` 已完成完整性审核；
+8. 不要求 Owner 在 E0 阶段确认 Identity 是什么，Owner 只确认**候选枚举是否存在明显遗漏**。
+
+E0 完成后才能进入 E1。
+
+### 4.1.6 E0 Status Semantics
+
+E0 “完成”不等于 D-IG “确认”。
+
+- E0 完成：候选集合达到枚举完成标准；
+- Candidate `OBSERVED_LOCAL_CANDIDATE`：仅表示本地观察到候选，不表示它是 Identity；
+- `REQUIREMENT_ONLY`：仅表示业务需求侧提出该候选，不表示当前系统已实现；
+- `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`：表示结论依赖生产证据，暂不得传播到 Schema Design；
+- D-IG 仍保持 `OPEN`。
 
 ## 4.2 Semantic Compression — Operational Definition
 
@@ -188,6 +262,48 @@ E0 完成候选枚举后、E1 开始前，必须执行一次反事实推演：
 则不能仅以属性压缩假定 O 非-Identity；该候选进入 `Required Identity Object Set` 候选集合，等待进一步验证。
 
 > 注意：该定义不自动把 Role / Classification / Commercial Unit / UOM / Holding / Batch 升格为 Identity；这些仍需经过 A1 分离与 D-IG 测试。
+
+### 4.3 IDENTITY_EXCEPTION_REVIEW — Governance Mechanism
+
+`IDENTITY_EXCEPTION_REVIEW` 是强制治理机制，不是可选说明。
+
+**触发人：** `D-IG OWNER / BUSINESS_OWNER`。E1–E4 执行者负责提出异常信号，但无权自行放行异常对象进入 Required Set。
+
+**默认触发条件：**
+
+- E3 = 是；
+- E4 = 是；
+- 且 E1 或 E2 至少一个 = 否。
+
+Owner 可基于 E0-F 的失败场景额外触发 review，但必须记录触发理由。
+
+**审查内容：**
+
+1. 若对象不进入 Required Set，是否存在具体业务场景会无法表达；
+2. 是否会导致无法直接引用、无法治理，或必须复制/重写下层 Identity；
+3. E3/E4 的证据是否真实支持“独立语义”，还是实际属于 Role / Relationship / Commercial Unit / UOM / Holding / Tracking；
+4. 是否存在稳定、可验证的对象关系；
+5. 是否存在仅因当前系统缺失能力而产生的“伪独立对象”。
+
+**审查产出：**
+
+`03-review/d-ig-identity-exception-review-XXX.md`
+
+每份记录至少包含：
+
+- 触发对象 `candidate_id`；
+- E1–E4 结果；
+- 触发原因；
+- 具体 Failure Scenario；
+- 证据引用；
+- 反事实预测；
+- 结论：`ENTER_REQUIRED_SET` / `REJECT_NON_IDENTITY` / `DEFER_PENDING_EVIDENCE`。
+
+**通过标准：**
+
+> 必须存在具体业务场景或可验证业务规则证明：如果该对象不作为独立 Identity 保留，将导致无法表达、无法引用或无法治理的问题；“这个对象很重要”“未来可能会用到”等不足以通过。
+
+`ENTER_REQUIRED_SET` 仍不等于 H2。只有当 Required Set 结构进一步证明存在多个不同抽象粒度且具有稳定、可验证关系时，才可支持 H2。
 
 ---
 
@@ -256,10 +372,11 @@ D-IG 每个关键结论必须通过至少一种可验证方法：
 - `BUSINESS_RULE_INTERVIEW`
 - `PRODUCTION_DATA`
 - `EXTERNAL_REFERENCE`
+- `BUSINESS_NAMING`
 
 在 Production Evidence Gate-0 仍 BLOCKED 时：
 
-- LOCAL_CODE / LOCAL_DATA / BUSINESS_RULE_INTERVIEW / EXTERNAL_REFERENCE 可以支持 provisional reasoning；
+- LOCAL_CODE / LOCAL_DATA / BUSINESS_RULE_INTERVIEW / EXTERNAL_REFERENCE / BUSINESS_NAMING 可以支持 provisional reasoning；
 - 任何依赖生产数据才能确认的结论必须标记 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`；
 - provisional conclusion 必须进入 Provisional Conclusions Registry；
 - provisional conclusion 不得传播进入依赖它的 Schema / Migration Decision。
@@ -378,4 +495,7 @@ Migration Authorization = NO
 
 First Agenda = E0 Candidate Enumeration → E0-F Empty-Set Counterfactual → E1–E4 Identity Necessity Tests
 Required Identity Object Set = NOT YET DETERMINED
+E0 Deliverable = 03-review/d-ig-e0-candidate-enumeration-001.yaml
+E0 Execution Owner = ENGINEERING_TEAM
+E0 Completeness Reviewer = BUSINESS_OWNER
 ```
