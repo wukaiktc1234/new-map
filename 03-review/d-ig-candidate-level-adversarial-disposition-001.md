@@ -36,7 +36,7 @@
 
 这些攻击尚未证明 Food 候选无效，但足以要求在 candidate-level PASS 前完成定向证据调和。
 
-Owner E3 输入本身另有正式元数据缺口，见 §4。
+Owner E3 输入本身另有正式元数据缺口，见 §3 / §8。
 
 ### 2.2 C-002 Material
 
@@ -74,11 +74,11 @@ Owner E3 输入本身另有正式元数据缺口，见 §4。
 | Finding | Classification | Disposition |
 |---|---|---|
 | `purchase_request_item.food_id` partial/non-matching referents | BLOCKING evidence gap | 查明所有异常样本实际指称；在该结果进入包内前，不得维持 E2 行1 的无条件 STRONG 表述。 |
-| `inventory.material_id` vs `inventory.product_id` | BLOCKING evidence gap | 由相应 Product/Business Owner 完成业务真相裁决；反方不代裁。裁决完成前，E2/E4 库存段至少标记为 conditional。 |
+| `inventory.material_id` vs `inventory.product_id` | BLOCKING evidence gap | **Engineering 负责提供裁决输入证据**（优先生产库；生产不可得时，先提供可复现的已标注 local evidence），包括各出现点的字段语义、外键/引用关系、代表性数据实例及来源版本；**Business Owner / Product Owner 在证据到位后负责业务真相裁决**。在证据到位和裁决完成前，E2/E4 库存段保持 conditional。 |
 | E2 six-path independence wording | TARGETED REPAIR | 将 E2 证明范围收敛为“一处直接引用创建/锚定 + 多阶段稳定传播”；删除把传播误称为多处独立 direct-reference 的表述。 |
 | E4 `product_id` exclusion wording | TARGETED REPAIR | 按具体出现点重新定性 purchase_orders / inventory / inventory_transactions，不使用“product_id 实际指向 Material”这一笼统表述。 |
 | E3 lifecycle independence instance | TARGETED / LATER-STAGE | 保留 Owner lifecycle business meaning，但将“独立生命周期”与工程实现分离；需要额外实例化证据时，在 Requirement / production-evidence lane 补充，不据此直接判 C-002 FAIL。 |
-| FM-003 consumption semantics | LATER-STAGE NAMED DEPENDENCY | 正式登记 FM-003 ↔ C-002 E4 consumption-segment dependency；若 FM-003 改变 referent，再局部重跑 E4 consumption segment。 |
+| FM-003 consumption / cross-context dependency | LATER-STAGE NAMED DEPENDENCY | FM-003 已正式登记。若 Recipe input 是不同 grain，则 C-002 E4 consumption segment 必须重新定界，且任何依赖 Recipe/Material 交叉上下文 referent stability 的候选级主张也必须重新评价；采购/收货/库存/追溯段不因 FM-003 未决而自动失败。 |
 | supplier / spec grain axes | SCOPE LIMITATION | 显式登记为未测试粒度轴，不将未测试当成反证。 |
 
 ## 5. Governance Audit Dispositions
@@ -91,8 +91,11 @@ Amendment 002 明确规定：
 
 - 后续 E1–E4 使用统一定义；
 - 旧测试记录不自动作废；
-- Required Identity Object Set 成集前进行定义对齐核验；
+- **E-definition alignment check 是 Candidate-level PASS 的前置条件之一，而不只是 Required Identity Object Set 的前置条件**；
+- Required Identity Object Set 成集前仍需确认定义已闭合；
 - 若核验发现测试目标实质不同，必须重新执行受影响 E-stage。
+
+因此，在当前 C-001/C-002 candidate-level review 中，定义对齐必须先完成；未完成前，两候选均不得写入 `CANDIDATE_PASS_SURVIVES`。
 
 ### 5.2 Evidence corpus independence
 
@@ -157,7 +160,13 @@ Requirement-Driven Status: REQUIREMENT_DRIVEN_INCOMPLETE
 
 ## 8. Next-Gate Conditions
 
-Candidate-level PASS 不得在以下 blocking items 未闭合前写入：
+Candidate-level PASS 不得在以下条件未闭合前写入：
+
+### Shared precondition — applies before Candidate PASS
+
+1. **E-definition alignment check completed** against Charter Amendment 002; if any prior E-stage test target is materially different, re-execute the affected E-stage before candidate re-review;
+2. Candidate-level evidence-corpus mapping completed;
+3. Owner formal provenance may remain a later Identity-Decision requirement, but any candidate-level E3 claim must continue to identify its current provenance level.
 
 ### C-001
 
@@ -168,16 +177,18 @@ Candidate-level PASS 不得在以下 blocking items 未闭合前写入：
 ### C-002
 
 1. purchase request 异常 referent 查明；
-2. inventory business truth 对 `material_id` / `product_id` 完成相应 Owner/Product Decision；
+2. inventory business truth evidence package supplied by Engineering and corresponding business-truth decision completed by Business Owner / Product Owner;
 3. E2/E4 wording and scope repair。
 
-### Shared governance
+### Shared downstream preconditions — before Required Identity Object Set
 
-1. Charter Amendment 002 的定义对齐核验；
-2. Candidate-level evidence corpus mapping；
-3. Owner formal provenance 在 Identity Decision 前闭合。
+1. Charter Amendment 002 的定义对齐核验已完成；
+2. 所有 `PENDING_CAPABILITY_CONFIRMATION` 候选做显式处理；
+3. FM-001–FM-004 边界状态已正式登记；
+4. known alternative-grain hypotheses 已保留；
+5. candidate re-entry mechanism available if FM discovers a new identity-grain candidate。
 
-完成上述条件后，重新执行 C-001/C-002 candidate-level adversarial review；只有在 blocking evidence gap 清零、且无新的 FAIL/INCONCLUSIVE 结果时，才允许考虑 `CANDIDATE_PASS_SURVIVES`。
+完成 Candidate-level shared preconditions 与两候选 blocking items 后，重新执行 C-001/C-002 candidate-level adversarial review；只有在 blocking evidence gap 清零、且无新的 FAIL/INCONCLUSIVE 结果时，才允许考虑 `CANDIDATE_PASS_SURVIVES`。
 
 ## 9. Explicit Non-Decisions
 
