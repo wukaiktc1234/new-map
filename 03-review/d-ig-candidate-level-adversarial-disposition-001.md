@@ -140,7 +140,71 @@ FM 审查或后续证据调查若发现新的真实候选粒度，必须进入�
 
 它们可以作为 remediation trigger，但不作为已验证 repository evidence。
 
-## 7. Current Gate State
+## 7. Repair Evidence Inputs and Ownership
+
+Targeted evidence repair 不默认具有同一输入来源。每项修复必须先标明证据来源、责任方和是否可在当前生产证据阻断状态下完成：
+
+| Repair item | Required input source | Evidence provider / executor | Business decision owner | Blocking? |
+|---|---|---|---|---|
+| C-001 `food` / `foods` double-carrier referent reconciliation | Local source/code + existing submitted evidence; production if available | Engineering / evidence executor | BUSINESS_OWNER only if a business referent rule must be chosen | Yes |
+| C-001 `product_type` / `combo_id` polymorphic scope | Local source/code + migration/schema evidence | Engineering / evidence executor | BUSINESS_OWNER if business interpretation remains unresolved | Yes for candidate PASS scope |
+| C-001 E4 quantifier/scope repair | Repaired evidence and test wording | Governance executor | N/A unless business boundary remains unresolved | Yes |
+| C-002 `purchase_request_item.food_id` 4/50 anomaly referents | Production DB preferred; otherwise reproducible local snapshot + migration/history evidence | Engineering / evidence executor | BUSINESS_OWNER if an ambiguous business referent remains after evidence | Yes |
+| C-002 `inventory.material_id` vs `product_id` | Production DB preferred; otherwise reproducible local evidence + schema/FK/migration evidence | Engineering / evidence executor | BUSINESS_OWNER / PRODUCT OWNER | Yes |
+| C-002 E2 reference-scope repair | Revised evidence table + aligned E2 method | Governance executor with Engineering evidence input | N/A | Yes |
+
+### 7.1 Definition-alignment ordering
+
+The execution order is mandatory:
+
+```text
+1. E-definition alignment check
+2. If required, re-execute affected E-stage(s)
+3. Only then perform blocking targeted evidence repair against the aligned E-stage set
+4. Evidence-corpus mapping and wording repair
+5. Candidate-level adversarial re-review
+6. Candidate-level verdict
+```
+
+A repair performed against a pre-alignment E-stage definition does not count as a completed Candidate-level prerequisite until it is revalidated against the aligned definition.
+
+### 7.2 `purchase_request_item.food_id` anomaly fallback
+
+The four anomalous records must be classified without silently treating historical absence as proof of any business meaning:
+
+**Primary path — production evidence available**
+
+- Query the production record and relevant referent tables/history.
+- Classify each anomaly as a Material referent, another business referent, or unresolved/invalid value based on direct evidence.
+
+**Fallback path — production unavailable or record no longer exists**
+
+Use, in order:
+
+1. A reproducible local data snapshot with provenance and matching schema/version;
+2. Migration, import, audit-log, or historical evidence that directly establishes what the stored value was intended or observed to reference;
+3. Other submitted evidence that can establish the referent without relying on naming coincidence or equal numeric IDs.
+
+The following are **not sufficient by themselves** to resolve the anomaly:
+
+- field name `food_id`;
+- equal numeric values across tables;
+- undocumented assumptions about an old table's meaning;
+- an external model's interpretation.
+
+If the anomaly remains unresolved after the fallback evidence chain, classify it as `UNRESOLVED_REFERENT` and **retain BLOCKING status** for the affected C-002 E2 claim. It may not be downgraded merely because the original production row disappeared.
+
+### 7.3 Scope of repair
+
+Targeted evidence repair must not expand into redesign, refactoring, schema migration, or implementation authorization. Its purpose is limited to:
+
+- reproducing or falsifying the challenged evidence;
+- identifying the actual referent and evidence provenance;
+- narrowing the tested scope where a polymorphic context exists;
+- recording the responsible business decision where evidence alone cannot choose the business truth;
+- re-running only the affected E-stage when the aligned definition or repaired evidence requires it.
+
+## 8. Current Gate State
 
 ```text
 C-001 candidate-level: CANDIDATE_PASS_NOT_YET_PROVEN
@@ -158,7 +222,7 @@ Production Evidence: BLOCKED
 Requirement-Driven Status: REQUIREMENT_DRIVEN_INCOMPLETE
 ```
 
-## 8. Next-Gate Conditions
+## 9. Next-Gate Conditions
 
 Candidate-level PASS 不得在以下条件未闭合前写入：
 
@@ -190,7 +254,7 @@ Candidate-level PASS 不得在以下条件未闭合前写入：
 
 完成 Candidate-level shared preconditions 与两候选 blocking items 后，重新执行 C-001/C-002 candidate-level adversarial review；只有在 blocking evidence gap 清零、且无新的 FAIL/INCONCLUSIVE 结果时，才允许考虑 `CANDIDATE_PASS_SURVIVES`。
 
-## 9. Explicit Non-Decisions
+## 10. Explicit Non-Decisions
 
 本记录不：
 
