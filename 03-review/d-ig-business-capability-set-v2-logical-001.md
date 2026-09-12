@@ -5,11 +5,11 @@
 - Physical capability set: `03-review/d-ig-business-capability-set-001.yaml` (V1 baseline)
 - Revision record: `03-review/d-ig-business-capability-set-review-001.md`
 - Logical v2 status: `ESTABLISHED_FROM_V1_PLUS_REVIEW_001`
-- Adversarial review status: `READY_FOR_FINAL_QUICK_CHECK`
-- Owner completeness review: `BLOCKED_PENDING_ADVERSARIAL_REVIEW`
+- Adversarial review status: `COMPLETED_PASSED`
+- Owner completeness review: `READY_FOR_OWNER_REVIEW`
 - Requirement-driven status: `REQUIREMENT_DRIVEN_INCOMPLETE`
 - Production evidence status: `BLOCKED`
-- Pre-Screen authorization: `BLOCKED`
+- Pre-Screen authorization: `BLOCKED_PENDING_OWNER_REVIEW`
 - Identity decision: `NOT_MADE`
 - H1/H2 decision: `NOT_MADE`
 - Schema authorization: `NO`
@@ -92,15 +92,26 @@ Owner completeness review uses the three records in a deterministic order:
 
 The Owner review must not be interpreted as requirement confirmation where requirement-driven source records remain unavailable. `REQUIREMENT_DRIVEN_INCOMPLETE` remains in force.
 
+### 4.1 Owner handoff basis
+
+The BUSINESS_OWNER completeness review is based on these three records together:
+
+1. `03-review/d-ig-business-capability-set-001.yaml` — V1 physical baseline and original evidence-bearing capability/boundary records.
+2. `03-review/d-ig-business-capability-set-review-001.md` — mandatory review dispositions applied to V1.
+3. `03-review/d-ig-business-capability-set-v2-logical-001.md` — deterministic v2 composition, count definitions, and merge rule.
+
+The review scope is **completeness of the business capability boundary represented by the current evidence package**, not confirmation of unavailable requirement-driven source records and not an Identity decision.
+
 ## 5. Sequencing state
 
 ```yaml
 D-IG: OPEN
-Capability_Set: V2_LOGICAL_ESTABLISHED_PENDING_FINAL_QUICK_CHECK
-Owner_Review: BLOCKED_PENDING_ADVERSARIAL_REVIEW
+Capability_Set: V2_LOGICAL_ESTABLISHED
+Adversarial_Review: COMPLETED_PASSED
+Owner_Review: READY
 Requirement_Driven: INCOMPLETE
 Production_Evidence: BLOCKED
-Pre_Screen: BLOCKED
+Pre_Screen: BLOCKED_PENDING_OWNER_REVIEW
 E1_E4: BLOCKED
 Schema: BLOCKED
 Migration: BLOCKED
