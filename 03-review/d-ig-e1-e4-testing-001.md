@@ -54,8 +54,8 @@ E1–E4 的目标是分别检验候选对象是否满足：
 
 | Candidate | Name | Pre-Screen | Test Status | Order |
 |---|---|---|---|---|
-| C-001 | Food / Menu Item | NEEDS_TESTING | IN_PROGRESS | 1 |
-| C-002 | Material / Procurement Material | NEEDS_TESTING | QUEUED | 2 |
+| C-001 | Food / Menu Item | NEEDS_TESTING | E3 OWNER-RULE PENDING | 1 |
+| C-002 | Material / Procurement Material | NEEDS_TESTING | IN_PROGRESS | 2 |
 
 The Pre-Screen result explicitly places C-001 and C-002 in `NEEDS_TESTING`; it does not make an Identity Decision. See `03-review/d-ig-e0-prescreen-result-001.yaml`.
 
@@ -244,23 +244,42 @@ Evidence supporting this possibility:
 | After `DISCONTINUED`, how are historical orders interpreted? | `foodName` snapshot is documented, but no explicit historical-lifecycle rule is documented | INCONCLUSIVE |
 | Does `INACTIVE` affect selling? | No business-effect evidence located | INCONCLUSIVE |
 | Does a state change have independent business meaning? | Possible from vocabulary, not established by a locatable business rule | INCONCLUSIVE |
-| If the state field were removed, what business behavior would be lost? | Not established without the transition/effect rules above | INCONCLUSIVE |
+| If the state field is removed, what business behavior would be lost? | Not established without the transition/effect rules above | INCONCLUSIVE |
 
-**Result**: `INCONCLUSIVE`
+#### 5.4.3 Owner-rule classification
 
-**Reason**
+The unresolved questions above are not merely search gaps. The current engineering evidence establishes the presence of the state surface, but not the intended business semantics of those states. Therefore the blocking status for E3 is reclassified from evidence-search pending to:
 
-The engineering evidence establishes an independent technical state surface, but the required business-lifecycle consequences remain unproven. A status field cannot be promoted to E3 PASS merely because it has business-sounding labels.
+`INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
 
-**What this proves**
+This classification means further code archaeology is not the default next action. E3 now requires explicit Business Owner input on the meaning/effect of the lifecycle states before a candidate-level E3 conclusion can be made.
 
-- Food has an independent technical lifecycle surface.
-- The current evidence is insufficient to prove the corresponding business lifecycle semantics.
+#### 5.4.4 Owner questions — no decision recorded yet
 
-**What this does not prove**
+**E3A — INACTIVE meaning**
 
-- It does not prove that Food lacks an independent business lifecycle.
-- It does not authorize removal of Food lifecycle states.
+- A: 下架：不再在菜单展示，但历史订单可正常引用
+- B: 停用：不可再被任何新业务引用，历史订单只读展示
+- C: 技术开关：仅影响 API 可用性，不影响业务语义
+- D: 暂不决定
+
+**E3B — DISCONTINUED meaning**
+
+- A: 停售：不再销售，但保留历史引用和追溯
+- B: 删除：逻辑删除，历史订单仍可查，但不再作为可用对象
+- C: 归档：移出活跃数据，仅用于历史查询
+- D: 暂不决定
+
+**E3C — historical order reference rule**
+
+- A: 历史订单保留 `foodId` 引用，Food 状态不影响历史解释
+- B: 历史订单保留 `foodName` 快照，Food 状态变化不影响历史解释
+- C: 历史订单同时保留 `foodId + foodName` 快照，双重保障
+- D: 暂不决定
+
+**Important**: the options above are Owner-choice prompts, not model decisions and not current business requirements.
+
+**Result**: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
 
 ### 5.5 E4 — Stable Semantic Consistency
 
@@ -291,7 +310,7 @@ Potential contradiction paths considered:
 4. **Food changes into a different object in traceability** — not supported; the trace path explicitly carries `foodId → foods`.
 5. **Promotion / delivery / kitchen require a semantically different object** — no evidence was found proving such a split; these contexts therefore remain out of the positive E4 proof set rather than being treated as evidence of equivalence.
 
-**Result**: `PASS`
+**Result**: `PASS` (limited to the evidenced capability set)
 
 **Basis for PASS**
 
@@ -303,7 +322,7 @@ E4 PASS is limited to the evidenced capability set above. It does not mean every
 
 ### 5.6 C-001 current test state
 
-`C-001 = E1 PASS; E2 PASS; E3 INCONCLUSIVE; E4 PASS`
+`C-001 = E1 PASS; E2 PASS; E3 INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE; E4 PASS`
 
 `C-001 = NOT COMPLETE FOR CANDIDATE-LEVEL CONCLUSION`
 
@@ -316,9 +335,9 @@ This register is intentionally kept separate from the C-001 test conclusion.
 | Issue ID | Boundary question | Current status | Rule |
 |---|---|---|---|
 | FM-001 | 半成品（如自制酱料、预制面团）属于 Food、Material，还是两者在不同业务上下文中分别存在？ | OPEN | 不在 C-001 E1–E4 中提前裁定 |
-| FM-002 | 套餐中的组成项如何引用？ | OPEN | 先完成 Food 独立测试，再单独处理 |
+| FM-002 | 套餐中的组成项如何引用？ | OPEN | 先完成两边独立测试，再单独处理 |
 | FM-003 | 配方里的原料与采购物料是否为同一业务对象？ | OPEN | 不因数据库字段同名而预设等价 |
-| FM-004 | Food 与 Material 是否存在合法的一对一、多对一、多对多或上下文分域关系？ | OPEN | 需要 E2/E3/E4 后再分析 |
+| FM-004 | Food 与 Material 是否存在合法的一对一、多对一、多对多或上下文分域关系？ | OPEN | C-001/C-002 后单独分析 |
 
 这些问题是边界问题，不得倒灌成 C-001 或 C-002 的预设结论。
 
@@ -335,11 +354,64 @@ C-002 当前 E0 证据记录：
 
 Primary evidence: `01-engineering-reality/business-object-map.md §2`; E0 C-002 in `03-review/d-ig-e0-candidate-enumeration-001.yaml`.
 
-### 7.2 Execution State
+### 7.2 C-002 execution kickoff
 
-`QUEUED — START AFTER C-001`
+C-002 is now the active candidate. The execution must remain independent from C-001.
 
-C-002 必须独立执行 E1–E4；不得因为 C-001 的结论自动复制到 C-002。
+#### 7.2.1 E1 — Inexpressibility / Non-Substitutability
+
+Test against confirmed Material-dependent capability paths. Required attack condition remains:
+
+> Can the confirmed Material-dependent behavior be expressed losslessly through A1 layers without introducing an equivalent independently addressable object?
+
+Current evidence provides direct Material references in procurement and inventory/traceability paths, including `purchase_order_items.material_id`, `inventory.materialId`, `material_trace_code.materialId`, and `material_consumption.materialId`. These are initial signals, not yet an E1 conclusion.
+
+**Status**: `IN_PROGRESS_PENDING_COUNTERFACTUAL_EXECUTION`
+
+#### 7.2.2 E2 — Independent Direct Reference
+
+Initial candidate evidence identifies multiple direct-reference paths:
+
+- `purchase_order_items.material_id → material_archives`
+- `inventory.materialId → material_archives`
+- `material_trace_code.materialId → material_archives`
+- `material_consumption.materialId → material_archives`
+
+The submitted propagation map explicitly classifies these as `REFERENCE`.
+
+A candidate-level E2 result will only be recorded after verifying the path/operation semantics, rather than treating the existence of repeated fields as sufficient.
+
+**Status**: `IN_PROGRESS_PENDING_SEMANTIC_CHECK`
+
+#### 7.2.3 E3 — Independent Lifecycle
+
+Current object-map evidence shows Material create/update/read paths and `ACTIVE / INACTIVE` states. Business consequences of those states are not yet established.
+
+The C-002 E3 test therefore remains open pending the same distinction used for C-001:
+
+- technical lifecycle evidence;
+- explicit business lifecycle semantics;
+- state transition consequences;
+- historical-reference behavior.
+
+**Status**: `QUEUED_AFTER_E1_E2`
+
+#### 7.2.4 E4 — Stable Semantic Consistency
+
+Material is used in procurement, inventory, traceability, and consumption paths in the current evidence package. The required test is to verify that those references denote one stable business concept rather than multiple context-specific objects accidentally sharing a field name.
+
+**Status**: `QUEUED_AFTER_E2_E3`
+
+### 7.3 C-002 preliminary evidence table
+
+| Capability / path | Business operation | Material reference | Target | Reference type | Evidence status |
+|---|---|---|---|---|---|
+| Procurement | Purchase request/order | `purchase_order_items.material_id` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
+| Inventory | Inventory quantity | `inventory.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
+| Traceability | Material trace code | `material_trace_code.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
+| Consumption | Material consumption | `material_consumption.materialId` | `material_archives` | `DIRECT_OBJECT_REFERENCE` | Documented; semantic check pending |
+
+These rows establish the C-002 test surface, not the candidate-level Identity result.
 
 ## 8. Decision Safety Gates
 
@@ -358,18 +430,24 @@ The following transitions remain prohibited:
 
 ## 9. Next Execution Step
 
-The next execution is C-001 completion of the unresolved E3 business-lifecycle evidence, followed by C-002 independent E1–E4 execution, then process FM-001 through FM-004 as a separate Food/Material boundary review.
+Two parallel tracks now exist:
+
+**Track A — Owner**: answer C-001 E3A/E3B/E3C business-rule questions. These remain unanswered in the governance record until explicitly confirmed.
+
+**Track B — Executor**: continue C-002 E1 → E2 → E3 → E4 independently, with adversarial counterfactual review and explicit evidence references.
+
+After both candidate-level test records are complete, process FM-001 through FM-004 as a separate Food/Material boundary review.
 
 ## 10. Governance State
 
 - D-IG: `OPEN`
 - E0: `COMPLETED_PENDING_E1_E4`
-- E1–E4: `IN_PROGRESS — C-001`
+- E1–E4: `IN_PROGRESS — C-002; C-001 E3 OWNER-RULE PENDING`
 - C-001 E1: `PASS`
 - C-001 E2: `PASS`
-- C-001 E3: `INCONCLUSIVE`
+- C-001 E3: `INCONCLUSIVE_PENDING_OWNER_BUSINESS_RULE`
 - C-001 E4: `PASS`
-- C-002: `QUEUED`
+- C-002: `IN_PROGRESS`
 - Identity Decision: `NOT_MADE`
 - H1/H2: `NOT_MADE`
 - Schema: `BLOCKED`
