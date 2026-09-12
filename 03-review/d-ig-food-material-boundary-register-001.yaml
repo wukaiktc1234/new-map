@@ -1,0 +1,115 @@
+decision_id: D-IG
+status: ACTIVE_REFERENCE
+register_type: FM_BOUNDARY_REGISTER
+identity_decision: NOT_MADE
+h1_h2: NOT_MADE
+schema_authorization: NO
+migration_authorization: NO
+production_evidence: BLOCKED
+requirement_driven_status: REQUIREMENT_DRIVEN_INCOMPLETE
+
+purpose: >-
+  Formalize the four Food/Material boundary questions currently referenced by
+  the D-IG E1-E4 and candidate-level records. This register records scope,
+  current status, and candidate-level dependencies only. It does not decide
+  Food/Material identity relationship, canonical naming, or H1/H2.
+
+items:
+  - id: FM-001
+    title: Semi-finished / prepared-item ownership boundary
+    status: OPEN
+    question: >-
+      When a prepared or semi-finished item is produced or held for later use,
+      does it belong to Food, Material, a separate business object, or a
+      relationship/transformation context?
+    current_scope: >-
+      Boundary and ownership semantics only; do not pre-classify the object as
+      Food or Material.
+    candidate_impact: >-
+      No current evidence establishes that this boundary invalidates C-001 or
+      C-002 candidate necessity. Re-open candidate testing only if a distinct
+      required identity grain is discovered.
+    known_dependency: >-
+      May affect C-002 E4 consumption semantics if prepared/semi-finished
+      objects are directly consumed or tracked as Materials.
+    decision_owner: BUSINESS_OWNER
+    decision_state: OPEN
+
+  - id: FM-002
+    title: Combo / package-sale composition boundary
+    status: OPEN
+    question: >-
+      When an order line represents a combo/package rather than a single
+      sellable Food item, what business object is the order line referring to,
+      and how do component Foods relate to the combo/package?
+    current_scope: >-
+      Relationship and grain boundary between sellable single item and combo/
+      package semantics. No decision is made here about whether combo is an
+      Identity layer.
+    candidate_impact: >-
+      C-001 E4 order-path evidence must be limited to confirmed single-item
+      Food rows. Combo rows are explicit boundary input, not positive evidence
+      for Food identity.
+    known_dependency: >-
+      C-001 candidate-level evidence currently requires wording/scope
+      restriction for polymorphic order-item contexts.
+    decision_owner: BUSINESS_OWNER
+    decision_state: OPEN
+
+  - id: FM-003
+    title: Recipe-input versus procurement-material boundary
+    status: OPEN
+    question: >-
+      Is the object used as a Recipe ingredient necessarily the same business
+      object as the procurement Material, or can Recipe usage refer to another
+      grain linked to procurement Material?
+    current_scope: >-
+      Boundary between transformation/recipe semantics and procurement/
+      inventory semantics. Do not assume same identity from matching IDs or
+      names.
+    candidate_impact: >-
+      Explicit dependency on C-002 E4 consumption-path scope: if Recipe input
+      is a different grain, only the consumption segment of the current E4
+      argument must be re-scoped; procurement/receipt/inventory/traceability
+      segments do not automatically fail.
+    known_dependency: >-
+      C-002 E4 consumption evidence is not fully self-contained until the
+      consumable-object semantics are clarified.
+    decision_owner: BUSINESS_OWNER
+    decision_state: OPEN
+
+  - id: FM-004
+    title: Sellable / purchasable cross-domain relationship and cardinality
+    status: OPEN
+    question: >-
+      Can the same real-world commercial concept participate in both Food and
+      Material domains, and if so is that a shared identity, a relationship
+      between identities, or context-specific roles?
+    current_scope: >-
+      Cross-domain relationship/cardinality only. This register does not decide
+      whether Food and Material are equal, separate, or layered identities.
+    candidate_impact: >-
+      No current evidence proves that C-001 or C-002 candidate necessity
+      depends on resolving this relationship. Preserve as later-stage boundary
+      review unless a concrete candidate-level contradiction is demonstrated.
+    known_dependency: >-
+      C-001/C-002 candidate records must not use each other's PASS as evidence
+      for final separation or equivalence.
+    decision_owner: BUSINESS_OWNER
+    decision_state: OPEN
+
+workflow_rules:
+  - >-
+    FM status OPEN is not evidence of non-identity and does not authorize
+    candidate exclusion.
+  - >-
+    A concrete FM finding that changes the tested referent or invalidates a
+    candidate-level premise must name the affected candidate and E-stage and
+    trigger re-evaluation; otherwise FM remains later-stage.
+  - >-
+    A genuinely new identity-grain candidate discovered during FM review must
+    enter the D-IG candidate queue through a governed re-entry path rather than
+    being silently forced into C-001 or C-002.
+  - >-
+    No FM item may by itself authorize H1/H2, Identity Decision, Schema, or
+    Migration.
