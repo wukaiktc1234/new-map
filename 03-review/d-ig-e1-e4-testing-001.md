@@ -56,7 +56,7 @@ E1–E4 的目标是分别检验候选对象是否满足：
 | C-001 | Food / Menu Item | NEEDS_TESTING | IN_PROGRESS | 1 |
 | C-002 | Material / Procurement Material | NEEDS_TESTING | QUEUED | 2 |
 
-The Pre-Screen result explicitly places C-001 and C-002 in `NEEDS_TESTING`; it does not make an Identity Decision. See `03-review/d-ig-e0-prescreen-result-001.yaml`. 
+The Pre-Screen result explicitly places C-001 and C-002 in `NEEDS_TESTING`; it does not make an Identity Decision. See `03-review/d-ig-e0-prescreen-result-001.yaml`.
 
 ## 4. Test Record Rules
 
@@ -91,22 +91,46 @@ Primary evidence: `01-engineering-reality/business-object-map.md §1`; E0 C-001 
 
 > If Food is removed, can the confirmed Food-dependent business behavior be represented losslessly by the existing A1 semantic layers and their combinations, without introducing an equivalent independent object under another name?
 
-**Required compensation attempts**
+**Tested confirmed capability**
 
-- Classification + Role + Domain
-- Commercial Unit + Quantity + UOM
-- Classification + Commercial Unit + Role
-- Domain + Commercial Unit + Temporal where applicable
+`CAP-IMPL-016 — Create orders`
 
-**Initial observed issue**
+**Observed dependency**
 
-The current documented order path requires a stable sellable/menu reference through `order_items.foodId`. Classification, domain, quantity, UOM, or commercial-unit semantics can describe attributes of what is sold, but the current evidence does not yet demonstrate that those layers can replace the stable referenced object without introducing an equivalent object elsewhere.
+The documented order path uses `order_items.foodId` as a direct reference to the Food object. Removing Food therefore removes the stable referenced object required by the documented order-item path.
 
-**Status**: `INCONCLUSIVE_PENDING_EXECUTION`
+**Compensation attempts**
 
-**Important restriction**
+| A1 semantic-layer combination | Result | Failure point |
+|---|---|---|
+| Classification + Role + Domain | LOSS NOT COMPENSATED | Can describe what category/role/domain is being sold, but cannot identify the particular stable order-item reference target. |
+| Commercial Unit + Quantity + UOM | LOSS NOT COMPENSATED | Can describe transaction unit and amount, but cannot identify the stable sellable object referenced by the order item. |
+| Classification + Commercial Unit + Role | LOSS NOT COMPENSATED | Can describe the commercial meaning, but still lacks a stable object reference anchor for the order item. |
+| Domain + Commercial Unit + Temporal | LOSS NOT COMPENSATED | Can describe contextual/time-dependent meaning, but cannot replace the stable object reference required by the documented path. |
 
-The statement above is a test hypothesis grounded in current evidence, not the final conclusion that Food is an Identity.
+**Minimal counterfactual**
+
+To remove `Food` while preserving the confirmed order capability, the order item would still need to reference some independently addressable stable object carrying the same referential role. Such a replacement would be an equivalent independent object under another name rather than a pure A1 semantic-layer substitution.
+
+**Evidence**
+
+- `01-engineering-reality/business-object-map.md §1` — `foods` truth source and Food API/read/write paths; `order_items.foodId`; consumers.
+- `03-review/d-ig-e0-prescreen-result-001.yaml` — C-001 Pre-Screen removal effect and compensation attempts.
+- `03-review/d-ig-prescreen-rule-001.md §4 / §4.1` — required necessity and compensation method.
+
+**Result**: `PASS`
+
+**What this proves**
+
+Under the current documented `CAP-IMPL-016` evidence, Food cannot be removed and replaced solely by the A1 semantic layers without losing a stable reference required by the order capability or introducing an equivalent independent object.
+
+**What this does not prove**
+
+- It does not prove Food is the final Canonical Identity name.
+- It does not prove Food and Material are separate or non-overlapping business identities.
+- It does not resolve the Food/Material boundary issues FM-001–FM-004.
+- It does not authorize H1/H2, Schema, Migration, or Canonical Table creation.
+- It does not convert local/documented evidence into production verification.
 
 ### 5.3 E2 — Independent Direct Reference
 
@@ -123,7 +147,7 @@ The statement above is a test hypothesis grounded in current evidence, not the f
 
 **Current documented signal**
 
-Yes, the existing evidence package explicitly records `order_items.foodId` as a direct reference and Food CRUD/read paths as an independently addressable object path.
+The existing evidence package explicitly records `order_items.foodId` as a direct reference and Food CRUD/read paths as an independently addressable object path.
 
 **Status**: `INCONCLUSIVE_PENDING_EVIDENCE_CONSISTENCY_CHECK`
 
@@ -163,7 +187,7 @@ The engineering object lifecycle is evidence of an independent technical lifecyc
 
 ### 5.6 C-001 provisional test state
 
-`C-001 = E1–E4 IN_PROGRESS`
+`C-001 = E1 PASS; E2 INCONCLUSIVE; E3 INCONCLUSIVE; E4 INCONCLUSIVE`
 
 No final Identity conclusion is authorized at this point.
 
@@ -216,13 +240,17 @@ The following transitions remain prohibited:
 
 ## 9. Next Execution Step
 
-The next execution is C-001 E1–E4 evidence completion, using the specific operations and references above. After C-001 is completed, execute C-002 independently, then process FM-001 through FM-004 as a separate Food/Material boundary review.
+The next execution is C-001 E2 evidence completion, followed by E3 and E4. After C-001 is completed, execute C-002 independently, then process FM-001 through FM-004 as a separate Food/Material boundary review.
 
 ## 10. Governance State
 
 - D-IG: `OPEN`
 - E0: `COMPLETED_PENDING_E1_E4`
 - E1–E4: `IN_PROGRESS — C-001`
+- C-001 E1: `PASS`
+- C-001 E2: `INCONCLUSIVE`
+- C-001 E3: `INCONCLUSIVE`
+- C-001 E4: `INCONCLUSIVE`
 - C-002: `QUEUED`
 - Identity Decision: `NOT_MADE`
 - H1/H2: `NOT_MADE`
