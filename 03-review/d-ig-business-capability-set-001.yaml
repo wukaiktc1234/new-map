@@ -1,0 +1,647 @@
+capability_set_metadata:
+  decision_id: D-IG
+  execution_owner: ENGINEERING_TEAM
+  completeness_reviewer: BUSINESS_OWNER
+  adversarial_reviewer: DEEPSEEK
+  status: OPEN
+  establishment_status: INITIAL_V1_ESTABLISHED_PENDING_OWNER_REVIEW
+  establishment_date: 2026-09-12
+  source_boundary:
+    implemented: CURRENT_EVIDENCE_PACKAGE_BEHAVIOR_PATHS
+    declared: BUSINESS_OWNER_RECORDED_SOURCES_ONLY
+    unknown: UNCONFIRMED_BOUNDARIES_RELEVANT_TO_PRE_SCREEN
+  requirement_driven_status: REQUIREMENT_DRIVEN_INCOMPLETE
+  production_evidence_status: BLOCKED
+  production_dependent_conclusions: PROVISIONAL_PENDING_PRODUCTION_EVIDENCE
+  completeness_review_status: PENDING
+  pre_screen_authorization: BLOCKED
+  owner_review_status: PENDING
+  declared_capability_count: 0
+  implemented_capability_count: 32
+  unknown_boundary_count: 8
+  methodology_status: FROZEN
+  schema_authorization: NO
+  migration_authorization: NO
+  identity_decision: NOT_MADE
+  h1_h2_decision: NOT_MADE
+  extraction_note: >-
+    Capability names are business behaviors extracted from documented behavior
+    paths. Table names, endpoint names, Service names, permissions, or frontend
+    modules are supporting evidence only and are not treated as capabilities by
+    themselves.
+
+  owner_source_inventory:
+    business_owner_interview: NOT_OBTAINED_IN_REPOSITORY
+    store_operating_rules: NOT_OBTAINED_IN_REPOSITORY
+    pricing_rules: NOT_OBTAINED_IN_REPOSITORY
+    compliance_traceability_requirements: NOT_OBTAINED_IN_REPOSITORY
+    approved_future_planning: NOT_OBTAINED_IN_REPOSITORY
+
+  deduplication_execution:
+    method: CHARTER_STEP_3_FIVE_POINT_BOUNDARY_CHECK
+    checks:
+      - business_action
+      - trigger_condition
+      - business_result
+      - responsibility
+      - lifecycle
+    result: >-
+      Capabilities are separated by distinct business actions/results; no
+      cross-domain capability was merged solely because it used the same table,
+      API, Service, or noun. Distinct lifecycle or responsibility paths remain
+      separate.
+
+capabilities:
+  - capability_id: CAP-IMPL-001
+    capability_name: Maintain food definitions
+    capability_group: PRODUCT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §1"
+      - "01-engineering-reality/api-map.md §2"
+    business_description: Create, update, deactivate/delete and retrieve current food/menu definitions used by downstream sales paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "FoodService.create/update/delete -> foods; FoodRepository.find*; food APIs"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Food is observed as a current business object; this does not make it a D-IG Identity decision."
+    related_e0_candidates: [C-001, C-003]
+
+  - capability_id: CAP-IMPL-002
+    capability_name: Maintain food categories
+    capability_group: PRODUCT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §9"
+      - "01-engineering-reality/api-map.md §2"
+    business_description: Create, update and manage category structures used to classify food and related master data.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "FoodCategoryService.create/update paths -> food category source; category APIs"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Category is a classification capability, not an Identity decision."
+    related_e0_candidates: [C-001, C-002, C-013]
+
+  - capability_id: CAP-IMPL-003
+    capability_name: Maintain material definitions
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §2"
+      - "01-engineering-reality/api-map.md §2"
+    business_description: Create, update, deactivate and retrieve material master definitions used by procurement, inventory and traceability paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "MaterialService.create/update -> material_archives; MaterialRepository.find*; material APIs"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Material is observed as a business domain/object label; A2/D-IG do not treat that label as a final Identity decision."
+    related_e0_candidates: [C-002, C-003]
+
+  - capability_id: CAP-IMPL-004
+    capability_name: Maintain suppliers
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/foundation-map.md §6"
+      - "01-engineering-reality/api-map.md §5"
+    business_description: Create, update and manage supplier records and supplier lifecycle state used by purchasing, payable, payment and traceability paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "SupplierService.create/update/status lifecycle -> suppliers; supplier APIs"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Supplier is a reference domain for item-related processes, not a pre-decided item Identity layer."
+    related_e0_candidates: [C-002, C-010]
+
+  - capability_id: CAP-IMPL-005
+    capability_name: Create purchase requests
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+      - "01-engineering-reality/api-map.md §5"
+    business_description: Initiate a procurement request with supplier, material and editable quantity information.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "PurchaseRequestFormDialog -> PurchaseRequestService -> purchase_request; PurchaseRequestCreatedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "The documented path explicitly carries material references and quantities."
+    related_e0_candidates: [C-002, C-007, C-011, C-012]
+
+  - capability_id: CAP-IMPL-006
+    capability_name: Advance purchase request through its lifecycle
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+    business_description: Move a purchase request through documented draft, pending, approved and cancelled states.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "purchase_request state flow 0草稿 -> 1待审 -> 2已批 -> 3已取消"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Lifecycle evidence is independent of any Identity conclusion."
+    related_e0_candidates: [C-002, C-012]
+
+  - capability_id: CAP-IMPL-007
+    capability_name: Create purchase orders
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+      - "01-engineering-reality/api-map.md §5"
+    business_description: Convert or create purchase orders with supplier and material references and order quantities/amounts.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "PurchaseOrderFormDialog -> PurchaseOrderService -> purchase_orders; PurchaseOrderCreatedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Legacy product_id is explicitly documented as semantically pointing to material; no Identity decision is made here."
+    related_e0_candidates: [C-002, C-003, C-007, C-012]
+
+  - capability_id: CAP-IMPL-008
+    capability_name: Advance purchase order through its lifecycle
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+    business_description: Move a purchase order through pending, confirmed, completed and cancelled states.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "purchase_orders state flow 0待确认 -> 1已确认 -> 2已完成 -> 3已取消"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Lifecycle is a business behavior, not an Identity declaration."
+    related_e0_candidates: [C-002, C-012]
+
+  - capability_id: CAP-IMPL-009
+    capability_name: Record purchase arrivals
+    capability_group: PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+      - "01-engineering-reality/api-map.md §5"
+    business_description: Record supplier shipment/arrival information against a purchase order and progress arrival state.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "ArrivalFormDialog -> PurchaseArrivalService -> purchase_arrivals; PurchaseArrivalCreatedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Arrival carries order/supplier linkage and logistics information."
+    related_e0_candidates: [C-002, C-009, C-010]
+
+  - capability_id: CAP-IMPL-010
+    capability_name: Confirm received goods
+    capability_group: RECEIVING
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+      - "01-engineering-reality/frontend-map.md §6 Receiving Mobile"
+    business_description: Verify received quantities and related batch/production/expiry information and complete receipt confirmation.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "ReceiptConfirmationFormDialog -> ReceiptConfirmationService -> receipt_confirmation -> ReceiptConfirmationCompletedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Receiving mobile evidence includes item/batch scanning, photo and dual-sign evidence."
+    related_e0_candidates: [C-002, C-004, C-005, C-009, C-011]
+
+  - capability_id: CAP-IMPL-011
+    capability_name: Record central inventory stock-in
+    capability_group: INVENTORY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §3"
+      - "02-business-dependency/business-data-flow-map.md §2.1 采购链路"
+    business_description: Increase central inventory holdings as a result of receiving or other stock-in actions.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "InventoryService.stockIn -> inventory; StockInEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Stock quantity is explicitly separate from the identity semantics under A1."
+    related_e0_candidates: [C-002, C-004, C-009, C-011]
+
+  - capability_id: CAP-IMPL-012
+    capability_name: Record central inventory stock-out
+    capability_group: INVENTORY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §3"
+      - "01-engineering-reality/event-job-map.md §1-2"
+    business_description: Decrease central inventory holdings for documented stock-out/consumption paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "InventoryService.stockOut -> inventory; StockOutEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "The precise business trigger for every stock-out subtype remains outside this Capability Set."
+    related_e0_candidates: [C-002, C-004, C-009, C-011]
+
+  - capability_id: CAP-IMPL-013
+    capability_name: Transfer inventory holdings
+    capability_group: INVENTORY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §3"
+      - "02-business-dependency/cross-domain-coordination-matrix.md §2.1 / Inventory"
+    business_description: Transfer inventory between documented warehouse/store locations.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "InventoryService.transfer -> inventory_transfer / inventory; TransferEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Location and holding semantics remain separate from the Identity decision."
+    related_e0_candidates: [C-004, C-005, C-010, C-011]
+
+  - capability_id: CAP-IMPL-014
+    capability_name: Monitor central inventory levels and low-stock conditions
+    capability_group: INVENTORY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §3"
+      - "02-business-dependency/capability-readiness-map.md §2.2"
+    business_description: Read inventory holdings and generate low-stock conditions/notifications.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "InventoryRepository.findByMaterial/findByWarehouse; LowStockEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Monitoring behavior is distinct from stock mutation behavior."
+    related_e0_candidates: [C-002, C-004, C-011]
+
+  - capability_id: CAP-IMPL-015
+    capability_name: Manage store inventory holdings
+    capability_group: INVENTORY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §4"
+      - "02-business-dependency/cross-domain-coordination-matrix.md §2.1 / StoreInventory"
+    business_description: Record, read and adjust store-level inventory holdings through store stock-in/stock-out paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "StoreInventoryService.stockIn/stockOut -> store_inventory; StoreStockInEvent/StoreStockOutEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Documented local evidence reports quantity and schema differences versus central inventory; this is not a semantic resolution."
+    related_e0_candidates: [C-002, C-005, C-010, C-011]
+
+  - capability_id: CAP-IMPL-016
+    capability_name: Create orders
+    capability_group: ORDER_SALES
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.2 订单链路"
+      - "02-business-dependency/cross-domain-coordination-matrix.md §2.2 / Order"
+    business_description: Create sales orders from POS/management and documented online order paths with store and food references.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "POS/management -> OrderService/create -> orders; OrderCreatedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Order items directly reference foodId in the documented order path."
+    related_e0_candidates: [C-001, C-003, C-012]
+
+  - capability_id: CAP-IMPL-017
+    capability_name: Advance orders through preparation and completion states
+    capability_group: ORDER_SALES
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §5"
+      - "01-engineering-reality/event-job-map.md §1"
+      - "02-business-dependency/cross-domain-coordination-matrix.md §3.2.2"
+    business_description: Update order lifecycle state through documented preparation/completion transitions.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "OrderService.updateStatus / KitchenDisplayService -> orders.order_status; OrderCompletedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "The existence of multiple order status fields is a known engineering risk, not an identity conclusion."
+    related_e0_candidates: [C-001, C-012]
+
+  - capability_id: CAP-IMPL-018
+    capability_name: Cancel orders
+    capability_group: ORDER_SALES
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §5"
+      - "01-engineering-reality/event-job-map.md §1 / OrderRefund and order lifecycle"
+    business_description: Cancel orders through explicit order cancellation paths, including documented timeout cancellation.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "OrderService.cancel and OrderTimeoutTask -> order cancellation state"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Timeout cancellation is separately evidenced by the event/job map."
+    related_e0_candidates: [C-001, C-012]
+
+  - capability_id: CAP-IMPL-019
+    capability_name: Process order refunds
+    capability_group: ORDER_SALES
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/event-job-map.md §1-2"
+      - "02-business-dependency/capability-readiness-map.md §2.1"
+    business_description: Process order refund behavior and record corresponding downstream financial expenditure effects.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_EVENT_PATH
+    behavior_path: "OrderRefundEvent -> OrderRefundEventListener -> refund expenditure"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Refund is a distinct business result from order cancellation and is kept separate."
+    related_e0_candidates: [C-001]
+
+  - capability_id: CAP-IMPL-020
+    capability_name: Complete orders and recognize documented sales-finance effects
+    capability_group: ORDER_SALES
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.2 订单链路"
+      - "01-engineering-reality/event-job-map.md §1-2"
+    business_description: Complete an order and trigger the documented finance record and fund-flow effects.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_EVENT_PATH
+    behavior_path: "OrderCompletedEvent -> OrderCompletedEventListener -> finance_records/fund_flows"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "This does not assert that full general-ledger accounting is implemented."
+    related_e0_candidates: [C-001, C-012]
+
+  - capability_id: CAP-IMPL-021
+    capability_name: Create and manage payables
+    capability_group: FINANCE_PROCUREMENT
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §7"
+      - "02-business-dependency/business-data-flow-map.md §2.3 财务链路"
+    business_description: Create payable obligations from purchase settlement and manage payable lifecycle through settlement.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "PurchaseSettlement -> PayableService.create/settle -> payables; PayableCreated/SettledEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Payable amount/supplier linkage is documented; full accounting completeness is outside this capability."
+    related_e0_candidates: [C-002, C-012]
+
+  - capability_id: CAP-IMPL-022
+    capability_name: Record and complete payments
+    capability_group: FINANCE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.3 财务链路"
+      - "01-engineering-reality/event-job-map.md §8"
+    business_description: Register payments against payables and complete payment state with bank account and fund-flow effects.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "PaymentDialog -> PaymentService -> payment/bank_accounts/fund_flows; PaymentCompletedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Supplier information may be re-queried from payable in the documented flow."
+    related_e0_candidates: [C-010, C-012]
+
+  - capability_id: CAP-IMPL-023
+    capability_name: Create, approve and post financial vouchers
+    capability_group: FINANCE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §6"
+      - "02-business-dependency/business-data-flow-map.md §2.3 财务链路"
+      - "01-engineering-reality/event-job-map.md §8"
+    business_description: Create/update/approve/post documented financial vouchers and consume posted-voucher events in downstream finance/reporting flows.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "VoucherService -> finance_vouchers; VoucherPostedEvent -> reporting; salary/daily-settlement listeners can generate vouchers"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "AutoVoucherService zero-call paths are not counted as an additional implemented capability."
+    related_e0_candidates: [C-012]
+
+  - capability_id: CAP-IMPL-024
+    capability_name: Manage accounting subjects
+    capability_group: FINANCE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §9"
+      - "02-business-dependency/foundation-map.md §11"
+    business_description: Maintain accounting subject definitions and classify subjects for financial processing.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "AccountingSubjectService.create/update -> accounting_subjects"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "This is an accounting reference capability, not a business-item identity decision."
+    related_e0_candidates: []
+
+  - capability_id: CAP-IMPL-025
+    capability_name: Create and collect receivables
+    capability_group: FINANCE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §8"
+      - "01-engineering-reality/api-map.md §6"
+    business_description: Create receivable obligations and collect them through a documented lifecycle.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "ReceivableService.create/collect -> receivables; ReceivableCreated/CollectedEvent"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Receivable is kept separate from receipt record creation."
+    related_e0_candidates: []
+
+  - capability_id: CAP-IMPL-026
+    capability_name: Record receipts and fund flows
+    capability_group: FINANCE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md business objects overview"
+      - "01-engineering-reality/api-map.md §6"
+      - "02-business-dependency/business-data-flow-map.md §2.2-2.3"
+    business_description: Record documented money receipts and fund-flow consequences from sales/settlement paths.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "Receipt/FundFlow service paths; OrderCompletedEvent and payment completion feed financial records/flows"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "No claim is made that all money movement is fully reconciled to a general ledger."
+    related_e0_candidates: []
+
+  - capability_id: CAP-IMPL-027
+    capability_name: Generate and bind material trace codes
+    capability_group: TRACEABILITY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §10"
+      - "02-business-dependency/business-data-flow-map.md §2.4 溯源链路"
+      - "01-engineering-reality/event-job-map.md §2"
+    business_description: Generate/bind/query trace codes for material using material, supplier and batch references.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_EVENT_PATH
+    behavior_path: "PurchaseStockIn/ReceiptConfirmation -> trace-code listeners -> material_trace_code"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Batch is treated as tracking context, not an Identity conclusion."
+    related_e0_candidates: [C-002, C-009, C-011]
+
+  - capability_id: CAP-IMPL-028
+    capability_name: Generate and query food trace codes
+    capability_group: TRACEABILITY
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/business-data-flow-map.md §2.4 溯源链路"
+      - "01-engineering-reality/api-map.md §13"
+    business_description: Generate/query finished-food trace records linking food references to material trace records.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "Order completion -> food_trace_code with foodId/materialTraceCodeId -> traceability queries"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "The relationship between food and material trace records does not itself decide Identity hierarchy."
+    related_e0_candidates: [C-001, C-002, C-009]
+
+  - capability_id: CAP-IMPL-029
+    capability_name: Maintain employee records and lifecycle
+    capability_group: HR
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/foundation-map.md §3"
+      - "01-engineering-reality/api-map.md §7"
+      - "01-engineering-reality/event-job-map.md §5"
+    business_description: Create/update/delete employees and process documented onboarding, resignation and transfer lifecycle events.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "EmployeeService create path -> employees; EmployeeCreated/Deleted/Resigned/Transferred events"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Employee lifecycle is a separate domain capability; it is not an item Identity."
+    related_e0_candidates: [C-010]
+
+  - capability_id: CAP-IMPL-030
+    capability_name: Manage employee attendance and salary records
+    capability_group: HR
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/foundation-map.md §3"
+      - "01-engineering-reality/event-job-map.md §3, §5"
+      - "01-engineering-reality/api-map.md §7"
+    business_description: Record employee attendance and salary processing, including salary-paid events consumed by finance.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "AttendanceService -> attendance_record; SalaryService -> salary_records; SalaryPaidEvent -> voucher listener"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Attendance and salary are kept as separate business actions because their results/lifecycles differ."
+    related_e0_candidates: []
+
+  - capability_id: CAP-IMPL-031
+    capability_name: Manage membership, levels and loyalty/recharge operations
+    capability_group: MEMBER_MARKETING
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/capability-readiness-map.md §2.7"
+      - "01-engineering-reality/api-map.md §12"
+      - "01-engineering-reality/event-job-map.md §1, §5"
+    business_description: Maintain members and operate documented member-level, points, coupon and recharge flows.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "MemberService -> members; MemberLevelService -> member_level; CouponService -> coupon_template; RechargeService -> recharge_record"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Marketing mechanisms are business capabilities but are not used to assume an item Identity model."
+    related_e0_candidates: []
+
+  - capability_id: CAP-IMPL-032
+    capability_name: Maintain devices and device status records
+    capability_group: DEVICE
+    source_status: IMPLEMENTED
+    source_reference:
+      - "02-business-dependency/capability-readiness-map.md §2.8"
+      - "01-engineering-reality/api-map.md §8"
+      - "02-business-dependency/foundation-map.md §15"
+    business_description: Register/update devices and maintain documented device status/template records.
+    evidence_class: LOCAL_DOCUMENTED_EVIDENCE_BEHAVIOR_PATH
+    behavior_path: "DeviceService -> devices; DeviceStatusLogService -> device_status_logs; DeviceTemplateService -> device_templates"
+    owner_review_status: NOT_APPLICABLE
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    notes: "Legacy hardware controller residue is not counted as a separate capability."
+    related_e0_candidates: []
+
+unknown_boundaries:
+  - unknown_id: UNKNOWN-001
+    boundary_name: External supplier portal collaboration capability
+    source_status: UNKNOWN
+    source_reference:
+      - "02-business-dependency/capability-readiness-map.md §2.3"
+      - "01-engineering-reality/frontend-map.md §3.1 supplier-portal"
+    reason_unconfirmed: "Supplier portal routes/UI are documented, but authentication and active-use boundaries are incomplete; evidence says H5 endpoints may be unprotected and cannot establish the intended live business scope."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-002
+    boundary_name: Self-purchase workflow is active business capability
+    source_status: UNKNOWN
+    source_reference:
+      - "01-engineering-reality/api-map.md zero-consumption / self-purchase"
+      - "02-business-dependency/capability-readiness-map.md §2.3"
+    reason_unconfirmed: "Self-purchase endpoints exist but have no frontend consumption; documented purpose is tentative."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-003
+    boundary_name: Plan-item planning workflow is an active business capability
+    source_status: UNKNOWN
+    source_reference:
+      - "01-engineering-reality/api-map.md zero-consumption / plan-items"
+    reason_unconfirmed: "Plan-item endpoints exist without frontend consumption; business ownership and intended lifecycle are not established in current evidence."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-004
+    boundary_name: Appeals workflow is an active business capability
+    source_status: UNKNOWN
+    source_reference:
+      - "01-engineering-reality/api-map.md zero-consumption / appeals"
+    reason_unconfirmed: "Appeals endpoints exist without frontend consumption and without sufficient documented business flow."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-005
+    boundary_name: Automatic sales/purchase voucher generation is required business behavior
+    source_status: UNKNOWN
+    source_reference:
+      - "01-engineering-reality/api-map.md zero-consumption / AutoVoucherService"
+      - "02-business-dependency/capability-readiness-map.md §2.4"
+    reason_unconfirmed: "AutoVoucherService exposes methods with zero callers; current evidence proves a code artifact, not the business requirement that it must be active."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-006
+    boundary_name: Warehouse master/data-management capability and reference semantics
+    source_status: UNKNOWN
+    source_reference:
+      - "02-business-dependency/master-data-source-map.md warehouse"
+      - "02-business-dependency/foundation-map.md §10"
+      - "02-business-dependency/business-identity-propagation-map.md §2.5"
+    reason_unconfirmed: "warehouse_id is referenced by multiple records but no independent canonical master source or complete lifecycle is documented."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-007
+    boundary_name: Full production/manufacturing process capability boundary
+    source_status: UNKNOWN
+    source_reference:
+      - "01-engineering-reality/business-object-map.md §2 Material consumers / ProductionService"
+      - "02-business-dependency/business-data-flow-map.md core flow summary"
+    reason_unconfirmed: "ProductionService is a documented consumer and production/kitchen surfaces exist, but a complete business lifecycle and ownership boundary for manufacturing/production is not sufficiently established in the current evidence package."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+  - unknown_id: UNKNOWN-008
+    boundary_name: Commercial packaging/specification behavior relevant to item resolution
+    source_status: UNKNOWN
+    source_reference:
+      - "03-review/d-ig-e0-candidate-enumeration-001.yaml E0-F-001/E0-F-002"
+      - "03-review/business-item-canonical-independent-review.md local specification findings"
+    reason_unconfirmed: "The evidence package identifies packaging/variant questions but does not establish an implemented business lifecycle for commercial unit or variant objects."
+    owner_review_status: PENDING
+    production_dependency: BLOCKED_NOT_PRODUCTION_VERIFIED
+    pre_screen_use: MAY_TRIGGER_PENDING_CAPABILITY_CONFIRMATION
+
+review_notes:
+  - "No DECLARED capabilities were created because no locatable BUSINESS_OWNER declaration record is present in the repository evidence package."
+  - "IMPLEMENTED capabilities use NOT_APPLICABLE for owner_review_status because they are engineering-observed behavior paths, not Owner declarations."
+  - "UNKNOWN entries describe unresolved business-capability boundaries; they are not asserted capabilities and cannot be used to exclude E0 candidates."
+  - "Synthetic E0 counterexamples remain hypotheses/tests and are not converted into implemented capabilities."
+  - "Production evidence remains BLOCKED; all production_dependency values reflect that boundary."
+  - "This file does not select or reject any Identity candidate and does not authorize E1-E4, Schema, Migration, or Canonical Table Creation."
+
+completion_gate:
+  evidence_paths_extracted: YES
+  declared_sources_statused: YES
+  all_capabilities_have_locatable_reference: YES
+  duplicate_boundary_review_executed: YES
+  unknown_boundaries_explicitly_registered: YES
+  business_owner_completeness_review: PENDING
+  requirement_driven_status: REQUIREMENT_DRIVEN_INCOMPLETE
+  production_gate: BLOCKED
+  pre_screen_authorization: BLOCKED
+  overall_status: INITIAL_V1_ESTABLISHED_PENDING_OWNER_REVIEW
