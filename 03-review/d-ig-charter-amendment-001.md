@@ -2,7 +2,7 @@
 
 > **状态**: ACTIVE_REFERENCE — GOVERNANCE AMENDMENT
 > **Decision ID**: D-IG
-> **Scope**: Minimal amendment to D-IG Charter 001; no change to H1/H2 decision logic.
+> **Scope**: Minimal amendment to D-IG Charter 001; no change to the internal H1/H2 or E1–E4 decision logic.
 
 ## 1. Requirement-driven Input Incomplete
 
@@ -18,8 +18,9 @@
 
 ## 2. Effect on E0
 
-E0 可以在 Evidence-driven inputs 已完成枚举、Requirement-driven sources 已明确 status 的前提下继续进行结构化整理，但：
+E0 可以在 Evidence-driven inputs 已完成枚举、Requirement-driven sources 已明确 status 的前提下进入结构整理阶段，但：
 
+- E0 的整体状态必须标记 `REQUIREMENT_DRIVEN_INCOMPLETE`；
 - `REQUIREMENT_DRIVEN_INCOMPLETE` 不得解释为 requirement-complete；
 - BUSINESS_OWNER 的完整性审核仍必须区分“当前已知候选是否有明显遗漏”和“未来/未记录需求是否已确认”；
 - E0 完成不得自动解除 requirement-driven incompleteness。
@@ -50,12 +51,15 @@ Identity Necessity Pre-Screen 必须对 Business Capability 来源分层：
 
 Pre-Screen 不得使用 `UNKNOWN` 能力排除候选。相关候选保持 `PENDING_CAPABILITY_CONFIRMATION`，直到 Owner 裁定能力边界。
 
+Business Capability Set 的建立、来源定位、状态标记及完成门槛由 `d-ig-business-capability-set-charter-001.md` 规定；本 Amendment 不替代该建立方法。
+
 ## 6. No Change to D-IG Decision Logic
 
-本 Amendment 不修改：
+本 Amendment 不修改 E1–E4 的**内部判定逻辑**，也不修改：
 
-- E1–E4 定义；
 - Required Identity Object Set 的最终 Decision 规则；
 - H1/H2 推导规则；
 - Identity Resolution Matrix；
 - A1/A2 已确认语义边界。
+
+但 Pre-Screen Rule 001 会缩小进入 E1–E4 的候选范围。该候选范围缩小属于 Pre-Screen Rule 001 的执行效果，不属于本 Amendment 对 E1–E4 内部判定逻辑的修改。
