@@ -44,16 +44,18 @@ D-IG 第一项必须回答：
 
 ### 2.1 Mandatory Sequence
 
-在 §2 未完成前，不得正式填写 §5.2 Identity Resolution Matrix。
+在 §2 的结构判断未完成前，不得正式填写 §5.2 Identity Resolution Matrix。
 
-D-IG Kickoff 的顺序必须为：
+D-IG 不以“先投票 H1 还是 H2”为唯一判定流程，而采用以下顺序：
 
-1. H1 vs H2；
-2. 若 H1，确定单层名称与边界；
-3. 若 H2，确定层级数量、层名、层间关系；
-4. 完成后，才进入 Identity Resolution Matrix。
+1. E0：枚举候选业务对象 / 粒度集合；
+2. E1–E4：逐一测试候选对象是否必须保留为 Identity；
+3. 汇总得到 `Required Identity Object Set`；
+4. 若该集合为空，则 H1；
+5. 若该集合包含两个或以上不同抽象粒度且存在稳定层间关系，则 H2；
+6. 只有完成上述判断后，才确定 H1/H2 的正式结构与 Identity Resolution Matrix。
 
-在 H1/H2 判断阶段，允许临时构建最小结构示例，用于比较两种模型的表达能力；但不得把临时试建结构写成 Decision、Canonical Model 或 Schema Authorization。
+H1/H2 判断阶段允许临时构建最小结构示例，用于比较表达能力，但不得将试建结构写成 Decision、Canonical Model 或 Schema Authorization。
 
 ---
 
@@ -72,34 +74,50 @@ Production Evidence Gate-0 当前为 BLOCKED，因此任何仅依赖 Production 
 
 ---
 
-# 4. Identity Grain Candidates vs Business Semantic Domains
+# 4. Candidate Enumeration and Semantic Compression Test
 
-## 4.1 Identity Grain Candidates
+## 4.1 Candidate Enumeration — E0
 
-候选粒度层级包括但不限于：
+E0 的目标不是套用预设的 Brand / Family / Variant / SKU 名称，而是从当前业务证据中枚举**真实需要被业务表达、引用或治理的对象粒度**。
 
-- Brand
-- Product Family
-- Product Variant
-- SKU
-- Trade Item
-- Inventory Unit
-- Other candidate grain
+候选来源至少包括：
 
-这些只是候选，不构成预先选择。
+- `foods` 当前数据与业务引用；
+- `material_archives` 当前数据与业务引用；
+- `product` 的 active-code residue；
+- 订单、采购、库存、Recipe、定价等业务路径中的对象引用；
+- 已记录的跨 namespace 冲突；
+- 业务 Owner 提供的业务对象清单。
 
-## 4.2 Business Semantic Domain Candidates
+通用行业对象名称（如 Brand / Product Family / Variant / SKU / Trade Item）可以作为**候选搜索词**，但不能因为名称存在就视为本项目已有业务对象。
 
-以下属于待决业务语义领域，不直接构成 Identity Grain：
+E0 必须记录：
 
-- Product
-- Food
-- Material
-- Beverage
-- Dish
-- Other
+- Candidate Object；
+- 来源；
+- 所代表的抽象粒度；
+- 已观察到的业务行为；
+- 是否存在独立引用路径；
+- 当前证据等级；
+- 是否仍只是待验证假设。
 
-D-IG 必须分析这些语义与 Identity 的关系，但不得仅因名称或现有表结构把它们当作 Identity Grain。
+## 4.2 Semantic Compression — Operational Definition
+
+**语义压缩**定义为：
+
+> 当一个候选上层对象 O 被表示为下层对象的属性时，若 O 的全部业务行为都可以在**不建立独立业务对象、不建立独立生命周期、不建立独立引用路径、不建立稳定对象间关系**的情况下，被无损翻译到下层对象，则 O 可被视为可压缩到非-Identity 语义。
+
+反之，只要发现 O 至少存在一种业务行为，其正确表达**必须**依赖以下任一项：
+
+- 独立生命周期；
+- 独立业务引用 / 直接引用路径；
+- 稳定、可验证的对象关系；
+- 独立治理边界；
+- 在不复制/重写下层 Identity 的情况下保持跨下层对象的一致语义；
+
+则不能仅以属性压缩假定 O 非-Identity；该候选进入 `Required Identity Object Set` 候选集合，等待进一步验证。
+
+> 注意：该定义不自动把 Role / Classification / Commercial Unit / UOM / Holding / Batch 升格为 Identity；这些仍需经过 A1 分离与 D-IG 测试。
 
 ---
 
@@ -111,12 +129,13 @@ D-IG 最终必须产出：
 
 1. Identity Hierarchy Decision（H1/H2）；
 2. Identity Grain Definition；
-3. Identity-defining Attribute Matrix；
-4. Non-identity Attribute Matrix；
-5. Identity Resolution Rules；
-6. 典型业务案例判定；
-7. 与 A1/A2、D-QUANTITY、D-ROLE-SCOPE 的接口边界；
-8. Provisional Conclusions Registry（如有）。
+3. Required Identity Object Set；
+4. Identity-defining Attribute Matrix；
+5. Non-identity Attribute Matrix；
+6. Identity Resolution Rules；
+7. 典型业务案例判定；
+8. 与 A1/A2、D-QUANTITY、D-ROLE-SCOPE 的接口边界；
+9. Provisional Conclusions Registry（如有）。
 
 ## 5.2 Identity Resolution Matrix
 
@@ -140,25 +159,40 @@ D-IG 最终必须产出：
 
 **Scope** 的取值必须引用 A1 已定义的语义概念，不得重新发明一套平行 Scope Ontology。
 
-如果 §2 选择 H1 — Single Identity Grain：
+如果最终选择 H1：
 
 > `Identity Layer` 列不适用，在矩阵中统一留空或删除该列。
 
-如果 §2 选择 H2 — Multiple Identity Layers：
+如果最终选择 H2：
 
-> `Identity Layer` 列必须引用 §2 所定义的正式层名。
+> `Identity Layer` 列必须引用最终 Decision 所定义的正式层名。
 
 ---
 
-# 6. Decision Tests
+# 6. Evidence and Decision Tests
 
 D-IG 每个关键结论必须通过至少一种可验证方法：
 
 - 业务案例反例测试；
 - 本地数据 / 代码路径验证；
+- 业务规则访谈 / Owner 确认；
 - Production Evidence 验证；
-- 业务 Owner 访谈 / 决策确认；
 - 外部模型对标。
+
+每个 E0–E4 结论必须标注证据来源：
+
+- `LOCAL_CODE`
+- `LOCAL_DATA`
+- `BUSINESS_RULE_INTERVIEW`
+- `PRODUCTION_DATA`
+- `EXTERNAL_REFERENCE`
+
+在 Production Evidence Gate-0 仍 BLOCKED 时：
+
+- LOCAL_CODE / LOCAL_DATA / BUSINESS_RULE_INTERVIEW / EXTERNAL_REFERENCE 可以支持 provisional reasoning；
+- 任何依赖生产数据才能确认的结论必须标记 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`；
+- provisional conclusion 必须进入 Provisional Conclusions Registry；
+- provisional conclusion 不得传播进入依赖它的 Schema / Migration Decision。
 
 每个关键反证问题必须产出可验证预测：
 
@@ -244,20 +278,21 @@ D-IG 进入 CONFIRMED 前至少满足：
 
 1. H1/H2 已明确；
 2. Identity Grain / Layers 已定义；
-3. Identity-defining attributes 已有明确判定；
-4. Non-identity attributes 已有明确判定；
-5. 关键 Business Cases 已逐项判定；
-6. Quantity / UOM 边界已明确划出 D-IG 与 D-QUANTITY 的交接面；D-IG 不替 D-QUANTITY 做决定，但也不留未定义的空白；
-7. Product / Food / Material 的处理符合 A2；
-8. 所有重大反证问题均有可验证预测；
-9. Local evidence 内部没有未解释冲突；
-10. Production evidence：
+3. Required Identity Object Set 已明确，并说明为何集合为空、单层或多层；
+4. Identity-defining attributes 已有明确判定；
+5. Non-identity attributes 已有明确判定；
+6. 关键 Business Cases 已逐项判定；
+7. Quantity / UOM 边界已明确划出 D-IG 与 D-QUANTITY 的交接面；D-IG 不替 D-QUANTITY 做决定，但也不留未定义的空白；
+8. Product / Food / Material 的处理符合 A2；
+9. 所有重大反证问题均有可验证预测；
+10. Local evidence 内部没有未解释冲突；
+11. Production evidence：
     - 若可获得，则与 local evidence 的重大冲突已解释；
     - 若不可获得，则所有受影响结论均已标记 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`；
-11. Identity Resolution Matrix 完整；
-12. Decision Provenance 完整；
-13. Independent adversarial review 已完成，且审阅意见已记录于 `d-ig-adversarial-review-XXX.md` 或等价的独立审阅记录中；
-14. 所有 provisional conclusion 均已登记其禁止传播范围，并明确未进入依赖该结论的 Schema Design。
+12. Identity Resolution Matrix 完整；
+13. Decision Provenance 完整；
+14. Independent adversarial review 已完成，且审阅意见已记录于对应的 `d-ig-adversarial-review-XXX.md` 或等价审计记录；
+15. 所有 provisional conclusion 均已登记其禁止传播范围，并明确未进入依赖该结论的 Schema Design。
 
 ---
 
@@ -271,5 +306,6 @@ Execution Status = BLOCKED
 Schema Authorization = NO
 Migration Authorization = NO
 
-First Agenda = H1 vs H2
+First Agenda = E0 Candidate Enumeration → E1–E4 Identity Necessity Tests
+Required Identity Object Set = NOT YET DETERMINED
 ```
