@@ -53,6 +53,8 @@ D-IG Kickoff 的顺序必须为：
 3. 若 H2，确定层级数量、层名、层间关系；
 4. 完成后，才进入 Identity Resolution Matrix。
 
+在 H1/H2 判断阶段，允许临时构建最小结构示例，用于比较两种模型的表达能力；但不得把临时试建结构写成 Decision、Canonical Model 或 Schema Authorization。
+
 ---
 
 # 3. Decision Inputs
@@ -254,7 +256,7 @@ D-IG 进入 CONFIRMED 前至少满足：
     - 若不可获得，则所有受影响结论均已标记 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`；
 11. Identity Resolution Matrix 完整；
 12. Decision Provenance 完整；
-13. Independent adversarial review 已完成；
+13. Independent adversarial review 已完成，且审阅意见已记录于 `d-ig-adversarial-review-XXX.md` 或等价的独立审阅记录中；
 14. 所有 provisional conclusion 均已登记其禁止传播范围，并明确未进入依赖该结论的 Schema Design。
 
 ---
