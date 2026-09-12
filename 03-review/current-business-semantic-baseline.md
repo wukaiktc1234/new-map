@@ -1,9 +1,31 @@
 # Current Business Semantic Baseline
 
 > **任务**: PROJECT-KNOWLEDGE-BASE-CURRENT-BASELINE-FINALIZATION-001
-> **版本**: 2.0 (Finalized)
-> **日期**: 2026-09-10
-> **状态**: BASELINE-FINALIZATION = PASS_WITH_CORRECTIONS
+> **版本**: 3.0
+> **日期**: 2026-09-12
+> **状态**: CURRENT BASELINE
+
+## 一、Governance Decision Baseline
+
+### DEC-BI-001: A1 — Identity 与其他业务语义分离
+- Decision Status: **CONFIRMED**
+- Evidence Status: **PARTIAL**（基于当前本地证据；生产环境证据仍不可得）
+- Owner: BUSINESS_OWNER
+- Confirmed at: 2026-09-12
+- Source: `03-review/business-item-semantic-layering-decision-001.md`
+
+### DEC-BI-002: A2 — Product / Food / Material 不作为竞争性 Canonical Identity Namespace
+- Decision Status: **CONFIRMED**
+- Evidence Status: **PARTIAL**（基于当前本地证据；生产环境证据仍不可得）
+- Owner: BUSINESS_OWNER
+- Confirmed at: 2026-09-12
+- Source: `03-review/business-item-semantic-layering-decision-001.md`
+
+### D-IG: Identity Grain Decision
+- Decision Status: **OPEN**
+- Execution Status: **BLOCKED**
+- First Agenda: **H1 Single Identity Grain vs H2 Multiple Identity Layers**
+- Source: `03-review/d-ig-charter-001.md`
 
 ## 二、A. Confirmed Current Reality（当前代码/DB/API事实）
 
@@ -27,8 +49,9 @@
 - Evidence Status: VERIFIED
 - 类型：Current Implementation Fact
 
-### dish_recipe 连接 food 和 material
-- Evidence Status: VERIFIED
+### dish_recipe / dish_recipes
+- 当前实现存在两个相近命名对象；其字段与数据语义仍需按独立 Evidence 复核
+- 不在本 Baseline 中继续写成已确认的统一 food↔material 关系
 
 ### order_items 使用 food_id
 - Evidence Status: VERIFIED
@@ -36,8 +59,8 @@
 ### purchase_order_items 使用 material_id
 - Evidence Status: VERIFIED
 
-### product 表标记为 LEGACY
-- Evidence Status: VERIFIED
+### product 表
+- 当前应视为 legacy / active-code-residue 候选，不得仅凭名称赋予 Canonical Identity 地位
 
 ## 三、B. Current Reconciled Semantics（已收敛语义）
 
@@ -85,8 +108,13 @@
 
 ## 四、C. Open Decisions（开放决策）
 
+### Identity / Business Item Decisions
+- D-IG: Identity Grain → OPEN
+- D-QUANTITY: Quantity Semantics → OPEN
+- D-ROLE-SCOPE: Role Scope → OPEN
+
 ### Product Decisions
-- PD-CANONICAL-001: Canonical Business Item 定义 → OPEN
+- PD-CANONICAL-001: Canonical Business Item 定义 → SUPERSEDED by A1/A2 + D-IG sequence
 - PD-CANONICAL-002: Product 语义 → OPEN
 - PD-CANONICAL-003: Food 语义 → OPEN
 - PD-CANONICAL-004: Material 语义 → OPEN
@@ -134,23 +162,44 @@
 - 路径：06-business-item-model/dec-006-refined-decision-pack.md
 - 状态：HISTORICAL
 
-## 八、Document Lifecycle Summary
+## 八、G. Active Decision Sequence
+
+```text
+A1/A2 = CONFIRMED
+      ↓
+D-IG = OPEN
+      ↓
+D-QUANTITY = OPEN
+      ↓
+D-ROLE-SCOPE = OPEN
+      ↓
+Canonical Business Item Model
+      ↓
+Schema / Migration Decisions
+```
+
+Production Evidence Gate-0 remains BLOCKED. Production-dependent conclusions must remain provisional until production evidence is available.
+
+## 九、Document Lifecycle Summary
 
 ### 当前可直接作为任务输入的文档
-- 03-review/current-business-semantic-baseline.md (本文件)
-- 03-review/business-item-canonical-semantic-reassessment.md
-- 03-review/business-item-canonical-decision-boundary.md
-- 03-review/business-item-canonical-conflict-registry.yaml
-- 03-review/business-item-inventory-integration.md
-- 01-engineering-reality/* (所有工程现实文件)
-- 02-business-dependency/* (所有业务依赖文件)
-- 05-governance/* (所有治理文件)
+- `03-review/current-business-semantic-baseline.md` (本文件)
+- `03-review/business-item-semantic-layering-decision-001.md`
+- `03-review/d-ig-charter-001.md`
+- `03-review/d-ig-decision-provenance-001.md`
+- `03-review/business-item-canonical-semantic-reassessment.md`
+- `03-review/business-item-canonical-decision-boundary.md`
+- `03-review/business-item-canonical-conflict-registry.yaml`
+- `03-review/business-item-inventory-integration.md`
+- `01-engineering-reality/*`
+- `02-business-dependency/*`
+- `05-governance/*`
 
 ### 仍需回查的 Reference
-- 06-business-item-model/* (历史分析，仍有证据价值)
-- 07-inventory-semantic-model/* (历史分析，仍有证据价值)
+- `06-business-item-model/*`
+- `07-inventory-semantic-model/*`
 
 ### 已经不应作为当前依据的文档
-- 06-business-item-model/recommendation.md (已被替代)
-- 06-business-item-model/dec-006-refined-decision-pack.md (历史推荐)
-- 07-inventory-semantic-model/inventory-semantic-recommendation.md (已被替代)
+- `06-business-item-model/recommendation.md`
+- `06-business-item-model/dec-006-refined-decision-pack.md`
+- `07-inventory-semantic-model/inventory-semantic-recommendation.md`
