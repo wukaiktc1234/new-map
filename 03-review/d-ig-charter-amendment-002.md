@@ -64,14 +64,14 @@ NOT_READY   = 尚未满足 candidate-level PASS 前置条件
 
 `NOT_READY` 不与 `FAIL` 或 `BLOCKED` 同义；应记录具体原因和 remediation class。
 
-### 4.1 Transitional review label — `INCONCLUSIVE_UNTIL_REEVALUATED`
+### 4.1 Transitional review label — `INCONCLUSIVE_UNTIL_REEEVALUATED`
 
-`INCONCLUSIVE_UNTIL_REEVALUATED` **不是独立的最终 E-stage / Candidate-level 状态**，而是 `INCONCLUSIVE` 的过渡性治理标签，用于表示当前证据已不足以支撑 PASS，且已知存在必须完成的定向证据修复 / 定向重评估。
+`INCONCLUSIVE_UNTIL_REEEVALUATED` **不是独立的最终 E-stage / Candidate-level 状态**，而是 `INCONCLUSIVE` 的过渡性治理标签，用于表示当前证据已不足以支撑 PASS，且已知存在必须完成的定向证据修复 / 定向重定向评估。
 
 状态关系固定为：
 
 ```text
-INCONCLUSIVE_UNTIL_REEVALUATED
+INCONCLUSIVE_UNTIL_REEEVALUATED
         = INCONCLUSIVE + REEVALUATION_REQUIRED
 
 reevaluation completed
@@ -139,6 +139,39 @@ Candidate-level PASS 的允许表述应接近：
 3. 已知替代粒度假说（例如 C-012）必须在成集说明中保留；
 4. FM-001–FM-004 的边界状态必须有正式登记；
 5. 如 FM 审查发现新的候选业务粒度，必须通过受治理的 candidate re-entry 机制重新进入 E0/E1–E4，而不得强制归并到既有候选。
+
+### 7.1 Required Set outcome when all candidates are INCONCLUSIVE / BLOCKED
+
+Required Identity Object Set 是 **candidate admission / completeness artifact**，不是通过“凑够一个 PASS”来强行闭合的名单。不得为了避免空集而把 `INCONCLUSIVE`、`BLOCKED` 或缺失需求的候选强制纳入 Required Set，也不得把未确认的候选静默删除。
+
+当当前治理范围内**所有已进入 Candidate-level review 的候选均未达到 Candidate-level PASS**，并且至少存在 `INCONCLUSIVE` 或 `BLOCKED` 候选时：
+
+```text
+Required Identity Object Set status = INCONCLUSIVE_SET
+```
+
+其中 `INCONCLUSIVE_SET` 是 **Required Identity Object Set 的集合级 gate/status label**，不是 Identity 状态，也不是 E-stage 状态。它表示：
+
+- 当前没有足够证据形成已闭合的 Required Identity Object Set；
+- 不能据此认定 Required Set 必然为空；
+- 必须保留所有当前候选、未决候选以及已知 alternative-grain hypotheses 的明确处置状态；
+- 应继续进入证据补强、Requirement 输入、candidate re-entry 或后续受治理调查；
+- **不得据 `INCONCLUSIVE_SET` 推导 H1、H2 或 Canonical Identity。**
+
+Required Set 的最低关闭条件不是“至少一个候选 PASS”这一单一计数条件，而是：**所有进入当前 Required Set 候选池的 candidate-level 结果均已有合法 disposition，且任何拟纳入 Required Set 的候选满足 Charter 规定的 admission rule（当前仍为 E1 PASS ∧ E2 PASS），同时没有被 unresolved blocking evidence 或未闭合 requirement dependency 所阻塞。**
+
+因此存在两种合法结果：
+
+```text
+A. 至少一个候选满足 admission rule，且成集所需的候选/替代粒度处置完整
+   → 可形成相应 Required Identity Object Set
+
+B. 所有候选均 INCONCLUSIVE / BLOCKED，或集合完整性条件未满足
+   → Required Identity Object Set = INCONCLUSIVE_SET / NOT_READY
+   → 不进入 H1/H2
+```
+
+`INCONCLUSIVE_SET / NOT_READY` 不等于“Identity 不存在”，也不等于“候选均不是 Identity”；它只表示当前证据与需求输入尚不足以闭合集合级成集。
 
 ## 8. Production and Requirement Cap
 
