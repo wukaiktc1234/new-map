@@ -79,7 +79,7 @@
 - loss / internal consumption / tasting / damage
 - traceability
 
-不要求把整个系统重新审计一遍；只调查能改变 Inventory 对象语义或 referent 判断的行为路径。
+这些外部领域只在其与 Inventory referent 直接相关时进入调查，不要求重建整个外围领域。
 
 ### 3.6 Spatial Boundary
 
@@ -123,6 +123,24 @@
 
 Production Evidence 仍为 `BLOCKED`。本地实例观察必须保持 `LIVE_LOCAL_INSTANCE` / local provenance，不得写成生产事实。
 
+### 4.1 Evidence vs interpretation rule
+
+所有输出必须显式区分：
+
+```text
+Engineering Fact
+    ≠
+Governance Interpretation
+    ≠
+Business Hypothesis
+    ≠
+Business Decision
+    ≠
+Identity Conclusion
+```
+
+调查者不得因为某项工程事实“看起来合理”而直接将其升级为业务语义。
+
 ## 5. Adversarial Requirements
 
 调查必须主动寻找能够推翻自身假设的证据，包括：
@@ -137,17 +155,35 @@ Production Evidence 仍为 `BLOCKED`。本地实例观察必须保持 `LIVE_LOCA
 
 不得以“Owner 倾向某结论”为调查前提。
 
-## 6. Prohibited Outputs
+调查完成后，调查者必须明确列出：
 
-本任务不：
+- 支持自身当前解释的 strongest evidence；
+- 最强反证；
+- 无法消除的 residual uncertainty。
 
-- 决定 Material / Product / Food 是否最终 Identity；
-- 决定 Required Identity Object Set；
-- 设计 `inventory_type` 或其他新字段；
-- 指定 canonical table / canonical column；
-- 设计 Schema / Migration；
-- 授权代码修复；
-- 把工程现实直接升级为业务真相。
+## 6. Existing Conclusion Revalidation
+
+对现有相关结论逐条给出：
+
+```text
+KEEP
+NARROW
+INVALIDATE
+SUPERSEDE
+UNRESOLVED
+```
+
+至少覆盖：
+
+- Material Inventory 已存在；
+- Product Inventory 作为业务对象的当前状态；
+- `inventory.product_id` 的业务语义；
+- `inventory.material_id` 的业务语义；
+- 双列同存 / 异指；
+- “当前存在稳定 Material/Product 区分规则”的结论；
+- Inventory 与 Store Inventory / Inventory Transaction 的既有关系结论。
+
+重新评价不得因为“已有文档”而自动 KEEP，也不得因为发现冲突而自动 INVALIDATE；必须给出证据理由。
 
 ## 7. Required Deliverable
 
@@ -155,44 +191,124 @@ Production Evidence 仍为 `BLOCKED`。本地实例观察必须保持 `LIVE_LOCA
 
 `03-review/d-ig-inventory-semantic-reconstruction-001.md`
 
-该文档至少包含：
+该文档必须按三层组织：
 
-1. Executive Semantic Summary；
-2. Inventory Business Object hypothesis set；
-3. Inventory Holding Object candidates and evidence status；
-4. Inventory Balance Grain analysis；
-5. Behavior-path evidence matrix；
-6. Material / Product / Food referent matrix；
-7. Migration / historical interpretation；
-8. Contradiction / negative-evidence ledger；
-9. Existing conclusion revalidation matrix (`KEEP / NARROW / INVALIDATE / SUPERSEDE / UNRESOLVED`)；
-10. Owner Decision Questions, limited to propositions that remain genuinely business-owned after evidence reconstruction；
-11. Open boundaries and candidate re-entry triggers；
-12. Explicit non-decisions。
+### Layer 1 — Facts
 
-## 8. Acceptance Criteria
+- Inventory engineering reality；
+- Inventory data reality；
+- migration / historical facts；
+- exact provenance / reproducible queries；
+- fact-vs-inference boundaries。
 
-任务不得以“找到了更多代码”作为完成标准。必须达到：
+### Layer 2 — Semantics
 
-- Inventory business object has a bounded semantic proposition；
-- all materially relevant holding-object hypotheses are explicitly listed；
-- current evidence can distinguish fact / engineering interpretation / business hypothesis；
-- `inventory.product_id` history and current semantics are separated；
-- same-row dual reference is classified as fact first, business legality only as Owner-owned proposition；
-- no stable classification rule is either invented or assumed；
-- any unresolved ambiguity has named evidence gap and owner/next action；
-- C-002 downstream E2/E4 impact is explicitly stated；
-- no Schema / Migration / Identity decision is smuggled into the reconstruction.
+- Inventory business-object hypothesis set；
+- Inventory holding-object candidates；
+- behavior-path evidence；
+- counter-evidence / negative evidence；
+- candidate relationships：`SAME / DISTINCT / HIERARCHICAL / CONTEXT-SPECIFIC / UNRESOLVED`；
+- balance grain；
+- referent matrix；
+- contradiction ledger。
 
-## 9. Relation to Existing Governance
+### Layer 3 — Decision Inputs
+
+- existing conclusion revalidation：`KEEP / NARROW / INVALIDATE / SUPERSEDE / UNRESOLVED`；
+- remaining Owner Decision questions, minimized and non-leading；
+- requirement-only gaps；
+- candidate re-entry triggers；
+- post-Reconstruction gate recommendation。
+
+## 8. Completion Criteria
+
+Reconstruction 只有在以下条件全部满足时才可标记 `COMPLETED`：
+
+1. **Candidate-set exhaustion**：Inventory 持有对象候选集已完成受控枚举；对未纳入候选的明显替代粒度给出排除理由。
+2. **Behavior coverage**：所有 materially relevant Inventory 写入、更新、读取及核心业务行为路径已调查，或明确记录不可覆盖的路径、原因和影响。
+3. **Evidence coverage per candidate**：每个候选都能在至少一个相关业务行为中找到支持证据、反证或明确 `NO_EVIDENCE`，并给出 provenance。
+4. **Relationship closure**：候选之间的关系已分类为 `SAME / DISTINCT / HIERARCHICAL / CONTEXT-SPECIFIC / UNRESOLVED`，不能留在隐含状态。
+5. **Balance-grain closure**：余额记录粒度已有证据支持的解释，或正式登记为 `UNRESOLVED` 并说明具体缺口。
+6. **Historical grounding**：migration 演化中的 observed facts 与 inferred interpretation 已严格分离；任何迁移动机推断必须标记为 inference。
+7. **Contradiction closure**：所有直接影响 Inventory holding object、referent 或 balance grain 的矛盾都已逐项登记，并有 `RESOLVED / UNRESOLVED` 状态。
+8. **Existing conclusion revalidation**：相关旧结论全部完成 `KEEP / NARROW / INVALIDATE / SUPERSEDE / UNRESOLVED` 重新评价。
+9. **Evidence stop condition**：不存在仅靠继续扩大普通代码搜索就明显可以解决、且尚未调查的核心证据路径；其余无法解决的问题必须显式进入 `UNRESOLVED`，不能以无限调查代替结论。
+10. **Minimal Owner question set**：剩余真正属于 Business Owner 的问题已经压缩到最小、互不重复、不预设答案且不夹带 Schema 实现方案。
+11. **Decision-boundary readiness**：能够清楚指出哪些问题可以由 Owner 裁决，哪些必须继续 Engineering evidence，哪些属于后续 D-IG candidate analysis。
+
+完成条件表示在**受控范围内足够闭合**，不是要求证明所有历史事实或所有业务语义绝对无误。
+
+## 9. Explicit Boundaries / Non-Goals
+
+本任务不：
+
+1. 不重新执行 C-001 E1–E4；
+2. 不执行 C-002 E1–E4 重评估（Reconstruction 后再做）；
+3. 不决定 Material / Product / Food 哪个是 Identity；
+4. 不创建或设计 Required Identity Object Set；
+5. 不执行 H1/H2；
+6. 不设计 Schema、Migration、`inventory_type`、canonical table / canonical column；
+7. 不进行代码重构、修复或数据修复；
+8. 不把 Inventory 之外的领域独立重建；Food / Recipe / Supplier / POS 等只在其与 Inventory referent / holding semantics 直接相关时进入；
+9. 不把本地数据当作生产数据；Production Evidence 继续 `BLOCKED`；
+10. 不把“调查发现的结构”直接写成业务真相；
+11. 不因为范围较大而删减核心业务路径，也不因为发现新线索而无限制扩张到整个系统。
+
+## 10. Independent Adversarial Review Gate
+
+Reconstruction 标记 `COMPLETED` 后必须进入独立反方审查；该审查不得由 Reconstruction 调查者自行完成。
+
+独立反方至少检查：
+
+- method adequacy；
+- path coverage adequacy；
+- candidate-set completeness；
+- data contamination risk；
+- migration interpretation discipline；
+- referent interpretation discipline；
+- quantifier discipline；
+- strongest counter-evidence 是否被公平处理；
+- unresolved items 是否应阻塞 Owner Decision；
+- 是否存在调查者将 engineering interpretation 偷换成 business semantics 的情况；
+- 是否有结论超过证据范围。
+
+独立反方输出至少给出：
+
+```text
+PASS
+PASS_WITH_REPAIRS
+REOPEN_RECONSTRUCTION
+BLOCKED
+```
+
+若结果为 `REOPEN_RECONSTRUCTION` 或 `BLOCKED`，不得进入 Owner Decision 或 C-002 E2/E4 重评估。
+
+## 11. Provenance Rules
+
+所有结果必须区分：
+
+- `[R-DOC]` repository governance/evidence document；
+- `[CODE]` local source inspection；
+- `[LIVE-REPRO]` local runtime/database reproduction；
+- `[PROD]` production evidence，仅在真实生产证据可获得时使用。
+
+没有 Production Evidence 时，不得写：`production verified`。
+
+不得因 repository 文档与 local code 一致就自动升级为 production fact。
+
+## 12. Relation to Existing Governance
 
 ### C-001 Food
 
-当前 C-001 的 Inventory-related findings不因本任务自动失效；若重建发现 Food/Inventory referent directly affects C-001 E4 scope，才建立受治理的 re-entry / targeted retest。
+当前 C-001 的 Inventory-related findings 不因本任务自动失效；若重建发现 Food/Inventory referent directly affects C-001 E4 scope，才建立受治理的 re-entry / targeted retest。
 
 ### C-002 Material
 
-C-002 E2/E4 inventory segment 在本任务完成前保持 `CONDITIONAL / BLOCKING`；不得以现有 `material_id` 100% filling 单独推出 candidate-level PASS。
+C-002 E2/E4 inventory segment 在本任务完成并通过独立反方审查前保持：
+
+`PAUSED_PENDING_RECONSTRUCTION`
+
+不得以现有 `material_id` 100% filling 单独推出 candidate-level PASS。
 
 ### C-003 / Product
 
@@ -200,24 +316,39 @@ C-002 E2/E4 inventory segment 在本任务完成前保持 `CONDITIONAL / BLOCKIN
 
 ### Required Set / H1/H2
 
-继续保持 `NOT_STARTED / NOT_MADE`。重建结果只能作为后续候选/Owner/Requirement 输入。
+继续保持 `NOT_STARTED / NOT_MADE`。重建结果只能作为后续候选、Owner、Requirement 输入。
 
-## 10. Exit Conditions
+## 13. Post-Reconstruction Gate
 
-本任务完成后必须产生以下明确出口之一：
+只有在 Reconstruction `COMPLETED` 且独立反方审查通过后，才能进入以下受控路径之一：
 
 ```text
-A. Inventory semantic boundary sufficiently reconstructed
-   → proceed to Owner Decision on residual business propositions
-
-B. Materially unresolved domain boundary discovered
-   → expand to governed Inventory Domain Reconstruction phase 2
-
-C. A new identity-grain candidate is discovered
-   → trigger candidate re-entry into D-IG
-
-D. Evidence remains insufficient
-   → retain named gaps; no forced business conclusion
+Reconstruction COMPLETE
+        ↓
+Independent Adversarial Review
+        ↓
+┌────────────────────────────────────────────┐
+│ A. Owner Decision                          │
+│ B. Additional targeted evidence            │
+│ C. New candidate / candidate re-entry      │
+│ D. Reconstruction Phase 2 (if justified)   │
+└────────────────────────────────────────────┘
+        ↓
+C-002 E2/E4 re-evaluation
+        ↓
+Candidate-level adversarial re-review
 ```
 
-任何出口均不得直接授权 Schema / Migration / Identity Decision。
+如果重建显示原来的问题定义本身错误，优先修订问题定义，而不是强行进入 C-002 原 E2/E4 复评。
+
+## 14. Final Non-Decision
+
+本任务本身不回答：
+
+- Inventory 是否最终是 Material / Product / Food / 其他；
+- 一条记录是否业务上允许多对象关联；
+- Product 是否应该成为 Identity；
+- Material 是否应该进入 Required Set；
+- 是否应该采用 `inventory_type` 或任何其他具体工程实现。
+
+这些都必须在证据闭合后的正确问题框架中再作 Owner / D-IG 决策。
