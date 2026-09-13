@@ -55,23 +55,23 @@ candidate-level PASS
 其余状态保持：
 
 ```text
-PASS        = E-stage 在适用测试范围内满足该阶段判定条件
-FAIL        = 任一 E-stage 明确 FAIL
+PASS         = E-stage 在适用测试范围内满足该阶段判定条件
+FAIL         = 任一 E-stage 明确 FAIL
 INCONCLUSIVE = 未满足 PASS/FAIL 且至少一个 E-stage INCONCLUSIVE
-BLOCKED     = 必要前置条件或证据状态明确阻断判定
-NOT_READY   = 尚未满足 candidate-level PASS 前置条件
+BLOCKED      = 必要前置条件或证据状态明确阻断判定
+NOT_READY    = 尚未满足 candidate-level PASS 前置条件
 ```
 
 `NOT_READY` 不与 `FAIL` 或 `BLOCKED` 同义；应记录具体原因和 remediation class。
 
-### 4.1 Transitional review label — `INCONCLUSIVE_UNTIL_REEEVALUATED`
+### 4.1 Transitional review label — `INCONCLUSIVE_UNTIL_REEVALUATED`
 
-`INCONCLUSIVE_UNTIL_REEEVALUATED` **不是独立的最终 E-stage / Candidate-level 状态**，而是 `INCONCLUSIVE` 的过渡性治理标签，用于表示当前证据已不足以支撑 PASS，且已知存在必须完成的定向证据修复 / 定向重定向评估。
+`INCONCLUSIVE_UNTIL_REEVALUATED` **不是独立的最终 E-stage / Candidate-level 状态**，而是 `INCONCLUSIVE` 的过渡性治理标签，用于表示当前证据已不足以支撑 PASS，且已知存在必须完成的定向证据修复 / 定向重评估。
 
 状态关系固定为：
 
 ```text
-INCONCLUSIVE_UNTIL_REEEVALUATED
+INCONCLUSIVE_UNTIL_REEVALUATED
         = INCONCLUSIVE + REEVALUATION_REQUIRED
 
 reevaluation completed
