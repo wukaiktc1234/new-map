@@ -29,19 +29,26 @@ Owner 裁决输入已经由以下正式证据记录组成：
    - C-002 blocking condition；
    - Engineering 与 Business Owner / Product Owner 的责任边界；
    - Candidate-level re-review 前置条件。
+4. `03-review/d-ig-inventory-semantic-reconstruction-001.md`
+   - Inventory 持有对象、余额粒度、dual-reference、text-only row、SalesOrder referent 等重构结果；
+   - 既有结论 KEEP/NARROW/INVALIDATE/SUPERSEDE/UNRESOLVED 复核；
+   - 本次新增 N1/N2 Owner 输入。
 
-因此，本 Decision Request **已有可供 Owner 裁决的正式 evidence pack**。其中涉及的数据库/代码观察保持其正式记录所标注的 local/documentary provenance；Production Evidence 仍为 `BLOCKED`，不得将本地实例当作生产事实。
+因此，本 Decision Request 已形成可供 Owner 裁决的完整证据输入包。其中涉及的数据库/代码观察保持其正式记录所标注的 local/documentary provenance；Production Evidence 仍为 `BLOCKED`，不得将本地实例当作生产事实。
 
 ## 3. Evidence Already Established
 
-当前已提交定向实勘记录确认：
+当前已提交定向实勘与 Inventory Reconstruction 记录确认：
 
 - `inventory` 同时存在 `material_id` 与 `product_id`；
 - `product_id` 存在数据库外键指向 `product(product_id)`；
 - `material_id` 当前无对应数据库外键；
 - ORM 层存在将 Product 访问器映射到 `material_id` 的历史/兼容性实现；
 - 至少存在一个本地实例，其中同一库存记录的 `material_id=1` 与 `product_id=1` 分别对应不同业务对象；
-- 定向重定级已将该冲突分类为 C-002 E2/E4 的 blocking business-truth dependency，而不是自动推导 Material 或 Product 为业务真相。
+- 当前活跃库存路径大体以 Material referent 操作余额，但该事实不自动排除 Product business semantics；
+- TraceCode 路径可形成没有 stable ID referent、仅带文本名称的库存行；
+- SalesOrder 扣减存在使用销售域 Product 值进入 Inventory lookup 的工程路径，但运行期具体 referent 仍未完全闭合；
+- 定向重定级已将双列冲突分类为 C-002 E2/E4 的 blocking business-truth dependency，而不是自动推导 Material 或 Product 为业务真相。
 
 以上是技术/本地证据事实，不等于业务真相裁决。
 
@@ -88,6 +95,29 @@ Owner 裁决输入已经由以下正式证据记录组成：
 - **R4：特定流程临时字段，但不代表库存主对象**
 - **R5：其他** — 请描述。
 
+### N1 — Text-only Trace Inventory row 的业务所指
+
+Inventory Reconstruction 发现：TraceCode 扫码路径可以创建没有 stable ID referent、仅携带文本名称的 Inventory 行。
+
+请明确该类记录在业务上代表什么：
+
+- **N1-A：已知库存对象，但当时缺少/未写入正式 ID**；
+- **N1-B：一种独立的库存业务对象/库存事项**；
+- **N1-C：历史/异常记录，不代表正常库存主对象**；
+- **N1-D：其他正式业务语义** — 请描述。
+
+N1 只裁决 business referent，不要求 Owner 设计字段、表或修复方案。
+
+### N2 — SalesOrder 出账对应哪个库存业务对象
+
+Inventory Reconstruction 发现：SalesOrder 扣减路径使用销售域 Product 值进入 Inventory lookup，而当前运行期具体 referent 尚未完全闭合。
+
+请明确：
+
+> 销售完成造成库存变化时，业务上必须与哪一个库存持有对象/余额维度完成对账？
+
+可回答为 Material、Product、其他正式业务对象，或给出上下文规则；但请只描述业务语义，不指定 Schema、字段或实现方式。
+
 ## 5. Decision Constraints
 
 Owner 的回答只解决 `inventory` 的业务语义问题，不直接决定：
@@ -101,10 +131,10 @@ Owner 的回答只解决 `inventory` 的业务语义问题，不直接决定：
 
 ## 6. Effect on C-002 Gate
 
-在 Q1/Q2/Q3 所需业务真相未闭合前：
+在 Q1/Q2/Q3/N1/N2 所需业务真相未闭合前：
 
 ```text
-inventory E2/E4 segment = CONDITIONAL
+inventory E2/E4 segment = CONDITIONAL / BLOCKING
 C-002 candidate-level = CANDIDATE_PASS_NOT_YET_PROVEN
 ```
 
@@ -120,10 +150,12 @@ Decision date: YYYY-MM-DD
 Q1: A / B / C / D
 Q2: <required if Q1=C>
 Q3: <required if Q1=A or B>
+N1: N1-A / N1-B / N1-C / N1-D
+N2: <business referent / rule>
 Business rationale: <brief but explicit>
 Evidence provenance accepted by Owner: <optional reference>
 ```
 
 ## 8. Current Non-Decision
 
-在 Owner 正式回答前，本记录不选择 A/B/C/D，不把技术外键或当前 ORM 行为升级为业务语义，不关闭 C-002 inventory blocking condition。
+在 Owner 正式回答前，本记录不选择 A/B/C/D，不预设 N1/N2 答案，不把技术外键、当前 ORM 行为或本地样例升级为业务语义，不关闭 C-002 inventory blocking condition。
