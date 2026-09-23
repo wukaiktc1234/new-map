@@ -1716,7 +1716,6 @@ public class OrderNewServiceImpl implements OrderNewService {
     private OrderNew buildOrderEntity(OrderCreateDTO createDTO, OrderAmountCalculation calc, String orderCode) {
         OrderNew order = new OrderNew();
         order.setOrderCode(orderCode);
-        order.setOrderNumber(orderCode);
         order.setOrderType(createDTO.getOrderType());
         order.setOrderSource(createDTO.getOrderSource() != null ? createDTO.getOrderSource() : 1);
         order.setStoreId(createDTO.getStoreId());
