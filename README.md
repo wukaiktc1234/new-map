@@ -23,7 +23,7 @@ cd frontend && npm install && npm run dev
 
 - 后端: http://localhost:8081/api
 - 前端: http://localhost:3000/
-- 默认账号: admin / admin123
+- 默认账号: admin / &lt;redacted&gt;
 
 ## 项目结构
 

@@ -126,7 +126,7 @@ VITE v5.0.0  ready in xxx ms
 | 字段 | 值 |
 |-----|---|
 | 用户名 | `admin` |
-| 密码 | `admin123` |
+| 密码 | `&lt;redacted&gt;` |
 
 ### 4.3 预期结果
 
@@ -330,7 +330,7 @@ SELECT * FROM permissions LIMIT 20;
 -- 5. 手动重置admin密码（如果需要）
 UPDATE users SET password = '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.VTtYA.qGZvKG6G' 
 WHERE username = 'admin';
--- 注意：这个哈希对应的是 Admin@123，不是 admin123
+-- 注意：这个哈希对应的是 Admin@123，不是 &lt;redacted&gt;
 
 -- 6. 查看表结构
 DESCRIBE users;
@@ -444,7 +444,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=h2
 ### 9.1 立即可以做的（今天）
 
 - [x] 使用H2启动后端
-- [x] 测试 admin/admin123 登录
+- [x] 测试 admin/&lt;redacted&gt; 登录
 - [x] 启动Prototype查看样式参考
 - [ ] 对比主项目和Prototype的样式差异
 - [ ] 记录需要统一的样式问题
@@ -496,7 +496,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=h2
 - [ ] 访问 http://localhost:8081/api/actuator/health 返回 `{"status":"UP"}`
 - [ ] H2控制台可以连接并查询users表
 - [ ] 前端启动无编译错误
-- [ ] 使用 admin/admin123 可以成功登录
+- [ ] 使用 admin/&lt;redacted&gt; 可以成功登录
 - [ ] 登录后可以看到Dashboard页面
 - [ ] Prototype可以在 http://localhost:8080 正常访问
 - [ ] 至少可以浏览Prototype中的5个不同模块页面

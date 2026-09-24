@@ -64,7 +64,7 @@ Task({ subagent_type: "web-interaction-expert", query: "任务描述", response_
 | 小程序 | 微信原生 (`miniprogram/`) |
 | OCR服务 | Python FastAPI + PaddleOCR (`ocr-service/`) |
 | 服务地址 | 后端 http://localhost:8081/api, 前端 http://localhost:3000 |
-| 登录账号 | admin / admin123 |
+| 登录账号 | admin / &lt;redacted&gt; |
 | 当前版本 | **v0.13.0** |
 
 ### 项目生态全景（v0.10.1 更新）

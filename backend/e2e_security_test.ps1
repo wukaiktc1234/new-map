@@ -8,7 +8,7 @@ Write-Host "╚═════════════════════�
 Write-Host ""
 
 # 获取Token
-$loginResp = Invoke-RestMethod -Uri "http://localhost:8081/api/v1/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}'
+$loginResp = Invoke-RestMethod -Uri "http://localhost:8081/api/v1/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"<redacted>"}'
 $token = $loginResp.data.token
 $bearer = "Bearer $token"
 Write-Host "[INIT] Token获取成功 (长度:$($token.Length))" -ForegroundColor Green

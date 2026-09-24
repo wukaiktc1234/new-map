@@ -1221,7 +1221,7 @@
 
 | 问题 | 根因 | 修复文件 | 验证结果 |
 |------|------|----------|----------|
-| admin 登录被锁定 | 密码错误次数过多 | `reset_admin.py` 更新 PostgreSQL users 表 | 已重置密码为 `admin123`，解锁账户 |
+| admin 登录被锁定 | 密码错误次数过多 | `reset_admin.py` 更新 PostgreSQL users 表 | 已重置密码为 `&lt;redacted&gt;`，解锁账户 |
 | 登录请求过于频繁 | 限流触发 | `RateLimitAspect.java` 临时关闭 | 开发阶段可正常访问 |
 | 验证码强制显示 | 登录失败 3 次触发 | `AuthServiceImpl.java` 阈值调至 99999；`LoginPage.vue` 关闭预加载 | 登录页不再默认显示验证码 |
 | 管理端页面丢失 | 开发环境自动登录密码错误导致登录失败 | `LoginPage.vue` 关闭自动登录、修正密码 | 管理端布局完整，菜单/导航/主题/设置正常 |

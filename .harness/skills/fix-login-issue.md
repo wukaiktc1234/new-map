@@ -10,7 +10,7 @@
 - [ ] 后端是否在监听: netstat -ano | findstr 8081
 - [ ] CORS 是否允许 Origin: 检查 app.cors.allowed-origins 配置
 - [ ] 前端请求 URL 是否正确: /api/v1/auth/login (注意 context-path)
-快速测试: curl POST http://localhost:8081/api/v1/auth/login -d '{"username":"admin","password":"admin123"}'
+快速测试: curl POST http://localhost:8081/api/v1/auth/login -d '{"username":"admin","password":"<redacted>"}'
 ```
 
 ### Layer 2: 过滤器链（按执行顺序）
@@ -70,7 +70,7 @@ H2环境必需表清单:
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $req = [System.Net.WebRequest]::Create('http://localhost:8081/api/v1/auth/login')
 $req.Method = 'POST'; $req.ContentType = 'application/json'
-$bytes = [Text.Encoding]::UTF8.GetBytes('{"username":"admin","password":"admin123"}')
+$bytes = [Text.Encoding]::UTF8.GetBytes('{"username":"admin","password":"<redacted>"}')
 $req.GetRequestStream().Write($bytes, 0, $bytes.Length)
 $resp = $req.GetResponse(); $reader = New-Object IO.StreamReader($resp.GetResponseStream())
 Write-Host "Status: $($resp.StatusCode) Body: $($reader.ReadToEnd())"

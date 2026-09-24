@@ -25,7 +25,7 @@ netstat -ano | findstr "3000"  # 前端
 ### 3. 功能冒烟测试
 ```
 根据本次工作内容选择:
-- [ ] 登录功能正常 (admin/admin123 可获取 token)
+- [ ] 登录功能正常 (admin/&lt;redacted&gt; 可获取 token)
 - [ ] 相关页面可打开无 404
 - [ ] CRUD 操作无报错
 - [ ] 菜单显示正确

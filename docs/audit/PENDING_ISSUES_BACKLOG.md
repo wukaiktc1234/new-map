@@ -1138,7 +1138,7 @@ import { get, post, put, del } from '../request'
 ### 17.1 测试环境
 
 - **后端**: Spring Boot 3.2.0, H2 (MODE=PostgreSQL), 端口 8081, context-path=/api
-- **测试用户**: admin / admin123（管理员，Token 包含 100+ 权限码）
+- **测试用户**: admin / &lt;redacted&gt;（管理员，Token 包含 100+ 权限码）
 - **测试时间**: 2026-06-30 04:08 ~ 04:23
 
 ### 17.2 财务模块测试结果（25/25 PASS）
@@ -1250,7 +1250,7 @@ import { get, post, put, del } from '../request'
 - `test_finance_v2.ps1` — 财务模块 25 个 GET 端点测试
 - `test_trace_v2.ps1` — 溯源模块 17 个 GET 端点测试
 - `check_perms.ps1` — 登录 + Token 保存 + 权限码校验
-- `login_payload.json` — 登录请求体（admin/admin123）
+- `login_payload.json` — 登录请求体（admin/&lt;redacted&gt;）
 
 ---
 
@@ -1259,7 +1259,7 @@ import { get, post, put, del } from '../request'
 ### 18.1 测试环境
 
 - **后端**: Spring Boot 3.2.0, H2 (MODE=PostgreSQL), 端口 8081, context-path=/api
-- **测试用户**: admin / admin123（管理员，Token 有效期 2 小时）
+- **测试用户**: admin / &lt;redacted&gt;（管理员，Token 有效期 2 小时）
 - **测试时间**: 2026-06-30 05:29
 - **测试方式**: 使用 `test_post_v2.ps1` 脚本，对唯一字段（subjectCode/accountNumber/invoiceCode 等）追加 `-HHmmss` 时间戳后缀，使每轮测试幂等可重复
 - **测试数据**: `p:\my-new-project\test_data\` 目录下 15 个 JSON 文件
@@ -1349,7 +1349,7 @@ import { get, post, put, del } from '../request'
 ### 19.1 测试环境
 
 - **后端进程**: PID 4176 运行中（端口 8081，未重启，H2 数据保留）
-- **测试用户**: admin / admin123
+- **测试用户**: admin / &lt;redacted&gt;
 - **测试数据**: 复用 POST 端点测试创建的资源（ID=1 和 ID=2）
 - **Token 文件**: `.token.txt`（有效期 2 小时）
 
