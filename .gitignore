@@ -141,6 +141,8 @@ venv-*/
 backend/login.json
 backend/login-captcha.json
 backend/*-login*.json
+e2e/.auth/
+frontend/e2e/.auth/
 cookies.txt
 *.token
 test_token*.txt
