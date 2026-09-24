@@ -5,14 +5,14 @@
 | 项 | 值 |
 |---|---|
 | Task ID | `P1-COMBO-ORDER-001` |
-| Stage | **IMPLEMENTATION → READY_FOR_DS（2026-09-24）** |
+| Stage | **READY_FOR_QA（2026-09-24，DS 抽检 6/6 PASS）** |
 | Owner 路径 | 治本——改读新表 `combo_ingredients`（非 legacy `combo_ingredient`） |
 | 前置依赖 | `P1-POS-FOODID-MAP-001` CLOSED_WITH_REGISTERED_LIMITATIONS（套餐入口临时禁用已恢复） |
 | 代码变更 | 后端 4 文件 + 测试 3 文件 + 前端 6 文件 |
 | 自测 | 单测 37/37 PASS；本地 HTTP E2E 双链 PASS；`vue-tsc` 前后端 EXIT=0；`mvn compile` EXIT=0 |
 | 验收 6 项 | **6/6 自评 PASS**（待 DS/QA 独立复核，§5） |
 | 日期 | 2026-09-24 |
-| 下一步 | 交 DS 抽检 → QA 独立验收 |
+| 下一步 | QA 独立验收（§11；UI 目检 + 抽检复核） |
 
 ---
 
@@ -235,7 +235,7 @@
 
 | 项 | 状态 |
 |----|------|
-| 本卡 | **READY_FOR_DS（2026-09-24）** |
+| 本卡 | **READY_FOR_QA（2026-09-24，DS 抽检后）** |
 | 5 项范围 | 全部实施 |
 | 验收 6 项自评 | **6/6 PASS** |
 | 单测 | 37/37 PASS |
@@ -245,8 +245,41 @@
 | 静默点新增 | **0** |
 | DB schema | 未改 |
 | P0 / Scope-002 / 其他卡 | 未动 |
-| 下一步 | **交 DS 抽检** |
+| 下一步 | **QA 独立验收**（DS 抽检 6/6 PASS，§11） |
 
 ---
 
-*报告状态：IMPLEMENTATION 完成 — 自评 6/6 PASS，交 DS 抽检；QA 独立验收后按 production-collab 节奏转回归。*
+*报告状态：DS 抽检完成（§11）— 6/6 PASS，裁决 READY_FOR_QA；待 QA 独立验收后按 production-collab 节奏转回归。*
+
+---
+
+## 11. DS 抽检（2026-09-24，独立执行）
+
+> 角色：独立 DS（只读复核，不改代码、不写 `docs/quality/`）。  
+> 范式对照：`p1-pos-foodid-map-001-implementation-record-001.md` §12。  
+> 环境：local DB `food_traceability`；后端 `127.0.0.1:8081/api` 存活；HEAD=`aec5c45`（15 文件与 §6 逐文件一致）。  
+> §0–§10 原文保留；结论冲突以本节为准。
+
+### 11.1 验收 6 项独立复核
+
+| # | 验收项 | DS 结论 | 一手证据摘要 |
+|---|--------|---------|--------------|
+| 1 | 套餐下单 `product_type=2` | **PASS** | `T20260924004` / `O1790260472190`：`product_type=2`，`combo_id=1`，`food_id=NULL` |
+| 2 | KDS `components[]` | **PASS（live）** | `GET /api/v1/kitchen/orders/recent/full` HTTP 200；套餐行 `productType=2 comboId=1 components=[{foodId:1,qty:1,name:生菜串}]`；单品行无误展开 |
+| 3 | 出餐扣料 | **PASS** | `KO1790260472189` `material_consumed=1`；`store_inventory_log` id=62 生菜 `8.500→8.400` |
+| 4 | 单品零回归 H-06 | **PASS** | `T20260924003` `product_type=1 food_id=1`；`KO1790260472187` `material_consumed=1`；log id=61 `8.600→8.500` |
+| 5 | 前端入口恢复（代码级） | **PASS** | `useMenu:43/:89`、`Order.vue:45/:258/:337`、`MenuSection:168` 无 combo 过滤；KDS 三端渲染标记齐全 |
+| 6 | 无新静默点 / 无 Scope 外 | **PASS** | `material_consumption` 无 2026-09-24 新增 FAILED / 无 `COMBO_*`；`food_id IS NULL AND product_type=1` = 0；commit 恰 15 文件 |
+
+附加：git HEAD/清单、`PosOrderCreateServiceImpl` combo 分支、`OrderNewServiceImpl` 读 `ComboIngredientNewMapper`（非 legacy）、`expandComboDishItems` 三端点、测试适配 — **全 PASS**；未发现假成功/锚点错位（对照 FOODID §12 教训）。
+
+### 11.2 非阻断观察
+
+1. **行号轻微漂移**：§2.4 写 `:128-182`，实测方法体约 `:131-189+`；§2.2 helpers 写 `:952-966`，实测 `:955-969` — 语义一致，属文档行号未最终校对。
+2. **soft 路径 `continue` 无日志**：OBS-S1 同族 HEAD 既有，本卡仅换数据源，非新增静默点。
+3. **UI 浏览器目检 / 生产证据**：仍归 QA / `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`（§9.1/§9.6 已正确声明）。
+
+### 11.3 裁决
+
+**READY_FOR_QA** — 问题清单空（无 FAIL / PARTIAL / UNVERIFIED）。  
+移交 QA 边界：浏览器 UI 目检（POS 套餐入口 + KDS 卡片明细）、生产证据、legacy 三文件第二步卡、OBS-S1、ENV 工作区债。
