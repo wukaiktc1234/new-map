@@ -197,10 +197,10 @@ Final recommendation: retain `01-status-before-phase1-commit.txt` and `05-status
 
 ### Current A1 manifest size
 
-The current candidate is **47 files**:
+The current candidate is **46 files**:
 
 - 6 Core-6 governance files
-- 41 evidence files after excluding `h00-login.json` and three redundant status snapshots
+- 40 evidence files after excluding `h00-login.json` and three redundant status snapshots
 
 Cross-batch governance files remain DEFERRED.
 
