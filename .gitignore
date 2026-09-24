@@ -142,6 +142,8 @@ backend/login.json
 backend/login-captcha.json
 backend/*-login*.json
 **/e2e/.auth/
+*.p12
+*.jks
 cookies.txt
 *.token
 test_token*.txt
