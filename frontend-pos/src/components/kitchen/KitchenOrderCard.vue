@@ -62,8 +62,24 @@
         :key="index"
         class="dish-item"
       >
-        <span class="dish-name">{{ dish.name }}</span>
-        <span class="dish-quantity">×{{ dish.quantity }}</span>
+        <div class="dish-row">
+          <span class="dish-name">{{ dish.name }}</span>
+          <span class="dish-quantity">×{{ dish.quantity }}</span>
+        </div>
+        <!-- P1-COMBO-ORDER-001: 套餐明细（单卡片内展示，不拆卡） -->
+        <ul
+          v-if="dish.components && dish.components.length > 0"
+          class="combo-components"
+        >
+          <li
+            v-for="(comp, ci) in dish.components"
+            :key="ci"
+            class="combo-component"
+          >
+            <span class="comp-name">{{ comp.name }}</span>
+            <span class="comp-qty">×{{ comp.quantity }}</span>
+          </li>
+        </ul>
       </div>
     </div>
 
@@ -427,12 +443,38 @@ async function handleServe(): Promise<void> {
 
 .dish-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 12px;
   background: var(--pos-bg-primary);
   border-radius: 8px;
   font-size: 14px;
+}
+
+.dish-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.combo-components {
+  margin: 0;
+  padding: 4px 0 0 12px;
+  list-style: none;
+  border-top: 1px dashed var(--pos-border-color, #e5e7eb);
+}
+
+.combo-component {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--pos-text-secondary, #6b7280);
+  line-height: 1.6;
+}
+
+.comp-qty {
+  color: var(--pos-primary);
+  font-weight: 600;
 }
 
 .dish-name {

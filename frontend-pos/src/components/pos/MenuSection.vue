@@ -4,7 +4,7 @@
     <div class="category-bar-wrapper">
       <div class="category-bar">
         <div
-          v-for="cat in categories"
+          v-for="cat in visibleCategories"
           :key="cat.categoryId"
           class="category-item"
           :class="{ active: activeCategory === cat.categoryId }"
@@ -140,6 +140,7 @@ interface DishItem {
   stock: number
   imageUrl?: string
   categoryId?: string
+  items?: Array<{ foodId: string; foodName: string; quantity: number; price?: number }>
 }
 
 interface ComboItem extends DishItem {
@@ -164,9 +165,13 @@ const emit = defineEmits<{
   (e: 'retry'): void
 }>()
 
+// P1-COMBO-ORDER-001: 恢复套餐分类与套餐项展示
+const visibleCategories = computed(() => props.categories)
+
 const filteredItems = computed(() => {
-  if (props.activeCategory === 'all') return props.items
-  return props.items.filter(
+  const base = props.items
+  if (props.activeCategory === 'all') return base
+  return base.filter(
     (item) => (item as DishItem).categoryId === props.activeCategory
   )
 })

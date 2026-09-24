@@ -41,7 +41,12 @@
           </div>
         </div>
         <div class="orders-list">
-          <div v-if="allOrders.length === 0" class="empty-state">
+          <div v-if="allOrders.length === 0 && loadError" class="empty-state">
+            <div class="empty-icon">⚠️</div>
+            <p class="empty-error-text">订单加载失败：{{ loadError }}</p>
+            <el-button type="primary" class="empty-retry-btn" @click="loadOrders">重试加载</el-button>
+          </div>
+          <div v-else-if="allOrders.length === 0" class="empty-state">
             <div class="empty-icon">📋</div>
             <p>暂无订单</p>
           </div>
@@ -74,9 +79,15 @@
               <span class="chef-name" v-if="order.chefName">厨师: {{ order.chefName }}</span>
             </div>
             <div class="dish-list" v-if="order.dishItems">
-              <span class="dish-item" v-for="(dish, index) in parseDishItems(order.dishItems)" :key="index">
-                {{ dish.name }} × {{ dish.quantity }}
-              </span>
+              <div class="dish-item" v-for="(dish, index) in parseDishItems(order.dishItems)" :key="index">
+                <span>{{ dish.name }} × {{ dish.quantity }}</span>
+                <!-- P1-COMBO-ORDER-001: 套餐明细展开（单卡片） -->
+                <ul v-if="dish.components && dish.components.length" class="combo-components">
+                  <li v-for="(comp, ci) in dish.components" :key="ci">
+                    {{ comp.name }} × {{ comp.quantity }}
+                  </li>
+                </ul>
+              </div>
             </div>
             <div class="order-remark" v-if="order.remark">
               <span class="remark-label">备注:</span>
@@ -206,6 +217,8 @@ const isConnected = ref(false)
 const pendingOrders = ref<any[]>([])
 const makingOrders = ref<any[]>([])
 const completedOrders = ref<any[]>([])
+/** 订单加载错误信息（失败透传：非空时展示错误态+重试，不伪装「暂无订单」空态） */
+const loadError = ref<string | null>(null)
 let timeInterval: number | null = null
 let refreshInterval: number | null = null
 let wsSubscriptionNew: string | null = null
@@ -328,13 +341,12 @@ const getPriorityClass = (priority: number) => {
 const loadOrders = async () => {
   try {
     console.log('后厨端开始加载订单...')
+    // 路径对齐后端实测 @RequestMapping（KitchenScanController: /v1/kitchen/scan）：
+    // /v1/kitchen/scan/pending-orders、/v1/kitchen/scan/making-orders（契约核对见 OIC2-B2-003）
     const [pendingRes, makingRes] = await Promise.all([
-      request.get('/v1/kitchen/pending-orders'),
-      request.get('/v1/kitchen/making-orders')
+      request.get('/v1/kitchen/scan/pending-orders'),
+      request.get('/v1/kitchen/scan/making-orders')
     ])
-    
-    console.log('后厨端待制作订单:', pendingRes)
-    console.log('后厨端制作中订单:', makingRes)
     
     if (Array.isArray(pendingRes)) {
       pendingOrders.value = pendingRes
@@ -343,8 +355,16 @@ const loadOrders = async () => {
     if (Array.isArray(makingRes)) {
       makingOrders.value = makingRes
     }
-  } catch (error) {
+    loadError.value = null
+  } catch (error: any) {
     console.error('加载订单失败:', error)
+    // 失败透传：明确提示 + 重试入口（错误态替代「暂无订单」伪装空数据）
+    // 首次失败弹 toast，自动刷新轮询期间失败仅错误态常驻，避免 toast 轰炸
+    const msg = error?.message || '加载订单失败'
+    if (!loadError.value) {
+      ElMessage.error(`订单加载失败：${msg}`)
+    }
+    loadError.value = msg
   }
 }
 
@@ -364,6 +384,7 @@ const showBindTrayDialog = async (order: any) => {
     }
   } catch (e) {
     console.error('获取空闲托盘失败:', e)
+    ElMessage.warning('获取空闲托盘列表失败，可手动输入托盘编号')
   }
   
   setTimeout(() => {
@@ -451,7 +472,9 @@ const completeOrder = async (order: any) => {
     console.log('[后厨端] 完成订单:', kitchenOrderId, '当前状态:', order.status)
     
     if (order.status === 'pending') {
-      const receiveResult = await request.post(`/v1/kitchen-order/${kitchenOrderId}/receive?chefId=1&chefName=后厨`)
+      // 路径对齐后端实测 @RequestMapping（KitchenOrderController: /v1/kitchen/orders）：
+      // POST /v1/kitchen/orders/{id}/receive（chefId/chefName 参数沿用既有调用，chefId=1 硬编码属 KIT-DATA-003 只登记不修）
+      const receiveResult = await request.post(`/v1/kitchen/orders/${kitchenOrderId}/receive?chefId=1&chefName=后厨`)
       console.log('[后厨端] 自动接单结果:', receiveResult)
       if (receiveResult !== true) {
         ElMessage.error('接单失败')
@@ -460,7 +483,7 @@ const completeOrder = async (order: any) => {
     }
     
     if (order.status === 'pending' || order.status === 'received') {
-      const startResult = await request.post(`/v1/kitchen-order/${kitchenOrderId}/start-make`)
+      const startResult = await request.post(`/v1/kitchen/orders/${kitchenOrderId}/start-make`)
       console.log('[后厨端] 自动开始制作结果:', startResult)
       if (startResult !== true) {
         ElMessage.error('开始制作失败')
@@ -468,7 +491,7 @@ const completeOrder = async (order: any) => {
       }
     }
     
-    const result = await request.post(`/v1/kitchen-order/${kitchenOrderId}/complete-make`)
+    const result = await request.post(`/v1/kitchen/orders/${kitchenOrderId}/complete-make`)
     console.log('[后厨端] 完成订单结果:', result)
     
     if (result === true) {
@@ -1024,6 +1047,17 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
+.empty-error-text {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #f87171;
+  text-align: center;
+}
+
+.empty-retry-btn {
+  margin-top: 4px;
+}
+
 .order-card {
   background: #0f172a;
   border-radius: 10px;
@@ -1250,6 +1284,16 @@ onUnmounted(() => {
   padding: 4px 10px;
   background: rgba(100, 116, 139, 0.15);
   border-radius: 6px;
+}
+
+.combo-components {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: #94a3b8;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+  padding-top: 4px;
 }
 
 .order-remark {

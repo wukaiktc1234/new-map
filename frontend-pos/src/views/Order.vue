@@ -42,6 +42,7 @@
           <el-radio-group v-model="activeType">
             <el-radio-button label="all">全部</el-radio-button>
             <el-radio-button label="single">单品</el-radio-button>
+            <!-- P1-COMBO-ORDER-001: 恢复套餐入口 -->
             <el-radio-button label="combo">套餐</el-radio-button>
           </el-radio-group>
         </div>
@@ -254,6 +255,7 @@ const filteredItems = computed(() => {
     })))
   }
   
+  // P1-COMBO-ORDER-001: 恢复套餐列表（id=comboId, dishType=combo）
   if (activeType.value === 'all' || activeType.value === 'combo') {
     items = items.concat(combos.value.map(c => ({
       id: c.comboId,
@@ -332,9 +334,13 @@ const loadMenu = async () => {
   loading.value = true
   try {
     const menu = await posApi.getFullMenu() as any
+    // P1-COMBO-ORDER-001: 恢复套餐分类 badge
     categories.value = menu.categories || []
     dishes.value = menu.dishes || []
     combos.value = menu.combos || []
+    if (combos.value.length > 0 && !categories.value.some((c: any) => c.categoryId === 'combo')) {
+      categories.value.push({ categoryId: 'combo', categoryName: '套餐', sortOrder: 999 })
+    }
     updateIndicator()
   } catch (error) {
     console.error('加载菜单失败:', error)

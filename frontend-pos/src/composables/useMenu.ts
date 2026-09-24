@@ -25,6 +25,7 @@ export function useMenu() {
       isHot?: boolean;
       imageUrl?: string;
       stock: number;
+      items?: Combo['items'];
     }> = []
     items = items.concat(dishes.value.map(d => ({
       // 使用 dishCode(food_code) 作为 item.id，与后端 food 表主键一致
@@ -39,6 +40,7 @@ export function useMenu() {
       // 使用后端真实库存，未返回时默认 999
       stock: typeof d.stock === 'number' ? d.stock : 999,
     })))
+    // P1-COMBO-ORDER-001: 恢复套餐入口（dishType=combo, id=comboId）
     items = items.concat(combos.value.map(c => ({
       id: c.comboId,
       name: c.comboName,
@@ -48,6 +50,7 @@ export function useMenu() {
       isHot: !!(c.salesCount && c.salesCount > 50),
       imageUrl: c.imageUrl,
       stock: 999,
+      items: c.items,
     })))
     if (activeCategory.value !== 'all') {
       items = items.filter(item => item.categoryId === activeCategory.value)
@@ -83,7 +86,7 @@ export function useMenu() {
         { categoryId: 'all', categoryName: '全部', sortOrder: 0 },
         ...loadedCategories,
       ]
-      // 套餐作为独立分类
+      // P1-COMBO-ORDER-001: 恢复套餐分类 badge
       if (newCombos.length > 0) {
         allCategories.push({ categoryId: 'combo', categoryName: '套餐', sortOrder: 999 })
       }

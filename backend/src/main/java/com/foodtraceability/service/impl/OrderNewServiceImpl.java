@@ -2,8 +2,12 @@ package com.foodtraceability.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.MaterialDeductionContext;
+import com.foodtraceability.common.exception.MaterialDeductionFailureException;
 import com.foodtraceability.dto.PageResult;
 import com.foodtraceability.dto.finance.CostRecordCreateDTO;
 import com.foodtraceability.dto.order.*;
@@ -11,6 +15,7 @@ import com.foodtraceability.entity.*;
 import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.event.OrderRefundEvent;
 import com.foodtraceability.mapper.*;
+import com.foodtraceability.service.MaterialConsumptionAuditService;
 import com.foodtraceability.service.OrderNewService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.finance.CostRecordService;
@@ -51,12 +56,11 @@ public class OrderNewServiceImpl implements OrderNewService {
     private final FoodNewMapper foodNewMapper;
     private final DishComboNewMapper dishComboNewMapper;
     private final DishRecipeNewMapper dishRecipeNewMapper;
-    private final ComboIngredientMapper comboIngredientMapper;
+    private final ComboIngredientNewMapper comboIngredientNewMapper;
+    private final KitchenOrderMapper kitchenOrderMapper;
     private final StoreInventoryService storeInventoryService;
-    /** POS订单Mapper（查询 orders_legacy 表），用于管理端查询POS收银端订单 */
-    private final OrderMapper posOrderMapper;
-    /** POS订单项Mapper（查询 order_items_legacy 表） */
-    private final OrderItemMapper posOrderItemMapper;
+    // W1-EC-04C: posOrderMapper/posOrderItemMapper 已移除
+    // queryPosOrders/getPosOrderDetail 已迁移至 orders 表（canonical read），不再读 orders_legacy
     /** 事件发布器：用于发布订单完成事件，触发财务收入/凭证等异步联动（DF-008 修复） */
     private final ApplicationEventPublisher applicationEventPublisher;
     /** 成本记录服务：用于持久化订单成本到 cost_record 表（DF-009 修复） */
@@ -65,6 +69,8 @@ public class OrderNewServiceImpl implements OrderNewService {
     private final com.foodtraceability.service.finance.FundFlowService fundFlowService;
     /** 银行账户服务（F6：取默认账户） */
     private final com.foodtraceability.service.finance.BankAccountService bankAccountService;
+    /** 扣料失败审计服务（P0：独立 bean + REQUIRES_NEW，禁止 this 自调用） */
+    private final MaterialConsumptionAuditService materialConsumptionAuditService;
 
     public OrderNewServiceImpl(
             OrderNewMapper orderNewMapper,
@@ -75,14 +81,14 @@ public class OrderNewServiceImpl implements OrderNewService {
             FoodNewMapper foodNewMapper,
             DishComboNewMapper dishComboNewMapper,
             DishRecipeNewMapper dishRecipeNewMapper,
-            ComboIngredientMapper comboIngredientMapper,
+            ComboIngredientNewMapper comboIngredientNewMapper,
+            KitchenOrderMapper kitchenOrderMapper,
             StoreInventoryService storeInventoryService,
-            OrderMapper posOrderMapper,
-            OrderItemMapper posOrderItemMapper,
             ApplicationEventPublisher applicationEventPublisher,
             CostRecordService costRecordService,
             com.foodtraceability.service.finance.FundFlowService fundFlowService,
-            com.foodtraceability.service.finance.BankAccountService bankAccountService) {
+            com.foodtraceability.service.finance.BankAccountService bankAccountService,
+            MaterialConsumptionAuditService materialConsumptionAuditService) {
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
@@ -91,14 +97,14 @@ public class OrderNewServiceImpl implements OrderNewService {
         this.foodNewMapper = foodNewMapper;
         this.dishComboNewMapper = dishComboNewMapper;
         this.dishRecipeNewMapper = dishRecipeNewMapper;
-        this.comboIngredientMapper = comboIngredientMapper;
+        this.comboIngredientNewMapper = comboIngredientNewMapper;
+        this.kitchenOrderMapper = kitchenOrderMapper;
         this.storeInventoryService = storeInventoryService;
-        this.posOrderMapper = posOrderMapper;
-        this.posOrderItemMapper = posOrderItemMapper;
         this.applicationEventPublisher = applicationEventPublisher;
         this.costRecordService = costRecordService;
         this.fundFlowService = fundFlowService;
         this.bankAccountService = bankAccountService;
+        this.materialConsumptionAuditService = materialConsumptionAuditService;
     }
 
     // ==================== 订单创建 ====================
@@ -600,27 +606,23 @@ public class OrderNewServiceImpl implements OrderNewService {
                             materialNameMap);
                 }
             } else if (item.getProductType() != null && item.getProductType() == 2) {
-                // 套餐：展开套餐内的所有菜品，再按菜品配方扣减
-                if (item.getFoodId() != null) {
-                    List<ComboIngredient> comboIngredients = comboIngredientMapper.selectByComboId(item.getFoodId());
-                    for (ComboIngredient ingredient : comboIngredients) {
+                // 套餐：展开套餐内的所有菜品，再按菜品配方扣减（P1-COMBO-ORDER-001 读 combo_ingredients）
+                Long comboId = resolveComboId(item);
+                if (comboId != null) {
+                    List<ComboIngredientNew> comboIngredients = selectComboIngredients(comboId);
+                    for (ComboIngredientNew ingredient : comboIngredients) {
                         if (ingredient.getFoodId() == null) continue;
                         BigDecimal foodQtyInCombo = ingredient.getQuantity() != null
-                                ? ingredient.getQuantity() : BigDecimal.ONE;
+                                ? new BigDecimal(ingredient.getQuantity()) : BigDecimal.ONE;
                         // 套餐中菜品的实际数量 = 套餐中该菜品数量 × 套餐购买数量
                         int actualFoodQty = foodQtyInCombo.multiply(new BigDecimal(quantity)).intValue();
                         if (actualFoodQty <= 0) continue;
 
-                        try {
-                            Long foodIdLong = Long.parseLong(ingredient.getFoodId());
-                            addFoodMaterialDeductions(
-                                    foodIdLong,
-                                    actualFoodQty,
-                                    materialDeductionMap,
-                                    materialNameMap);
-                        } catch (NumberFormatException e) {
-                            log.warn("套餐菜品ID格式异常, comboId: {}, foodId: {}", item.getFoodId(), ingredient.getFoodId());
-                        }
+                        addFoodMaterialDeductions(
+                                ingredient.getFoodId(),
+                                actualFoodQty,
+                                materialDeductionMap,
+                                materialNameMap);
                     }
                 }
             }
@@ -659,6 +661,367 @@ public class OrderNewServiceImpl implements OrderNewService {
 
         log.info("订单成本计算完成, orderId: {}, totalCost: {}分", order.getOrderId(), totalCost);
         return totalCost;
+    }
+
+    /**
+     * KDS 出餐时扣减原料库存（P0 严格版：禁止任何"部分跳过后静默成功"）。
+     *
+     * 幂等策略：先原子占位（UPDATE ... WHERE material_consumed = 0），再扣料。
+     * 占位成功（affectedRows=1）获得处理权；占位失败（affectedRows=0）说明已被其他请求处理或记录不存在，直接拒绝。
+     * 原子性：所有应扣原料在同一事务内扣减；任何"应扣原料被 continue/catch 跳过"的数据/配置/解析异常
+     * 都会抛出 MaterialDeductionFailureException → 整个扣料事务回滚（material_consumed 恢复 0），
+     * 并由独立 REQUIRES_NEW 事务（materialConsumptionAuditService）写入 FAILED 审计行。
+     *
+     * PENDING_BUSINESS_DECISION（行为保持不变，仅记录）：
+     *  - 配方 requiredQuantity == 0 / 换算后 qty<=0：不视为失败（可能为合法零消耗配置），
+     *    该原料按原逻辑合并为 0 数量并在扣减循环中跳过，记入上下文 notes 供报告与日志。
+     *
+     * @param kitchenOrderId 后厨订单ID
+     * @param sourceRef 来源引用（写入库存流水）
+     * @param trayCode 触发服务时的托盘码（可空，写入失败审计行）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode) {
+        MaterialDeductionContext ctx = new MaterialDeductionContext();
+        ctx.setKitchenOrderId(kitchenOrderId);
+        ctx.setTrayCode(trayCode);
+        ctx.setSourceRef(sourceRef);
+        try {
+            doDeductMaterialsForServe(ctx, sourceRef);
+        } catch (MaterialDeductionFailureException e) {
+            // 独立 bean + REQUIRES_NEW：主事务回滚后 FAILED 审计行仍持久化。
+            // 禁止改为 this 自调用（会绕过代理，退化为同事务随主事务一起回滚）。
+            // 审计自身失败不得吞掉主业务异常：仅记 ERROR，仍抛出原 MaterialDeductionFailureException。
+            try {
+                materialConsumptionAuditService.recordDeductionFailure(e);
+            } catch (Exception auditEx) {
+                e.addSuppressed(auditEx);
+                log.error("[扣料失败审计] 审计写入自身异常，不影响主扣料异常传播: kitchenOrderId={}, failureType={}, auditError={}",
+                        ctx.getKitchenOrderId(), e.getFailureType(), auditEx.getMessage(), auditEx);
+            }
+            throw e;
+        }
+    }
+
+    private void doDeductMaterialsForServe(MaterialDeductionContext ctx, String sourceRef) {
+        String kitchenOrderId = ctx.getKitchenOrderId();
+
+        // 1. 原子占位：将 material_consumed 从 0 改为 1，获取唯一处理权
+        LocalDateTime now = LocalDateTime.now();
+        int affectedRows = kitchenOrderMapper.update(null,
+                new LambdaUpdateWrapper<KitchenOrder>()
+                        .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId)
+                        .eq(KitchenOrder::getMaterialConsumed, 0)
+                        .set(KitchenOrder::getMaterialConsumed, 1)
+                        .set(KitchenOrder::getMaterialConsumeTime, now));
+        if (affectedRows == 0) {
+            KitchenOrder existing = kitchenOrderMapper.selectOne(
+                    new LambdaQueryWrapper<KitchenOrder>()
+                            .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId));
+            if (existing == null) {
+                // 后厨单不存在：数据异常，整体失败 + 审计
+                log.error("出餐扣料：后厨单不存在, kitchenOrderId={}", kitchenOrderId);
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.KITCHEN_ORDER_NOT_FOUND,
+                        "出餐扣料失败：后厨单不存在（kitchenOrderId=" + kitchenOrderId + "）");
+            }
+            // material_consumed 已为 1：已被其他请求扣减（幂等保护，既有显式失败，保持不变）
+            log.warn("出餐扣料：原料已扣减（幂等保护）, kitchenOrderId={}", kitchenOrderId);
+            throw new RuntimeException("出餐扣料失败：原料已被扣减（kitchenOrderId=" + kitchenOrderId
+                    + "），可能是重复出餐确认或并发请求");
+        }
+
+        // 2. 占位成功，重新读取完整记录（用于后续 orderId、storeId 等字段）
+        KitchenOrder kitchenOrder = kitchenOrderMapper.selectOne(
+                new LambdaQueryWrapper<KitchenOrder>()
+                        .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId));
+        if (kitchenOrder == null) {
+            // 理论上不会发生（刚占位成功），防御性处理
+            throw new RuntimeException("出餐扣料失败：占位后重新读取订单失败（kitchenOrderId=" + kitchenOrderId + "）");
+        }
+
+        String orderId = kitchenOrder.getOrderId();
+        ctx.setOrderId(orderId);
+        ctx.setOrderNumber(kitchenOrder.getOrderNumber());
+        ctx.setStoreId(kitchenOrder.getStoreId());
+        ctx.setStoreName(kitchenOrder.getStoreName());
+
+        OrderNew order = orderNewMapper.selectById(orderId);
+        if (order == null) {
+            log.error("出餐扣料：订单不存在, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
+            throw MaterialDeductionFailureException.of(ctx,
+                    MaterialDeductionFailureException.ORDER_NOT_FOUND,
+                    "出餐扣料失败：订单不存在（orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "）");
+        }
+
+        // 3. BOM 展开（P0 严格版：任何"应扣原料被跳过"的数据/配置/解析异常 → 整体失败）
+        List<OrderItemNew> orderItems = getOrderItems(orderId);
+        Map<Long, BigDecimal> materialDeductionMap = new LinkedHashMap<>();
+        Map<Long, String> materialNameMap = new HashMap<>();
+
+        boolean anyActiveItem = false;
+        for (OrderItemNew item : orderItems) {
+            if (item.getKitchenStatus() != null && item.getKitchenStatus() == 4) {
+                // 已退款明细：合法不参与扣减（防止重复回补），记录说明
+                log.info("出餐扣料：菜品已退款，跳过, orderId={}, itemId={}", orderId, item.getItemId());
+                ctx.addNote("orderItem itemId=" + item.getItemId() + " 已退款(kitchenStatus=4)，不参与扣减");
+                continue;
+            }
+            anyActiveItem = true;
+            Integer quantity = item.getQuantity() != null ? item.getQuantity() : 1;
+
+            if (item.getProductType() == null) {
+                log.error("出餐扣料：明细 productType 为空, orderId={}, itemId={}", orderId, item.getItemId());
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.PRODUCT_TYPE_NULL,
+                        "出餐扣料失败：订单明细 productType 为空（orderId=" + orderId
+                                + ", itemId=" + item.getItemId() + "）");
+            }
+
+            if (item.getProductType() == 1) {
+                if (item.getFoodId() == null) {
+                    log.error("出餐扣料：单品明细 foodId 为空, orderId={}, itemId={}", orderId, item.getItemId());
+                    throw MaterialDeductionFailureException.of(ctx,
+                            MaterialDeductionFailureException.ITEM_FOOD_ID_NULL,
+                            "出餐扣料失败：单品订单明细 foodId 为空（orderId=" + orderId
+                                    + ", itemId=" + item.getItemId() + ", productName=" + item.getProductName() + "）");
+                }
+                addFoodMaterialDeductionsStrict(ctx, item.getFoodId(), quantity,
+                        materialDeductionMap, materialNameMap);
+            } else if (item.getProductType() == 2) {
+                // P1-COMBO-ORDER-001: combo_id 优先，legacy 回落 foodId（food_id 当 combo_id 的旧数据）
+                Long comboId = resolveComboId(item);
+                if (comboId == null) {
+                    log.error("出餐扣料：套餐明细 comboId/foodId 均为空, orderId={}, itemId={}", orderId, item.getItemId());
+                    throw MaterialDeductionFailureException.of(ctx,
+                            MaterialDeductionFailureException.ITEM_FOOD_ID_NULL,
+                            "出餐扣料失败：套餐订单明细 comboId 为空（orderId=" + orderId
+                                    + ", itemId=" + item.getItemId() + ", productName=" + item.getProductName() + "）");
+                }
+                DishComboNew combo = dishComboNewMapper.selectById(comboId);
+                if (combo == null) {
+                    log.error("出餐扣料：套餐不存在, comboId={}, orderId={}", comboId, orderId);
+                    throw MaterialDeductionFailureException.of(ctx,
+                            MaterialDeductionFailureException.COMBO_NOT_FOUND,
+                            "出餐扣料失败：套餐不存在（comboId=" + comboId + ", orderId=" + orderId
+                                    + ", itemId=" + item.getItemId() + "）");
+                }
+                List<ComboIngredientNew> comboIngredients = selectComboIngredients(comboId);
+                if (comboIngredients == null || comboIngredients.isEmpty()) {
+                    log.error("出餐扣料：套餐无配料(BOM未展开), comboId={}, orderId={}", comboId, orderId);
+                    throw MaterialDeductionFailureException.of(ctx,
+                            MaterialDeductionFailureException.COMBO_INGREDIENTS_EMPTY,
+                            "出餐扣料失败：套餐无配料，BOM 未展开（comboId=" + comboId + ", orderId=" + orderId
+                                    + ", itemId=" + item.getItemId() + "）");
+                }
+                for (ComboIngredientNew ingredient : comboIngredients) {
+                    if (ingredient.getFoodId() == null) {
+                        log.error("出餐扣料：套餐配料 foodId 为空, comboId={}, ingredientId={}",
+                                comboId, ingredient.getIngredientId());
+                        throw MaterialDeductionFailureException.of(ctx,
+                                MaterialDeductionFailureException.INGREDIENT_FOOD_ID_NULL,
+                                "出餐扣料失败：套餐配料 foodId 为空（comboId=" + comboId
+                                        + ", ingredientId=" + ingredient.getIngredientId() + ", orderId=" + orderId + "）");
+                    }
+                    // P1-COMBO-ORDER-001: combo_ingredients.quantity 为 Integer，类型适配 BigDecimal 运算
+                    BigDecimal foodQtyInCombo = ingredient.getQuantity() != null
+                            ? new BigDecimal(ingredient.getQuantity()) : BigDecimal.ONE;
+                    if (foodQtyInCombo.compareTo(BigDecimal.ZERO) <= 0) {
+                        // 配置的配料数量 <= 0：按原逻辑视为零消耗跳过（PENDING 家族，记录说明）
+                        ctx.addZeroQtyNote("comboId=" + comboId + " 配料foodId=" + ingredient.getFoodId()
+                                + " 配置数量=" + foodQtyInCombo + "（<=0，按零消耗跳过）");
+                        continue;
+                    }
+                    int actualFoodQty = foodQtyInCombo
+                            .multiply(new BigDecimal(quantity)).intValue();
+                    if (actualFoodQty <= 0) {
+                        // 正数量经 int 换算为 0（如 0.5 份）：数据/配置异常，P0 整体失败
+                        log.error("出餐扣料：套餐配料数量换算为0, comboId={}, foodId={}, ingredientQty={}, purchaseQty={}",
+                                comboId, ingredient.getFoodId(), foodQtyInCombo, quantity);
+                        throw MaterialDeductionFailureException.of(ctx,
+                                MaterialDeductionFailureException.COMBO_INGREDIENT_QTY_TRUNCATED,
+                                "出餐扣料失败：套餐配料数量正数经换算为0（数据/配置异常）（comboId=" + comboId
+                                        + ", 配料foodId=" + ingredient.getFoodId()
+                                        + ", 配料数量=" + foodQtyInCombo
+                                        + ", 购买份数=" + quantity + ", orderId=" + orderId + "）");
+                    }
+                    // P1-COMBO-ORDER-001: combo_ingredients.food_id 已为 Long，无需解析
+                    addFoodMaterialDeductionsStrict(ctx, ingredient.getFoodId(), actualFoodQty,
+                            materialDeductionMap, materialNameMap);
+                }
+            } else {
+                log.error("出餐扣料：明细 productType 非法, orderId={}, itemId={}, productType={}",
+                        orderId, item.getItemId(), item.getProductType());
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.PRODUCT_TYPE_INVALID,
+                        "出餐扣料失败：订单明细 productType 非法（orderId=" + orderId
+                                + ", itemId=" + item.getItemId() + ", productType=" + item.getProductType() + "）");
+            }
+        }
+
+        // 4. 空结果处理（P0：禁止"无明细/无扣减"的静默成功）
+        if (orderItems.isEmpty()) {
+            log.error("出餐扣料：订单无任何明细, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
+            throw MaterialDeductionFailureException.of(ctx,
+                    MaterialDeductionFailureException.ORDER_ITEMS_EMPTY,
+                    "出餐扣料失败：订单无任何明细（orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId
+                            + "），不能按零消耗处理");
+        }
+        if (materialDeductionMap.isEmpty()) {
+            // 仅有全部已退款明细：合法零消耗（既有行为保持不变）
+            log.warn("出餐扣料：订单明细全部已退款，未扣减原料（合法零消耗）, orderId={}, kitchenOrderId={}",
+                    orderId, kitchenOrderId);
+            return;
+        }
+
+        // 5. 门店校验：有应扣原料但订单门店为空 → 无法定位库存，整体失败
+        if (!materialDeductionMap.isEmpty() && order.getStoreId() == null) {
+            log.error("出餐扣料：订单 storeId 为空, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
+            throw MaterialDeductionFailureException.of(ctx,
+                    MaterialDeductionFailureException.ORDER_STORE_ID_NULL,
+                    "出餐扣料失败：订单门店 storeId 为空，无法定位门店库存（orderId=" + orderId
+                            + ", kitchenOrderId=" + kitchenOrderId + "）");
+        }
+
+        // 6. 逐原料扣减（复用 storeInventoryService.decreaseStock()）
+        //    任一原料失败 → MaterialDeductionFailureException → 事务回滚 + REQUIRES_NEW 审计
+        for (Map.Entry<Long, BigDecimal> entry : materialDeductionMap.entrySet()) {
+            Long materialId = entry.getKey();
+            BigDecimal qty = entry.getValue();
+            String materialName = materialNameMap.get(materialId);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                // requiredQuantity==0 等零数量：PENDING_BUSINESS_DECISION，按原逻辑跳过（不视为失败）
+                ctx.addNote("materialId=" + materialId + " 汇总数量=" + qty + "（<=0，零数量跳过）");
+                continue;
+            }
+
+            ctx.addAttempted(materialId, qty, materialName);
+            try {
+                storeInventoryService.decreaseStock(
+                        String.valueOf(order.getStoreId()),
+                        materialId, qty, 2, sourceRef);
+            } catch (BusinessException e) {
+                // decreaseStock 的显式失败（库存不足/记录不存在/冲突）：映射为失败类型，整体失败 + 审计
+                ctx.setFailedMaterial(materialId, materialName);
+                String failureType = MaterialDeductionFailureException.mapBusinessExceptionType(e);
+                log.error("出餐扣料：库存扣减失败, orderId={}, materialId={}, materialName={}, type={}, error={}",
+                        orderId, materialId, materialName, failureType, e.getMessage());
+                throw MaterialDeductionFailureException.of(ctx, failureType,
+                        "出餐扣料失败：库存扣减失败（materialId=" + materialId
+                                + ", materialName=" + materialName
+                                + ", 数量=" + qty.toPlainString()
+                                + ", 原因=" + e.getMessage()
+                                + ", orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "）", e);
+            } catch (Exception e) {
+                ctx.setFailedMaterial(materialId, materialName);
+                log.error("出餐扣料：库存扣减未知异常, orderId={}, materialId={}, materialName={}, error={}",
+                        orderId, materialId, materialName, e.getMessage(), e);
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.DECREASE_STOCK_ERROR,
+                        "出餐扣料失败：库存扣减未知异常（materialId=" + materialId
+                                + ", materialName=" + materialName
+                                + ", 数量=" + qty.toPlainString()
+                                + ", 原因=" + e.getMessage()
+                                + ", orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "）", e);
+            }
+            log.info("出餐扣料成功, orderId={}, materialId={}, materialName={}, qty={}",
+                    orderId, materialId, materialName, qty);
+        }
+
+        log.info("出餐扣料完成, kitchenOrderId={}, orderId={}, 原料种类={}, 零数量跳过说明={}",
+                kitchenOrderId, orderId, materialDeductionMap.size(), ctx.getZeroQtyNotes());
+    }
+
+    /**
+     * 累加某个菜品的原料扣减需求 —— P0 严格版（仅用于 KDS 出餐扣料路径）。
+     * <p>
+     * 与既有 {@link #addFoodMaterialDeductions} 的区别：
+     *  - 菜品不存在 → FOOD_NOT_FOUND 整体失败（原实现靠空配方静默跳过）；
+     *  - 菜品无任何配方（BOM 为空）→ FOOD_NO_RECIPE 整体失败（原实现静默跳过）；
+     *  - 配方 materialId 为空 → RECIPE_MATERIAL_ID_NULL 整体失败（原实现合并为0数量后静默跳过）。
+     *  - requiredQuantity 为 null / 0：保持原逻辑（null 按 ZERO；0 合并为 0 数量），PENDING_BUSINESS_DECISION。
+     *
+     * @param ctx 扣料上下文（记录 BOM 展开与失败定位）
+     * @param foodId 菜品ID
+     * @param quantity 菜品数量（份数）
+     * @param materialDeductionMap 原料汇总Map（累加）
+     * @param materialNameMap 原料名称Map
+     */
+    /**
+     * P1-COMBO-ORDER-001: 解析套餐明细的 comboId。
+     * 优先 combo_id（新数据 food_id=null），legacy 回落 foodId（旧数据把 comboId 写在 food_id）。
+     */
+    private Long resolveComboId(OrderItemNew item) {
+        if (item.getComboId() != null) {
+            return item.getComboId();
+        }
+        return item.getFoodId();
+    }
+
+    /**
+     * P1-COMBO-ORDER-001: 读新表 combo_ingredients（替代 combo_ingredient）。
+     */
+    private List<ComboIngredientNew> selectComboIngredients(Long comboId) {
+        return comboIngredientNewMapper.selectList(
+                new LambdaQueryWrapper<ComboIngredientNew>()
+                        .eq(ComboIngredientNew::getComboId, comboId));
+    }
+
+    private void addFoodMaterialDeductionsStrict(MaterialDeductionContext ctx,
+                                                 Long foodId, int quantity,
+                                                 Map<Long, BigDecimal> materialDeductionMap,
+                                                 Map<Long, String> materialNameMap) {
+        FoodNew food = foodNewMapper.selectById(foodId);
+        if (food == null) {
+            log.error("出餐扣料：菜品不存在, foodId={}, orderId={}", foodId, ctx.getOrderId());
+            ctx.setFailedMaterial(foodId, null);
+            throw MaterialDeductionFailureException.of(ctx,
+                    MaterialDeductionFailureException.FOOD_NOT_FOUND,
+                    "出餐扣料失败：菜品不存在（foodId=" + foodId + ", orderId=" + ctx.getOrderId() + "）");
+        }
+
+        List<DishRecipeNew> recipes = getDishRecipes(foodId);
+        if (recipes == null || recipes.isEmpty()) {
+            log.error("出餐扣料：菜品无BOM配方, foodId={}, foodName={}, orderId={}",
+                    foodId, food.getFoodName(), ctx.getOrderId());
+            ctx.setFailedMaterial(foodId, food.getFoodName());
+            throw MaterialDeductionFailureException.of(ctx,
+                    MaterialDeductionFailureException.FOOD_NO_RECIPE,
+                    "出餐扣料失败：菜品无任何BOM配方（BOM未展开）（foodId=" + foodId
+                            + ", foodName=" + food.getFoodName() + ", orderId=" + ctx.getOrderId() + "）");
+        }
+
+        for (DishRecipeNew recipe : recipes) {
+            if (recipe.getMaterialId() == null) {
+                log.error("出餐扣料：配方 materialId 为空, foodId={}, recipeId={}, orderId={}",
+                        foodId, recipe.getRecipeId(), ctx.getOrderId());
+                ctx.setFailedMaterial(null, "foodId=" + foodId + " 的 recipeId=" + recipe.getRecipeId() + "（materialId缺失）");
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.RECIPE_MATERIAL_ID_NULL,
+                        "出餐扣料失败：配方 materialId 为空（foodId=" + foodId
+                                + ", recipeId=" + recipe.getRecipeId()
+                                + ", materialName=" + recipe.getMaterialName()
+                                + ", orderId=" + ctx.getOrderId() + "）");
+            }
+            BigDecimal requiredQty = recipe.getRequiredQuantity() != null
+                    ? recipe.getRequiredQuantity() : BigDecimal.ZERO;
+            if (requiredQty.compareTo(BigDecimal.ZERO) <= 0) {
+                // PENDING_BUSINESS_DECISION：零标准量按原逻辑处理（合并为0），不视为失败
+                ctx.addZeroQtyNote("foodId=" + foodId + " recipeId=" + recipe.getRecipeId()
+                        + " 原料materialId=" + recipe.getMaterialId()
+                        + " 标准量=" + requiredQty + "（零数量，PENDING_BUSINESS_DECISION）");
+            }
+            BigDecimal lossRate = recipe.getLossRate() != null ? recipe.getLossRate() : BigDecimal.ZERO;
+            BigDecimal actualQty = requiredQty
+                    .multiply(new BigDecimal(quantity))
+                    .multiply(BigDecimal.ONE.add(lossRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)));
+            materialDeductionMap.merge(recipe.getMaterialId(), actualQty, BigDecimal::add);
+            ctx.addBomMaterial(recipe.getMaterialId(), actualQty, recipe.getMaterialName());
+            if (recipe.getMaterialName() != null) {
+                materialNameMap.putIfAbsent(recipe.getMaterialId(), recipe.getMaterialName());
+            }
+        }
     }
 
     /**
@@ -879,26 +1242,22 @@ public class OrderNewServiceImpl implements OrderNewService {
                         materialNameMap);
             }
         } else if (item.getProductType() != null && item.getProductType() == 2) {
-            // 套餐
-            if (item.getFoodId() != null) {
-                List<ComboIngredient> comboIngredients = comboIngredientMapper.selectByComboId(item.getFoodId());
-                for (ComboIngredient ingredient : comboIngredients) {
+            // 套餐（P1-COMBO-ORDER-001 读 combo_ingredients）
+            Long comboId = resolveComboId(item);
+            if (comboId != null) {
+                List<ComboIngredientNew> comboIngredients = selectComboIngredients(comboId);
+                for (ComboIngredientNew ingredient : comboIngredients) {
                     if (ingredient.getFoodId() == null) continue;
                     BigDecimal foodQtyInCombo = ingredient.getQuantity() != null
-                            ? ingredient.getQuantity() : BigDecimal.ONE;
+                            ? new BigDecimal(ingredient.getQuantity()) : BigDecimal.ONE;
                     int actualFoodQty = foodQtyInCombo.multiply(new BigDecimal(quantity)).intValue();
                     if (actualFoodQty <= 0) continue;
 
-                    try {
-                        Long foodIdLong = Long.parseLong(ingredient.getFoodId());
-                        addFoodMaterialDeductions(
-                                foodIdLong,
-                                actualFoodQty,
-                                materialRestoreMap,
-                                materialNameMap);
-                    } catch (NumberFormatException e) {
-                        log.warn("套餐菜品ID格式异常, comboId: {}, foodId: {}", item.getFoodId(), ingredient.getFoodId());
-                    }
+                    addFoodMaterialDeductions(
+                            ingredient.getFoodId(),
+                            actualFoodQty,
+                            materialRestoreMap,
+                            materialNameMap);
                 }
             }
         }
@@ -929,20 +1288,21 @@ public class OrderNewServiceImpl implements OrderNewService {
     }
 
     /**
-     * 分页查询POS终端订单（orders_legacy 表）
-     * 与 queryOrders（查询 orders 表）互补，让管理端能查看POS收银端创建的订单。
-     * 内部完成订单状态/支付方式/金额单位（元→分）的映射转换。
+     * 分页查询POS终端订单（orders 表，canonical read）
+     * W1-EC-04C: 从 orders_legacy 迁移到 orders 表。
+     * orders 表已包含所有订单（POS端+管理端），order_status/payment_status 为 canonical 双字段。
+     * 复用 buildQueryWrapper 构建查询条件，金额 orders 已存分，管理端直接使用。
      */
     @Override
     public Page<OrderVO> queryPosOrders(OrderQueryDTO queryDTO) {
-        Page<com.foodtraceability.entity.Order> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
-        QueryWrapper<com.foodtraceability.entity.Order> wrapper = buildPosQueryWrapper(queryDTO);
-        page = posOrderMapper.selectPage(page, wrapper);
+        Page<OrderNew> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
+        QueryWrapper<OrderNew> wrapper = buildQueryWrapper(queryDTO);
+        page = orderNewMapper.selectPage(page, wrapper);
 
-        // 转换为VO列表（包含状态码/支付方式/金额单位映射）
+        // 转换为VO列表（orders 字段已与管理端一致，无需状态/类型映射）
         Page<OrderVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
         List<OrderVO> voList = page.getRecords().stream()
-                .map(this::convertPosOrderToVO)
+                .map(this::convertToSimpleOrderVO)
                 .collect(Collectors.toList());
         voPage.setRecords(voList);
 
@@ -951,13 +1311,10 @@ public class OrderNewServiceImpl implements OrderNewService {
 
     /**
      * 根据订单编号获取POS终端订单详情（含菜品明细）
-     * 用于管理端订单中心查看POS收银端订单的完整明细（数据追溯）。
+     * W1-EC-04C: 从 orders_legacy + order_items_legacy 迁移到 orders + order_items（canonical read）。
+     * orders 表已包含所有订单（POS端+管理端），order_status/payment_status/orderType 为 canonical 值。
      *
-     * 实现要点：
-     * 1. 通过 orderNumber 查询 orders_legacy 表获取订单主信息
-     * 2. 通过 orderId 查询 order_items_legacy 表获取菜品明细列表
-     * 3. 调用 convertPosOrderToVO 完成状态/支付方式/金额单位的统一映射
-     * 4. 补充 items 列表（OrderItemVO 格式，金额转分）
+     * @param orderNumber 订单编号（如 ORD20260713002），非订单ID
      */
     @Override
     public OrderVO getPosOrderDetail(String orderNumber) {
@@ -965,230 +1322,26 @@ public class OrderNewServiceImpl implements OrderNewService {
         if (orderNumber == null || orderNumber.isEmpty()) {
             throw new RuntimeException("订单编号不能为空");
         }
-        // 按订单编号查询 orders_legacy 表
-        com.foodtraceability.entity.Order posOrder = posOrderMapper.selectOne(
-                new LambdaQueryWrapper<com.foodtraceability.entity.Order>()
-                        .eq(com.foodtraceability.entity.Order::getOrderNumber, orderNumber));
-        if (posOrder == null) {
+        // W1-EC-04C: 改读 orders 表（通过 order_code 查询）
+        OrderNew order = orderNewMapper.selectByOrderCode(orderNumber);
+        if (order == null) {
             throw new RuntimeException("POS订单不存在: " + orderNumber);
         }
-        // 转换为 OrderVO（含状态/支付方式/金额单位映射，但不含明细）
-        OrderVO vo = convertPosOrderToVO(posOrder);
-
-        // 查询订单明细（order_items_legacy 表）
-        List<OrderItem> posItems = posOrderItemMapper.selectList(
-                new LambdaQueryWrapper<OrderItem>()
-                        .eq(OrderItem::getOrderId, posOrder.getOrderId()));
-        // 转换为 OrderItemVO（金额 元→分，与 OrderVO 单位保持一致）
-        List<OrderVO.OrderItemVO> itemVos = posItems.stream()
-                .map(this::convertPosItemToVO)
-                .collect(Collectors.toList());
-        vo.setItems(itemVos);
-
-        log.info("查询POS订单详情成功, orderNumber: {}, 明细数: {}", orderNumber, itemVos.size());
-        return vo;
+        // 转换为 OrderVO（含明细和支付记录）
+        return getOrderDetail(order.getOrderId());
     }
 
-    /**
-     * 将POS订单项（order_items_legacy）转换为管理端 OrderItemVO
-     * 金额单位：元（BigDecimal）→ 分（Long），与 OrderVO 保持一致
-     */
-    private OrderVO.OrderItemVO convertPosItemToVO(OrderItem item) {
-        OrderVO.OrderItemVO vo = new OrderVO.OrderItemVO();
-        vo.setItemId(item.getOrderItemId());
-        // POS订单项无产品类型字段，默认为单品
-        vo.setProductType(1);
-        vo.setProductTypeName("单品");
-        vo.setProductName(item.getFoodName());
-        vo.setSpecification(item.getSpecification());
-        // 元转分
-        if (item.getUnitPrice() != null) {
-            vo.setUnitPrice(item.getUnitPrice().multiply(new BigDecimal("100")).longValue());
-        }
-        vo.setQuantity(item.getQuantity());
-        if (item.getSubtotalAmount() != null) {
-            vo.setAmount(item.getSubtotalAmount().multiply(new BigDecimal("100")).longValue());
-        }
-        return vo;
-    }
+    // W1-EC-04C: convertPosItemToVO 已移除（不再读 order_items_legacy，直接使用 order_items）
 
-    /**
-     * 构建POS订单（orders_legacy）查询条件
-     * 字段名使用 orders_legacy 表的实际列名（大写下划线）
-     */
-    private QueryWrapper<com.foodtraceability.entity.Order> buildPosQueryWrapper(OrderQueryDTO queryDTO) {
-        QueryWrapper<com.foodtraceability.entity.Order> wrapper = new QueryWrapper<>();
-        if (queryDTO.getOrderCode() != null && !queryDTO.getOrderCode().isEmpty()) {
-            wrapper.like("ORDER_NUMBER", queryDTO.getOrderCode());
-        }
-        if (queryDTO.getOrderType() != null) {
-            wrapper.eq("ORDER_TYPE", queryDTO.getOrderType());
-        }
-        // 订单状态映射：管理端状态码 → POS端状态码
-        if (queryDTO.getOrderStatus() != null) {
-            List<Integer> posStatusList = mapAdminStatusToPosStatus(queryDTO.getOrderStatus());
-            if (posStatusList.size() == 1) {
-                wrapper.eq("ORDER_STATUS", posStatusList.get(0));
-            } else {
-                wrapper.in("ORDER_STATUS", posStatusList);
-            }
-        }
-        if (queryDTO.getStartTime() != null && !queryDTO.getStartTime().isEmpty()) {
-            wrapper.ge("CREATE_TIME", parseDateTime(queryDTO.getStartTime()));
-        }
-        if (queryDTO.getEndTime() != null && !queryDTO.getEndTime().isEmpty()) {
-            wrapper.le("CREATE_TIME", parseDateTime(queryDTO.getEndTime()));
-        }
-        // 金额条件：管理端是分，orders_legacy 是元（numeric），需要转换
-        if (queryDTO.getMinAmount() != null) {
-            wrapper.ge("ACTUAL_AMOUNT", new BigDecimal(queryDTO.getMinAmount()).movePointLeft(2));
-        }
-        if (queryDTO.getMaxAmount() != null) {
-            wrapper.le("ACTUAL_AMOUNT", new BigDecimal(queryDTO.getMaxAmount()).movePointLeft(2));
-        }
-        // 门店ID过滤：orders_legacy.STORE_ID 是 String 类型（与 stores_new.store_id Long 关联）
-        if (queryDTO.getStoreId() != null && !queryDTO.getStoreId().isEmpty()) {
-            wrapper.eq("STORE_ID", queryDTO.getStoreId());
-        }
-        wrapper.orderByDesc("CREATE_TIME");
-        return wrapper;
-    }
+    // W1-EC-04C: buildPosQueryWrapper 已移除（不再读 orders_legacy，复用 buildQueryWrapper）
 
-    /**
-     * 管理端订单状态码 → POS端订单状态码映射
-     * 管理端：0待确认 1已确认 2已完成 3已取消 4部分退款 5全额退款 6待评价
-     * POS端：0待支付 -1支付中 1已支付 2待配送 3配送中 4已完成 5已取消 6退款中 7已退款
-     */
-    private List<Integer> mapAdminStatusToPosStatus(Integer adminStatus) {
-        List<Integer> posStatusList = new ArrayList<>();
-        switch (adminStatus) {
-            case 0: // 待确认 → POS待支付/支付中
-                posStatusList.add(0);
-                posStatusList.add(-1);
-                break;
-            case 1: // 已确认 → POS已支付/待配送/配送中
-                posStatusList.add(1);
-                posStatusList.add(2);
-                posStatusList.add(3);
-                break;
-            case 2: // 已完成 → POS已完成
-                posStatusList.add(4);
-                break;
-            case 3: // 已取消 → POS已取消
-                posStatusList.add(5);
-                break;
-            case 4: // 部分退款 → POS退款中
-                posStatusList.add(6);
-                break;
-            case 5: // 全额退款 → POS已退款
-                posStatusList.add(7);
-                break;
-            case 6: // 待评价 → POS已完成（管理端独有，映射到POS已完成）
-                posStatusList.add(4);
-                break;
-            default:
-                // 不限制状态
-        }
-        return posStatusList;
-    }
+    // W1-EC-04C: mapAdminStatusToPosStatus 已移除（状态直接使用 orders 表 canonical 值）
 
-    /**
-     * 将POS订单实体（orders_legacy）转换为管理端OrderVO
-     * 包含：订单状态/支付方式/金额单位（元→分）的映射
-     */
-    private OrderVO convertPosOrderToVO(com.foodtraceability.entity.Order posOrder) {
-        OrderVO vo = new OrderVO();
-        vo.setOrderId(posOrder.getOrderId());
-        vo.setOrderCode(posOrder.getOrderNumber());
-        // 订单类型映射：POS端 0堂食1外卖2自提 → 管理端 1堂食2外卖3自提4打包
-        Integer adminOrderType = mapPosOrderTypeToAdmin(posOrder.getOrderType());
-        vo.setOrderType(adminOrderType);
-        vo.setOrderTypeName(getOrderTypeName(adminOrderType));
-        vo.setOrderSource(posOrder.getOrderSource());
-        vo.setCustomerName(posOrder.getContactName());
-        vo.setCustomerPhone(posOrder.getContactPhone());
-        vo.setRemark(posOrder.getRemarks());
-        vo.setCancelReason(posOrder.getCancelReason());
-        vo.setDeliveryAddress(posOrder.getDeliveryAddress());
+    // W1-EC-04C: convertPosOrderToVO 已移除（不再读 orders_legacy，复用 convertToSimpleOrderVO）
 
-        // 订单状态映射：POS端 → 管理端
-        Integer posStatus = posOrder.getOrderStatus();
-        Integer adminStatus = mapPosStatusToAdminStatus(posStatus);
-        vo.setOrderStatus(adminStatus);
-        vo.setOrderStatusName(getOrderStatusName(adminStatus));
+    // W1-EC-04C: mapPosStatusToAdminStatus 已移除（状态直接使用 orders 表 canonical 值）
 
-        // 支付状态：POS已支付(1)/待配送(2)/配送中(3)/已完成(4) → 已支付(2)；已退款(7)/退款中(6) → 已退款(3)；其他 → 未支付(0)
-        Integer paymentStatus = mapPosStatusToPaymentStatus(posStatus);
-        vo.setPaymentStatus(paymentStatus);
-        vo.setPaymentStatusName(getPaymentStatusName(paymentStatus));
-
-        // 支付方式映射：POS端 → 管理端
-        // POS: 0微信 1支付宝 2现金 3银行卡 4余额
-        // 管理端: 1现金 2微信 3支付宝 4银行卡 5积分(余额) 6混合支付
-        Integer posPayMethod = posOrder.getPaymentMethod();
-        Integer adminPayMethod = null;
-        if (posPayMethod != null) {
-            switch (posPayMethod) {
-                case 0: adminPayMethod = 2; break; // 微信
-                case 1: adminPayMethod = 3; break; // 支付宝
-                case 2: adminPayMethod = 1; break; // 现金
-                case 3: adminPayMethod = 4; break; // 银行卡
-                case 4: adminPayMethod = 5; break; // 余额→积分
-                default: adminPayMethod = null;
-            }
-        }
-        vo.setPaymentMethodName(adminPayMethod != null ? getPaymentMethodName(adminPayMethod) : "未支付");
-
-        // 金额转换：orders_legacy 是元（BigDecimal），OrderVO 是分（Long）
-        BigDecimal actualAmount = posOrder.getActualAmount() != null ? posOrder.getActualAmount() : posOrder.getOrderAmount();
-        if (actualAmount != null) {
-            long fenAmount = actualAmount.multiply(new BigDecimal("100")).longValue();
-            vo.setTotalAmount(fenAmount);
-            vo.setFinalAmount(fenAmount);
-            vo.setPaidAmount(paymentStatus != null && paymentStatus == 2 ? fenAmount : 0L);
-        }
-        if (posOrder.getDiscountAmount() != null) {
-            vo.setDiscountAmount(posOrder.getDiscountAmount().multiply(new BigDecimal("100")).longValue());
-        }
-        if (posOrder.getRefundAmount() != null && posOrder.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
-            vo.setRefundAmount(posOrder.getRefundAmount().multiply(new BigDecimal("100")).longValue());
-        }
-
-        vo.setCreateTime(posOrder.getCreateTime());
-        vo.setUpdateTime(posOrder.getUpdateTime());
-        // 门店信息：POS端订单关联的门店
-        vo.setStoreId(posOrder.getStoreId());
-        vo.setStoreName(posOrder.getStoreName() != null ? posOrder.getStoreName() : "中心旗舰店");
-        return vo;
-    }
-
-    /**
-     * POS端订单状态码 → 管理端订单状态码映射
-     */
-    private Integer mapPosStatusToAdminStatus(Integer posStatus) {
-        if (posStatus == null) return 0;
-        switch (posStatus) {
-            case 0: case -1: return 0; // 待支付/支付中 → 待确认
-            case 1: case 2: case 3: return 1; // 已支付/待配送/配送中 → 已确认
-            case 4: return 2; // 已完成 → 已完成
-            case 5: return 3; // 已取消 → 已取消
-            case 6: return 4; // 退款中 → 部分退款
-            case 7: return 5; // 已退款 → 全额退款
-            default: return 0;
-        }
-    }
-
-    /**
-     * POS端订单状态码 → 管理端支付状态码映射
-     */
-    private Integer mapPosStatusToPaymentStatus(Integer posStatus) {
-        if (posStatus == null) return 0;
-        switch (posStatus) {
-            case 1: case 2: case 3: case 4: return 2; // 已支付/待配送/配送中/已完成 → 已支付
-            case 6: case 7: return 3; // 退款中/已退款 → 已退款
-            default: return 0; // 待支付/支付中/已取消 → 未支付
-        }
-    }
+    // W1-EC-04C: mapPosStatusToPaymentStatus 已移除（支付状态直接使用 orders 表 canonical 值）
 
     @Override
     public PageResult<OrderRefundListVO> queryRefunds(OrderRefundQueryDTO queryDTO) {
@@ -1269,26 +1422,12 @@ public class OrderNewServiceImpl implements OrderNewService {
     @Override
     public TodayStatisticsVO getTodayStatistics() {
         TodayStatisticsVO stats = new TodayStatisticsVO();
-        // 订单统计聚合：orders（管理端订单） + orders_legacy（POS端订单，主要数据来源）
-        // POS端产生的交易行为是管理端获取订单数据的主要来源，必须包含在内
-        long todayOrdersAdmin = orderNewMapper.countTodayOrders();
-        long todayOrdersPos = posOrderMapper.countTodayPosOrders();
-        stats.setTotalOrders(todayOrdersAdmin + todayOrdersPos);
-
-        // 销售额聚合（单位：分）
-        long todaySalesAdmin = orderNewMapper.sumTodaySales();
-        long todaySalesPos = posOrderMapper.sumTodayPosSales();
-        stats.setTotalSalesAmount(todaySalesAdmin + todaySalesPos);
-
-        // 已完成订单（orders.order_status=2 + orders_legacy.order_status=4）
-        long completedOrdersAdmin = countOrdersByStatus(2);
-        long completedOrdersPos = posOrderMapper.countTodayPosCompletedOrders();
-        stats.setCompletedOrders(completedOrdersAdmin + completedOrdersPos);
-
-        // 已取消订单（orders.order_status=3 + orders_legacy.order_status=5）
-        long cancelledOrdersAdmin = countOrdersByStatus(3);
-        long cancelledOrdersPos = posOrderMapper.countTodayPosCancelledOrders();
-        stats.setCancelledOrders(cancelledOrdersAdmin + cancelledOrdersPos);
+        // W1-EC-04B-2: 统计聚合迁移 - 所有数据从 orders 表获取
+        // orders 表已包含所有订单（POS端+管理端），无需分别查询
+        stats.setTotalOrders(orderNewMapper.countTodayOrders());
+        stats.setTotalSalesAmount(orderNewMapper.sumTodaySales());
+        stats.setCompletedOrders(countOrdersByStatus(2));
+        stats.setCancelledOrders(countOrdersByStatus(3));
         return stats;
     }
 
@@ -1313,27 +1452,13 @@ public class OrderNewServiceImpl implements OrderNewService {
     @Override
     public Map<String, Object> getOrderStatistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
-        // 订单统计聚合：orders（管理端订单） + orders_legacy（POS端订单，主要数据来源）
-        // POS端产生的交易行为是管理端获取订单数据的主要来源，必须包含在内
-        long totalOrdersAdmin = orderNewMapper.countAllOrders();
-        long totalOrdersPos = posOrderMapper.countAllPosOrders();
-        stats.put("totalOrders", totalOrdersAdmin + totalOrdersPos);
-
-        long completedOrdersAdmin = orderNewMapper.countAllCompletedOrders();
-        long completedOrdersPos = posOrderMapper.countAllPosCompletedOrders();
-        stats.put("completedOrders", completedOrdersAdmin + completedOrdersPos);
-
-        long todayOrdersAdmin = orderNewMapper.countTodayOrders();
-        long todayOrdersPos = posOrderMapper.countTodayPosOrders();
-        stats.put("todayOrders", todayOrdersAdmin + todayOrdersPos);
-
-        long totalSalesAdmin = orderNewMapper.sumAllSales();
-        long totalSalesPos = posOrderMapper.sumAllPosSales();
-        stats.put("totalSales", totalSalesAdmin + totalSalesPos);
-
-        long todaySalesAdmin = orderNewMapper.sumTodaySales();
-        long todaySalesPos = posOrderMapper.sumTodayPosSales();
-        stats.put("todaySales", todaySalesAdmin + todaySalesPos);
+        // W1-EC-04B-2: 统计聚合迁移 - 所有数据从 orders 表获取
+        // orders 表已包含所有订单（POS端+管理端），无需分别查询
+        stats.put("totalOrders", orderNewMapper.countAllOrders());
+        stats.put("completedOrders", orderNewMapper.countAllCompletedOrders());
+        stats.put("todayOrders", orderNewMapper.countTodayOrders());
+        stats.put("totalSales", orderNewMapper.sumAllSales());
+        stats.put("todaySales", orderNewMapper.sumTodaySales());
         return stats;
     }
 
@@ -1365,53 +1490,30 @@ public class OrderNewServiceImpl implements OrderNewService {
                 ? LocalDate.parse(startDate)
                 : end.minusDays(6);
 
-        // 聚合 orders 表的每日趋势
+        // W1-EC-04B-2: 统计聚合迁移 - 所有数据从 orders 表获取
+        // orders 表已包含所有订单（POS端+管理端），无需分别查询再合并
         LocalDateTime startDateTime = start.atStartOfDay();
         LocalDateTime endDateTime = end.plusDays(1).atStartOfDay();
-        List<Map<String, Object>> adminTrend = orderNewMapper.getDailyTrend(startDateTime, endDateTime);
-
-        // 聚合 orders_legacy 表的每日趋势
-        List<Map<String, Object>> posTrend = posOrderMapper.getDailyTrendForPos(start, end);
-
-        // 合并两表数据到同一 Map（按日期分组累加）
-        Map<String, long[]> mergedData = new TreeMap<>();
-        if (adminTrend != null) {
-            for (Map<String, Object> row : adminTrend) {
-                String date = String.valueOf(row.get("date"));
-                long orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).longValue() : 0L;
-                long revenue = row.get("revenue") != null ? ((Number) row.get("revenue")).longValue() : 0L;
-                long[] existing = mergedData.getOrDefault(date, new long[]{0L, 0L});
-                existing[0] += orderCount;
-                existing[1] += revenue;
-                mergedData.put(date, existing);
-            }
-        }
-        if (posTrend != null) {
-            for (Map<String, Object> row : posTrend) {
-                String date = String.valueOf(row.get("date"));
-                long orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).longValue() : 0L;
-                long revenue = row.get("revenue") != null ? ((Number) row.get("revenue")).longValue() : 0L;
-                long[] existing = mergedData.getOrDefault(date, new long[]{0L, 0L});
-                existing[0] += orderCount;
-                existing[1] += revenue;
-                mergedData.put(date, existing);
-            }
-        }
+        List<Map<String, Object>> dailyTrend = orderNewMapper.getDailyTrend(startDateTime, endDateTime);
 
         // 构建结果列表
         List<com.foodtraceability.dto.order.DailyStatsVO> result = new ArrayList<>();
-        for (Map.Entry<String, long[]> entry : mergedData.entrySet()) {
-            com.foodtraceability.dto.order.DailyStatsVO vo = new com.foodtraceability.dto.order.DailyStatsVO();
-            vo.setDate(entry.getKey());
-            vo.setStoreName(storeName != null && !storeName.isEmpty() ? storeName : "全部门店");
-            vo.setOrderCount(entry.getValue()[0]);
-            vo.setRevenue(entry.getValue()[1]);
-            // 成本暂未实现，设为0；利润 = 营业额 - 成本
-            vo.setCost(0L);
-            vo.setProfit(entry.getValue()[1]);
-            // 利润率 = 利润 / 营业额 * 100
-            vo.setProfitRate(entry.getValue()[1] > 0 ? 100.0 : 0.0);
-            result.add(vo);
+        if (dailyTrend != null) {
+            for (Map<String, Object> row : dailyTrend) {
+                com.foodtraceability.dto.order.DailyStatsVO vo = new com.foodtraceability.dto.order.DailyStatsVO();
+                vo.setDate(String.valueOf(row.get("date")));
+                vo.setStoreName(storeName != null && !storeName.isEmpty() ? storeName : "全部门店");
+                long orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).longValue() : 0L;
+                long revenue = row.get("revenue") != null ? ((Number) row.get("revenue")).longValue() : 0L;
+                vo.setOrderCount(orderCount);
+                vo.setRevenue(revenue);
+                // 成本暂未实现，设为0；利润 = 营业额 - 成本
+                vo.setCost(0L);
+                vo.setProfit(revenue);
+                // 利润率 = 利润 / 营业额 * 100
+                vo.setProfitRate(revenue > 0 ? 100.0 : 0.0);
+                result.add(vo);
+            }
         }
         return result;
     }
@@ -1766,6 +1868,7 @@ public class OrderNewServiceImpl implements OrderNewService {
 
     /**
      * 构建查询条件包装器
+     * W1-EC-04C: 新增 storeId 过滤（queryPosOrders 迁移后需要门店过滤能力）
      */
     private QueryWrapper<OrderNew> buildQueryWrapper(OrderQueryDTO queryDTO) {
         QueryWrapper<OrderNew> wrapper = new QueryWrapper<>();
@@ -1799,6 +1902,15 @@ public class OrderNewServiceImpl implements OrderNewService {
         }
         if (queryDTO.getMaxAmount() != null) {
             wrapper.le("final_amount", queryDTO.getMaxAmount());
+        }
+        // W1-EC-04C: 门店ID过滤（orders.store_id 为 BIGINT，DTO.store_id 为 String，需转换）
+        if (queryDTO.getStoreId() != null && !queryDTO.getStoreId().isEmpty()) {
+            try {
+                Long storeIdLong = Long.parseLong(queryDTO.getStoreId());
+                wrapper.eq("store_id", storeIdLong);
+            } catch (NumberFormatException e) {
+                log.warn("门店ID格式异常, storeId: {}", queryDTO.getStoreId());
+            }
         }
 
         wrapper.orderByDesc("create_time");
@@ -1836,6 +1948,9 @@ public class OrderNewServiceImpl implements OrderNewService {
         vo.setOrderType(order.getOrderType());
         vo.setOrderTypeName(getOrderTypeName(order.getOrderType()));
         vo.setOrderSource(order.getOrderSource());
+        // W1-EC-04C: storeId 从 Long 转为 String（OrderVO.storeId 为 String）
+        vo.setStoreId(order.getStoreId() != null ? String.valueOf(order.getStoreId()) : null);
+        vo.setStoreName(null); // orders 表无 store_name 列，由前端通过 storeId 关联门店名称
         vo.setCustomerId(order.getCustomerId());
         vo.setCustomerName(order.getCustomerName());
         vo.setCustomerPhone(order.getCustomerPhone());
@@ -1934,20 +2049,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         }
     }
 
-    /**
-     * POS端订单类型码 → 管理端订单类型码映射
-     * POS端 orders_legacy.ORDER_TYPE: 0堂食 1外卖 2自提
-     * 管理端 orders.order_type: 1堂食 2外卖 3自提 4打包
-     */
-    private Integer mapPosOrderTypeToAdmin(Integer posOrderType) {
-        if (posOrderType == null) return null;
-        switch (posOrderType) {
-            case 0: return 1; // 堂食
-            case 1: return 2; // 外卖
-            case 2: return 3; // 自提
-            default: return null;
-        }
-    }
+    // W1-EC-04C: mapPosOrderTypeToAdmin 已移除（订单类型已与管理端一致）
 
     /**
      * 将字符串日期解析为 LocalDateTime

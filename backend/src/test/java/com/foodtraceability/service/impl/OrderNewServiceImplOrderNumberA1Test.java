@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.foodtraceability.dto.order.OrderCreateDTO;
 import com.foodtraceability.dto.order.OrderVO;
 import com.foodtraceability.dto.order.PosQuickOrderDTO;
-import com.foodtraceability.entity.ComboIngredient;
+import com.foodtraceability.entity.ComboIngredientNew;
 import com.foodtraceability.entity.DishComboNew;
 import com.foodtraceability.entity.DishRecipeNew;
 import com.foodtraceability.entity.FoodNew;
@@ -14,7 +14,7 @@ import com.foodtraceability.entity.OrderItemNew;
 import com.foodtraceability.entity.OrderNew;
 import com.foodtraceability.entity.OrderPaymentRecordNew;
 import com.foodtraceability.entity.OrderRefundRecordNew;
-import com.foodtraceability.mapper.ComboIngredientMapper;
+import com.foodtraceability.mapper.ComboIngredientNewMapper;
 import com.foodtraceability.mapper.DiningTableNewMapper;
 import com.foodtraceability.mapper.DishComboNewMapper;
 import com.foodtraceability.mapper.DishRecipeNewMapper;
@@ -78,7 +78,7 @@ class OrderNewServiceImplOrderNumberA1Test {
     @Mock private FoodNewMapper foodNewMapper;
     @Mock private DishComboNewMapper dishComboNewMapper;
     @Mock private DishRecipeNewMapper dishRecipeNewMapper;
-    @Mock private ComboIngredientMapper comboIngredientMapper;
+    @Mock private ComboIngredientNewMapper comboIngredientNewMapper;
     @Mock private KitchenOrderMapper kitchenOrderMapper;
     @Mock private StoreInventoryService storeInventoryService;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
@@ -99,7 +99,7 @@ class OrderNewServiceImplOrderNumberA1Test {
         TableInfoHelper.initTableInfo(assistant, FoodNew.class);
         TableInfoHelper.initTableInfo(assistant, DishRecipeNew.class);
         TableInfoHelper.initTableInfo(assistant, DishComboNew.class);
-        TableInfoHelper.initTableInfo(assistant, ComboIngredient.class);
+        TableInfoHelper.initTableInfo(assistant, ComboIngredientNew.class);
         TableInfoHelper.initTableInfo(assistant, OrderPaymentRecordNew.class);
         TableInfoHelper.initTableInfo(assistant, OrderRefundRecordNew.class);
     }
@@ -109,7 +109,7 @@ class OrderNewServiceImplOrderNumberA1Test {
         service = new OrderNewServiceImpl(
                 orderNewMapper, orderItemNewMapper, orderPaymentRecordNewMapper, orderRefundRecordNewMapper,
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
-                comboIngredientMapper, kitchenOrderMapper, storeInventoryService,
+                comboIngredientNewMapper, kitchenOrderMapper, storeInventoryService,
                 applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
                 materialConsumptionAuditService);
 

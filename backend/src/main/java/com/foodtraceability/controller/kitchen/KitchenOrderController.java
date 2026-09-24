@@ -58,6 +58,7 @@ public class KitchenOrderController {
 
     @PostMapping("/create")
     @Operation(summary = "创建后厨订单")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<KitchenOrder> create(@RequestBody KitchenOrderCreateDTO dto) {
         try {
             KitchenOrder order = kitchenOrderService.create(dto);
@@ -103,6 +104,7 @@ public class KitchenOrderController {
         if (order == null) {
             return Result.error("后厨订单不存在");
         }
+        expandComboDishItems(List.of(order));
         return Result.success(order);
     }
 
@@ -110,6 +112,7 @@ public class KitchenOrderController {
     @Operation(summary = "获取待处理订单完整信息列表")
     public Result<List<KitchenOrderFullDTO>> getActiveOrdersFull() {
         List<KitchenOrderFullDTO> orders = kitchenOrderMapper.selectActiveOrdersFull();
+        expandComboDishItems(orders);
         return Result.success(orders);
     }
 
@@ -117,7 +120,79 @@ public class KitchenOrderController {
     @Operation(summary = "获取最近订单完整信息列表")
     public Result<List<KitchenOrderFullDTO>> getRecentOrdersFull(@Parameter(description = "数量限制") @RequestParam(defaultValue = "50") Integer limit) {
         List<KitchenOrderFullDTO> orders = kitchenOrderMapper.selectRecentOrdersFull(limit);
+        expandComboDishItems(orders);
         return Result.success(orders);
+    }
+
+    /**
+     * P1-COMBO-ORDER-001: 拉单时将 product_type=2 套餐明细展开为 components（不拆 N 张卡片）。
+     * dishItems JSON 中 combo 行已带 productType/comboId；此处按 combo_id 查 combo_ingredients 补 components。
+     */
+    private void expandComboDishItems(List<KitchenOrderFullDTO> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        for (KitchenOrderFullDTO order : orders) {
+            if (order == null || order.getDishItems() == null || order.getDishItems().isBlank()) {
+                continue;
+            }
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.JsonNode arr = mapper.readTree(order.getDishItems());
+                if (!arr.isArray()) {
+                    continue;
+                }
+                boolean changed = false;
+                com.fasterxml.jackson.databind.node.ArrayNode expanded = mapper.createArrayNode();
+                for (com.fasterxml.jackson.databind.JsonNode node : arr) {
+                    int productType = node.has("productType") ? node.get("productType").asInt(1) : 1;
+                    String type = node.has("type") ? node.get("type").asText("") : "";
+                    if (productType != 2 && !"combo".equals(type)) {
+                        expanded.add(node);
+                        continue;
+                    }
+                    Long comboId = null;
+                    if (node.has("comboId") && !node.get("comboId").isNull()) {
+                        try {
+                            comboId = node.get("comboId").asLong();
+                        } catch (Exception ignore) {
+                            comboId = null;
+                        }
+                    }
+                    com.fasterxml.jackson.databind.node.ObjectNode comboNode = node.deepCopy();
+                    if (comboId != null) {
+                        List<Map<String, Object>> components = jdbcTemplate.queryForList(
+                                "SELECT ci.food_id, ci.quantity, f.food_name " +
+                                "FROM combo_ingredients ci " +
+                                "LEFT JOIN foods f ON f.food_id = ci.food_id " +
+                                "WHERE ci.combo_id = ? AND ci.deleted = 0 " +
+                                "ORDER BY ci.sort_order, ci.ingredient_id",
+                                comboId);
+                        com.fasterxml.jackson.databind.node.ArrayNode compArr = mapper.createArrayNode();
+                        for (Map<String, Object> c : components) {
+                            com.fasterxml.jackson.databind.node.ObjectNode comp = mapper.createObjectNode();
+                            Object foodId = c.get("food_id");
+                            comp.put("foodId", foodId == null ? null : String.valueOf(foodId));
+                            Object qty = c.get("quantity");
+                            comp.put("quantity", qty == null ? 0 : Integer.parseInt(String.valueOf(qty)));
+                            Object name = c.get("food_name");
+                            comp.put("name", name == null ? ("菜品" + foodId) : String.valueOf(name));
+                            compArr.add(comp);
+                        }
+                        comboNode.set("components", compArr);
+                        comboNode.put("productType", 2);
+                        comboNode.put("comboId", comboId);
+                    }
+                    expanded.add(comboNode);
+                    changed = true;
+                }
+                if (changed) {
+                    order.setDishItems(mapper.writeValueAsString(expanded));
+                }
+            } catch (Exception e) {
+                log.warn("KDS 套餐明细展开失败 orderId={}: {}", order.getOrderId(), e.getMessage());
+            }
+        }
     }
 
     @GetMapping("/order/{orderId}")
@@ -132,6 +207,7 @@ public class KitchenOrderController {
 
     @PostMapping("/{kitchenOrderId}/receive")
     @Operation(summary = "接单")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> receiveOrder(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId, @Parameter(description = "厨师ID") @RequestParam Long chefId, @Parameter(description = "厨师姓名") @RequestParam String chefName) {
         try {
             KitchenOrder order = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
@@ -152,6 +228,7 @@ public class KitchenOrderController {
 
     @PostMapping("/{kitchenOrderId}/start-make")
     @Operation(summary = "开始制作")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> startMake(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId) {
         try {
             KitchenOrder order = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
@@ -172,6 +249,7 @@ public class KitchenOrderController {
 
     @PostMapping("/{kitchenOrderId}/complete-make")
     @Operation(summary = "完成制作")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> completeMake(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId) {
         try {
             KitchenOrder order = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
@@ -243,6 +321,7 @@ public class KitchenOrderController {
 
     @PostMapping("/{kitchenOrderId}/serve")
     @Operation(summary = "出餐")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> serve(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId) {
         try {
             KitchenOrder order = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
@@ -263,6 +342,7 @@ public class KitchenOrderController {
 
     @PostMapping("/{kitchenOrderId}/cancel")
     @Operation(summary = "取消订单")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> cancel(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId, @Parameter(description = "取消原因") @RequestParam String reason) {
         try {
             KitchenOrder order = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
@@ -283,6 +363,7 @@ public class KitchenOrderController {
 
     @PostMapping("/scan-consume")
     @Operation(summary = "扫码消耗原料")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> scanConsumeMaterial(@RequestBody MaterialScanConsumeDTO dto) {
         try {
             boolean result = kitchenOrderService.scanConsumeMaterial(dto);
@@ -308,6 +389,7 @@ public class KitchenOrderController {
 
     @PutMapping("/{kitchenOrderId}/priority")
     @Operation(summary = "更新优先级")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     public Result<Boolean> updatePriority(@Parameter(description = "后厨订单ID") @PathVariable String kitchenOrderId, @Parameter(description = "优先级") @RequestParam Integer priority) {
         try {
             boolean result = kitchenOrderService.updatePriority(kitchenOrderId, priority);
@@ -331,6 +413,7 @@ public class KitchenOrderController {
 
     @DeleteMapping("/kitchen/clear-test-data")
     @Operation(summary = "清除测试数据（仅开发环境）")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
     @org.springframework.context.annotation.Profile("dev")
     public Result<Map<String, Object>> clearTestData() {
         Map<String, Object> result = new HashMap<>();

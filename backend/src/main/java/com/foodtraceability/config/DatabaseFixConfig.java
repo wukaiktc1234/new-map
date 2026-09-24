@@ -72,6 +72,8 @@ public class DatabaseFixConfig {
                 // 同步产品中心新表数据到 legacy 表，保证 POS 订单创建逻辑可用
                 syncFoodsToLegacyFood(jdbcTemplate);
                 syncDishCombosToLegacyDishCombo(jdbcTemplate);
+                // P1-COMBO-ORDER-001: 过渡期同步 combo_ingredients → combo_ingredient
+                syncComboIngredientsToLegacy(jdbcTemplate);
 
                 // 已废弃：stores 表仅 legacy frontend 使用，活跃前端均不调用
                 // initializeStoresTable(jdbcTemplate);
@@ -737,8 +739,8 @@ public class DatabaseFixConfig {
                         "priority INT DEFAULT 0," +
                         "people_count INT," +
                         "combo_type VARCHAR(50)," +
-                        "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                        "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                        "create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                        "update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
                         "deleted INT DEFAULT 0" +
                         ")";
                 jdbcTemplate.execute(createTableSql);
@@ -747,6 +749,8 @@ public class DatabaseFixConfig {
                 checkAndAddColumn(jdbcTemplate, "dish_combo", "combo_code", "VARCHAR(50) UNIQUE");
                 checkAndAddColumn(jdbcTemplate, "dish_combo", "combo_type", "VARCHAR(50)");
                 checkAndAddColumn(jdbcTemplate, "dish_combo", "people_count", "INT");
+                checkAndAddColumn(jdbcTemplate, "dish_combo", "create_time", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+                checkAndAddColumn(jdbcTemplate, "dish_combo", "update_time", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             }
         } catch (Exception e) {
             log.warn("初始化dish_combo表时出错: {}", e.getMessage());
@@ -832,9 +836,10 @@ public class DatabaseFixConfig {
             }
 
             // dish_combo 表字段为 combo_name/price/people_count，没有 name/priority
+            // P1-COMBO-ORDER-001: Flyway V20260717 已将 created_at/updated_at 统一为 create_time/update_time
             String upsertSql =
                 "INSERT INTO dish_combo (" +
-                "  combo_code, combo_name, description, price, status, image_url, people_count, created_at, updated_at, deleted" +
+                "  combo_code, combo_name, description, price, status, image_url, people_count, create_time, update_time, deleted" +
                 ") " +
                 "SELECT " +
                 "  dc.combo_code, dc.combo_name, dc.description, dc.combo_price / 100.00, " +
@@ -849,12 +854,53 @@ public class DatabaseFixConfig {
                 "  status = EXCLUDED.status, " +
                 "  image_url = EXCLUDED.image_url, " +
                 "  people_count = EXCLUDED.people_count, " +
-                "  updated_at = EXCLUDED.updated_at, " +
+                "  update_time = EXCLUDED.update_time, " +
                 "  deleted = EXCLUDED.deleted";
             int synced = jdbcTemplate.update(upsertSql);
             log.info("已同步 {} 条套餐数据从 dish_combos 到 dish_combo 表", synced);
         } catch (Exception e) {
             log.warn("同步 dish_combos 到 dish_combo 表时出错: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * P1-COMBO-ORDER-001: 同步产品中心套餐配料表(combo_ingredients)到 legacy 表(combo_ingredient)。
+     * 过渡期兼容：POS 侧仍可能读 combo_ingredient（selectByComboId）。
+     * combo_ingredient.food_id 为 VARCHAR，quantity 为 DECIMAL；新表 food_id BIGINT、quantity INT。
+     */
+    private void syncComboIngredientsToLegacy(JdbcTemplate jdbcTemplate) {
+        try {
+            String checkNewSql = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'combo_ingredients'";
+            String checkLegacySql = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'combo_ingredient'";
+            Integer newCount = jdbcTemplate.queryForObject(checkNewSql, Integer.class);
+            Integer legacyCount = jdbcTemplate.queryForObject(checkLegacySql, Integer.class);
+            if ((newCount == null || newCount == 0) || (legacyCount == null || legacyCount == 0)) {
+                log.info("combo_ingredients 或 combo_ingredient 表不存在，跳过同步");
+                return;
+            }
+
+            // legacy combo_ingredient 主键自增、无 natural unique；按 (combo_id, food_id) 幂等补插
+            // 时间列可能为 create_time/update_time 或历史 created_at/updated_at：按实际列名探测
+            String colSql =
+                "SELECT column_name FROM information_schema.columns " +
+                "WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'combo_ingredient'";
+            List<String> cols = jdbcTemplate.queryForList(colSql, String.class);
+            String createCol = cols != null && cols.contains("create_time") ? "create_time" : "created_at";
+            String updateCol = cols != null && cols.contains("update_time") ? "update_time" : "updated_at";
+            String upsertSql =
+                "INSERT INTO combo_ingredient (combo_id, food_id, quantity, unit, " + createCol + ", " + updateCol + ", deleted) " +
+                "SELECT ci.combo_id, CAST(ci.food_id AS VARCHAR(50)), CAST(ci.quantity AS DECIMAL), ci.unit, " +
+                "       ci.create_time, ci.update_time, ci.deleted " +
+                "FROM combo_ingredients ci " +
+                "WHERE ci.deleted = 0 " +
+                "  AND NOT EXISTS (" +
+                "    SELECT 1 FROM combo_ingredient x " +
+                "    WHERE x.combo_id = ci.combo_id AND x.food_id = CAST(ci.food_id AS VARCHAR(50))" +
+                "  )";
+            int synced = jdbcTemplate.update(upsertSql);
+            log.info("已同步 {} 条套餐配料从 combo_ingredients 到 combo_ingredient 表", synced);
+        } catch (Exception e) {
+            log.warn("同步 combo_ingredients 到 combo_ingredient 表时出错: {}", e.getMessage(), e);
         }
     }
 

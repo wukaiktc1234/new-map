@@ -25,6 +25,14 @@ export interface KitchenDishItem {
   price: number;
   quantity: number;
   dishType?: string;
+  /** P1-COMBO-ORDER-001: 套餐明细组件（拉单时展开） */
+  productType?: number;
+  comboId?: number | string;
+  components?: Array<{
+    foodId?: string;
+    name: string;
+    quantity: number;
+  }>;
 }
 
 /** 后厨订单实体（对应后端KitchenOrder） */

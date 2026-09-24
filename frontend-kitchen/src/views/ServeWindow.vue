@@ -36,7 +36,12 @@
           </div>
         </div>
         <div class="orders-list">
-          <div v-if="servingOrders.length === 0" class="empty-state">
+          <div v-if="servingOrders.length === 0 && loadError" class="empty-state">
+            <div class="empty-icon">⚠️</div>
+            <p class="empty-error-text">待出餐列表加载失败：{{ loadError }}</p>
+            <el-button type="primary" class="empty-retry-btn" @click="loadOrders">重试加载</el-button>
+          </div>
+          <div v-else-if="servingOrders.length === 0" class="empty-state">
             <div class="empty-icon">📋</div>
             <p>暂无待出餐订单</p>
           </div>
@@ -64,9 +69,15 @@
               <span class="wait-time">等待: {{ formatWaitTime(order.makeCompleteTime) }}</span>
             </div>
             <div class="dish-list" v-if="order.dishItems">
-              <span class="dish-item" v-for="(dish, index) in parseDishItems(order.dishItems)" :key="index">
-                {{ dish.dishName }} × {{ dish.quantity }}
-              </span>
+              <div class="dish-item" v-for="(dish, index) in parseDishItems(order.dishItems)" :key="index">
+                <span>{{ dish.dishName || dish.name }} × {{ dish.quantity }}</span>
+                <!-- P1-COMBO-ORDER-001: 套餐明细展开（单卡片） -->
+                <ul v-if="dish.components && dish.components.length" class="combo-components">
+                  <li v-for="(comp, ci) in dish.components" :key="ci">
+                    {{ comp.name }} × {{ comp.quantity }}
+                  </li>
+                </ul>
+              </div>
             </div>
             <div class="order-remark" v-if="order.remark">
               <span class="remark-label">备注:</span>
@@ -120,6 +131,8 @@ const currentDate = ref('')
 const isConnected = ref(false)
 const completedOrders = ref<any[]>([])
 const servingOrders = ref<any[]>([])
+/** 待出餐列表加载错误信息（失败透传：非空时展示错误态+重试，不伪装「暂无待出餐订单」空态） */
+const loadError = ref<string | null>(null)
 let timeInterval: number | null = null
 let wsSubscriptionStatus: string | null = null
 
@@ -215,14 +228,24 @@ const getOrderTypeClass = (orderType: number) => {
 
 const loadOrders = async () => {
   try {
+    // GET /v1/kitchen/completed-orders：后端无此端点（KIT-API-003，缺端点已立项归后端池）——
+    // 契约未定时前端只做失败透传，路径不动、不发明路径（OIC2-B2-003）
     const res = await request.get('/v1/kitchen/completed-orders')
     
     if ((res as any).success) {
       const orders = (res as any).data || []
       servingOrders.value = orders
     }
-  } catch (error) {
+    loadError.value = null
+  } catch (error: any) {
     console.error('加载订单失败:', error)
+    // 失败透传：明确提示 + 重试入口（错误态替代「暂无待出餐订单」伪装空数据）
+    // 首次失败弹 toast，后续失败仅错误态常驻，避免 toast 轰炸
+    const msg = error?.message || '加载待出餐订单失败'
+    if (!loadError.value) {
+      ElMessage.error(`待出餐列表加载失败：${msg}`)
+    }
+    loadError.value = msg
   }
 }
 
@@ -283,7 +306,8 @@ const processScan = async (traceCode: string) => {
   console.log('处理扫码:', traceCode)
   
   try {
-    const result = await request.post('/v1/kitchen/scan-food-trace-code', null, {
+    // 路径对齐后端实测 @RequestMapping（KitchenScanController:78）：/v1/kitchen/scan/scan-food-trace-code
+    const result = await request.post('/v1/kitchen/scan/scan-food-trace-code', null, {
       params: { traceCode }
     })
     
@@ -612,6 +636,17 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
+.empty-error-text {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #f87171;
+  text-align: center;
+}
+
+.empty-retry-btn {
+  margin-top: 4px;
+}
+
 .order-card {
   background: #0f172a;
   border-radius: 12px;
@@ -750,6 +785,16 @@ onUnmounted(() => {
   padding: 4px 10px;
   background: rgba(100, 116, 139, 0.15);
   border-radius: 6px;
+}
+
+.combo-components {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: #94a3b8;
+  border-top: 1px dashed rgba(148, 163, 184, 0.35);
+  padding-top: 4px;
 }
 
 .order-remark {
