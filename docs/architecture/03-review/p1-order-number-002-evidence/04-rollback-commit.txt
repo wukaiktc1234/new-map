@@ -1,0 +1,13 @@
+﻿commit 6f0f2b91692c83a996a1154c31de3180c702328f
+Author:     wukaiktc1234 <wukaiktc1234@gmail.com>
+AuthorDate: Wed Sep 23 16:45:04 2026 +0800
+Commit:     wukaiktc1234 <wukaiktc1234@gmail.com>
+CommitDate: Wed Sep 23 16:45:04 2026 +0800
+
+    Revert "P1-ORDER-NUMBER-002 A1 first implementation"
+    
+    This reverts commit 7f40ab757a3875db0bf1ed6f815ce5bf1fa0afd8.
+
+ .../service/impl/OrderNewServiceImpl.java          |   1 -
+ .../impl/OrderNewServiceImplOrderNumberA1Test.java | 205 ---------------------
+ 2 files changed, 206 deletions(-)

@@ -1,0 +1,20 @@
+﻿commit 6f0f2b91692c83a996a1154c31de3180c702328f
+Author: wukaiktc1234 <wukaiktc1234@gmail.com>
+Date:   Wed Sep 23 16:45:04 2026 +0800
+
+    Revert "P1-ORDER-NUMBER-002 A1 first implementation"
+    
+    This reverts commit 7f40ab757a3875db0bf1ed6f815ce5bf1fa0afd8.
+
+diff --git a/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java b/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
+index f8edc5b..281f19f 100644
+--- a/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
++++ b/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
+@@ -1716,7 +1716,6 @@ public class OrderNewServiceImpl implements OrderNewService {
+     private OrderNew buildOrderEntity(OrderCreateDTO createDTO, OrderAmountCalculation calc, String orderCode) {
+         OrderNew order = new OrderNew();
+         order.setOrderCode(orderCode);
+-        order.setOrderNumber(orderCode);
+         order.setOrderType(createDTO.getOrderType());
+         order.setOrderSource(createDTO.getOrderSource() != null ? createDTO.getOrderSource() : 1);
+         order.setStoreId(createDTO.getStoreId());

@@ -1,0 +1,842 @@
+﻿diff --git a/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java b/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
+index 281f19f..f5b928b 100644
+--- a/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
++++ b/backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
+@@ -2,8 +2,12 @@ package com.foodtraceability.service.impl;
+ 
+ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
++import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+ import com.foodtraceability.common.Result;
++import com.foodtraceability.common.exception.BusinessException;
++import com.foodtraceability.common.exception.MaterialDeductionContext;
++import com.foodtraceability.common.exception.MaterialDeductionFailureException;
+ import com.foodtraceability.dto.PageResult;
+ import com.foodtraceability.dto.finance.CostRecordCreateDTO;
+ import com.foodtraceability.dto.order.*;
+@@ -11,6 +15,7 @@ import com.foodtraceability.entity.*;
+ import com.foodtraceability.event.OrderCompletedEvent;
+ import com.foodtraceability.event.OrderRefundEvent;
+ import com.foodtraceability.mapper.*;
++import com.foodtraceability.service.MaterialConsumptionAuditService;
+ import com.foodtraceability.service.OrderNewService;
+ import com.foodtraceability.service.StoreInventoryService;
+ import com.foodtraceability.service.finance.CostRecordService;
+@@ -52,11 +57,10 @@ public class OrderNewServiceImpl implements OrderNewService {
+     private final DishComboNewMapper dishComboNewMapper;
+     private final DishRecipeNewMapper dishRecipeNewMapper;
+     private final ComboIngredientMapper comboIngredientMapper;
++    private final KitchenOrderMapper kitchenOrderMapper;
+     private final StoreInventoryService storeInventoryService;
+-    /** POS璁㈠崟Mapper锛堟煡璇?orders_legacy 琛級锛岀敤浜庣鐞嗙鏌ヨPOS鏀堕摱绔鍗?*/
+-    private final OrderMapper posOrderMapper;
+-    /** POS璁㈠崟椤筂apper锛堟煡璇?order_items_legacy 琛級 */
+-    private final OrderItemMapper posOrderItemMapper;
++    // W1-EC-04C: posOrderMapper/posOrderItemMapper 宸茬Щ闄?+    // queryPosOrders/getPosOrderDetail 宸茶縼绉昏嚦 orders 琛紙canonical read锛夛紝涓嶅啀璇?orders_legacy
+     /** 浜嬩欢鍙戝竷鍣細鐢ㄤ簬鍙戝竷璁㈠崟瀹屾垚浜嬩欢锛岃Е鍙戣储鍔℃敹鍏?鍑瘉绛夊紓姝ヨ仈鍔紙DF-008 淇锛?*/
+     private final ApplicationEventPublisher applicationEventPublisher;
+     /** 鎴愭湰璁板綍鏈嶅姟锛氱敤浜庢寔涔呭寲璁㈠崟鎴愭湰鍒?cost_record 琛紙DF-009 淇锛?*/
+@@ -65,6 +69,8 @@ public class OrderNewServiceImpl implements OrderNewService {
+     private final com.foodtraceability.service.finance.FundFlowService fundFlowService;
+     /** 閾惰璐︽埛鏈嶅姟锛團6锛氬彇榛樿璐︽埛锛?*/
+     private final com.foodtraceability.service.finance.BankAccountService bankAccountService;
++    /** 鎵ｆ枡澶辫触瀹¤鏈嶅姟锛圥0锛氱嫭绔?bean + REQUIRES_NEW锛岀姝?this 鑷皟鐢級 */
++    private final MaterialConsumptionAuditService materialConsumptionAuditService;
+ 
+     public OrderNewServiceImpl(
+             OrderNewMapper orderNewMapper,
+@@ -76,13 +82,13 @@ public class OrderNewServiceImpl implements OrderNewService {
+             DishComboNewMapper dishComboNewMapper,
+             DishRecipeNewMapper dishRecipeNewMapper,
+             ComboIngredientMapper comboIngredientMapper,
++            KitchenOrderMapper kitchenOrderMapper,
+             StoreInventoryService storeInventoryService,
+-            OrderMapper posOrderMapper,
+-            OrderItemMapper posOrderItemMapper,
+             ApplicationEventPublisher applicationEventPublisher,
+             CostRecordService costRecordService,
+             com.foodtraceability.service.finance.FundFlowService fundFlowService,
+-            com.foodtraceability.service.finance.BankAccountService bankAccountService) {
++            com.foodtraceability.service.finance.BankAccountService bankAccountService,
++            MaterialConsumptionAuditService materialConsumptionAuditService) {
+         this.orderNewMapper = orderNewMapper;
+         this.orderItemNewMapper = orderItemNewMapper;
+         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
+@@ -92,13 +98,13 @@ public class OrderNewServiceImpl implements OrderNewService {
+         this.dishComboNewMapper = dishComboNewMapper;
+         this.dishRecipeNewMapper = dishRecipeNewMapper;
+         this.comboIngredientMapper = comboIngredientMapper;
++        this.kitchenOrderMapper = kitchenOrderMapper;
+         this.storeInventoryService = storeInventoryService;
+-        this.posOrderMapper = posOrderMapper;
+-        this.posOrderItemMapper = posOrderItemMapper;
+         this.applicationEventPublisher = applicationEventPublisher;
+         this.costRecordService = costRecordService;
+         this.fundFlowService = fundFlowService;
+         this.bankAccountService = bankAccountService;
++        this.materialConsumptionAuditService = materialConsumptionAuditService;
+     }
+ 
+     // ==================== 璁㈠崟鍒涘缓 ====================
+@@ -661,6 +667,357 @@ public class OrderNewServiceImpl implements OrderNewService {
+         return totalCost;
+     }
+ 
++    /**
++     * KDS 鍑洪鏃舵墸鍑忓師鏂欏簱瀛橈紙P0 涓ユ牸鐗堬細绂佹浠讳綍"閮ㄥ垎璺宠繃鍚庨潤榛樻垚鍔?锛夈€?+     *
++     * 骞傜瓑绛栫暐锛氬厛鍘熷瓙鍗犱綅锛圲PDATE ... WHERE material_consumed = 0锛夛紝鍐嶆墸鏂欍€?+     * 鍗犱綅鎴愬姛锛坅ffectedRows=1锛夎幏寰楀鐞嗘潈锛涘崰浣嶅け璐ワ紙affectedRows=0锛夎鏄庡凡琚叾浠栬姹傚鐞嗘垨璁板綍涓嶅瓨鍦紝鐩存帴鎷掔粷銆?+     * 鍘熷瓙鎬э細鎵€鏈夊簲鎵ｅ師鏂欏湪鍚屼竴浜嬪姟鍐呮墸鍑忥紱浠讳綍"搴旀墸鍘熸枡琚?continue/catch 璺宠繃"鐨勬暟鎹?閰嶇疆/瑙ｆ瀽寮傚父
++     * 閮戒細鎶涘嚭 MaterialDeductionFailureException 鈫?鏁翠釜鎵ｆ枡浜嬪姟鍥炴粴锛坢aterial_consumed 鎭㈠ 0锛夛紝
++     * 骞剁敱鐙珛 REQUIRES_NEW 浜嬪姟锛坢aterialConsumptionAuditService锛夊啓鍏?FAILED 瀹¤琛屻€?+     *
++     * PENDING_BUSINESS_DECISION锛堣涓轰繚鎸佷笉鍙橈紝浠呰褰曪級锛?+     *  - 閰嶆柟 requiredQuantity == 0 / 鎹㈢畻鍚?qty<=0锛氫笉瑙嗕负澶辫触锛堝彲鑳戒负鍚堟硶闆舵秷鑰楅厤缃級锛?+     *    璇ュ師鏂欐寜鍘熼€昏緫鍚堝苟涓?0 鏁伴噺骞跺湪鎵ｅ噺寰幆涓烦杩囷紝璁板叆涓婁笅鏂?notes 渚涙姤鍛婁笌鏃ュ織銆?+     *
++     * @param kitchenOrderId 鍚庡帹璁㈠崟ID
++     * @param sourceRef 鏉ユ簮寮曠敤锛堝啓鍏ュ簱瀛樻祦姘达級
++     * @param trayCode 瑙﹀彂鏈嶅姟鏃剁殑鎵樼洏鐮侊紙鍙┖锛屽啓鍏ュけ璐ュ璁¤锛?+     */
++    @Override
++    @Transactional(rollbackFor = Exception.class)
++    public void deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode) {
++        MaterialDeductionContext ctx = new MaterialDeductionContext();
++        ctx.setKitchenOrderId(kitchenOrderId);
++        ctx.setTrayCode(trayCode);
++        ctx.setSourceRef(sourceRef);
++        try {
++            doDeductMaterialsForServe(ctx, sourceRef);
++        } catch (MaterialDeductionFailureException e) {
++            // 鐙珛 bean + REQUIRES_NEW锛氫富浜嬪姟鍥炴粴鍚?FAILED 瀹¤琛屼粛鎸佷箙鍖栥€?+            // 绂佹鏀逛负 this 鑷皟鐢紙浼氱粫杩囦唬鐞嗭紝閫€鍖栦负鍚屼簨鍔￠殢涓讳簨鍔′竴璧峰洖婊氾級銆?+            // 瀹¤鑷韩澶辫触涓嶅緱鍚炴帀涓讳笟鍔″紓甯革細浠呰 ERROR锛屼粛鎶涘嚭鍘?MaterialDeductionFailureException銆?+            try {
++                materialConsumptionAuditService.recordDeductionFailure(e);
++            } catch (Exception auditEx) {
++                e.addSuppressed(auditEx);
++                log.error("[鎵ｆ枡澶辫触瀹¤] 瀹¤鍐欏叆鑷韩寮傚父锛屼笉褰卞搷涓绘墸鏂欏紓甯镐紶鎾? kitchenOrderId={}, failureType={}, auditError={}",
++                        ctx.getKitchenOrderId(), e.getFailureType(), auditEx.getMessage(), auditEx);
++            }
++            throw e;
++        }
++    }
++
++    private void doDeductMaterialsForServe(MaterialDeductionContext ctx, String sourceRef) {
++        String kitchenOrderId = ctx.getKitchenOrderId();
++
++        // 1. 鍘熷瓙鍗犱綅锛氬皢 material_consumed 浠?0 鏀逛负 1锛岃幏鍙栧敮涓€澶勭悊鏉?+        LocalDateTime now = LocalDateTime.now();
++        int affectedRows = kitchenOrderMapper.update(null,
++                new LambdaUpdateWrapper<KitchenOrder>()
++                        .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId)
++                        .eq(KitchenOrder::getMaterialConsumed, 0)
++                        .set(KitchenOrder::getMaterialConsumed, 1)
++                        .set(KitchenOrder::getMaterialConsumeTime, now));
++        if (affectedRows == 0) {
++            KitchenOrder existing = kitchenOrderMapper.selectOne(
++                    new LambdaQueryWrapper<KitchenOrder>()
++                            .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId));
++            if (existing == null) {
++                // 鍚庡帹鍗曚笉瀛樺湪锛氭暟鎹紓甯革紝鏁翠綋澶辫触 + 瀹¤
++                log.error("鍑洪鎵ｆ枡锛氬悗鍘ㄥ崟涓嶅瓨鍦? kitchenOrderId={}", kitchenOrderId);
++                throw MaterialDeductionFailureException.of(ctx,
++                        MaterialDeductionFailureException.KITCHEN_ORDER_NOT_FOUND,
++                        "鍑洪鎵ｆ枡澶辫触锛氬悗鍘ㄥ崟涓嶅瓨鍦紙kitchenOrderId=" + kitchenOrderId + "锛?);
++            }
++            // material_consumed 宸蹭负 1锛氬凡琚叾浠栬姹傛墸鍑忥紙骞傜瓑淇濇姢锛屾棦鏈夋樉寮忓け璐ワ紝淇濇寔涓嶅彉锛?+            log.warn("鍑洪鎵ｆ枡锛氬師鏂欏凡鎵ｅ噺锛堝箓绛変繚鎶わ級, kitchenOrderId={}", kitchenOrderId);
++            throw new RuntimeException("鍑洪鎵ｆ枡澶辫触锛氬師鏂欏凡琚墸鍑忥紙kitchenOrderId=" + kitchenOrderId
++                    + "锛夛紝鍙兘鏄噸澶嶅嚭椁愮‘璁ゆ垨骞跺彂璇锋眰");
++        }
++
++        // 2. 鍗犱綅鎴愬姛锛岄噸鏂拌鍙栧畬鏁磋褰曪紙鐢ㄤ簬鍚庣画 orderId銆乻toreId 绛夊瓧娈碉級
++        KitchenOrder kitchenOrder = kitchenOrderMapper.selectOne(
++                new LambdaQueryWrapper<KitchenOrder>()
++                        .eq(KitchenOrder::getKitchenOrderId, kitchenOrderId));
++        if (kitchenOrder == null) {
++            // 鐞嗚涓婁笉浼氬彂鐢燂紙鍒氬崰浣嶆垚鍔燂級锛岄槻寰℃€у鐞?+            throw new RuntimeException("鍑洪鎵ｆ枡澶辫触锛氬崰浣嶅悗閲嶆柊璇诲彇璁㈠崟澶辫触锛坘itchenOrderId=" + kitchenOrderId + "锛?);
++        }
++
++        String orderId = kitchenOrder.getOrderId();
++        ctx.setOrderId(orderId);
++        ctx.setOrderNumber(kitchenOrder.getOrderNumber());
++        ctx.setStoreId(kitchenOrder.getStoreId());
++        ctx.setStoreName(kitchenOrder.getStoreName());
++
++        OrderNew order = orderNewMapper.selectById(orderId);
++        if (order == null) {
++            log.error("鍑洪鎵ｆ枡锛氳鍗曚笉瀛樺湪, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
++            throw MaterialDeductionFailureException.of(ctx,
++                    MaterialDeductionFailureException.ORDER_NOT_FOUND,
++                    "鍑洪鎵ｆ枡澶辫触锛氳鍗曚笉瀛樺湪锛坥rderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "锛?);
++        }
++
++        // 3. BOM 灞曞紑锛圥0 涓ユ牸鐗堬細浠讳綍"搴旀墸鍘熸枡琚烦杩?鐨勬暟鎹?閰嶇疆/瑙ｆ瀽寮傚父 鈫?鏁翠綋澶辫触锛?+        List<OrderItemNew> orderItems = getOrderItems(orderId);
++        Map<Long, BigDecimal> materialDeductionMap = new LinkedHashMap<>();
++        Map<Long, String> materialNameMap = new HashMap<>();
++
++        boolean anyActiveItem = false;
++        for (OrderItemNew item : orderItems) {
++            if (item.getKitchenStatus() != null && item.getKitchenStatus() == 4) {
++                // 宸查€€娆炬槑缁嗭細鍚堟硶涓嶅弬涓庢墸鍑忥紙闃叉閲嶅鍥炶ˉ锛夛紝璁板綍璇存槑
++                log.info("鍑洪鎵ｆ枡锛氳彍鍝佸凡閫€娆撅紝璺宠繃, orderId={}, itemId={}", orderId, item.getItemId());
++                ctx.addNote("orderItem itemId=" + item.getItemId() + " 宸查€€娆?kitchenStatus=4)锛屼笉鍙備笌鎵ｅ噺");
++                continue;
++            }
++            anyActiveItem = true;
++            Integer quantity = item.getQuantity() != null ? item.getQuantity() : 1;
++
++            if (item.getProductType() == null) {
++                log.error("鍑洪鎵ｆ枡锛氭槑缁?productType 涓虹┖, orderId={}, itemId={}", orderId, item.getItemId());
++                throw MaterialDeductionFailureException.of(ctx,
++                        MaterialDeductionFailureException.PRODUCT_TYPE_NULL,
++                        "鍑洪鎵ｆ枡澶辫触锛氳鍗曟槑缁?productType 涓虹┖锛坥rderId=" + orderId
++                                + ", itemId=" + item.getItemId() + "锛?);
++            }
++
++            if (item.getProductType() == 1) {
++                if (item.getFoodId() == null) {
++                    log.error("鍑洪鎵ｆ枡锛氬崟鍝佹槑缁?foodId 涓虹┖, orderId={}, itemId={}", orderId, item.getItemId());
++                    throw MaterialDeductionFailureException.of(ctx,
++                            MaterialDeductionFailureException.ITEM_FOOD_ID_NULL,
++                            "鍑洪鎵ｆ枡澶辫触锛氬崟鍝佽鍗曟槑缁?foodId 涓虹┖锛坥rderId=" + orderId
++                                    + ", itemId=" + item.getItemId() + ", productName=" + item.getProductName() + "锛?);
++                }
++                addFoodMaterialDeductionsStrict(ctx, item.getFoodId(), quantity,
++                        materialDeductionMap, materialNameMap);
++            } else if (item.getProductType() == 2) {
++                Long comboId = item.getFoodId();
++                if (comboId == null) {
++                    log.error("鍑洪鎵ｆ枡锛氬椁愭槑缁?foodId(comboId) 涓虹┖, orderId={}, itemId={}", orderId, item.getItemId());
++                    throw MaterialDeductionFailureException.of(ctx,
++                            MaterialDeductionFailureException.ITEM_FOOD_ID_NULL,
++                            "鍑洪鎵ｆ枡澶辫触锛氬椁愯鍗曟槑缁?foodId(comboId) 涓虹┖锛坥rderId=" + orderId
++                                    + ", itemId=" + item.getItemId() + ", productName=" + item.getProductName() + "锛?);
++                }
++                DishComboNew combo = dishComboNewMapper.selectById(comboId);
++                if (combo == null) {
++                    log.error("鍑洪鎵ｆ枡锛氬椁愪笉瀛樺湪, comboId={}, orderId={}", comboId, orderId);
++                    throw MaterialDeductionFailureException.of(ctx,
++                            MaterialDeductionFailureException.COMBO_NOT_FOUND,
++                            "鍑洪鎵ｆ枡澶辫触锛氬椁愪笉瀛樺湪锛坈omboId=" + comboId + ", orderId=" + orderId
++                                    + ", itemId=" + item.getItemId() + "锛?);
++                }
++                List<ComboIngredient> comboIngredients =
++                        comboIngredientMapper.selectByComboId(comboId);
++                if (comboIngredients == null || comboIngredients.isEmpty()) {
++                    log.error("鍑洪鎵ｆ枡锛氬椁愭棤閰嶆枡(BOM鏈睍寮€), comboId={}, orderId={}", comboId, orderId);
++                    throw MaterialDeductionFailureException.of(ctx,
++                            MaterialDeductionFailureException.COMBO_INGREDIENTS_EMPTY,
++                            "鍑洪鎵ｆ枡澶辫触锛氬椁愭棤閰嶆枡锛孊OM 鏈睍寮€锛坈omboId=" + comboId + ", orderId=" + orderId
++                                    + ", itemId=" + item.getItemId() + "锛?);
++                }
++                for (ComboIngredient ingredient : comboIngredients) {
++                    if (ingredient.getFoodId() == null) {
++                        log.error("鍑洪鎵ｆ枡锛氬椁愰厤鏂?foodId 涓虹┖, comboId={}, ingredientId={}",
++                                comboId, ingredient.getId());
++                        throw MaterialDeductionFailureException.of(ctx,
++                                MaterialDeductionFailureException.INGREDIENT_FOOD_ID_NULL,
++                                "鍑洪鎵ｆ枡澶辫触锛氬椁愰厤鏂?foodId 涓虹┖锛坈omboId=" + comboId
++                                        + ", ingredientId=" + ingredient.getId() + ", orderId=" + orderId + "锛?);
++                    }
++                    BigDecimal foodQtyInCombo = ingredient.getQuantity() != null
++                            ? ingredient.getQuantity() : BigDecimal.ONE;
++                    if (foodQtyInCombo.compareTo(BigDecimal.ZERO) <= 0) {
++                        // 閰嶇疆鐨勯厤鏂欐暟閲?<= 0锛氭寜鍘熼€昏緫瑙嗕负闆舵秷鑰楄烦杩囷紙PENDING 瀹舵棌锛岃褰曡鏄庯級
++                        ctx.addZeroQtyNote("comboId=" + comboId + " 閰嶆枡foodId=" + ingredient.getFoodId()
++                                + " 閰嶇疆鏁伴噺=" + foodQtyInCombo + "锛?=0锛屾寜闆舵秷鑰楄烦杩囷級");
++                        continue;
++                    }
++                    int actualFoodQty = foodQtyInCombo
++                            .multiply(new BigDecimal(quantity)).intValue();
++                    if (actualFoodQty <= 0) {
++                        // 姝ｆ暟閲忕粡 int 鎹㈢畻涓?0锛堝 0.5 浠斤級锛氭暟鎹?閰嶇疆寮傚父锛孭0 鏁翠綋澶辫触
++                        log.error("鍑洪鎵ｆ枡锛氬椁愰厤鏂欐暟閲忔崲绠椾负0, comboId={}, foodId={}, ingredientQty={}, purchaseQty={}",
++                                comboId, ingredient.getFoodId(), foodQtyInCombo, quantity);
++                        throw MaterialDeductionFailureException.of(ctx,
++                                MaterialDeductionFailureException.COMBO_INGREDIENT_QTY_TRUNCATED,
++                                "鍑洪鎵ｆ枡澶辫触锛氬椁愰厤鏂欐暟閲忔鏁扮粡鎹㈢畻涓?锛堟暟鎹?閰嶇疆寮傚父锛夛紙comboId=" + comboId
++                                        + ", 閰嶆枡foodId=" + ingredient.getFoodId()
++                                        + ", 閰嶆枡鏁伴噺=" + foodQtyInCombo
++                                        + ", 璐拱浠芥暟=" + quantity + ", orderId=" + orderId + "锛?);
++                    }
++                    Long ingredientFoodId;
++                    try {
++                        ingredientFoodId = Long.parseLong(ingredient.getFoodId());
++                    } catch (NumberFormatException e) {
++                        log.error("鍑洪鎵ｆ枡锛氬椁愰厤鏂?foodId 鏃犳硶瑙ｆ瀽, comboId={}, foodId={}",
++                                comboId, ingredient.getFoodId());
++                        ctx.setFailedMaterial(null, "comboId=" + comboId + " 閰嶆枡foodId=" + ingredient.getFoodId() + "锛堟棤娉曡В鏋愶級");
++                        throw MaterialDeductionFailureException.of(ctx,
++                                MaterialDeductionFailureException.INGREDIENT_FOOD_ID_PARSE_ERROR,
++                                "鍑洪鎵ｆ枡澶辫触锛氬椁愰厤鏂?foodId 鏃犳硶瑙ｆ瀽涓鸿彍鍝両D锛坈omboId=" + comboId
++                                        + ", foodId=" + ingredient.getFoodId() + ", orderId=" + orderId + "锛?, e);
++                    }
++                    addFoodMaterialDeductionsStrict(ctx, ingredientFoodId, actualFoodQty,
++                            materialDeductionMap, materialNameMap);
++                }
++            } else {
++                log.error("鍑洪鎵ｆ枡锛氭槑缁?productType 闈炴硶, orderId={}, itemId={}, productType={}",
++                        orderId, item.getItemId(), item.getProductType());
++                throw MaterialDeductionFailureException.of(ctx,
++                        MaterialDeductionFailureException.PRODUCT_TYPE_INVALID,
++                        "鍑洪鎵ｆ枡澶辫触锛氳鍗曟槑缁?productType 闈炴硶锛坥rderId=" + orderId
++                                + ", itemId=" + item.getItemId() + ", productType=" + item.getProductType() + "锛?);
++            }
++        }
++
++        // 4. 绌虹粨鏋滃鐞嗭紙P0锛氱姝?鏃犳槑缁?鏃犳墸鍑?鐨勯潤榛樻垚鍔燂級
++        if (orderItems.isEmpty()) {
++            log.error("鍑洪鎵ｆ枡锛氳鍗曟棤浠讳綍鏄庣粏, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
++            throw MaterialDeductionFailureException.of(ctx,
++                    MaterialDeductionFailureException.ORDER_ITEMS_EMPTY,
++                    "鍑洪鎵ｆ枡澶辫触锛氳鍗曟棤浠讳綍鏄庣粏锛坥rderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId
++                            + "锛夛紝涓嶈兘鎸夐浂娑堣€楀鐞?);
++        }
++        if (materialDeductionMap.isEmpty()) {
++            // 浠呮湁鍏ㄩ儴宸查€€娆炬槑缁嗭細鍚堟硶闆舵秷鑰楋紙鏃㈡湁琛屼负淇濇寔涓嶅彉锛?+            log.warn("鍑洪鎵ｆ枡锛氳鍗曟槑缁嗗叏閮ㄥ凡閫€娆撅紝鏈墸鍑忓師鏂欙紙鍚堟硶闆舵秷鑰楋級, orderId={}, kitchenOrderId={}",
++                    orderId, kitchenOrderId);
++            return;
++        }
++
++        // 5. 闂ㄥ簵鏍￠獙锛氭湁搴旀墸鍘熸枡浣嗚鍗曢棬搴椾负绌?鈫?鏃犳硶瀹氫綅搴撳瓨锛屾暣浣撳け璐?+        if (!materialDeductionMap.isEmpty() && order.getStoreId() == null) {
++            log.error("鍑洪鎵ｆ枡锛氳鍗?storeId 涓虹┖, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
++            throw MaterialDeductionFailureException.of(ctx,
++                    MaterialDeductionFailureException.ORDER_STORE_ID_NULL,
++                    "鍑洪鎵ｆ枡澶辫触锛氳鍗曢棬搴?storeId 涓虹┖锛屾棤娉曞畾浣嶉棬搴楀簱瀛橈紙orderId=" + orderId
++                            + ", kitchenOrderId=" + kitchenOrderId + "锛?);
++        }
++
++        // 6. 閫愬師鏂欐墸鍑忥紙澶嶇敤 storeInventoryService.decreaseStock()锛?+        //    浠讳竴鍘熸枡澶辫触 鈫?MaterialDeductionFailureException 鈫?浜嬪姟鍥炴粴 + REQUIRES_NEW 瀹¤
++        for (Map.Entry<Long, BigDecimal> entry : materialDeductionMap.entrySet()) {
++            Long materialId = entry.getKey();
++            BigDecimal qty = entry.getValue();
++            String materialName = materialNameMap.get(materialId);
++            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
++                // requiredQuantity==0 绛夐浂鏁伴噺锛歅ENDING_BUSINESS_DECISION锛屾寜鍘熼€昏緫璺宠繃锛堜笉瑙嗕负澶辫触锛?+                ctx.addNote("materialId=" + materialId + " 姹囨€绘暟閲?" + qty + "锛?=0锛岄浂鏁伴噺璺宠繃锛?);
++                continue;
++            }
++
++            ctx.addAttempted(materialId, qty, materialName);
++            try {
++                storeInventoryService.decreaseStock(
++                        String.valueOf(order.getStoreId()),
++                        materialId, qty, 2, sourceRef);
++            } catch (BusinessException e) {
++                // decreaseStock 鐨勬樉寮忓け璐ワ紙搴撳瓨涓嶈冻/璁板綍涓嶅瓨鍦?鍐茬獊锛夛細鏄犲皠涓哄け璐ョ被鍨嬶紝鏁翠綋澶辫触 + 瀹¤
++                ctx.setFailedMaterial(materialId, materialName);
++                String failureType = MaterialDeductionFailureException.mapBusinessExceptionType(e);
++                log.error("鍑洪鎵ｆ枡锛氬簱瀛樻墸鍑忓け璐? orderId={}, materialId={}, materialName={}, type={}, error={}",
++                        orderId, materialId, materialName, failureType, e.getMessage());
++                throw MaterialDeductionFailureException.of(ctx, failureType,
++                        "鍑洪鎵ｆ枡澶辫触锛氬簱瀛樻墸鍑忓け璐ワ紙materialId=" + materialId
++                                + ", materialName=" + materialName
++                                + ", 鏁伴噺=" + qty.toPlainString()
++                                + ", 鍘熷洜=" + e.getMessage()
++                                + ", orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "锛?, e);
++            } catch (Exception e) {
++                ctx.setFailedMaterial(materialId, materialName);
++                log.error("鍑洪鎵ｆ枡锛氬簱瀛樻墸鍑忔湭鐭ュ紓甯? orderId={}, materialId={}, materialName={}, error={}",
++                        orderId, materialId, materialName, e.getMessage(), e);
++                throw MaterialDeductionFailureException.of(ctx,
++                        MaterialDeductionFailureException.DECREASE_STOCK_ERROR,
++                        "鍑洪鎵ｆ枡澶辫触锛氬簱瀛樻墸鍑忔湭鐭ュ紓甯革紙materialId=" + materialId
++                                + ", materialName=" + materialName
++                                + ", 鏁伴噺=" + qty.toPlainString()
++                                + ", 鍘熷洜=" + e.getMessage()
++                                + ", orderId=" + orderId + ", kitchenOrderId=" + kitchenOrderId + "锛?, e);
++            }
++            log.info("鍑洪鎵ｆ枡鎴愬姛, orderId={}, materialId={}, materialName={}, qty={}",
++                    orderId, materialId, materialName, qty);
++        }
++
++        log.info("鍑洪鎵ｆ枡瀹屾垚, kitchenOrderId={}, orderId={}, 鍘熸枡绉嶇被={}, 闆舵暟閲忚烦杩囪鏄?{}",
++                kitchenOrderId, orderId, materialDeductionMap.size(), ctx.getZeroQtyNotes());
++    }
++
++    /**
++     * 绱姞鏌愪釜鑿滃搧鐨勫師鏂欐墸鍑忛渶姹?鈥斺€?P0 涓ユ牸鐗堬紙浠呯敤浜?KDS 鍑洪鎵ｆ枡璺緞锛夈€?+     * <p>
++     * 涓庢棦鏈?{@link #addFoodMaterialDeductions} 鐨勫尯鍒細
++     *  - 鑿滃搧涓嶅瓨鍦?鈫?FOOD_NOT_FOUND 鏁翠綋澶辫触锛堝師瀹炵幇闈犵┖閰嶆柟闈欓粯璺宠繃锛夛紱
++     *  - 鑿滃搧鏃犱换浣曢厤鏂癸紙BOM 涓虹┖锛夆啋 FOOD_NO_RECIPE 鏁翠綋澶辫触锛堝師瀹炵幇闈欓粯璺宠繃锛夛紱
++     *  - 閰嶆柟 materialId 涓虹┖ 鈫?RECIPE_MATERIAL_ID_NULL 鏁翠綋澶辫触锛堝師瀹炵幇鍚堝苟涓?鏁伴噺鍚庨潤榛樿烦杩囷級銆?+     *  - requiredQuantity 涓?null / 0锛氫繚鎸佸師閫昏緫锛坣ull 鎸?ZERO锛? 鍚堝苟涓?0 鏁伴噺锛夛紝PENDING_BUSINESS_DECISION銆?+     *
++     * @param ctx 鎵ｆ枡涓婁笅鏂囷紙璁板綍 BOM 灞曞紑涓庡け璐ュ畾浣嶏級
++     * @param foodId 鑿滃搧ID
++     * @param quantity 鑿滃搧鏁伴噺锛堜唤鏁帮級
++     * @param materialDeductionMap 鍘熸枡姹囨€籑ap锛堢疮鍔狅級
++     * @param materialNameMap 鍘熸枡鍚嶇ОMap
++     */
++    private void addFoodMaterialDeductionsStrict(MaterialDeductionContext ctx,
++                                                 Long foodId, int quantity,
++                                                 Map<Long, BigDecimal> materialDeductionMap,
++                                                 Map<Long, String> materialNameMap) {
++        FoodNew food = foodNewMapper.selectById(foodId);
++        if (food == null) {
++            log.error("鍑洪鎵ｆ枡锛氳彍鍝佷笉瀛樺湪, foodId={}, orderId={}", foodId, ctx.getOrderId());
++            ctx.setFailedMaterial(foodId, null);
++            throw MaterialDeductionFailureException.of(ctx,
++                    MaterialDeductionFailureException.FOOD_NOT_FOUND,
++                    "鍑洪鎵ｆ枡澶辫触锛氳彍鍝佷笉瀛樺湪锛坒oodId=" + foodId + ", orderId=" + ctx.getOrderId() + "锛?);
++        }
++
++        List<DishRecipeNew> recipes = getDishRecipes(foodId);
++        if (recipes == null || recipes.isEmpty()) {
++            log.error("鍑洪鎵ｆ枡锛氳彍鍝佹棤BOM閰嶆柟, foodId={}, foodName={}, orderId={}",
++                    foodId, food.getFoodName(), ctx.getOrderId());
++            ctx.setFailedMaterial(foodId, food.getFoodName());
++            throw MaterialDeductionFailureException.of(ctx,
++                    MaterialDeductionFailureException.FOOD_NO_RECIPE,
++                    "鍑洪鎵ｆ枡澶辫触锛氳彍鍝佹棤浠讳綍BOM閰嶆柟锛圔OM鏈睍寮€锛夛紙foodId=" + foodId
++                            + ", foodName=" + food.getFoodName() + ", orderId=" + ctx.getOrderId() + "锛?);
++        }
++
++        for (DishRecipeNew recipe : recipes) {
++            if (recipe.getMaterialId() == null) {
++                log.error("鍑洪鎵ｆ枡锛氶厤鏂?materialId 涓虹┖, foodId={}, recipeId={}, orderId={}",
++                        foodId, recipe.getRecipeId(), ctx.getOrderId());
++                ctx.setFailedMaterial(null, "foodId=" + foodId + " 鐨?recipeId=" + recipe.getRecipeId() + "锛坢aterialId缂哄け锛?);
++                throw MaterialDeductionFailureException.of(ctx,
++                        MaterialDeductionFailureException.RECIPE_MATERIAL_ID_NULL,
++                        "鍑洪鎵ｆ枡澶辫触锛氶厤鏂?materialId 涓虹┖锛坒oodId=" + foodId
++                                + ", recipeId=" + recipe.getRecipeId()
++                                + ", materialName=" + recipe.getMaterialName()
++                                + ", orderId=" + ctx.getOrderId() + "锛?);
++            }
++            BigDecimal requiredQty = recipe.getRequiredQuantity() != null
++                    ? recipe.getRequiredQuantity() : BigDecimal.ZERO;
++            if (requiredQty.compareTo(BigDecimal.ZERO) <= 0) {
++                // PENDING_BUSINESS_DECISION锛氶浂鏍囧噯閲忔寜鍘熼€昏緫澶勭悊锛堝悎骞朵负0锛夛紝涓嶈涓哄け璐?+                ctx.addZeroQtyNote("foodId=" + foodId + " recipeId=" + recipe.getRecipeId()
++                        + " 鍘熸枡materialId=" + recipe.getMaterialId()
++                        + " 鏍囧噯閲?" + requiredQty + "锛堥浂鏁伴噺锛孭ENDING_BUSINESS_DECISION锛?);
++            }
++            BigDecimal lossRate = recipe.getLossRate() != null ? recipe.getLossRate() : BigDecimal.ZERO;
++            BigDecimal actualQty = requiredQty
++                    .multiply(new BigDecimal(quantity))
++                    .multiply(BigDecimal.ONE.add(lossRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP)));
++            materialDeductionMap.merge(recipe.getMaterialId(), actualQty, BigDecimal::add);
++            ctx.addBomMaterial(recipe.getMaterialId(), actualQty, recipe.getMaterialName());
++            if (recipe.getMaterialName() != null) {
++                materialNameMap.putIfAbsent(recipe.getMaterialId(), recipe.getMaterialName());
++            }
++        }
++    }
++
+     /**
+      * 鑾峰彇璁㈠崟鏄庣粏鍒楄〃
+      */
+@@ -929,20 +1286,21 @@ public class OrderNewServiceImpl implements OrderNewService {
+     }
+ 
+     /**
+-     * 鍒嗛〉鏌ヨPOS缁堢璁㈠崟锛坥rders_legacy 琛級
+-     * 涓?queryOrders锛堟煡璇?orders 琛級浜掕ˉ锛岃绠＄悊绔兘鏌ョ湅POS鏀堕摱绔垱寤虹殑璁㈠崟銆?-     * 鍐呴儴瀹屾垚璁㈠崟鐘舵€?鏀粯鏂瑰紡/閲戦鍗曚綅锛堝厓鈫掑垎锛夌殑鏄犲皠杞崲銆?+     * 鍒嗛〉鏌ヨPOS缁堢璁㈠崟锛坥rders 琛紝canonical read锛?+     * W1-EC-04C: 浠?orders_legacy 杩佺Щ鍒?orders 琛ㄣ€?+     * orders 琛ㄥ凡鍖呭惈鎵€鏈夎鍗曪紙POS绔?绠＄悊绔級锛宱rder_status/payment_status 涓?canonical 鍙屽瓧娈点€?+     * 澶嶇敤 buildQueryWrapper 鏋勫缓鏌ヨ鏉′欢锛岄噾棰?orders 宸插瓨鍒嗭紝绠＄悊绔洿鎺ヤ娇鐢ㄣ€?      */
+     @Override
+     public Page<OrderVO> queryPosOrders(OrderQueryDTO queryDTO) {
+-        Page<com.foodtraceability.entity.Order> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
+-        QueryWrapper<com.foodtraceability.entity.Order> wrapper = buildPosQueryWrapper(queryDTO);
+-        page = posOrderMapper.selectPage(page, wrapper);
++        Page<OrderNew> page = new Page<>(queryDTO.getPage(), queryDTO.getSize());
++        QueryWrapper<OrderNew> wrapper = buildQueryWrapper(queryDTO);
++        page = orderNewMapper.selectPage(page, wrapper);
+ 
+-        // 杞崲涓篤O鍒楄〃锛堝寘鍚姸鎬佺爜/鏀粯鏂瑰紡/閲戦鍗曚綅鏄犲皠锛?+        // 杞崲涓篤O鍒楄〃锛坥rders 瀛楁宸蹭笌绠＄悊绔竴鑷达紝鏃犻渶鐘舵€?绫诲瀷鏄犲皠锛?         Page<OrderVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+         List<OrderVO> voList = page.getRecords().stream()
+-                .map(this::convertPosOrderToVO)
++                .map(this::convertToSimpleOrderVO)
+                 .collect(Collectors.toList());
+         voPage.setRecords(voList);
+ 
+@@ -951,13 +1309,10 @@ public class OrderNewServiceImpl implements OrderNewService {
+ 
+     /**
+      * 鏍规嵁璁㈠崟缂栧彿鑾峰彇POS缁堢璁㈠崟璇︽儏锛堝惈鑿滃搧鏄庣粏锛?-     * 鐢ㄤ簬绠＄悊绔鍗曚腑蹇冩煡鐪婸OS鏀堕摱绔鍗曠殑瀹屾暣鏄庣粏锛堟暟鎹拷婧級銆?+     * W1-EC-04C: 浠?orders_legacy + order_items_legacy 杩佺Щ鍒?orders + order_items锛坈anonical read锛夈€?+     * orders 琛ㄥ凡鍖呭惈鎵€鏈夎鍗曪紙POS绔?绠＄悊绔級锛宱rder_status/payment_status/orderType 涓?canonical 鍊笺€?      *
+-     * 瀹炵幇瑕佺偣锛?-     * 1. 閫氳繃 orderNumber 鏌ヨ orders_legacy 琛ㄨ幏鍙栬鍗曚富淇℃伅
+-     * 2. 閫氳繃 orderId 鏌ヨ order_items_legacy 琛ㄨ幏鍙栬彍鍝佹槑缁嗗垪琛?-     * 3. 璋冪敤 convertPosOrderToVO 瀹屾垚鐘舵€?鏀粯鏂瑰紡/閲戦鍗曚綅鐨勭粺涓€鏄犲皠
+-     * 4. 琛ュ厖 items 鍒楄〃锛圤rderItemVO 鏍煎紡锛岄噾棰濊浆鍒嗭級
++     * @param orderNumber 璁㈠崟缂栧彿锛堝 ORD20260713002锛夛紝闈炶鍗旾D
+      */
+     @Override
+     public OrderVO getPosOrderDetail(String orderNumber) {
+@@ -965,230 +1320,26 @@ public class OrderNewServiceImpl implements OrderNewService {
+         if (orderNumber == null || orderNumber.isEmpty()) {
+             throw new RuntimeException("璁㈠崟缂栧彿涓嶈兘涓虹┖");
+         }
+-        // 鎸夎鍗曠紪鍙锋煡璇?orders_legacy 琛?-        com.foodtraceability.entity.Order posOrder = posOrderMapper.selectOne(
+-                new LambdaQueryWrapper<com.foodtraceability.entity.Order>()
+-                        .eq(com.foodtraceability.entity.Order::getOrderNumber, orderNumber));
+-        if (posOrder == null) {
++        // W1-EC-04C: 鏀硅 orders 琛紙閫氳繃 order_code 鏌ヨ锛?+        OrderNew order = orderNewMapper.selectByOrderCode(orderNumber);
++        if (order == null) {
+             throw new RuntimeException("POS璁㈠崟涓嶅瓨鍦? " + orderNumber);
+         }
+-        // 杞崲涓?OrderVO锛堝惈鐘舵€?鏀粯鏂瑰紡/閲戦鍗曚綅鏄犲皠锛屼絾涓嶅惈鏄庣粏锛?-        OrderVO vo = convertPosOrderToVO(posOrder);
+-
+-        // 鏌ヨ璁㈠崟鏄庣粏锛坥rder_items_legacy 琛級
+-        List<OrderItem> posItems = posOrderItemMapper.selectList(
+-                new LambdaQueryWrapper<OrderItem>()
+-                        .eq(OrderItem::getOrderId, posOrder.getOrderId()));
+-        // 杞崲涓?OrderItemVO锛堥噾棰?鍏冣啋鍒嗭紝涓?OrderVO 鍗曚綅淇濇寔涓€鑷达級
+-        List<OrderVO.OrderItemVO> itemVos = posItems.stream()
+-                .map(this::convertPosItemToVO)
+-                .collect(Collectors.toList());
+-        vo.setItems(itemVos);
+-
+-        log.info("鏌ヨPOS璁㈠崟璇︽儏鎴愬姛, orderNumber: {}, 鏄庣粏鏁? {}", orderNumber, itemVos.size());
+-        return vo;
+-    }
+-
+-    /**
+-     * 灏哖OS璁㈠崟椤癸紙order_items_legacy锛夎浆鎹负绠＄悊绔?OrderItemVO
+-     * 閲戦鍗曚綅锛氬厓锛圔igDecimal锛夆啋 鍒嗭紙Long锛夛紝涓?OrderVO 淇濇寔涓€鑷?-     */
+-    private OrderVO.OrderItemVO convertPosItemToVO(OrderItem item) {
+-        OrderVO.OrderItemVO vo = new OrderVO.OrderItemVO();
+-        vo.setItemId(item.getOrderItemId());
+-        // POS璁㈠崟椤规棤浜у搧绫诲瀷瀛楁锛岄粯璁や负鍗曞搧
+-        vo.setProductType(1);
+-        vo.setProductTypeName("鍗曞搧");
+-        vo.setProductName(item.getFoodName());
+-        vo.setSpecification(item.getSpecification());
+-        // 鍏冭浆鍒?-        if (item.getUnitPrice() != null) {
+-            vo.setUnitPrice(item.getUnitPrice().multiply(new BigDecimal("100")).longValue());
+-        }
+-        vo.setQuantity(item.getQuantity());
+-        if (item.getSubtotalAmount() != null) {
+-            vo.setAmount(item.getSubtotalAmount().multiply(new BigDecimal("100")).longValue());
+-        }
+-        return vo;
+-    }
+-
+-    /**
+-     * 鏋勫缓POS璁㈠崟锛坥rders_legacy锛夋煡璇㈡潯浠?-     * 瀛楁鍚嶄娇鐢?orders_legacy 琛ㄧ殑瀹為檯鍒楀悕锛堝ぇ鍐欎笅鍒掔嚎锛?-     */
+-    private QueryWrapper<com.foodtraceability.entity.Order> buildPosQueryWrapper(OrderQueryDTO queryDTO) {
+-        QueryWrapper<com.foodtraceability.entity.Order> wrapper = new QueryWrapper<>();
+-        if (queryDTO.getOrderCode() != null && !queryDTO.getOrderCode().isEmpty()) {
+-            wrapper.like("ORDER_NUMBER", queryDTO.getOrderCode());
+-        }
+-        if (queryDTO.getOrderType() != null) {
+-            wrapper.eq("ORDER_TYPE", queryDTO.getOrderType());
+-        }
+-        // 璁㈠崟鐘舵€佹槧灏勶細绠＄悊绔姸鎬佺爜 鈫?POS绔姸鎬佺爜
+-        if (queryDTO.getOrderStatus() != null) {
+-            List<Integer> posStatusList = mapAdminStatusToPosStatus(queryDTO.getOrderStatus());
+-            if (posStatusList.size() == 1) {
+-                wrapper.eq("ORDER_STATUS", posStatusList.get(0));
+-            } else {
+-                wrapper.in("ORDER_STATUS", posStatusList);
+-            }
+-        }
+-        if (queryDTO.getStartTime() != null && !queryDTO.getStartTime().isEmpty()) {
+-            wrapper.ge("CREATE_TIME", parseDateTime(queryDTO.getStartTime()));
+-        }
+-        if (queryDTO.getEndTime() != null && !queryDTO.getEndTime().isEmpty()) {
+-            wrapper.le("CREATE_TIME", parseDateTime(queryDTO.getEndTime()));
+-        }
+-        // 閲戦鏉′欢锛氱鐞嗙鏄垎锛宱rders_legacy 鏄厓锛坣umeric锛夛紝闇€瑕佽浆鎹?-        if (queryDTO.getMinAmount() != null) {
+-            wrapper.ge("ACTUAL_AMOUNT", new BigDecimal(queryDTO.getMinAmount()).movePointLeft(2));
+-        }
+-        if (queryDTO.getMaxAmount() != null) {
+-            wrapper.le("ACTUAL_AMOUNT", new BigDecimal(queryDTO.getMaxAmount()).movePointLeft(2));
+-        }
+-        // 闂ㄥ簵ID杩囨护锛歰rders_legacy.STORE_ID 鏄?String 绫诲瀷锛堜笌 stores_new.store_id Long 鍏宠仈锛?-        if (queryDTO.getStoreId() != null && !queryDTO.getStoreId().isEmpty()) {
+-            wrapper.eq("STORE_ID", queryDTO.getStoreId());
+-        }
+-        wrapper.orderByDesc("CREATE_TIME");
+-        return wrapper;
++        // 杞崲涓?OrderVO锛堝惈鏄庣粏鍜屾敮浠樿褰曪級
++        return getOrderDetail(order.getOrderId());
+     }
+ 
+-    /**
+-     * 绠＄悊绔鍗曠姸鎬佺爜 鈫?POS绔鍗曠姸鎬佺爜鏄犲皠
+-     * 绠＄悊绔細0寰呯‘璁?1宸茬‘璁?2宸插畬鎴?3宸插彇娑?4閮ㄥ垎閫€娆?5鍏ㄩ閫€娆?6寰呰瘎浠?-     * POS绔細0寰呮敮浠?-1鏀粯涓?1宸叉敮浠?2寰呴厤閫?3閰嶉€佷腑 4宸插畬鎴?5宸插彇娑?6閫€娆句腑 7宸查€€娆?-     */
+-    private List<Integer> mapAdminStatusToPosStatus(Integer adminStatus) {
+-        List<Integer> posStatusList = new ArrayList<>();
+-        switch (adminStatus) {
+-            case 0: // 寰呯‘璁?鈫?POS寰呮敮浠?鏀粯涓?-                posStatusList.add(0);
+-                posStatusList.add(-1);
+-                break;
+-            case 1: // 宸茬‘璁?鈫?POS宸叉敮浠?寰呴厤閫?閰嶉€佷腑
+-                posStatusList.add(1);
+-                posStatusList.add(2);
+-                posStatusList.add(3);
+-                break;
+-            case 2: // 宸插畬鎴?鈫?POS宸插畬鎴?-                posStatusList.add(4);
+-                break;
+-            case 3: // 宸插彇娑?鈫?POS宸插彇娑?-                posStatusList.add(5);
+-                break;
+-            case 4: // 閮ㄥ垎閫€娆?鈫?POS閫€娆句腑
+-                posStatusList.add(6);
+-                break;
+-            case 5: // 鍏ㄩ閫€娆?鈫?POS宸查€€娆?-                posStatusList.add(7);
+-                break;
+-            case 6: // 寰呰瘎浠?鈫?POS宸插畬鎴愶紙绠＄悊绔嫭鏈夛紝鏄犲皠鍒癙OS宸插畬鎴愶級
+-                posStatusList.add(4);
+-                break;
+-            default:
+-                // 涓嶉檺鍒剁姸鎬?-        }
+-        return posStatusList;
+-    }
++    // W1-EC-04C: convertPosItemToVO 宸茬Щ闄わ紙涓嶅啀璇?order_items_legacy锛岀洿鎺ヤ娇鐢?order_items锛? 
+-    /**
+-     * 灏哖OS璁㈠崟瀹炰綋锛坥rders_legacy锛夎浆鎹负绠＄悊绔疧rderVO
+-     * 鍖呭惈锛氳鍗曠姸鎬?鏀粯鏂瑰紡/閲戦鍗曚綅锛堝厓鈫掑垎锛夌殑鏄犲皠
+-     */
+-    private OrderVO convertPosOrderToVO(com.foodtraceability.entity.Order posOrder) {
+-        OrderVO vo = new OrderVO();
+-        vo.setOrderId(posOrder.getOrderId());
+-        vo.setOrderCode(posOrder.getOrderNumber());
+-        // 璁㈠崟绫诲瀷鏄犲皠锛歅OS绔?0鍫傞1澶栧崠2鑷彁 鈫?绠＄悊绔?1鍫傞2澶栧崠3鑷彁4鎵撳寘
+-        Integer adminOrderType = mapPosOrderTypeToAdmin(posOrder.getOrderType());
+-        vo.setOrderType(adminOrderType);
+-        vo.setOrderTypeName(getOrderTypeName(adminOrderType));
+-        vo.setOrderSource(posOrder.getOrderSource());
+-        vo.setCustomerName(posOrder.getContactName());
+-        vo.setCustomerPhone(posOrder.getContactPhone());
+-        vo.setRemark(posOrder.getRemarks());
+-        vo.setCancelReason(posOrder.getCancelReason());
+-        vo.setDeliveryAddress(posOrder.getDeliveryAddress());
+-
+-        // 璁㈠崟鐘舵€佹槧灏勶細POS绔?鈫?绠＄悊绔?-        Integer posStatus = posOrder.getOrderStatus();
+-        Integer adminStatus = mapPosStatusToAdminStatus(posStatus);
+-        vo.setOrderStatus(adminStatus);
+-        vo.setOrderStatusName(getOrderStatusName(adminStatus));
+-
+-        // 鏀粯鐘舵€侊細POS宸叉敮浠?1)/寰呴厤閫?2)/閰嶉€佷腑(3)/宸插畬鎴?4) 鈫?宸叉敮浠?2)锛涘凡閫€娆?7)/閫€娆句腑(6) 鈫?宸查€€娆?3)锛涘叾浠?鈫?鏈敮浠?0)
+-        Integer paymentStatus = mapPosStatusToPaymentStatus(posStatus);
+-        vo.setPaymentStatus(paymentStatus);
+-        vo.setPaymentStatusName(getPaymentStatusName(paymentStatus));
+-
+-        // 鏀粯鏂瑰紡鏄犲皠锛歅OS绔?鈫?绠＄悊绔?-        // POS: 0寰俊 1鏀粯瀹?2鐜伴噾 3閾惰鍗?4浣欓
+-        // 绠＄悊绔? 1鐜伴噾 2寰俊 3鏀粯瀹?4閾惰鍗?5绉垎(浣欓) 6娣峰悎鏀粯
+-        Integer posPayMethod = posOrder.getPaymentMethod();
+-        Integer adminPayMethod = null;
+-        if (posPayMethod != null) {
+-            switch (posPayMethod) {
+-                case 0: adminPayMethod = 2; break; // 寰俊
+-                case 1: adminPayMethod = 3; break; // 鏀粯瀹?-                case 2: adminPayMethod = 1; break; // 鐜伴噾
+-                case 3: adminPayMethod = 4; break; // 閾惰鍗?-                case 4: adminPayMethod = 5; break; // 浣欓鈫掔Н鍒?-                default: adminPayMethod = null;
+-            }
+-        }
+-        vo.setPaymentMethodName(adminPayMethod != null ? getPaymentMethodName(adminPayMethod) : "鏈敮浠?);
++    // W1-EC-04C: buildPosQueryWrapper 宸茬Щ闄わ紙涓嶅啀璇?orders_legacy锛屽鐢?buildQueryWrapper锛? 
+-        // 閲戦杞崲锛歰rders_legacy 鏄厓锛圔igDecimal锛夛紝OrderVO 鏄垎锛圠ong锛?-        BigDecimal actualAmount = posOrder.getActualAmount() != null ? posOrder.getActualAmount() : posOrder.getOrderAmount();
+-        if (actualAmount != null) {
+-            long fenAmount = actualAmount.multiply(new BigDecimal("100")).longValue();
+-            vo.setTotalAmount(fenAmount);
+-            vo.setFinalAmount(fenAmount);
+-            vo.setPaidAmount(paymentStatus != null && paymentStatus == 2 ? fenAmount : 0L);
+-        }
+-        if (posOrder.getDiscountAmount() != null) {
+-            vo.setDiscountAmount(posOrder.getDiscountAmount().multiply(new BigDecimal("100")).longValue());
+-        }
+-        if (posOrder.getRefundAmount() != null && posOrder.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
+-            vo.setRefundAmount(posOrder.getRefundAmount().multiply(new BigDecimal("100")).longValue());
+-        }
++    // W1-EC-04C: mapAdminStatusToPosStatus 宸茬Щ闄わ紙鐘舵€佺洿鎺ヤ娇鐢?orders 琛?canonical 鍊硷級
+ 
+-        vo.setCreateTime(posOrder.getCreateTime());
+-        vo.setUpdateTime(posOrder.getUpdateTime());
+-        // 闂ㄥ簵淇℃伅锛歅OS绔鍗曞叧鑱旂殑闂ㄥ簵
+-        vo.setStoreId(posOrder.getStoreId());
+-        vo.setStoreName(posOrder.getStoreName() != null ? posOrder.getStoreName() : "涓績鏃楄埌搴?);
+-        return vo;
+-    }
++    // W1-EC-04C: convertPosOrderToVO 宸茬Щ闄わ紙涓嶅啀璇?orders_legacy锛屽鐢?convertToSimpleOrderVO锛? 
+-    /**
+-     * POS绔鍗曠姸鎬佺爜 鈫?绠＄悊绔鍗曠姸鎬佺爜鏄犲皠
+-     */
+-    private Integer mapPosStatusToAdminStatus(Integer posStatus) {
+-        if (posStatus == null) return 0;
+-        switch (posStatus) {
+-            case 0: case -1: return 0; // 寰呮敮浠?鏀粯涓?鈫?寰呯‘璁?-            case 1: case 2: case 3: return 1; // 宸叉敮浠?寰呴厤閫?閰嶉€佷腑 鈫?宸茬‘璁?-            case 4: return 2; // 宸插畬鎴?鈫?宸插畬鎴?-            case 5: return 3; // 宸插彇娑?鈫?宸插彇娑?-            case 6: return 4; // 閫€娆句腑 鈫?閮ㄥ垎閫€娆?-            case 7: return 5; // 宸查€€娆?鈫?鍏ㄩ閫€娆?-            default: return 0;
+-        }
+-    }
++    // W1-EC-04C: mapPosStatusToAdminStatus 宸茬Щ闄わ紙鐘舵€佺洿鎺ヤ娇鐢?orders 琛?canonical 鍊硷級
+ 
+-    /**
+-     * POS绔鍗曠姸鎬佺爜 鈫?绠＄悊绔敮浠樼姸鎬佺爜鏄犲皠
+-     */
+-    private Integer mapPosStatusToPaymentStatus(Integer posStatus) {
+-        if (posStatus == null) return 0;
+-        switch (posStatus) {
+-            case 1: case 2: case 3: case 4: return 2; // 宸叉敮浠?寰呴厤閫?閰嶉€佷腑/宸插畬鎴?鈫?宸叉敮浠?-            case 6: case 7: return 3; // 閫€娆句腑/宸查€€娆?鈫?宸查€€娆?-            default: return 0; // 寰呮敮浠?鏀粯涓?宸插彇娑?鈫?鏈敮浠?-        }
+-    }
++    // W1-EC-04C: mapPosStatusToPaymentStatus 宸茬Щ闄わ紙鏀粯鐘舵€佺洿鎺ヤ娇鐢?orders 琛?canonical 鍊硷級
+ 
+     @Override
+     public PageResult<OrderRefundListVO> queryRefunds(OrderRefundQueryDTO queryDTO) {
+@@ -1269,26 +1420,12 @@ public class OrderNewServiceImpl implements OrderNewService {
+     @Override
+     public TodayStatisticsVO getTodayStatistics() {
+         TodayStatisticsVO stats = new TodayStatisticsVO();
+-        // 璁㈠崟缁熻鑱氬悎锛歰rders锛堢鐞嗙璁㈠崟锛?+ orders_legacy锛圥OS绔鍗曪紝涓昏鏁版嵁鏉ユ簮锛?-        // POS绔骇鐢熺殑浜ゆ槗琛屼负鏄鐞嗙鑾峰彇璁㈠崟鏁版嵁鐨勪富瑕佹潵婧愶紝蹇呴』鍖呭惈鍦ㄥ唴
+-        long todayOrdersAdmin = orderNewMapper.countTodayOrders();
+-        long todayOrdersPos = posOrderMapper.countTodayPosOrders();
+-        stats.setTotalOrders(todayOrdersAdmin + todayOrdersPos);
+-
+-        // 閿€鍞鑱氬悎锛堝崟浣嶏細鍒嗭級
+-        long todaySalesAdmin = orderNewMapper.sumTodaySales();
+-        long todaySalesPos = posOrderMapper.sumTodayPosSales();
+-        stats.setTotalSalesAmount(todaySalesAdmin + todaySalesPos);
+-
+-        // 宸插畬鎴愯鍗曪紙orders.order_status=2 + orders_legacy.order_status=4锛?-        long completedOrdersAdmin = countOrdersByStatus(2);
+-        long completedOrdersPos = posOrderMapper.countTodayPosCompletedOrders();
+-        stats.setCompletedOrders(completedOrdersAdmin + completedOrdersPos);
+-
+-        // 宸插彇娑堣鍗曪紙orders.order_status=3 + orders_legacy.order_status=5锛?-        long cancelledOrdersAdmin = countOrdersByStatus(3);
+-        long cancelledOrdersPos = posOrderMapper.countTodayPosCancelledOrders();
+-        stats.setCancelledOrders(cancelledOrdersAdmin + cancelledOrdersPos);
++        // W1-EC-04B-2: 缁熻鑱氬悎杩佺Щ - 鎵€鏈夋暟鎹粠 orders 琛ㄨ幏鍙?+        // orders 琛ㄥ凡鍖呭惈鎵€鏈夎鍗曪紙POS绔?绠＄悊绔級锛屾棤闇€鍒嗗埆鏌ヨ
++        stats.setTotalOrders(orderNewMapper.countTodayOrders());
++        stats.setTotalSalesAmount(orderNewMapper.sumTodaySales());
++        stats.setCompletedOrders(countOrdersByStatus(2));
++        stats.setCancelledOrders(countOrdersByStatus(3));
+         return stats;
+     }
+ 
+@@ -1313,27 +1450,13 @@ public class OrderNewServiceImpl implements OrderNewService {
+     @Override
+     public Map<String, Object> getOrderStatistics() {
+         Map<String, Object> stats = new LinkedHashMap<>();
+-        // 璁㈠崟缁熻鑱氬悎锛歰rders锛堢鐞嗙璁㈠崟锛?+ orders_legacy锛圥OS绔鍗曪紝涓昏鏁版嵁鏉ユ簮锛?-        // POS绔骇鐢熺殑浜ゆ槗琛屼负鏄鐞嗙鑾峰彇璁㈠崟鏁版嵁鐨勪富瑕佹潵婧愶紝蹇呴』鍖呭惈鍦ㄥ唴
+-        long totalOrdersAdmin = orderNewMapper.countAllOrders();
+-        long totalOrdersPos = posOrderMapper.countAllPosOrders();
+-        stats.put("totalOrders", totalOrdersAdmin + totalOrdersPos);
+-
+-        long completedOrdersAdmin = orderNewMapper.countAllCompletedOrders();
+-        long completedOrdersPos = posOrderMapper.countAllPosCompletedOrders();
+-        stats.put("completedOrders", completedOrdersAdmin + completedOrdersPos);
+-
+-        long todayOrdersAdmin = orderNewMapper.countTodayOrders();
+-        long todayOrdersPos = posOrderMapper.countTodayPosOrders();
+-        stats.put("todayOrders", todayOrdersAdmin + todayOrdersPos);
+-
+-        long totalSalesAdmin = orderNewMapper.sumAllSales();
+-        long totalSalesPos = posOrderMapper.sumAllPosSales();
+-        stats.put("totalSales", totalSalesAdmin + totalSalesPos);
+-
+-        long todaySalesAdmin = orderNewMapper.sumTodaySales();
+-        long todaySalesPos = posOrderMapper.sumTodayPosSales();
+-        stats.put("todaySales", todaySalesAdmin + todaySalesPos);
++        // W1-EC-04B-2: 缁熻鑱氬悎杩佺Щ - 鎵€鏈夋暟鎹粠 orders 琛ㄨ幏鍙?+        // orders 琛ㄥ凡鍖呭惈鎵€鏈夎鍗曪紙POS绔?绠＄悊绔級锛屾棤闇€鍒嗗埆鏌ヨ
++        stats.put("totalOrders", orderNewMapper.countAllOrders());
++        stats.put("completedOrders", orderNewMapper.countAllCompletedOrders());
++        stats.put("todayOrders", orderNewMapper.countTodayOrders());
++        stats.put("totalSales", orderNewMapper.sumAllSales());
++        stats.put("todaySales", orderNewMapper.sumTodaySales());
+         return stats;
+     }
+ 
+@@ -1365,54 +1488,31 @@ public class OrderNewServiceImpl implements OrderNewService {
+                 ? LocalDate.parse(startDate)
+                 : end.minusDays(6);
+ 
+-        // 鑱氬悎 orders 琛ㄧ殑姣忔棩瓒嬪娍
++        // W1-EC-04B-2: 缁熻鑱氬悎杩佺Щ - 鎵€鏈夋暟鎹粠 orders 琛ㄨ幏鍙?+        // orders 琛ㄥ凡鍖呭惈鎵€鏈夎鍗曪紙POS绔?绠＄悊绔級锛屾棤闇€鍒嗗埆鏌ヨ鍐嶅悎骞?         LocalDateTime startDateTime = start.atStartOfDay();
+         LocalDateTime endDateTime = end.plusDays(1).atStartOfDay();
+-        List<Map<String, Object>> adminTrend = orderNewMapper.getDailyTrend(startDateTime, endDateTime);
+-
+-        // 鑱氬悎 orders_legacy 琛ㄧ殑姣忔棩瓒嬪娍
+-        List<Map<String, Object>> posTrend = posOrderMapper.getDailyTrendForPos(start, end);
++        List<Map<String, Object>> dailyTrend = orderNewMapper.getDailyTrend(startDateTime, endDateTime);
+ 
+-        // 鍚堝苟涓よ〃鏁版嵁鍒板悓涓€ Map锛堟寜鏃ユ湡鍒嗙粍绱姞锛?-        Map<String, long[]> mergedData = new TreeMap<>();
+-        if (adminTrend != null) {
+-            for (Map<String, Object> row : adminTrend) {
+-                String date = String.valueOf(row.get("date"));
+-                long orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).longValue() : 0L;
+-                long revenue = row.get("revenue") != null ? ((Number) row.get("revenue")).longValue() : 0L;
+-                long[] existing = mergedData.getOrDefault(date, new long[]{0L, 0L});
+-                existing[0] += orderCount;
+-                existing[1] += revenue;
+-                mergedData.put(date, existing);
+-            }
+-        }
+-        if (posTrend != null) {
+-            for (Map<String, Object> row : posTrend) {
+-                String date = String.valueOf(row.get("date"));
++        // 鏋勫缓缁撴灉鍒楄〃
++        List<com.foodtraceability.dto.order.DailyStatsVO> result = new ArrayList<>();
++        if (dailyTrend != null) {
++            for (Map<String, Object> row : dailyTrend) {
++                com.foodtraceability.dto.order.DailyStatsVO vo = new com.foodtraceability.dto.order.DailyStatsVO();
++                vo.setDate(String.valueOf(row.get("date")));
++                vo.setStoreName(storeName != null && !storeName.isEmpty() ? storeName : "鍏ㄩ儴闂ㄥ簵");
+                 long orderCount = row.get("order_count") != null ? ((Number) row.get("order_count")).longValue() : 0L;
+                 long revenue = row.get("revenue") != null ? ((Number) row.get("revenue")).longValue() : 0L;
+-                long[] existing = mergedData.getOrDefault(date, new long[]{0L, 0L});
+-                existing[0] += orderCount;
+-                existing[1] += revenue;
+-                mergedData.put(date, existing);
++                vo.setOrderCount(orderCount);
++                vo.setRevenue(revenue);
++                // 鎴愭湰鏆傛湭瀹炵幇锛岃涓?锛涘埄娑?= 钀ヤ笟棰?- 鎴愭湰
++                vo.setCost(0L);
++                vo.setProfit(revenue);
++                // 鍒╂鼎鐜?= 鍒╂鼎 / 钀ヤ笟棰?* 100
++                vo.setProfitRate(revenue > 0 ? 100.0 : 0.0);
++                result.add(vo);
+             }
+         }
+-
+-        // 鏋勫缓缁撴灉鍒楄〃
+-        List<com.foodtraceability.dto.order.DailyStatsVO> result = new ArrayList<>();
+-        for (Map.Entry<String, long[]> entry : mergedData.entrySet()) {
+-            com.foodtraceability.dto.order.DailyStatsVO vo = new com.foodtraceability.dto.order.DailyStatsVO();
+-            vo.setDate(entry.getKey());
+-            vo.setStoreName(storeName != null && !storeName.isEmpty() ? storeName : "鍏ㄩ儴闂ㄥ簵");
+-            vo.setOrderCount(entry.getValue()[0]);
+-            vo.setRevenue(entry.getValue()[1]);
+-            // 鎴愭湰鏆傛湭瀹炵幇锛岃涓?锛涘埄娑?= 钀ヤ笟棰?- 鎴愭湰
+-            vo.setCost(0L);
+-            vo.setProfit(entry.getValue()[1]);
+-            // 鍒╂鼎鐜?= 鍒╂鼎 / 钀ヤ笟棰?* 100
+-            vo.setProfitRate(entry.getValue()[1] > 0 ? 100.0 : 0.0);
+-            result.add(vo);
+-        }
+         return result;
+     }
+ 
+@@ -1765,6 +1865,7 @@ public class OrderNewServiceImpl implements OrderNewService {
+ 
+     /**
+      * 鏋勫缓鏌ヨ鏉′欢鍖呰鍣?+     * W1-EC-04C: 鏂板 storeId 杩囨护锛坬ueryPosOrders 杩佺Щ鍚庨渶瑕侀棬搴楄繃婊よ兘鍔涳級
+      */
+     private QueryWrapper<OrderNew> buildQueryWrapper(OrderQueryDTO queryDTO) {
+         QueryWrapper<OrderNew> wrapper = new QueryWrapper<>();
+@@ -1799,6 +1900,15 @@ public class OrderNewServiceImpl implements OrderNewService {
+         if (queryDTO.getMaxAmount() != null) {
+             wrapper.le("final_amount", queryDTO.getMaxAmount());
+         }
++        // W1-EC-04C: 闂ㄥ簵ID杩囨护锛坥rders.store_id 涓?BIGINT锛孌TO.store_id 涓?String锛岄渶杞崲锛?+        if (queryDTO.getStoreId() != null && !queryDTO.getStoreId().isEmpty()) {
++            try {
++                Long storeIdLong = Long.parseLong(queryDTO.getStoreId());
++                wrapper.eq("store_id", storeIdLong);
++            } catch (NumberFormatException e) {
++                log.warn("闂ㄥ簵ID鏍煎紡寮傚父, storeId: {}", queryDTO.getStoreId());
++            }
++        }
+ 
+         wrapper.orderByDesc("create_time");
+         return wrapper;
+@@ -1835,6 +1945,9 @@ public class OrderNewServiceImpl implements OrderNewService {
+         vo.setOrderType(order.getOrderType());
+         vo.setOrderTypeName(getOrderTypeName(order.getOrderType()));
+         vo.setOrderSource(order.getOrderSource());
++        // W1-EC-04C: storeId 浠?Long 杞负 String锛圤rderVO.storeId 涓?String锛?+        vo.setStoreId(order.getStoreId() != null ? String.valueOf(order.getStoreId()) : null);
++        vo.setStoreName(null); // orders 琛ㄦ棤 store_name 鍒楋紝鐢卞墠绔€氳繃 storeId 鍏宠仈闂ㄥ簵鍚嶇О
+         vo.setCustomerId(order.getCustomerId());
+         vo.setCustomerName(order.getCustomerName());
+         vo.setCustomerPhone(order.getCustomerPhone());
+@@ -1933,20 +2046,7 @@ public class OrderNewServiceImpl implements OrderNewService {
+         }
+     }
+ 
+-    /**
+-     * POS绔鍗曠被鍨嬬爜 鈫?绠＄悊绔鍗曠被鍨嬬爜鏄犲皠
+-     * POS绔?orders_legacy.ORDER_TYPE: 0鍫傞 1澶栧崠 2鑷彁
+-     * 绠＄悊绔?orders.order_type: 1鍫傞 2澶栧崠 3鑷彁 4鎵撳寘
+-     */
+-    private Integer mapPosOrderTypeToAdmin(Integer posOrderType) {
+-        if (posOrderType == null) return null;
+-        switch (posOrderType) {
+-            case 0: return 1; // 鍫傞
+-            case 1: return 2; // 澶栧崠
+-            case 2: return 3; // 鑷彁
+-            default: return null;
+-        }
+-    }
++    // W1-EC-04C: mapPosOrderTypeToAdmin 宸茬Щ闄わ紙璁㈠崟绫诲瀷宸蹭笌绠＄悊绔竴鑷达級
+ 
+     /**
+      * 灏嗗瓧绗︿覆鏃ユ湡瑙ｆ瀽涓?LocalDateTime

@@ -1,0 +1,9 @@
+﻿commit 7f40ab757a3875db0bf1ed6f815ce5bf1fa0afd8
+Author: wukaiktc1234 <wukaiktc1234@gmail.com>
+Date:   Wed Sep 23 16:43:59 2026 +0800
+
+    P1-ORDER-NUMBER-002 A1 first implementation
+
+ .../service/impl/OrderNewServiceImpl.java          |   1 +
+ .../impl/OrderNewServiceImplOrderNumberA1Test.java | 205 +++++++++++++++++++++
+ 2 files changed, 206 insertions(+)

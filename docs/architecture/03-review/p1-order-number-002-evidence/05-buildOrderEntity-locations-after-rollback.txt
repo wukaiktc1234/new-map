@@ -1,0 +1,5 @@
+﻿
+        OrderNew order = buildOrderEntity(createDTO, calculation, orderCode);
+    private OrderNew buildOrderEntity(OrderCreateDTO createDTO, OrderAmountCalculation calc, String orderCode) {
+
+

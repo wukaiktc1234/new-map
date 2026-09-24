@@ -1,0 +1,22 @@
+﻿    private OrderNew buildOrderEntity(OrderCreateDTO createDTO, OrderAmountCalculation calc, String orderCode) {
+        OrderNew order = new OrderNew();
+        order.setOrderCode(orderCode);
+        order.setOrderType(createDTO.getOrderType());
+        order.setOrderSource(createDTO.getOrderSource() != null ? createDTO.getOrderSource() : 1);
+        order.setStoreId(createDTO.getStoreId());
+        order.setCustomerId(createDTO.getCustomerId());
+        order.setCustomerName(createDTO.getCustomerName());
+        order.setCustomerPhone(createDTO.getCustomerPhone());
+        order.setTableId(createDTO.getTableId());
+        order.setDiningPeopleCount(createDTO.getDiningPeopleCount());
+        order.setOrderStatus(0); // 寰呯‘璁?        order.setPaymentStatus(0); // 鏈敮浠?        order.setTotalAmount(calc.totalAmount);
+        order.setDiscountAmount(calc.discountAmount);
+        order.setDeliveryFee(0L);
+        order.setPackagingFee(0L);
+        order.setFinalAmount(calc.finalAmount);
+        order.setPaidAmount(0L);
+        order.setRefundAmount(0L);
+        order.setDeliveryAddress(createDTO.getDeliveryAddress());
+        order.setRemark(createDTO.getRemark());
+        return order;
+    }

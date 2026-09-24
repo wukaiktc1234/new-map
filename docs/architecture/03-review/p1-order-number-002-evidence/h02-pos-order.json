@@ -1,0 +1,30 @@
+﻿{
+    "code":  0,
+    "message":  "操作成功",
+    "data":  {
+                 "orderId":  "O1790153488594",
+                 "orderNumber":  "T20260923001",
+                 "pickupNumber":  "A002",
+                 "pickupCode":  null,
+                 "status":  "pending",
+                 "message":  "订单创建成功",
+                 "orderType":  "dinein",
+                 "tableNumber":  "99",
+                 "totalAmount":  0.80,
+                 "createTime":  "2026-09-23T16:56:17.299466500",
+                 "orderSource":  4,
+                 "orderItems":  [
+                                    {
+                                        "id":  "1",
+                                        "name":  "生菜串",
+                                        "price":  0.8,
+                                        "quantity":  1
+                                    }
+                                ],
+                 "qrCodeUrl":  null,
+                 "qrTransactionId":  null,
+                 "qrExpiresAt":  null
+             },
+    "timestamp":  1790153777299,
+    "success":  true
+}

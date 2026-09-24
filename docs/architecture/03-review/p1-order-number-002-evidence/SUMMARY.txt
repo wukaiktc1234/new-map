@@ -1,0 +1,9 @@
+﻿Unit A1: Tests run 3 Failures 0 Errors 0 BUILD SUCCESS
+CC-6: Tests run 33 Failures 0 Errors 0 BUILD SUCCESS
+H-01 PASS order_number=ORD202609231655140001
+H-02 PASS orderCode=orderNumber=T20260923001
+H-03 PASS order_number=ORD202609231656170001
+H-04 PASS UNIQUE orders_order_number_key rejected
+H-05 PASS KDS KO1790153488593 orderNumber=T20260923001
+H-06 PASS tray served idle material_consumed=1
+Rollback Phases: 7f40ab7 -> 6f0f2b9 revert -> 0acf99b reapply PASS

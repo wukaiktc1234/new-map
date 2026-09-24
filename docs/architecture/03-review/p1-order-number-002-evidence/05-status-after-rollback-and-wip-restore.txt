@@ -1,0 +1,1566 @@
+﻿ M .agents/skills/ui-ux-pro-max/data/charts.csv
+ M .agents/skills/ui-ux-pro-max/data/colors.csv
+ M .agents/skills/ui-ux-pro-max/data/landing.csv
+ M .agents/skills/ui-ux-pro-max/data/products.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/flutter.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/html-tailwind.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/nextjs.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/react-native.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/react.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/svelte.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/swiftui.csv
+ M .agents/skills/ui-ux-pro-max/data/stacks/vue.csv
+ M .agents/skills/ui-ux-pro-max/data/styles.csv
+ M .agents/skills/ui-ux-pro-max/data/ux-guidelines.csv
+ M .agents/skills/ui-ux-pro-max/scripts/__pycache__/core.cpython-314.pyc
+ M .agents/skills/ui-ux-pro-max/scripts/__pycache__/design_system.cpython-314.pyc
+ M .agents/skills/ui-ux-pro-max/scripts/search.py
+ M .claude/skills/ui-ux-pro-max/data/charts.csv
+ M .claude/skills/ui-ux-pro-max/data/colors.csv
+ M .claude/skills/ui-ux-pro-max/data/landing.csv
+ M .claude/skills/ui-ux-pro-max/data/products.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/flutter.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/html-tailwind.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/nextjs.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/react-native.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/react.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/svelte.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/swiftui.csv
+ M .claude/skills/ui-ux-pro-max/data/stacks/vue.csv
+ M .claude/skills/ui-ux-pro-max/data/styles.csv
+ M .claude/skills/ui-ux-pro-max/data/ux-guidelines.csv
+ M .claude/skills/ui-ux-pro-max/scripts/search.py
+ M .mcp.json
+ M backend/pom.xml
+ M backend/scripts/api-test-results-4modules.csv
+ M backend/scripts/api-test-results.csv
+ M backend/src/main-project/backend/src/main/java/com/example/demo/controller/CustomReportController.java
+ M backend/src/main/java/com/foodtraceability/aspect/AuditLogAspect.java
+ M backend/src/main/java/com/foodtraceability/aspect/DataPermissionAspect.java
+ M backend/src/main/java/com/foodtraceability/aspect/PermissionAspect.java
+ M backend/src/main/java/com/foodtraceability/cache/ClientContextHolder.java
+ M backend/src/main/java/com/foodtraceability/common/Result.java
+ M backend/src/main/java/com/foodtraceability/common/exception/GlobalExceptionHandler.java
+ M backend/src/main/java/com/foodtraceability/config/AuditLogScheduleConfig.java
+ M backend/src/main/java/com/foodtraceability/config/CorsConfig.java
+ M backend/src/main/java/com/foodtraceability/config/DataFixConfig.java
+ M backend/src/main/java/com/foodtraceability/config/DatabaseSchemaValidationConfig.java
+ M backend/src/main/java/com/foodtraceability/config/DeviceHeartbeatConfig.java
+ M backend/src/main/java/com/foodtraceability/config/ExpiryCheckScheduler.java
+ M backend/src/main/java/com/foodtraceability/config/FileCleanupScheduler.java
+ M backend/src/main/java/com/foodtraceability/config/KitchenOrderMigrationConfig.java
+ M backend/src/main/java/com/foodtraceability/config/OpenAPIConfig.java
+ M backend/src/main/java/com/foodtraceability/config/PasswordResetLogTableConfig.java
+ M backend/src/main/java/com/foodtraceability/config/PositionRoleMappingInitConfig.java
+ M backend/src/main/java/com/foodtraceability/config/PositionRoleMappingTableConfig.java
+ M backend/src/main/java/com/foodtraceability/config/ReportGenerationScheduler.java
+ M backend/src/main/java/com/foodtraceability/config/SchemaFixMigration.java
+ M backend/src/main/java/com/foodtraceability/config/SecurityStartupChecker.java
+ M backend/src/main/java/com/foodtraceability/config/TableInitConfig.java
+ M backend/src/main/java/com/foodtraceability/config/TraceCodeSystemConfig.java
+ M backend/src/main/java/com/foodtraceability/config/WebConfig.java
+ M backend/src/main/java/com/foodtraceability/config/WebMvcConfig.java
+ M backend/src/main/java/com/foodtraceability/controller/AccountBalanceController.java
+ M backend/src/main/java/com/foodtraceability/controller/ApprovalController.java
+ M backend/src/main/java/com/foodtraceability/controller/AuditLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/AuthController.java
+ M backend/src/main/java/com/foodtraceability/controller/BomCheckController.java
+ M backend/src/main/java/com/foodtraceability/controller/CallNumberQueueManagementController.java
+ M backend/src/main/java/com/foodtraceability/controller/CameraController.java
+ M backend/src/main/java/com/foodtraceability/controller/CategoryOperationLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/ComboInventoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/ContractTemplateController.java
+ M backend/src/main/java/com/foodtraceability/controller/CustomerAnalysisController.java
+ M backend/src/main/java/com/foodtraceability/controller/DashboardController.java
+ M backend/src/main/java/com/foodtraceability/controller/DepartmentController.java
+ M backend/src/main/java/com/foodtraceability/controller/DeviceManagementController.java
+ M backend/src/main/java/com/foodtraceability/controller/DeviceStatusHistoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/DiningTableManagementController.java
+ M backend/src/main/java/com/foodtraceability/controller/DishCostController.java
+ M backend/src/main/java/com/foodtraceability/controller/DishInventoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/ElectronicContractController.java
+ M backend/src/main/java/com/foodtraceability/controller/ElectronicSignatureController.java
+ M backend/src/main/java/com/foodtraceability/controller/EmployeeArchiveDetailController.java
+ M backend/src/main/java/com/foodtraceability/controller/EmployeeController.java
+ M backend/src/main/java/com/foodtraceability/controller/EmployeeLaborContractController.java
+ M backend/src/main/java/com/foodtraceability/controller/ExpiryAlertController.java
+ M backend/src/main/java/com/foodtraceability/controller/FoodController.java
+ M backend/src/main/java/com/foodtraceability/controller/HealthCertificateController.java
+ M backend/src/main/java/com/foodtraceability/controller/HealthCertificateExpenseController.java
+ M backend/src/main/java/com/foodtraceability/controller/InterviewController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryAdjustController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryAnalysisController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryCategoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryConsumptionController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryDeductionController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryLocationController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryLossController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryOutboundController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventorySettingController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryStatsController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryTransferController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryUnitController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryWarningController.java
+ M backend/src/main/java/com/foodtraceability/controller/InventoryWarningRuleController.java
+ M backend/src/main/java/com/foodtraceability/controller/KnowledgeBaseController.java
+ M backend/src/main/java/com/foodtraceability/controller/LabelTemplateController.java
+ M backend/src/main/java/com/foodtraceability/controller/LoginLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/LossOutboundController.java
+ M backend/src/main/java/com/foodtraceability/controller/MarketingMemberController.java
+ M backend/src/main/java/com/foodtraceability/controller/NotificationController.java
+ M backend/src/main/java/com/foodtraceability/controller/OperationLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/OrderNewController.java
+ M backend/src/main/java/com/foodtraceability/controller/OrganizationChangeLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/OtherInboundController.java
+ M backend/src/main/java/com/foodtraceability/controller/PasswordPolicyController.java
+ M backend/src/main/java/com/foodtraceability/controller/PasswordResetLogController.java
+ M backend/src/main/java/com/foodtraceability/controller/PermissionAutoAssignController.java
+ M backend/src/main/java/com/foodtraceability/controller/PermissionController.java
+ M backend/src/main/java/com/foodtraceability/controller/PositionCodeRuleController.java
+ M backend/src/main/java/com/foodtraceability/controller/PositionController.java
+ M backend/src/main/java/com/foodtraceability/controller/ProductAnalysisController.java
+ M backend/src/main/java/com/foodtraceability/controller/ProductSalesStatsController.java
+ M backend/src/main/java/com/foodtraceability/controller/PromotionController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseContractController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseLedgerController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseOrderController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseRequestController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseReturnController.java
+ M backend/src/main/java/com/foodtraceability/controller/PurchaseStockinScanController.java
+ M backend/src/main/java/com/foodtraceability/controller/QualityController.java
+ M backend/src/main/java/com/foodtraceability/controller/QuickStockInController.java
+ M backend/src/main/java/com/foodtraceability/controller/ReceiptConfirmationController.java
+ M backend/src/main/java/com/foodtraceability/controller/RecruitmentRequirementController.java
+ M backend/src/main/java/com/foodtraceability/controller/ResumeController.java
+ M backend/src/main/java/com/foodtraceability/controller/RoleController.java
+ M backend/src/main/java/com/foodtraceability/controller/SalesAnalysisController.java
+ M backend/src/main/java/com/foodtraceability/controller/SalesOrderController.java
+ M backend/src/main/java/com/foodtraceability/controller/ScheduledTaskController.java
+ M backend/src/main/java/com/foodtraceability/controller/SelfPurchaseController.java
+ M backend/src/main/java/com/foodtraceability/controller/SessionController.java
+ M backend/src/main/java/com/foodtraceability/controller/StoreHealthCertificateController.java
+ M backend/src/main/java/com/foodtraceability/controller/SysConfigController.java
+ M backend/src/main/java/com/foodtraceability/controller/SysSettingController.java
+ M backend/src/main/java/com/foodtraceability/controller/SystemConfigController.java
+ M backend/src/main/java/com/foodtraceability/controller/TrainingController.java
+ M backend/src/main/java/com/foodtraceability/controller/TrayController.java
+ M backend/src/main/java/com/foodtraceability/controller/UserController.java
+ M backend/src/main/java/com/foodtraceability/controller/asset/AssetDisposalController.java
+ M backend/src/main/java/com/foodtraceability/controller/device/DeviceController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/BankAccountController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/FundFlowController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/PaymentController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/ProfitController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/ReceiptController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/ReportController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/StandardCostCardController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/SubjectController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/SummaryTemplateController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/TaxRateConfigController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/TaxRecordController.java
+ M backend/src/main/java/com/foodtraceability/controller/finance/TransferTemplateController.java
+ M backend/src/main/java/com/foodtraceability/controller/h5/MiniProgramController.java
+ M backend/src/main/java/com/foodtraceability/controller/h5/OnboardingArchiveController.java
+ M backend/src/main/java/com/foodtraceability/controller/h5/OnboardingInvitationController.java
+ M backend/src/main/java/com/foodtraceability/controller/h5/OnboardingRecordController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/DeviceCommunicationTestController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/DeviceSimulatorController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/EpsonPrinterTestController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/HardwareConfigController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/HardwareConfigVersionController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/HardwareDeviceController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/HardwareInitController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/LabelPrinterController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/PrintFormatTemplateController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/ScanDeviceController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/SdkPrinterController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/TakeoutLockerController.java
+ M backend/src/main/java/com/foodtraceability/controller/hardware/WeighingDeviceController.java
+ M backend/src/main/java/com/foodtraceability/controller/integration/FileAttachmentController.java
+ M backend/src/main/java/com/foodtraceability/controller/integration/FileChunkController.java
+ M backend/src/main/java/com/foodtraceability/controller/integration/OCRController.java
+ M backend/src/main/java/com/foodtraceability/controller/integration/UploadController.java
+ M backend/src/main/java/com/foodtraceability/controller/kitchen/KitchenNotifyController.java
+ M backend/src/main/java/com/foodtraceability/controller/kitchen/KitchenOrderController.java
+ M backend/src/main/java/com/foodtraceability/controller/kitchen/KitchenScanController.java
+ M backend/src/main/java/com/foodtraceability/controller/kitchen/PreMakeController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/CacheController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/DataBackupController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/DataFixController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/DatabaseBackupController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/DatabaseCleanupController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/EncodingFixController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/ExceptionMonitoringController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/HealthCheckController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/HealthController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/HrMigrationController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/PerformanceMonitorController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/SystemDataController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/SystemInitController.java
+ M backend/src/main/java/com/foodtraceability/controller/maintenance/SystemMonitorController.java
+ M backend/src/main/java/com/foodtraceability/controller/marketing/RechargeFinanceController.java
+ M backend/src/main/java/com/foodtraceability/controller/marketing/RechargePlanController.java
+ M backend/src/main/java/com/foodtraceability/controller/marketing/RechargeSettingsController.java
+ M backend/src/main/java/com/foodtraceability/controller/marketing/RechargeStatsController.java
+ M backend/src/main/java/com/foodtraceability/controller/marketing/RefundController.java
+ M backend/src/main/java/com/foodtraceability/controller/pos/CallNumberController.java
+ M backend/src/main/java/com/foodtraceability/controller/pos/DiningTableController.java
+ M backend/src/main/java/com/foodtraceability/controller/pos/MemberController.java
+ M backend/src/main/java/com/foodtraceability/controller/pos/PosController.java
+ M backend/src/main/java/com/foodtraceability/controller/pos/PosOrderController.java
+ M backend/src/main/java/com/foodtraceability/controller/purchase/MaterialCategoryController.java
+ M backend/src/main/java/com/foodtraceability/controller/purchase/PurchaseArchiveController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleAttendanceSyncController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleCalendarController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleConflictController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleEngineController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleExportController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleNotificationController.java
+ M backend/src/main/java/com/foodtraceability/controller/schedule/ScheduleSwapController.java
+ M backend/src/main/java/com/foodtraceability/controller/websocket/DeviceWebSocketController.java
+ M backend/src/main/java/com/foodtraceability/controller/websocket/OrderWebSocketController.java
+ M backend/src/main/java/com/foodtraceability/dataservice/impl/DeviceDataServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/dataservice/impl/OperationsDashboardDataServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/driver/CameraDriver.java
+ M backend/src/main/java/com/foodtraceability/driver/DeviceDriverManager.java
+ M backend/src/main/java/com/foodtraceability/driver/PrinterDriver.java
+ M backend/src/main/java/com/foodtraceability/driver/ScannerDriver.java
+ M backend/src/main/java/com/foodtraceability/driver/WsdPrinterDriver.java
+ M backend/src/main/java/com/foodtraceability/dto/ApprovalRecordWithArchiveDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BackupCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BackupQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BackupRestoreDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchAccountingRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchGenerateInvitationCodeDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchPermissionRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchUploadResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchVerifyRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/BatchVerifyResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/CaptchaResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/ChangePasswordRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/ContractExtendDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ContractSignDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ContractTerminateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/CostAllocationQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/CustomReportCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/CustomReportQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/CustomReportVO.java
+ M backend/src/main/java/com/foodtraceability/dto/CustomerAnalysisVO.java
+ M backend/src/main/java/com/foodtraceability/dto/CustomerOrderDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DashboardConfigCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DashboardConfigQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DashboardConfigVO.java
+ M backend/src/main/java/com/foodtraceability/dto/DepartmentDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DeviceCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DeviceQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DeviceVO.java
+ M backend/src/main/java/com/foodtraceability/dto/DishComboCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DishComboDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DishComboUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DishIngredientCreateRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/DishIngredientDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/DishIngredientListResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicInvoiceItemVO.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicInvoiceVO.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicVoucherDetailVO.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicVoucherQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicVoucherUploadResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ElectronicVoucherVO.java
+ M backend/src/main/java/com/foodtraceability/dto/EmployeeBasicInfo.java
+ M backend/src/main/java/com/foodtraceability/dto/EnterpriseInfoDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/FileParseResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/FinanceVoucherDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/FoodQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/FoodQuickSelectDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/FoodTraceCodeGenerateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ForgotPasswordRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/InventoryDeductionDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InviteRegisterRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceGoodsItemDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceOcrResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceQrInfoDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceVerifyRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/InvoiceVerifyResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/KitchenOrderCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/KitchenOrderFullDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LabelElementDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LabelLayoutConfigDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LabelPrintConfigDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LoginLogQueryRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/LoginRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/LongTermAssetInputTaxDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LongTermAssetInputTaxQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/LossOutboundCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ManualInterventionDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/MaterialScanConsumeDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/MaterialTraceCodeGenerateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/MsgSendDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/MsgTemplateCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/NotificationSettingUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OCRMatchRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OCRRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OCRResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OnboardingArchiveDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderDetailDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderItemDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/OrderStatusNotification.java
+ M backend/src/main/java/com/foodtraceability/dto/OrganizationInfoDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PageQuery.java
+ M backend/src/main/java/com/foodtraceability/dto/PageRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/PasswordPolicyDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PasswordResetLogQueryRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/PayRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PermissionResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/PermissionSyncResult.java
+ M backend/src/main/java/com/foodtraceability/dto/PermissionTemplateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PermissionTreeNode.java
+ M backend/src/main/java/com/foodtraceability/dto/ProductRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/ProductResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseOrderItemCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseOrderQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseRequestApproveDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseRequestCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseRequestUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/PurchaseStockinScanDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/QuickStockInDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ReceiptConfirmationCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ReceiptConfirmationQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ReceivableQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ReceivableStatisticsDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/RegisterRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/RegisterResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/ResetPasswordRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/ResetPasswordWithTokenRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/RoleConfigDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ScanConfirmResult.java
+ M backend/src/main/java/com/foodtraceability/dto/ScanMatchResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ScheduledTaskCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ScheduledTaskQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/ScheduledTaskUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SendInvitationCodeDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SendVerificationCodeRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/SignatureVerifyResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SimpleFoodRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/SimpleFoodResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/StockinProgressDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SupplierCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SupplierQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SupplierUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SupplierVO.java
+ M backend/src/main/java/com/foodtraceability/dto/SystemConfigDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/SystemInitStatusDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/TableOrderDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/TaxRecordDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/UpdateUserRequest.java
+ M backend/src/main/java/com/foodtraceability/dto/UploadProgressDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/UserInfoResponse.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherAccountingRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherAccountingResultDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherArchiveDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherArchiveQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherArchiveRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherGenerateRequestDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherSignatureLogVO.java
+ M backend/src/main/java/com/foodtraceability/dto/VoucherTypeDetectResult.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/BankAccountCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/BankAccountQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/BankAccountUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/BankAccountVO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/CostRecordUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FinanceRecordCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FinanceRecordQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FinanceRecordUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FinanceRecordVO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FinanceVoucherDetailVO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/FundFlowVO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/ManualInvoiceInputDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/PayableCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/PayableUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/PaymentCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/PaymentVO.java
+ M backend/src/main/java/com/foodtraceability/dto/finance/ReceivableUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/purchase/MaterialArchiveQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/ComplianceCheckItemVO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/ComplianceReportCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/ComplianceReportVO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/PurchaseLedgerCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/PurchaseLedgerQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/PurchaseLedgerVO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/RecallQueryResultVO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/TraceChainNodeVO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/TraceCodeCreateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/TraceCodeQueryDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/TraceCodeUpdateDTO.java
+ M backend/src/main/java/com/foodtraceability/dto/trace/TraceCodeVO.java
+ M backend/src/main/java/com/foodtraceability/entity/ApprovalRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/AssetFlowRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/AssetMaster.java
+ M backend/src/main/java/com/foodtraceability/entity/AuditLog.java
+ M backend/src/main/java/com/foodtraceability/entity/BackupRestoreLog.java
+ M backend/src/main/java/com/foodtraceability/entity/CallRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/CategoryCount.java
+ M backend/src/main/java/com/foodtraceability/entity/CategoryOperationLog.java
+ M backend/src/main/java/com/foodtraceability/entity/ComboIngredient.java
+ M backend/src/main/java/com/foodtraceability/entity/ComboInventory.java
+ M backend/src/main/java/com/foodtraceability/entity/ContractTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/CostAllocation.java
+ M backend/src/main/java/com/foodtraceability/entity/CostAllocationDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/CostAllocationRule.java
+ M backend/src/main/java/com/foodtraceability/entity/CustomReport.java
+ M backend/src/main/java/com/foodtraceability/entity/CustomReportExecution.java
+ M backend/src/main/java/com/foodtraceability/entity/CustomerAnalysisReport.java
+ M backend/src/main/java/com/foodtraceability/entity/DashboardConfig.java
+ M backend/src/main/java/com/foodtraceability/entity/DataBackupRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/DataChangeHistory.java
+ M backend/src/main/java/com/foodtraceability/entity/DataLinkEvent.java
+ M backend/src/main/java/com/foodtraceability/entity/Department.java
+ M backend/src/main/java/com/foodtraceability/entity/Device.java
+ M backend/src/main/java/com/foodtraceability/entity/DeviceWorkflowExecutionLog.java
+ M backend/src/main/java/com/foodtraceability/entity/DiningTable.java
+ M backend/src/main/java/com/foodtraceability/entity/DishCombo.java
+ M backend/src/main/java/com/foodtraceability/entity/DishIngredient.java
+ M backend/src/main/java/com/foodtraceability/entity/DishRecipe.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicBankReceipt.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicContract.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicFlightTicket.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicInvoice.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicInvoiceItem.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicSignature.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicTrainTicket.java
+ M backend/src/main/java/com/foodtraceability/entity/ElectronicVoucher.java
+ M backend/src/main/java/com/foodtraceability/entity/EmployeeArchiveDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/EmployeeLaborContract.java
+ M backend/src/main/java/com/foodtraceability/entity/EnterpriseConfig.java
+ M backend/src/main/java/com/foodtraceability/entity/FileAttachment.java
+ M backend/src/main/java/com/foodtraceability/entity/Food.java
+ M backend/src/main/java/com/foodtraceability/entity/FoodCategory.java
+ M backend/src/main/java/com/foodtraceability/entity/FoodTrace.java
+ M backend/src/main/java/com/foodtraceability/entity/FoodTraceCode.java
+ M backend/src/main/java/com/foodtraceability/entity/HardwareOperationLog.java
+ M backend/src/main/java/com/foodtraceability/entity/InventoryAnalysisReport.java
+ M backend/src/main/java/com/foodtraceability/entity/InventoryCategory.java
+ M backend/src/main/java/com/foodtraceability/entity/InventoryLossDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/InventorySummary.java
+ M backend/src/main/java/com/foodtraceability/entity/InventoryTransferDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/InventoryUnit.java
+ M backend/src/main/java/com/foodtraceability/entity/InvitationExpenseRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/InvitationReminderLog.java
+ M backend/src/main/java/com/foodtraceability/entity/InvitationSendRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/Invoice.java
+ M backend/src/main/java/com/foodtraceability/entity/KitchenOrder.java
+ M backend/src/main/java/com/foodtraceability/entity/LabelTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/LocationCount.java
+ M backend/src/main/java/com/foodtraceability/entity/LockerSlot.java
+ M backend/src/main/java/com/foodtraceability/entity/LoginLog.java
+ M backend/src/main/java/com/foodtraceability/entity/LossOutbound.java
+ M backend/src/main/java/com/foodtraceability/entity/MaterialConsumption.java
+ M backend/src/main/java/com/foodtraceability/entity/MaterialTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/MaterialTraceCode.java
+ M backend/src/main/java/com/foodtraceability/entity/MaterialUsageRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/Member.java
+ M backend/src/main/java/com/foodtraceability/entity/Menu.java
+ M backend/src/main/java/com/foodtraceability/entity/MsgSendRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/MsgTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/NotificationSettingEntity.java
+ M backend/src/main/java/com/foodtraceability/entity/OnboardingArchive.java
+ M backend/src/main/java/com/foodtraceability/entity/OperationCount.java
+ M backend/src/main/java/com/foodtraceability/entity/OperationLog.java
+ M backend/src/main/java/com/foodtraceability/entity/OperationType.java
+ M backend/src/main/java/com/foodtraceability/entity/OperatorCount.java
+ M backend/src/main/java/com/foodtraceability/entity/Order.java
+ M backend/src/main/java/com/foodtraceability/entity/OrderItem.java
+ M backend/src/main/java/com/foodtraceability/entity/OrderMaterialRequirement.java
+ M backend/src/main/java/com/foodtraceability/entity/OrderNew.java
+ M backend/src/main/java/com/foodtraceability/entity/PasswordHistory.java
+ M backend/src/main/java/com/foodtraceability/entity/PasswordPolicy.java
+ M backend/src/main/java/com/foodtraceability/entity/PasswordResetLog.java
+ M backend/src/main/java/com/foodtraceability/entity/Permission.java
+ M backend/src/main/java/com/foodtraceability/entity/PermissionTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/ProductAnalysisReport.java
+ M backend/src/main/java/com/foodtraceability/entity/Promotion.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseArrival.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseContract.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseLedger.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseOrder.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseRequest.java
+ M backend/src/main/java/com/foodtraceability/entity/PurchaseRequestItem.java
+ M backend/src/main/java/com/foodtraceability/entity/ReceiptConfirmation.java
+ M backend/src/main/java/com/foodtraceability/entity/ReceiptConfirmationItem.java
+ M backend/src/main/java/com/foodtraceability/entity/Receivable.java
+ M backend/src/main/java/com/foodtraceability/entity/RecruitmentRequirement.java
+ M backend/src/main/java/com/foodtraceability/entity/Role.java
+ M backend/src/main/java/com/foodtraceability/entity/RoleDepartment.java
+ M backend/src/main/java/com/foodtraceability/entity/RolePermission.java
+ M backend/src/main/java/com/foodtraceability/entity/RoleStore.java
+ M backend/src/main/java/com/foodtraceability/entity/RoleTypeCount.java
+ M backend/src/main/java/com/foodtraceability/entity/SalesAnalysisReport.java
+ M backend/src/main/java/com/foodtraceability/entity/ScanDevice.java
+ M backend/src/main/java/com/foodtraceability/entity/ScanRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/ScheduledTask.java
+ M backend/src/main/java/com/foodtraceability/entity/StageCompletion.java
+ M backend/src/main/java/com/foodtraceability/entity/StageCount.java
+ M backend/src/main/java/com/foodtraceability/entity/Store.java
+ M backend/src/main/java/com/foodtraceability/entity/Supplier.java
+ M backend/src/main/java/com/foodtraceability/entity/SysConfig.java
+ M backend/src/main/java/com/foodtraceability/entity/SysConfigHistory.java
+ M backend/src/main/java/com/foodtraceability/entity/SysDevice.java
+ M backend/src/main/java/com/foodtraceability/entity/SysPermission.java
+ M backend/src/main/java/com/foodtraceability/entity/SysPrintTemplate.java
+ M backend/src/main/java/com/foodtraceability/entity/SysRole.java
+ M backend/src/main/java/com/foodtraceability/entity/SysSetting.java
+ M backend/src/main/java/com/foodtraceability/entity/SysStore.java
+ M backend/src/main/java/com/foodtraceability/entity/SystemConfig.java
+ M backend/src/main/java/com/foodtraceability/entity/SystemInitStatus.java
+ M backend/src/main/java/com/foodtraceability/entity/TakeoutLocker.java
+ M backend/src/main/java/com/foodtraceability/entity/TaskExecutionLog.java
+ M backend/src/main/java/com/foodtraceability/entity/TaskExecutionLogDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/TaxRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/TestResult.java
+ M backend/src/main/java/com/foodtraceability/entity/TraceChainNode.java
+ M backend/src/main/java/com/foodtraceability/entity/TraceCode.java
+ M backend/src/main/java/com/foodtraceability/entity/TraceCodeLog.java
+ M backend/src/main/java/com/foodtraceability/entity/TraceStage.java
+ M backend/src/main/java/com/foodtraceability/entity/TraceabilityCode.java
+ M backend/src/main/java/com/foodtraceability/entity/Tray.java
+ M backend/src/main/java/com/foodtraceability/entity/UserRole.java
+ M backend/src/main/java/com/foodtraceability/entity/UserSession.java
+ M backend/src/main/java/com/foodtraceability/entity/VoucherSignatureLog.java
+ M backend/src/main/java/com/foodtraceability/entity/WeighingDevice.java
+ M backend/src/main/java/com/foodtraceability/entity/WeighingRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/DeductibleStatus.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/InvoiceType.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/SignatureStatus.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/VerifyStatus.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/VoucherStatus.java
+ M backend/src/main/java/com/foodtraceability/entity/enums/VoucherType.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/AccountingSubject.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/BankAccount.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/Budget.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/CostAllocationRule.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/CostRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/FinanceInvoice.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/FinanceRecord.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/FinanceVoucher.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/FinanceVoucherDetail.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/FundFlow.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/Payable.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/Payment.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/ProfitStatement.java
+ M backend/src/main/java/com/foodtraceability/entity/finance/Receivable.java
+ M backend/src/main/java/com/foodtraceability/enums/HealthCertificateApprovalStatusEnum.java
+ M backend/src/main/java/com/foodtraceability/enums/HealthCertificateExpenseStatusEnum.java
+ M backend/src/main/java/com/foodtraceability/enums/HealthCertificateStatusEnum.java
+ M backend/src/main/java/com/foodtraceability/event/EventPublisher.java
+ M backend/src/main/java/com/foodtraceability/event/HREvent.java
+ M backend/src/main/java/com/foodtraceability/event/HealthCertificateEventListener.java
+ M backend/src/main/java/com/foodtraceability/event/OrderCompletedEvent.java
+ M backend/src/main/java/com/foodtraceability/event/OrderCreatedEvent.java
+ M backend/src/main/java/com/foodtraceability/event/PurchaseStockInEvent.java
+ M backend/src/main/java/com/foodtraceability/event/SalaryPaidEvent.java
+ M backend/src/main/java/com/foodtraceability/event/TraceCodeGeneratedEvent.java
+ M backend/src/main/java/com/foodtraceability/event/listener/OrderCompletedEventListener.java
+ M backend/src/main/java/com/foodtraceability/event/listener/OrderCreatedEventListener.java
+ M backend/src/main/java/com/foodtraceability/event/listener/OrderRefundEventListener.java
+ M backend/src/main/java/com/foodtraceability/event/listener/PurchaseStockInEventListener.java
+ M backend/src/main/java/com/foodtraceability/event/listener/SalaryPaidEventListener.java
+ M backend/src/main/java/com/foodtraceability/exception/BusinessException.java
+ M backend/src/main/java/com/foodtraceability/interceptor/ClientTypeInterceptor.java
+ M backend/src/main/java/com/foodtraceability/interceptor/PermissionInterceptor.java
+ M backend/src/main/java/com/foodtraceability/listener/HREventListener.java
+ M backend/src/main/java/com/foodtraceability/mapper/CertificateManagementMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ComboIngredientMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ComplianceCheckItemMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ComplianceReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/CustomReportExecutionMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/CustomReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/CustomerAnalysisReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/DashboardConfigMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ExpiryWarningRecordMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ExpiryWarningRuleMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/InventoryAnalysisReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/KitchenOrderMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/MarketingMemberMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/OrderMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/OrderNewMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/PasswordPolicyMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/ProductAnalysisReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/PurchaseLedgerMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/SalesAnalysisReportMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/TraceChainNodeMapper.java
+ M backend/src/main/java/com/foodtraceability/mapper/finance/FinanceRecordMapper.java
+ M backend/src/main/java/com/foodtraceability/printer/XprinterSdkService.java
+ M backend/src/main/java/com/foodtraceability/runner/PermissionInitRunner.java
+ M backend/src/main/java/com/foodtraceability/runner/SchedulerEngineRunner.java
+ M backend/src/main/java/com/foodtraceability/scheduler/AutoBackupScheduler.java
+ M backend/src/main/java/com/foodtraceability/scheduler/BackupHealthChecker.java
+ M backend/src/main/java/com/foodtraceability/scheduler/BackupTaskScheduler.java
+ M backend/src/main/java/com/foodtraceability/scheduler/TaskSchedulerEngine.java
+ M backend/src/main/java/com/foodtraceability/security/annotation/DataScope.java
+ M backend/src/main/java/com/foodtraceability/security/annotation/OperationLog.java
+ M backend/src/main/java/com/foodtraceability/security/aspect/DataScopeAspect.java
+ M backend/src/main/java/com/foodtraceability/security/aspect/OperationLogAspect.java
+ M backend/src/main/java/com/foodtraceability/security/config/SecurityConfig.java
+ M backend/src/main/java/com/foodtraceability/security/constants/AdminPermissions.java
+ M backend/src/main/java/com/foodtraceability/security/filter/JwtAuthenticationFilter.java
+ M backend/src/main/java/com/foodtraceability/security/handler/JwtLogoutHandler.java
+ M backend/src/main/java/com/foodtraceability/security/model/UserPermissionInfo.java
+ M backend/src/main/java/com/foodtraceability/security/service/dto/LoginRequest.java
+ M backend/src/main/java/com/foodtraceability/security/service/dto/PasswordChangeRequest.java
+ M backend/src/main/java/com/foodtraceability/security/service/dto/RegisterRequest.java
+ M backend/src/main/java/com/foodtraceability/security/service/dto/UserProfileUpdateRequest.java
+ M backend/src/main/java/com/foodtraceability/security/service/impl/AuthenticationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/security/service/impl/SmtpVerificationCodeSender.java
+ M backend/src/main/java/com/foodtraceability/security/service/impl/TokenServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/AccountBalanceService.java
+ M backend/src/main/java/com/foodtraceability/service/AssetMasterService.java
+ M backend/src/main/java/com/foodtraceability/service/AutoVoucherLogQuery.java
+ M backend/src/main/java/com/foodtraceability/service/CallNumberHardwareService.java
+ M backend/src/main/java/com/foodtraceability/service/CustomReportService.java
+ M backend/src/main/java/com/foodtraceability/service/CustomerAnalysisService.java
+ M backend/src/main/java/com/foodtraceability/service/DashboardService.java
+ M backend/src/main/java/com/foodtraceability/service/DeviceDiscoveryService.java
+ M backend/src/main/java/com/foodtraceability/service/DeviceService.java
+ M backend/src/main/java/com/foodtraceability/service/InventoryAnalysisService.java
+ M backend/src/main/java/com/foodtraceability/service/InvoiceQrCodeService.java
+ M backend/src/main/java/com/foodtraceability/service/LossOutboundService.java
+ M backend/src/main/java/com/foodtraceability/service/MarketingMemberService.java
+ M backend/src/main/java/com/foodtraceability/service/OcrEngineManager.java
+ M backend/src/main/java/com/foodtraceability/service/OrderNewService.java
+ M backend/src/main/java/com/foodtraceability/service/OtherInboundService.java
+ M backend/src/main/java/com/foodtraceability/service/PosOrderCreateService.java
+ M backend/src/main/java/com/foodtraceability/service/PosOrderNumberGenerator.java
+ M backend/src/main/java/com/foodtraceability/service/ProductAnalysisService.java
+ M backend/src/main/java/com/foodtraceability/service/PurchaseOrderService.java
+ M backend/src/main/java/com/foodtraceability/service/ReceiptConfirmationService.java
+ M backend/src/main/java/com/foodtraceability/service/ReceiptPrinterService.java
+ M backend/src/main/java/com/foodtraceability/service/SalesAnalysisService.java
+ M backend/src/main/java/com/foodtraceability/service/TaxRecordService.java
+ M backend/src/main/java/com/foodtraceability/service/TrainingService.java
+ M backend/src/main/java/com/foodtraceability/service/approval/impl/ApprovalWorkflowServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/device/impl/DeviceServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/device/impl/PrintTaskServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/dto/ComboIngredientDTO.java
+ M backend/src/main/java/com/foodtraceability/service/dto/FoodCategoryRequest.java
+ M backend/src/main/java/com/foodtraceability/service/dto/SimpleFoodRequest.java
+ M backend/src/main/java/com/foodtraceability/service/dto/SimpleFoodResponse.java
+ M backend/src/main/java/com/foodtraceability/service/finance/BankAccountService.java
+ M backend/src/main/java/com/foodtraceability/service/finance/CostRecordService.java
+ M backend/src/main/java/com/foodtraceability/service/finance/FinanceRecordService.java
+ M backend/src/main/java/com/foodtraceability/service/finance/PaymentService.java
+ M backend/src/main/java/com/foodtraceability/service/finance/impl/BankAccountServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/finance/impl/FinanceRecordServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/finance/impl/FundFlowServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/finance/impl/PaymentServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/AccountBalanceServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/AlertNotificationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ApprovalServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/AssetMasterServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/AuditLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/AuthServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/CacheWarmupServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/CaptchaServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/CategoryOperationLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ComboInventoryServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ContractPdfServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ContractTemplateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/CustomReportServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/CustomerAnalysisServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DailySettlementServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DashboardServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DataBackupServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DataPermissionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DatabaseBackupServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceCommunicationTestServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceDriverVersionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceHeartbeatServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceOperationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceStatusHistoryServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceStatusMonitorServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceStatusServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceTemplateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DeviceWorkflowServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DishInventoryServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DishRecipeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/DuplicateVoucherDetectService.java
+ M backend/src/main/java/com/foodtraceability/service/impl/EmailServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/EmployeeArchiveDetailServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/EmployeeLaborContractServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/EmployeeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/FileAttachmentServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/FileChunkServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/FileParseServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/FoodTraceCodeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HardwareConfigServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HardwareConfigVersionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HardwareDeviceServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HardwareOperationLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HealthCertificateExpenseServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/HealthCertificateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryAnalysisServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryDeductionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryLossServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryStatsServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventorySummaryServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryTransferServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryWarningRuleServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/InventoryWarningServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/KitchenOrderServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/LabelPreviewServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/LabelPrintServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/LabelTemplateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/LoginLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/MarketingMemberServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/MaterialConsumptionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/MaterialTemplateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/MaterialTraceCodeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/MockTaxPlatformService.java
+ M backend/src/main/java/com/foodtraceability/service/impl/NotificationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/NotificationSettingServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OCRServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OfdSignatureVerifyService.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OnboardingArchiveServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OnboardingInvitationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OnboardingRecordServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OnnxOcrServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OperationLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OperationsReportServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OrderMaterialRequirementServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/OrderServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PaddleOcrServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PasswordPolicyServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PasswordResetLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PasswordResetServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PermissionAutoAssignServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PermissionInitServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PermissionServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PosAuthServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PosOrderCreateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PosOrderPaymentServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PosOrderQueryServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PrintFormatTemplateServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PrintServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ProductAnalysisServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PurchaseArrivalServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PurchaseOrderServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PurchaseRequestServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/PurchaseStockinScanServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/RapidOcrServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ReceiptConfirmationServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/RegistrationCodeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/RpaInvoiceVerifyServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SalesAnalysisServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SalesOrderServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ScanDeviceServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/ScheduledTaskServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SelfPurchaseServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SensitiveDataServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SignatureVerifyServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/StoreInventoryLogServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/StoreServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SupplierServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SysConfigServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SysSettingServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SystemConfigServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/SystemInitServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TakeoutLockerServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TaxRecordServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TokenBlacklistServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TraceCodeServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TrainingServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/TrayServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/UserDetailsServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/impl/VoucherTypeDetectService.java
+ M backend/src/main/java/com/foodtraceability/service/impl/WeighingDeviceServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/operations/impl/DecisionBoardServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/operations/impl/LiveMonitorServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/purchase/impl/MaterialArchiveServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/trace/FoodQualityService.java
+ M backend/src/main/java/com/foodtraceability/service/trace/FoodTraceabilityService.java
+ M backend/src/main/java/com/foodtraceability/service/trace/PurchaseLedgerService.java
+ M backend/src/main/java/com/foodtraceability/service/trace/impl/FoodQualityServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/trace/impl/FoodTraceabilityServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/service/trace/impl/PurchaseLedgerServiceImpl.java
+ M backend/src/main/java/com/foodtraceability/task/HealthCertificateReminderTask.java
+ M backend/src/main/java/com/foodtraceability/task/OrderTimeoutTask.java
+ M backend/src/main/java/com/foodtraceability/task/PurchaseOrderCleanupTask.java
+ M backend/src/main/java/com/foodtraceability/util/DeviceConnectionPoolManager.java
+ M backend/src/main/java/com/foodtraceability/util/OnboardingCodeGenerator.java
+ M backend/src/main/java/com/foodtraceability/util/PrintTaskQueueManager.java
+ M backend/src/main/java/com/foodtraceability/utils/EmployeeCodeGenerator.java
+ M backend/src/main/java/com/foodtraceability/utils/FoodCodeGenerator.java
+ M backend/src/main/java/com/foodtraceability/utils/XmlParseUtils.java
+ M backend/src/main/resources/application-dev.yml
+ M backend/src/main/resources/application.yml
+ M backend/src/main/resources/db/finance_tables.sql
+ M backend/src/main/resources/db/migration/V10.0.0__create_analytics_tables.sql
+ M backend/src/main/resources/db/migration/V11.0.0__create_traceability_tables.sql
+ M backend/src/main/resources/db/migration/V20260729_001__fix_garbled_position_names.sql
+ M backend/src/main/resources/db/migration/V20260731_003__add_purchase_order_missing_fields.sql
+ M backend/src/main/resources/mapper/ArticleStudyRecordMapper.xml
+ M backend/src/main/resources/mapper/BackupRestoreLogMapper.xml
+ M backend/src/main/resources/mapper/CertificateManagementMapper.xml
+ M backend/src/main/resources/mapper/DataBackupMapper.xml
+ M backend/src/main/resources/mapper/ExpiryWarningRecordMapper.xml
+ M backend/src/main/resources/mapper/HardwareConfigVersionMapper.xml
+ M backend/src/main/resources/mapper/InventorySummaryMapper.xml
+ M backend/src/main/resources/mapper/KnowledgeArticleMapper.xml
+ M backend/src/main/resources/mapper/MsgSendRecordMapper.xml
+ M backend/src/main/resources/mapper/MsgTemplateMapper.xml
+ M backend/src/main/resources/mapper/OrderMapper.xml
+ M backend/src/main/resources/mapper/PasswordPolicyMapper.xml
+ M backend/src/main/resources/mapper/PositionMapper.xml
+ M backend/src/main/resources/mapper/PurchaseLedgerMapper.xml
+ M backend/src/main/resources/mapper/ScheduledTaskMapper.xml
+ M backend/src/main/resources/mapper/TaskExecutionLogMapper.xml
+ M backend/src/main/resources/mapper/TraceChainNodeMapper.xml
+ M backend/src/main/resources/mapper/TrainingCourseMapper.xml
+ M backend/src/main/resources/mapper/finance/CostRecordMapper.xml
+ M backend/src/main/resources/mapper/finance/FinanceRecordMapper.xml
+ M backend/src/main/resources/mapper/finance/FinanceVoucherDetailMapper.xml
+ M backend/src/main/resources/mapper/finance/FinanceVoucherMapper.xml
+ M backend/src/main/resources/mapper/finance/PayableMapper.xml
+ M backend/src/main/resources/mapper/finance/ReceivableMapper.xml
+ M backend/src/main/resources/mapper/marketing/RechargeRecordMapper.xml
+ M backend/src/test/java/com/foodtraceability/TestQRCode.java
+ M backend/src/test/java/com/foodtraceability/service/finance/impl/PaymentServiceImplTest.java
+ M backend/start-backend-robust.bat
+ M docs/alignment/purchase-action-matrix.md
+ M docs/alignment/purchase-field-matrix.md
+ M docs/alignment/purchase-permission-matrix.md
+ M docs/alignment/purchase-state-machine.md
+ M docs/audit/PENDING_ISSUES_BACKLOG.md
+ M docs/design/purchase-detail-status-sketches.html
+ M docs/project-diagnosis-20260802.md
+ M employee-frontend/android/gradlew.bat
+ M employee-frontend/src/api/employee.ts
+ M employee-frontend/src/api/mock/__tests__/test-data.ts
+ M employee-frontend/src/router/index.ts
+ M employee-frontend/src/stores/message.ts
+ M employee-frontend/src/views/HomePage.vue
+ M employee-frontend/src/views/LeavePage.vue
+ M employee-frontend/src/views/LeavePage/components/LeaveOverview.vue
+ M employee-frontend/src/views/LoginPage.test.ts
+ M employee-frontend/src/views/LoginPage.vue
+ M employee-frontend/src/views/MessagesPage.vue
+ M employee-frontend/src/views/NoticesPage.vue
+ M employee-frontend/src/views/PasswordChangePage.vue
+ M employee-frontend/src/views/SecurityLockPage.vue
+ M frontend-kitchen/src/api/request.ts
+ M frontend-kitchen/src/views/Home.vue
+ M frontend-kitchen/src/views/Scan.vue
+ M frontend-kitchen/src/views/ServeWindow.vue
+ M frontend-pos/src/api/kitchen.ts
+ M frontend-pos/src/composables/usePayment.ts
+ M frontend-pos/src/stores/kitchen.ts
+ M frontend-pos/src/views/Payment.vue
+ M frontend-pos/src/views/kitchen/KitchenHome.vue
+ M frontend/docs/data-chain-fix-tracking.md
+ M frontend/e2e/deep-tests/enterprise-deep-script.cjs
+ M frontend/e2e/deep-tests/enterprise-deep.spec.ts
+ M frontend/e2e/deep-tests/lifecycle-v2.cjs
+ M frontend/e2e/deep-tests/lifecycle-v3.cjs
+ M frontend/e2e/enterprise/data/generators.ts
+ M frontend/e2e/enterprise/specs/phase1-setup.spec.ts
+ M frontend/e2e/enterprise/specs/phase2-personnel.spec.ts
+ M frontend/e2e/explore-login.cjs
+ M frontend/e2e/explore-login.js
+ M frontend/e2e/fixtures.ts
+ M frontend/e2e/interactive-workflow.js
+ M frontend/e2e/lifecycle-tests/phase1-setup.spec.ts
+ M frontend/e2e/playwright.config.ts
+ M frontend/e2e/tests/00-login.spec.ts
+ M frontend/e2e/tests/01-dashboard.spec.ts
+ M frontend/e2e/tests/02-product.spec.ts
+ M frontend/e2e/tests/03-order.spec.ts
+ M frontend/e2e/tests/04-operations.spec.ts
+ M frontend/e2e/tests/05-store-ops.spec.ts
+ M frontend/e2e/tests/06-purchase.spec.ts
+ M frontend/e2e/tests/07-warehouse.spec.ts
+ M frontend/e2e/tests/08-member.spec.ts
+ M frontend/e2e/tests/09-finance.spec.ts
+ M frontend/e2e/tests/10-asset.spec.ts
+ M frontend/e2e/tests/11-hr.spec.ts
+ M frontend/e2e/tests/12-traceability.spec.ts
+ M frontend/e2e/tests/13-device.spec.ts
+ M frontend/e2e/tests/14-seal.spec.ts
+ M frontend/e2e/tests/15-system.spec.ts
+ M frontend/e2e/tests/16-personal.spec.ts
+ M frontend/e2e/tests/auth.setup.ts
+ M frontend/e2e/tests/verify-tab-fix.spec.ts
+ M frontend/e2e/tsconfig.json
+ M frontend/e2e/utils/api-helper.ts
+ M frontend/e2e/utils/cleanup.ts
+ M frontend/e2e/utils/data-generator.ts
+ M frontend/e2e/v2-interactive.cjs
+ M frontend/index.html
+ M frontend/package.json
+ M frontend/src/App.vue
+ M frontend/src/api/asset/disposal.ts
+ M frontend/src/api/asset/inventory.ts
+ M frontend/src/api/auth.ts
+ M frontend/src/api/contract-intelligence.ts
+ M frontend/src/api/device/index.ts
+ M frontend/src/api/finance/approval-flow.ts
+ M frontend/src/api/finance/bank-account.ts
+ M frontend/src/api/finance/converters.ts
+ M frontend/src/api/finance/cost.ts
+ M frontend/src/api/finance/index.ts
+ M frontend/src/api/finance/payment.ts
+ M frontend/src/api/finance/subject.ts
+ M frontend/src/api/finance/tax-calculation.ts
+ M frontend/src/api/finance/transfer-template.ts
+ M frontend/src/api/finance/voucher.ts
+ M frontend/src/api/hr.ts
+ M frontend/src/api/hr/attendance.ts
+ M frontend/src/api/hr/index.ts
+ D frontend/src/api/hr/recruitment-mock.ts
+ M frontend/src/api/hr/salary.ts
+ M frontend/src/api/hr/training.ts
+ M frontend/src/api/marketing/member.ts
+ M frontend/src/api/order/order.ts
+ M frontend/src/api/purchase/archive.ts
+ M frontend/src/api/purchase/arrival.ts
+ M frontend/src/api/purchase/converters.ts
+ M frontend/src/api/purchase/order.ts
+ M frontend/src/api/purchase/supplier.ts
+ M frontend/src/api/receipt-confirmation.ts
+ M frontend/src/api/request.ts
+ M frontend/src/api/traceability/quality.ts
+ M frontend/src/components/business/ApprovalTimeline.vue
+ M frontend/src/components/business/receipt-confirmation/ReceiptConfirmationDetailDialog.vue
+ M frontend/src/components/business/receipt-confirmation/ReceiptConfirmationFormDialog.vue
+ M frontend/src/components/core/DataTable.vue
+ M frontend/src/components/core/SearchPanel.vue
+ M frontend/src/components/core/StatCard.vue
+ M frontend/src/components/core/StatusTag.vue
+ M frontend/src/components/core/TableActionBar.vue
+ M frontend/src/components/layout/MainLayout.vue
+ M frontend/src/components/layout/TabBar.vue
+ M frontend/src/components/layout/TopNavbar.vue
+ M frontend/src/composables/useContractTemplate.ts
+ M frontend/src/composables/useDepartmentOptions.ts
+ M frontend/src/composables/useDomainPermission.ts
+ M frontend/src/composables/useReceiptPage.ts
+ M frontend/src/composables/useStandardPage.ts
+ M frontend/src/composables/useStoreOptions.ts
+ M frontend/src/demo/ComponentGallery.vue
+ M frontend/src/directives/tableDragScroll.ts
+ M frontend/src/main.ts
+ M frontend/src/modules/finance/menu.ts
+ M frontend/src/modules/hr/menu.ts
+ M frontend/src/modules/system/menu.ts
+ M frontend/src/router/guards.ts
+ M frontend/src/router/index.ts
+ M frontend/src/stores/layout.ts
+ M frontend/src/stores/permission.ts
+ M frontend/src/styles/global/_base.scss
+ M frontend/src/styles/global/_dark-mode.scss
+ M frontend/src/styles/global/_element-overrides.scss
+ M frontend/src/styles/global/_tokens.scss
+ M frontend/src/types/asset.ts
+ M frontend/src/types/finance.ts
+ M frontend/src/types/purchase-archive.ts
+ M frontend/src/types/purchase-arrival.ts
+ M frontend/src/types/purchase-order.ts
+ M frontend/src/types/purchase-request.ts
+ M frontend/src/types/purchase-supplier.ts
+ M frontend/src/utils/permissions.ts
+ M frontend/src/views/asset/AssetCategory.vue
+ M frontend/src/views/asset/AssetDepreciation.vue
+ M frontend/src/views/asset/AssetDisposal.vue
+ M frontend/src/views/asset/AssetInventory.vue
+ M frontend/src/views/asset/AssetLedger.vue
+ M frontend/src/views/asset/AssetMaintenance.vue
+ M frontend/src/views/asset/AssetOverview.vue
+ M frontend/src/views/device/DeviceAlerts.vue
+ M frontend/src/views/device/DeviceList.vue
+ M frontend/src/views/employee/SelfServicePortal.vue
+ M frontend/src/views/finance/AutoVoucher.vue
+ M frontend/src/views/finance/FinanceApproval.vue
+ M frontend/src/views/finance/FinanceBudget.vue
+ M frontend/src/views/finance/FinanceCost.vue
+ M frontend/src/views/finance/FinanceFund.vue
+ M frontend/src/views/finance/FinanceLedger.vue
+ M frontend/src/views/finance/FinancePayable.vue
+ M frontend/src/views/finance/FinancePeriod.vue
+ M frontend/src/views/finance/FinanceReceivable.vue
+ M frontend/src/views/finance/FinanceReport.vue
+ M frontend/src/views/finance/FinanceSubject.vue
+ M frontend/src/views/finance/FinanceTax.vue
+ M frontend/src/views/finance/InvoiceReimbursement.vue
+ M frontend/src/views/finance/components/BudgetFormDialog.vue
+ M frontend/src/views/finance/components/CostFormDialog.vue
+ M frontend/src/views/finance/components/PaymentDialog.vue
+ M frontend/src/views/finance/components/PaymentHistoryDialog.vue
+ M frontend/src/views/finance/components/ReceiptDialog.vue
+ M frontend/src/views/finance/components/VoucherFormDialog.vue
+ M frontend/src/views/hr/ContractTemplateLibrary.vue
+ M frontend/src/views/hr/EmployeeIntelligence.vue
+ M frontend/src/views/hr/HRAttendance.vue
+ M frontend/src/views/hr/HRContract.vue
+ M frontend/src/views/hr/HRContractTemplate.vue
+ M frontend/src/views/hr/HREmployee.vue
+ M frontend/src/views/hr/HRHealthCertificate.vue
+ M frontend/src/views/hr/HRKnowledgeBase.vue
+ M frontend/src/views/hr/HROnboarding.vue
+ M frontend/src/views/hr/HRRecruitment.vue
+ M frontend/src/views/hr/HRSalary.vue
+ M frontend/src/views/hr/HRTraining.vue
+ M frontend/src/views/hr/KnowledgeIntelligence.vue
+ M frontend/src/views/hr/KnowledgeStudyRecords.vue
+ M frontend/src/views/hr/components/CompanySignDialog.vue
+ M frontend/src/views/hr/components/ContractChangeDialog.vue
+ M frontend/src/views/hr/components/ContractCreateDialog.vue
+ M frontend/src/views/hr/components/ContractDetailDialog.vue
+ M frontend/src/views/hr/components/ContractSignatureDialog.vue
+ M frontend/src/views/hr/components/ContractTemplateLibraryDrawer.vue
+ M frontend/src/views/hr/components/ContractVerifyDialog.vue
+ M frontend/src/views/hr/components/EmployeeDetailDialog.vue
+ M frontend/src/views/hr/components/EmployeeFormDialog.vue
+ M frontend/src/views/hr/components/EmployeeTransferDialog.vue
+ M frontend/src/views/hr/components/OrgFormDialog.vue
+ M frontend/src/views/hr/components/PaperScanUploadDialog.vue
+ M frontend/src/views/hr/components/PositionDetailDialog.vue
+ M frontend/src/views/hr/components/PositionFormDialog.vue
+ M frontend/src/views/login/LoginPage.vue
+ M frontend/src/views/marketing/MemberDetail.vue
+ M frontend/src/views/marketing/MemberLevel.vue
+ M frontend/src/views/marketing/MemberList.vue
+ M frontend/src/views/marketing/RechargeManage.vue
+ M frontend/src/views/marketing/components/MemberPreferenceDialog.vue
+ M frontend/src/views/operations/AlertCommandCenter.vue
+ M frontend/src/views/operations/DecisionBoard.vue
+ M frontend/src/views/operations/LiveMonitor.vue
+ M frontend/src/views/operations/StrategyWorkshop.vue
+ M frontend/src/views/operations/reports/ReportCenter.vue
+ M frontend/src/views/operations/reports/components/ExportTaskDrawer.vue
+ M frontend/src/views/order/OrderQuery.vue
+ M frontend/src/views/order/OrderReservation.vue
+ M frontend/src/views/order/OrderStatistics.vue
+ M frontend/src/views/order/components/OrderDetailDrawer.vue
+ M frontend/src/views/order/components/RefundDetailDrawer.vue
+ M frontend/src/views/order/components/ReservationDetailDrawer.vue
+ M frontend/src/views/product/DishCostAnalysis.vue
+ M frontend/src/views/product/FoodManagement.vue
+ M frontend/src/views/product/Inventory.vue
+ M frontend/src/views/product/components/BatchPricingDialog.vue
+ M frontend/src/views/product/components/DishComboDialog.vue
+ M frontend/src/views/purchase/ElectronicContract.vue
+ M frontend/src/views/purchase/MaterialCategory.vue
+ M frontend/src/views/purchase/MaterialRequest.vue
+ M frontend/src/views/purchase/PurchaseAnalysis.vue
+ M frontend/src/views/purchase/PurchaseArchive.vue
+ M frontend/src/views/purchase/PurchaseContract.vue
+ M frontend/src/views/purchase/PurchaseOrder.vue
+ M frontend/src/views/purchase/PurchasePlan.vue
+ M frontend/src/views/purchase/PurchaseReport.vue
+ M frontend/src/views/purchase/PurchaseRequest.vue
+ M frontend/src/views/purchase/PurchaseReturn.vue
+ M frontend/src/views/purchase/PurchaseSettlement.vue
+ M frontend/src/views/purchase/PurchaseStockin.vue
+ M frontend/src/views/purchase/SupplierArchive.vue
+ M frontend/src/views/purchase/components/ArrivalCloseDialog.vue
+ M frontend/src/views/purchase/components/ArrivalDetailDialog.vue
+ M frontend/src/views/purchase/components/ArrivalFormDialog.vue
+ M frontend/src/views/purchase/components/ElectronicContractDetail.vue
+ M frontend/src/views/purchase/components/ElectronicContractForm.vue
+ M frontend/src/views/purchase/components/InvalidateDialog.vue
+ M frontend/src/views/purchase/components/PurchaseOrderFormDialog.vue
+ M frontend/src/views/purchase/components/PurchaseTraceDialog.vue
+ M frontend/src/views/purchase/components/RequestDetailDialog.vue
+ M frontend/src/views/purchase/components/SignConfirmDialog.vue
+ M frontend/src/views/seal/SealManagement.vue
+ M frontend/src/views/seal/components/SealFormDialog.vue
+ M frontend/src/views/store-ops/ShiftManagement.vue
+ M frontend/src/views/store-ops/StoreArchive.vue
+ M frontend/src/views/store-ops/StoreCertificate.vue
+ M frontend/src/views/store-ops/StoreDailySettlement.vue
+ M frontend/src/views/store-ops/StoreInventory.vue
+ M frontend/src/views/store-ops/StoreMaterialRequest.vue
+ M frontend/src/views/store-ops/StorePendingTasks.vue
+ M frontend/src/views/store-ops/StoreQueueHistory.vue
+ M frontend/src/views/store-ops/StoreReceiving.vue
+ M frontend/src/views/store-ops/StoreRecruitment.vue
+ M frontend/src/views/store-ops/StoreTableUsage.vue
+ M frontend/src/views/store-ops/components/CertificateRenewalDialog.vue
+ M frontend/src/views/supplier-portal/SignLinkManagement.vue
+ M frontend/src/views/system/AIModelConfig.vue
+ M frontend/src/views/system/OperationAudit.vue
+ M frontend/src/views/system/PermissionCenter.vue
+ M frontend/src/views/system/SystemSettings.vue
+ M frontend/src/views/system/components/DictManagementTab.vue
+ M frontend/src/views/system/components/DomainPermissionTab.vue
+ M frontend/src/views/system/components/PermissionCodeTab.vue
+ M frontend/src/views/system/components/RoleManagementTab.vue
+ M frontend/src/views/system/components/TemplateManagementTab.vue
+ M frontend/src/views/system/components/UserManagementTab.vue
+ M frontend/src/views/system/components/UserOverrideTab.vue
+ M frontend/src/views/traceability/FoodTraceCode.vue
+ M frontend/src/views/traceability/LabelTemplate.vue
+ M frontend/src/views/traceability/MaterialTraceCode.vue
+ M frontend/src/views/traceability/RecallManagement.vue
+ M frontend/src/views/traceability/TraceabilityInspection.vue
+ M frontend/src/views/traceability/TraceabilityQuality.vue
+ M frontend/src/views/warehouse/InventoryAdjust.vue
+ M frontend/src/views/warehouse/InventoryCheck.vue
+ M frontend/src/views/warehouse/InventoryLocation.vue
+ M frontend/src/views/warehouse/InventoryLoss.vue
+ M frontend/src/views/warehouse/InventoryOutbound.vue
+ M frontend/src/views/warehouse/InventoryStockin.vue
+ M frontend/src/views/warehouse/InventoryTransfer.vue
+ M frontend/src/views/warehouse/InventoryWarning.vue
+ M frontend/src/views/warehouse/SmartRestock.vue
+ M frontend/src/views/warehouse/StoreInventory.vue
+ M frontend/vite.config.ts
+ M launcher.bat
+ M miniprogram/app.js
+ M miniprogram/components/login-modal/login-modal.js
+ M miniprogram/pages/order-list/order-list.js
+ M miniprogram/project.config.json
+ M miniprogram/utils/http.js
+ M production-known-limitations.md
+ M production-remediation-task-board.md
+ M query
+ M rm-receiving-task-board.md
+ M "scripts/AppData\346\270\205\347\220\206\346\214\207\345\215\227.md"
+ M scripts/clean-appdata-local.bat
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/PrinterDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/PrinterDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemo.sln"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemo.vcxproj"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemo.vcxproj.user"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemoDlg.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/WinSDKDemoDlg.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/framework.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/packages.config"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/pch.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/pch.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/resource.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/WinSDKDemo/targetver.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/lib/printer.sdk.cpcl.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/cpcl/lib/printersdk.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/PrinterDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/PrinterDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemo.sln"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemo.vcxproj"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemo.vcxproj.user"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemoDlg.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/WinSDKDemoDlg.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/framework.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/packages.config"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/pch.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/pch.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/resource.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/WinSDKDemo/targetver.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/lib/printer.sdk.esc.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/esc/lib/printersdk.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/PrinterDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/PrinterDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemo.sln"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemo.vcxproj"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemo.vcxproj.user"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemoDlg.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/WinSDKDemoDlg.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/framework.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/packages.config"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/pch.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/pch.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/resource.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/WinSDKDemo/targetver.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/lib/printer.sdk.tspl.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/tspl/lib/printersdk.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/PrinterDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/PrinterDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemo.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemo.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemo.sln"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemo.vcxproj"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemo.vcxproj.user"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemoDlg.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/WinSDKDemoDlg.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/framework.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/packages.config"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/pch.cpp"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/pch.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/resource.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/WinSDKDemo/targetver.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/lib/printer.sdk.zpl.h"
+ M "\350\212\257\347\203\250\346\235\241\347\240\201\347\203\255\350\275\254\345\215\260\346\211\223\345\215\260\346\234\272SDK\345\274\200\345\217\221\345\214\205Windows SDK 2.3.1/Windows SDK 2.3.1/zpl/lib/printersdk.h"
+?? .omo/
+?? .opencode/
+?? backend/src/main/java/com/foodtraceability/common/exception/MaterialDeductionContext.java
+?? backend/src/main/java/com/foodtraceability/common/exception/MaterialDeductionFailureException.java
+?? backend/src/main/java/com/foodtraceability/controller/AppDeviceRegistrationController.java
+?? backend/src/main/java/com/foodtraceability/controller/SystemNetController.java
+?? backend/src/main/java/com/foodtraceability/controller/finance/BankPaymentRecordController.java
+?? backend/src/main/java/com/foodtraceability/dto/AccountBalanceOpeningDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/CanonicalOrderCommand.java
+?? backend/src/main/java/com/foodtraceability/dto/CanonicalOrderItemCommand.java
+?? backend/src/main/java/com/foodtraceability/dto/ReceiptSignatureDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/ReceiptVerifyVO.java
+?? backend/src/main/java/com/foodtraceability/dto/TrainingEnrollDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/TrainingEnrollEmployeeDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/finance/BankAccountReconciliationVO.java
+?? backend/src/main/java/com/foodtraceability/dto/finance/BankPaymentRecordConfirmDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/finance/BankPaymentRecordFillDTO.java
+?? backend/src/main/java/com/foodtraceability/dto/finance/BankPaymentRecordVO.java
+?? backend/src/main/java/com/foodtraceability/entity/AppDeviceRegistration.java
+?? backend/src/main/java/com/foodtraceability/entity/ReceiptEvidence.java
+?? backend/src/main/java/com/foodtraceability/entity/ReceiptPrintLog.java
+?? backend/src/main/java/com/foodtraceability/entity/ReceiptSignature.java
+?? backend/src/main/java/com/foodtraceability/entity/finance/BankAccountReconciliation.java
+?? backend/src/main/java/com/foodtraceability/entity/finance/BankPaymentRecord.java
+?? backend/src/main/java/com/foodtraceability/mapper/AppDeviceRegistrationMapper.java
+?? backend/src/main/java/com/foodtraceability/mapper/ReceiptEvidenceMapper.java
+?? backend/src/main/java/com/foodtraceability/mapper/ReceiptPrintLogMapper.java
+?? backend/src/main/java/com/foodtraceability/mapper/ReceiptSignatureMapper.java
+?? backend/src/main/java/com/foodtraceability/mapper/finance/BankAccountReconciliationMapper.java
+?? backend/src/main/java/com/foodtraceability/mapper/finance/BankPaymentRecordMapper.java
+?? backend/src/main/java/com/foodtraceability/security/config/KdsAuthProperties.java
+?? backend/src/main/java/com/foodtraceability/security/filter/DeviceWhitelistFilter.java
+?? backend/src/main/java/com/foodtraceability/security/filter/KdsTokenFilter.java
+?? backend/src/main/java/com/foodtraceability/service/AppDeviceRegistrationService.java
+?? backend/src/main/java/com/foodtraceability/service/MaterialConsumptionAuditService.java
+?? backend/src/main/java/com/foodtraceability/service/finance/BankAccountReconciliationService.java
+?? backend/src/main/java/com/foodtraceability/service/finance/BankPaymentRecordService.java
+?? backend/src/main/java/com/foodtraceability/service/finance/impl/BankAccountReconciliationServiceImpl.java
+?? backend/src/main/java/com/foodtraceability/service/finance/impl/BankPaymentRecordServiceImpl.java
+?? backend/src/main/java/com/foodtraceability/service/impl/AppDeviceRegistrationServiceImpl.java
+?? backend/src/main/java/com/foodtraceability/service/impl/MaterialConsumptionAuditServiceImpl.java
+?? backend/src/main/resources/db/migration/V20260728_003__fix_position_head_count.sql
+?? backend/src/main/resources/db/migration/V20260728_006__fix_position_head_count.sql
+?? backend/src/main/resources/db/migration/V20260905_001__create_bank_payment_record_table.sql
+?? backend/src/main/resources/db/migration/V20260905_002__add_bank_record_fields_to_payment.sql
+?? backend/src/main/resources/db/migration/V20260905_009__legacy_payment_data_inventory.sql
+?? backend/src/main/resources/db/migration/V20260905_010__legacy_payment_data_migration.sql
+?? backend/src/main/resources/db/migration/V20260905_011__allow_null_bank_account_id.sql
+?? backend/src/main/resources/db/migration/V20260906_001__create_bank_account_reconciliation_table.sql
+?? backend/src/main/resources/db/migration/V20260908_001__add_bank_account_scope_and_type_extension.sql
+?? backend/src/main/resources/db/migration/V20260908_002__fix_bank_account_reconciliation_columns.sql
+?? backend/src/main/resources/db/migration/V20260908_003__fix_bank_payment_record_base_entity_columns.sql
+?? backend/src/main/resources/db/migration/V20260909_001__fix_bank_account_reconciliation_audit_columns.sql
+?? backend/src/main/resources/db/migration/V20260909_002__add_fund_flow_status.sql
+?? backend/src/main/resources/db/migration/V20260909_003__finance_record_add_order_code.sql
+?? backend/src/main/resources/db/migration/V20260916_001__add_food_trace_code_missing_columns.sql
+?? backend/src/main/resources/db/migration/V20260922_001__material_consumption_add_entity_and_audit_columns.sql
+?? backend/src/test/java/com/foodtraceability/integration/MaterialDeductionAuditIntegrationTest.java
+?? backend/src/test/java/com/foodtraceability/integration/MaterialDeductionAuditSelfFailureIntegrationTest.java
+?? backend/src/test/java/com/foodtraceability/service/impl/OrderNewServiceImplDeductTest.java
+?? backend/start-backend.cmd
+?? design/brand/
+?? "docs/GPT\346\200\273\347\273\223/"
+?? docs/architecture/
+?? docs/arrival-design-research.md
+?? docs/capability-registry.md
+?? docs/design/business-flow-analysis.md
+?? docs/design/canonical-status-model.md
+?? docs/design/demo-spec.md
+?? docs/design/fin-account-002-design.md
+?? docs/design/fin-pay-002-b-design.md
+?? docs/design/final-information-architecture.md
+?? docs/design/finance-task-workbench-design-20260903.md
+?? docs/design/interaction-architecture.md
+?? docs/design/interaction-spec.md
+?? docs/design/prototype-build-spec.md
+?? docs/design/ui-design-baseline-changelog.md
+?? docs/design/ui-design-baseline.md
+?? docs/design/ui-failure-analysis.md
+?? docs/design/ui-failure-baseline-mapping.md
+?? docs/design/ui-product-review-items.md
+?? docs/design/ui-sample-designs.md
+?? docs/design/ui-spec.md
+?? docs/design/unified-task-model.md
+?? docs/frontend-conventions.md
+?? docs/logistics-intelligence-research.md
+?? docs/next-steps.md
+?? docs/order-termination-design.md
+?? docs/product/
+?? docs/quality/FIN-DOMAIN-001-finance-domain-audit.md
+?? docs/quality/P0-DATA-CLEANUP-evidence.md
+?? docs/quality/P0-DATA-CLEANUP-result.md
+?? docs/quality/P0-FIN-001-001-balance-audit-report.md
+?? docs/quality/P0-FIN-001-002-modification-evidence.md
+?? docs/quality/P0-FIN-001-002-modification-summary.md
+?? docs/quality/P0-FIN-001-002-qa-report.md
+?? docs/quality/P0-FIN-001-003-R1-modification-evidence.diff
+?? docs/quality/P0-FIN-001-003-R1-modification-evidence.md
+?? docs/quality/P0-FIN-001-003-R2-qa-report.md
+?? docs/quality/P0-FIN-001-003-R3-modification-evidence.md
+?? docs/quality/P0-FIN-001-003-R3-qa-report.md
+?? docs/quality/P0-FIN-001-003-history-void-payment-audit.md
+?? docs/quality/P0-FIN-001-003-modification-evidence.md
+?? docs/quality/P0-FIN-001-003-qa-report.md
+?? docs/quality/P0-FIN-001-004-history-balance-adjustment-audit.md
+?? docs/quality/P0-FIN-001-005-modification-evidence.md
+?? docs/quality/P0-FIN-001-005-qa-report.md
+?? docs/quality/P0-FIN-001-006-developer-evidence.md
+?? docs/quality/P0-FIN-001-006-qa-report.md
+?? docs/quality/P0-SEC-001-B-qa-report.md
+?? docs/quality/P1-A-bank-account-qa-report.md
+?? docs/quality/W0-EC-03-modification-evidence.md
+?? docs/quality/W0-EC-03-qa-report.md
+?? docs/quality/W1-EC-01-qa-report.md
+?? docs/quality/W1-EC-02-qa-report.md
+?? docs/quality/W1-EC-04B-1-R-qa-report.md
+?? docs/quality/W1-EC-04B-1-R-re-qa-report.md
+?? docs/quality/W1-EC-04B-1-R-test-data-baseline-correction.md
+?? docs/quality/W1-EC-04B-1-R-test-data-evidence.md
+?? docs/quality/W1-EC-04B-1-final-summary.md
+?? docs/quality/W1-EC-04B-1-modification-evidence.md
+?? docs/quality/W1-EC-04B-1-qa-report.md
+?? docs/quality/W1-EC-04B-2-qa-report.md
+?? docs/quality/W1-EC-04B-3-modification-evidence.md
+?? docs/quality/W1-EC-04B-3-qa-report.md
+?? docs/quality/W1-EC-04C-OrderQuery-qa-report.md
+?? docs/quality/W1-EC-05-final-re-qa-db-evidence.md
+?? docs/quality/W1-EC-05-final-re-qa-report.md
+?? docs/quality/W1-EC-05-qa-report.md
+?? docs/quality/W1-EC-05-re-qa-report.md
+?? docs/quality/W1-PROD-DATA-SCAN-001-report.md
+?? docs/quality/W1-PROD-DATA-SCAN-001/
+?? docs/quality/W1-PROD-GATE-002-final-classification.md
+?? docs/quality/W1-PROD-GATE-FINAL-local-verification.md
+?? docs/quality/W1-PROD-GATE-FINAL-scan-scripts.sql
+?? docs/quality/anomaly-account-verification.md
+?? docs/quality/batch-core1-regression-gate.md
+?? docs/quality/browser-smoke-sprint3.md
+?? docs/quality/client-audit-employee.md
+?? docs/quality/client-audit-kitchen.md
+?? docs/quality/client-audit-miniprogram.md
+?? docs/quality/client-audit-pos.md
+?? docs/quality/client-audit-receiving-mobile.md
+?? docs/quality/core-capability-inventory-20260831.md
+?? docs/quality/data-authenticity-audit-20260810.md
+?? docs/quality/entity-table-mapping-audit.md
+?? docs/quality/fin-account-001-audit-report.md
+?? docs/quality/fin-account-002-a-closeout-report.md
+?? docs/quality/fin-account-002-a-qa-report.md
+?? docs/quality/fin-account-002-a-r1-qa-report.md
+?? docs/quality/fin-account-002-b-cleanup-plan.md
+?? docs/quality/fin-account-002-b-closeout-report.md
+?? docs/quality/fin-account-002-b-closure.md
+?? docs/quality/fin-account-002-b-final-acceptance.md
+?? docs/quality/fin-account-002-b-final-consistency.md
+?? docs/quality/fin-account-002-b-final-qa-report.md
+?? docs/quality/fin-account-002-b-po-walkthrough-report.md
+?? docs/quality/fin-account-002-b-qa-report.md
+?? docs/quality/fin-account-002-b-regression.md
+?? docs/quality/fin-account-002-b-supplement-report.md
+?? docs/quality/fin-account-002-b-walkthrough-prep.md
+?? docs/quality/fin-pay-001-a-audit-report.md
+?? docs/quality/fin-pay-001-b-design.md
+?? docs/quality/fin-pay-001-c-technical-design.md
+?? docs/quality/fin-pay-001-d-qa-report-closure.md
+?? docs/quality/fin-pay-001-d-qa-report-final.md
+?? docs/quality/fin-pay-001-d-qa-report-phase1.md
+?? docs/quality/fin-pay-001-d-qa-report-phase2.md
+?? docs/quality/fin-pay-001-d-qa-report-real-execution.md
+?? docs/quality/fin-pay-001-d-qa-report.md
+?? docs/quality/fin-pay-001-d-regression-correction.md
+?? docs/quality/fin-pay-002-audit-report.md
+?? docs/quality/fin-pay-002-b-delivery-evidence.md
+?? docs/quality/fin-pay-002-b-final-verification.md
+?? docs/quality/fin-pay-002-b-p3-fix-report.md
+?? docs/quality/fin-pay-002-component-mapping.md
+?? docs/quality/fin-ui-003-closeout-report.md
+?? docs/quality/fin-ui-003-qa-report.md
+?? docs/quality/final-release-gate-sprint3.md
+?? docs/quality/finance-account-fund-flow-truth-map.md
+?? docs/quality/finance-export-inventory-20260903.md
+?? docs/quality/finance-layout-revert-inventory-20260905.md
+?? docs/quality/finance-module-diagnosis-20260903.md
+?? docs/quality/finance-traceability-inventory-20260831.md
+?? docs/quality/frontend-experience-audit-draft.md
+?? docs/quality/frontend-style-expression-audit.md
+?? docs/quality/garbled-account-complete-report-20260908.md
+?? docs/quality/garbled-account-development-evidence-20260908.md
+?? docs/quality/garbled-account-execution-summary-20260908.md
+?? docs/quality/garbled-account-final-evidence-20260908.md
+?? docs/quality/garbled-account-final-modification-evidence-20260908.md
+?? docs/quality/garbled-account-handling-evidence-20260908.md
+?? docs/quality/garbled-account-task-completion-report-20260908.md
+?? docs/quality/gov-incident-qa-report.md
+?? docs/quality/gov-incident-remediation-evidence.md
+?? docs/quality/kl-048-r1-qa-report.md
+?? docs/quality/miniprogram-deploy-guide.md
+?? docs/quality/multi-client-audit-summary.md
+?? docs/quality/observation-log.md
+?? docs/quality/oic1-b1-qa-report.md
+?? docs/quality/oic1-b2-qa-report.md
+?? docs/quality/oic1-b3-qa-report.md
+?? docs/quality/oic2-b1-001-qa-report.md
+?? docs/quality/oic2-b1-002-qa-report.md
+?? docs/quality/oic2-b1-003-qa-report.md
+?? docs/quality/oic2-b2-001-qa-report.md
+?? docs/quality/oic2-b2-002-qa-report.md
+?? docs/quality/oic2-b2-003-qa-report.md
+?? docs/quality/oic2-b4-qa-report.md
+?? docs/quality/oicbe-b1-impl2-qa-report.md
+?? docs/quality/oicbe-b1-phase1-qa-report.md
+?? docs/quality/oicbe-b1-qa-report.md
+?? docs/quality/oicbe-b2-qa-report.md
+?? docs/quality/p0-asset-001-r1-qa-report.md
+?? docs/quality/p0-data-009-r1-qa-report.md
+?? docs/quality/p0-data-010-r1-qa-report.md
+?? docs/quality/p0-defab-kl030-rerun.md
+?? docs/quality/p0-device-001-r1-qa-report.md
+?? docs/quality/p0-kl-020-rerun.md
+?? docs/quality/p0-kl-031-rerun.md
+?? docs/quality/p0-mock-001-r1-qa-report.md
+?? docs/quality/p0-sec-001a-qa-report.md
+?? docs/quality/p0-sec-001b-qa-report.md
+?? docs/quality/p0-sec-001c-qa-report.md
+?? docs/quality/p0-sec-001d-part1-qa-report.md
+?? docs/quality/p0-sec-001d-qa-report.md
+?? docs/quality/p0-sec-002-qa-report.md
+?? docs/quality/p1-sec-009-qa-report.md
+?? docs/quality/production-acceptance-record-1.0.0.md
+?? docs/quality/production-deployment-report.md
+?? docs/quality/rm-b1-001-inventory-alignment-plan.md
+?? docs/quality/rm-b1-003-cleartext-close-plan.md
+?? docs/quality/rm-b1-qa-report.md
+?? docs/quality/rm-b2-impl1-qa-report.md
+?? docs/quality/rm-b2-impl3-qa-report.md
+?? docs/quality/rm-b2-readiness-check.md
+?? docs/quality/sprint-2-final-qa-report.md
+?? docs/quality/sprint-3-closeout-regression-liaison.md
+?? docs/quality/sprint-3a-phase1-qa-report.md
+?? docs/quality/sprint-3a-security-qa-report.md
+?? docs/quality/sprint-3b1-qa-report.md
+?? docs/quality/sprint-3b2-qa-report.md
+?? docs/quality/sprint-3b3-qa-report.md
+?? docs/quality/sprint-3c-qa-report.md
+?? docs/quality/sprint-4-backend-qa-report.md
+?? docs/quality/sprint-4-frontend-qa-report.md
+?? docs/quality/ui-as-is-001-legacy-conflict-map.md
+?? docs/quality/ui-as-is-001-management-frontend-fact-map.md
+?? docs/quality/ui-as-is-001-page-index.md
+?? docs/quality/ui-core-b1-qa-report.md
+?? docs/quality/ui-core-b2-qa-report.md
+?? docs/quality/ui-core-b2-r1-qa-report.md
+?? docs/quality/ui-fin-b1-qa-report.md
+?? docs/quality/ui-fin-b2-qa-report.md
+?? docs/quality/ui-lrvt-b1-qa-report.md
+?? docs/quality/ui-lrvt-b2-qa-report.md
+?? docs/quality/ui-lrvt-b3-qa-report.md
+?? docs/quality/ui-lrvt-b4-qa-report.md
+?? docs/quality/ui-rvt-b1-qa-report.md
+?? docs/quality/ui-rvt-b2-qa-report.md
+?? docs/quality/ui-rvt-b3-qa-report.md
+?? docs/quality/ui-trace-b1-qa-report.md
+?? docs/quality/ui-trace-b2-qa-report.md
+?? docs/quality/ui-trace-b3-qa-report.md
+?? docs/quality/ui-ws-b1-qa-report.md
+?? docs/quality/ui-ws-b2-qa-report.md
+?? docs/quality/ui-ws-b2-r1-qa-report.md
+?? docs/quality/ui-ws-b3-qa-report.md
+?? docs/quality/ui-ws-b3-r1-qa-report.md
+?? docs/quality/ui-ws-b4-qa-report.md
+?? docs/quality/ui-ws-b5-qa-report.md
+?? docs/quality/ui-ws-b5-r1-qa-report.md
+?? docs/quality/ui-ws-b6-qa-report.md
+?? docs/quality/w0-ec-04-qa-report.md
+?? docs/quality/w1-ec-04a-r-qa-report.md
+?? docs/receiving-acceptance-design.md
+?? docs/session-handover-20260810-mobile.md
+?? docs/sprint-3-lessons-learned.md
+?? docs/survey/
+?? docs/templates/
+?? "docs/\345\276\205\345\212\236\344\273\273\345\212\241-APK\350\256\276\345\244\207\347\231\275\345\220\215\345\215\225.md"
+?? "docs/\347\273\217\351\252\214-\351\270\277\350\222\231APK\351\200\202\351\205\215.md"
+?? frontend-design-demo/
+?? frontend-design-v2/
+?? frontend-design-v3/
+?? frontend-design-v4/
+?? frontend-improvement-backlog.md
+?? frontend/android/
+?? frontend/apk-download/
+?? frontend/build-apk.bat
+?? frontend/capacitor.config.ts
+?? frontend/certs/
+?? frontend/docs/frontend-health-report.md
+?? "frontend/docs/\347\273\223\350\256\2721.md"
+?? "frontend/docs/\347\273\223\350\256\2722.md"
+?? frontend/icon-source/
+?? frontend/public-extra/
+?? frontend/scripts/apk-server.cjs
+?? frontend/scripts/gen-cert.mjs
+?? frontend/scripts/generate-icons.ps1
+?? frontend/scripts/https-proxy.cjs
+?? frontend/scripts/shrink-splash.ps1
+?? frontend/src/api/device-registration.ts
+?? frontend/src/api/notification.ts
+?? frontend/src/api/upload.ts
+?? frontend/src/components/business/receipt-confirmation/HandheldEntryDialog.vue
+?? frontend/src/components/business/receipt-confirmation/SignaturePad.vue
+?? frontend/src/components/core/BatchResultFeedback.vue
+?? frontend/src/composables/useSummary.ts
+?? frontend/src/stores/org-context.ts
+?? frontend/src/utils/barcode-ean13.ts
+?? frontend/src/utils/date-corrector.ts
+?? frontend/src/utils/device-id.ts
+?? frontend/src/utils/exif.ts
+?? frontend/src/utils/logisticsParser.ts
+?? frontend/src/utils/scrollPenetrationGuard.ts
+?? frontend/src/utils/upload-url.ts
+?? frontend/src/views/device-activation/
+?? frontend/src/views/device-whitelist/
+?? frontend/src/views/finance/BankAccountManage.vue
+?? frontend/src/views/finance/components/CaliberNoteBar.vue
+?? frontend/src/views/store-ops/ReceivingMobile.vue
+?? frontend/src/views/verify-code/
+?? kl030-sample-all.csv
+?? oic-1-task-board.md
+?? oic-2-task-board.md
+?? product-decision-backlog.md
+?? product-decision-request.md
+?? production-audit-report.md
+?? production-governance-incidents.md
+?? production-pwl-closeout.md
+?? production-regression-test.md
+?? release-package-index.md
+?? release-readiness-report.md
+?? remediation-roadmap.md
+?? scan-controller-authz-report.csv
+?? scan-report-before.csv
+?? scan-report-current.csv
+?? scan-report-finance-fixed.csv
+?? scan-report-finance-now.csv
+?? scan-report-full-fixed.csv
+?? scan-report-full-now.csv
+?? scan-report-head.csv
+?? scan-report-marketing-fixed.csv
+?? scan-report-marketing-now.csv
+?? scan-report-qa-c-full.csv
+?? scan-report-restore1.csv
+?? scan-report-restore2.csv
+?? scan-report-schedule-now.csv
+?? scripts/__pycache__/
+?? scripts/test-date-corrector.mts
+?? scripts/test-ean13.mts
+?? scripts/wifi-transfer.cjs
+?? sprint-2-task-cards.md
+?? sprint-2c-execution-list.md
+?? sprint-3-final-snapshot.md
+?? sprint-4-final-snapshot.md
+?? strict-scan-d.json
+?? test/
+?? uncovered-context.json
+?? "\351\241\271\347\233\256\351\207\214\347\250\213\347\242\221 M1.md"

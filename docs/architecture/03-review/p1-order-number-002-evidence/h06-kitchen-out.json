@@ -1,0 +1,33 @@
+﻿{
+    "code":  0,
+    "message":  "操作成功",
+    "data":  {
+                 "id":  1,
+                 "trayCode":  "KDS-TEST-001",
+                 "trayName":  "KDS????",
+                 "trayType":  "standard",
+                 "status":  "ready",
+                 "currentOrderId":  "O1790153488594",
+                 "currentKitchenOrderId":  78,
+                 "bindTime":  "2026-09-23 16:59:26",
+                 "lastUseTime":  "2026-09-23 16:59:26",
+                 "useCount":  4,
+                 "storeId":  1,
+                 "storeName":  "????",
+                 "remark":  null,
+                 "lastStateChangeTime":  "2026-09-23 16:59:36",
+                 "lastScanDeviceId":  null,
+                 "lastScanTime":  "2026-09-23 16:59:36",
+                 "cameraSnapshotUrl":  "/camera/snapshots/stub/1/KDS-TEST-001/KITCHEN_OUT_20260923165936234.jpg",
+                 "cameraSnapshotTime":  "2026-09-23 16:59:36",
+                 "yoloVerified":  0,
+                 "yoloVerifyTime":  null,
+                 "createTime":  "2026-09-16 00:08:15",
+                 "updateTime":  "2026-09-23 16:59:36",
+                 "createBy":  null,
+                 "updateBy":  null,
+                 "deleted":  0
+             },
+    "timestamp":  1790153976237,
+    "success":  true
+}
