@@ -167,6 +167,43 @@ These remain **DEFERRED** from the A1 evidence commit until their own submission
 
 Reason: they contain mixed-batch governance content and must not be bundled merely to repair A1 L-04.
 
+## 6.5. Final Manifest Security Review
+
+Latest independent manifest security review status:
+
+```text
+FINAL_MANIFEST_INPUT = READY
+H00_LOGIN_JSON = EXCLUDE_FROM_GIT
+H05_KDS_LIST = SAFE_FOR_GIT
+H05_KDS_PENDING = SAFE_FOR_GIT
+STATUS_SNAPSHOTS = KEEP_01_AND_05_ONLY
+```
+
+### H00 login evidence
+
+`h00-login.json` contains live-form JWT `token` and `refreshToken` values plus user identity and authorization data. The original file must not enter Git history.
+
+Do not retroactively redact/overwrite the original evidence file. If a sanitized derivative is ever needed, create it as a distinct derived artifact and explicitly document the derivation.
+
+### H05 evidence
+
+`h05-kds-list.json` and `h05-kds-pending.json` were inspected and classified as local test data. No customer PII or credentials were found in the checked fields. They remain eligible for the final A1 evidence manifest.
+
+### Rollback status snapshots
+
+Five status snapshots were compared. `02`, `03`, `05`, and `06` are byte-identical; `01` is the only snapshot with distinct staged-state information.
+
+Final recommendation: retain `01-status-before-phase1-commit.txt` and `05-status-after-rollback-and-wip-restore.txt`; exclude `02`, `03`, and `06` from the A1 Git evidence commit.
+
+### Current A1 manifest size
+
+The current candidate is **47 files**:
+
+- 6 Core-6 governance files
+- 41 evidence files after excluding `h00-login.json` and three redundant status snapshots
+
+Cross-batch governance files remain DEFERRED.
+
 ## 7. Current Next Action
 
 The immediate objective is **Git evidence persistence**, not new feature development.
