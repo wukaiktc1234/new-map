@@ -74,6 +74,8 @@
 - **WIP 尚未做本卡计划的事**：无任何 `getFullMenu` 切换、无 legacy 三文件改读新表、无旧表废弃动作（diff 与未跟踪文件中均无）。
 - 真实域内重叠仅 4 文件（ComboIngredientMapper + 3 个 Dish/Combo Controller 的权限注解），与本卡动作方向不冲突（本卡动 service 层与数据源，不动这些注解）。
 
+> **勘正（2026-09-25，QA 验收轮补登）**：本报告 §2/§4 曾表述「`DishComboNew` / `DishComboNewMapper` 为未跟踪新文件」——**有误**。经 `git ls-files` 复核，两者均为**已跟踪**文件（canonical 批次此前已入库）；当时系将文件系统 grep 结果与 untracked 清单混读所致。其余结论不受影响。
+
 ## 5. WIP 与已收口卡的关系
 
 - **ENV-1（FOODID 卡，PosOrderCreateServiceImpl +681 行 WIP）**：**已被吸收**——`aec5c45` 以 +767/-? 提交了该文件（canonical WIP + P0 编译修复混合入库，即 ENV-2 登记的内容混合）。当前该文件对 HEAD **无真实 diff**（仅幻影）。ENV-1 所指的 WIP 已不复存在。
