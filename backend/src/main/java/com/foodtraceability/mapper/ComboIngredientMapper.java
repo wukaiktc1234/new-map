@@ -7,6 +7,12 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * @deprecated legacy 表 combo_ingredient 读取口。P1-COMBO-LEGACY-CLEANUP-001 起所有调用方已切换至
+ *     {@link ComboIngredientNewMapper}（新表 combo_ingredients）；旧表保留仅供 legacy 前端过渡期由
+ *     DatabaseFixConfig#syncComboIngredientsToLegacy 同步写入，勿新增调用。
+ */
+@Deprecated
 @Mapper
 public interface ComboIngredientMapper extends BaseMapper<ComboIngredient> {
 

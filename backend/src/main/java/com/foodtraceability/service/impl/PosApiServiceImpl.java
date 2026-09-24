@@ -6,14 +6,16 @@ import com.foodtraceability.dto.PosComboDTO;
 import com.foodtraceability.dto.PosComboItemDTO;
 import com.foodtraceability.dto.PosDishDTO;
 import com.foodtraceability.dto.PosMenuDTO;
-import com.foodtraceability.entity.ComboIngredient;
-import com.foodtraceability.entity.DishCombo;
+import com.foodtraceability.entity.ComboIngredientNew;
+import com.foodtraceability.entity.DishComboNew;
 import com.foodtraceability.entity.Food;
 import com.foodtraceability.entity.FoodCategory;
-import com.foodtraceability.mapper.ComboIngredientMapper;
-import com.foodtraceability.mapper.DishComboMapper;
+import com.foodtraceability.entity.FoodNew;
+import com.foodtraceability.mapper.ComboIngredientNewMapper;
+import com.foodtraceability.mapper.DishComboNewMapper;
 import com.foodtraceability.mapper.FoodCategoryMapper;
 import com.foodtraceability.mapper.FoodMapper;
+import com.foodtraceability.mapper.FoodNewMapper;
 import com.foodtraceability.service.PosApiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,18 +37,21 @@ public class PosApiServiceImpl implements PosApiService {
     private static final Logger log = LoggerFactory.getLogger(PosApiServiceImpl.class);
 
     private final FoodMapper foodMapper;
-    private final DishComboMapper dishComboMapper;
-    private final ComboIngredientMapper comboIngredientMapper;
+    private final DishComboNewMapper dishComboNewMapper;
+    private final ComboIngredientNewMapper comboIngredientNewMapper;
     private final FoodCategoryMapper foodCategoryMapper;
+    private final FoodNewMapper foodNewMapper;
 
     public PosApiServiceImpl(FoodMapper foodMapper,
-                              DishComboMapper dishComboMapper,
-                              ComboIngredientMapper comboIngredientMapper,
-                              FoodCategoryMapper foodCategoryMapper) {
+                              DishComboNewMapper dishComboNewMapper,
+                              ComboIngredientNewMapper comboIngredientNewMapper,
+                              FoodCategoryMapper foodCategoryMapper,
+                              FoodNewMapper foodNewMapper) {
         this.foodMapper = foodMapper;
-        this.dishComboMapper = dishComboMapper;
-        this.comboIngredientMapper = comboIngredientMapper;
+        this.dishComboNewMapper = dishComboNewMapper;
+        this.comboIngredientNewMapper = comboIngredientNewMapper;
         this.foodCategoryMapper = foodCategoryMapper;
+        this.foodNewMapper = foodNewMapper;
     }
 
     @Override
@@ -119,33 +124,36 @@ public class PosApiServiceImpl implements PosApiService {
     @Transactional(readOnly = true)
     public List<PosComboDTO> getAllCombos() {
         try {
-            List<DishCombo> combos = dishComboMapper.selectList(
-                    new LambdaQueryWrapper<DishCombo>()
-                            .and(wrapper -> wrapper.eq(DishCombo::getStatus, "1").or().eq(DishCombo::getStatus, "active")));
+            // P1-COMBO-LEGACY-CLEANUP-001: 读新表 dish_combos/combo_ingredients（替代 legacy dish_combo/combo_ingredient）
+            List<DishComboNew> combos = dishComboNewMapper.selectList(
+                    new LambdaQueryWrapper<DishComboNew>()
+                            .eq(DishComboNew::getStatus, 1));
             List<PosComboDTO> result = new ArrayList<>();
-            for (DishCombo combo : combos) {
+            for (DishComboNew combo : combos) {
                 PosComboDTO dto = new PosComboDTO();
-                dto.setComboId(String.valueOf(combo.getId()));
+                dto.setComboId(String.valueOf(combo.getComboId()));
                 dto.setComboCode(combo.getComboCode());
                 dto.setComboName(combo.getComboName());
-                dto.setPrice(combo.getPrice() != null ? combo.getPrice() : BigDecimal.ZERO);
+                dto.setPrice(combo.getComboPrice() != null
+                        ? BigDecimal.valueOf(combo.getComboPrice(), 2) : BigDecimal.ZERO);
                 dto.setDescription(combo.getDescription());
                 dto.setImageUrl(combo.getImageUrl());
-                dto.setComboType(combo.getComboType());
-                dto.setPeopleCount(combo.getPeopleCount());
+                // dish_combos 无 combo_type/people_count 列；people_count 与 legacy 同步口径一致固定为 2
+                dto.setPeopleCount(2);
                 dto.setDishType("combo");
                 try {
-                    List<ComboIngredient> ingredients = comboIngredientMapper.selectList(
-                            new LambdaQueryWrapper<ComboIngredient>().eq(ComboIngredient::getComboId, combo.getId()));
+                    List<ComboIngredientNew> ingredients = comboIngredientNewMapper.selectList(
+                            new LambdaQueryWrapper<ComboIngredientNew>().eq(ComboIngredientNew::getComboId, combo.getComboId()));
                     List<PosComboItemDTO> items = new ArrayList<>();
-                    for (ComboIngredient ing : ingredients) {
-                        Food food = foodMapper.selectById(ing.getFoodId());
+                    for (ComboIngredientNew ing : ingredients) {
+                        FoodNew food = foodNewMapper.selectById(ing.getFoodId());
                         if (food != null) {
                             PosComboItemDTO item = new PosComboItemDTO();
                             item.setFoodId(food.getFoodCode());
                             item.setFoodName(food.getFoodName());
-                            item.setQuantity(ing.getQuantity() != null ? ing.getQuantity().intValue() : 1);
-                            item.setPrice(food.getFoodPrice());
+                            item.setQuantity(ing.getQuantity() != null ? ing.getQuantity() : 1);
+                            item.setPrice(food.getSalePrice() != null
+                                    ? BigDecimal.valueOf(food.getSalePrice(), 2) : BigDecimal.ZERO);
                             items.add(item);
                         }
                     }

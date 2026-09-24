@@ -32,7 +32,6 @@ public class KitchenScanServiceImpl implements KitchenScanService {
     private final MaterialUsageRecordMapper usageRecordMapper;
     private final KitchenOrderMapper kitchenOrderMapper;
     private final DishRecipeMapper dishRecipeMapper;
-    private final ComboIngredientMapper comboIngredientMapper;
     private final FoodMapper foodMapper;
     private final FoodTraceCodeService foodTraceCodeService;
     private final ObjectMapper objectMapper;
@@ -376,13 +375,12 @@ public class KitchenScanServiceImpl implements KitchenScanService {
         }
     }
 
-    public KitchenScanServiceImpl(final MaterialTraceCodeMapper traceCodeMapper, final OrderMaterialRequirementMapper requirementMapper, final MaterialUsageRecordMapper usageRecordMapper, final KitchenOrderMapper kitchenOrderMapper, final DishRecipeMapper dishRecipeMapper, final ComboIngredientMapper comboIngredientMapper, final FoodMapper foodMapper, final FoodTraceCodeService foodTraceCodeService, final ObjectMapper objectMapper, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher) {
+    public KitchenScanServiceImpl(final MaterialTraceCodeMapper traceCodeMapper, final OrderMaterialRequirementMapper requirementMapper, final MaterialUsageRecordMapper usageRecordMapper, final KitchenOrderMapper kitchenOrderMapper, final DishRecipeMapper dishRecipeMapper, final FoodMapper foodMapper, final FoodTraceCodeService foodTraceCodeService, final ObjectMapper objectMapper, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher) {
         this.traceCodeMapper = traceCodeMapper;
         this.requirementMapper = requirementMapper;
         this.usageRecordMapper = usageRecordMapper;
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.dishRecipeMapper = dishRecipeMapper;
-        this.comboIngredientMapper = comboIngredientMapper;
         this.foodMapper = foodMapper;
         this.foodTraceCodeService = foodTraceCodeService;
         this.objectMapper = objectMapper;

@@ -17,8 +17,9 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OrderMaterialRequirementServiceImpl.class);
     private final OrderMaterialRequirementMapper requirementMapper;
     private final DishRecipeMapper dishRecipeMapper;
-    private final ComboIngredientMapper comboIngredientMapper;
+    private final ComboIngredientNewMapper comboIngredientNewMapper;
     private final FoodMapper foodMapper;
+    private final FoodNewMapper foodNewMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -69,19 +70,20 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
     public List<OrderMaterialRequirement> generateRequirementsForCombo(String comboId, String comboName, Integer quantity, String orderId, String kitchenOrderId, String orderNumber) {
         log.info("为套餐生成原料需求: comboId={}, comboName={}, quantity={}", comboId, comboName, quantity);
         List<OrderMaterialRequirement> allRequirements = new ArrayList<>();
-        LambdaQueryWrapper<ComboIngredient> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ComboIngredient::getComboId, comboId);
-        List<ComboIngredient> comboIngredients = comboIngredientMapper.selectList(queryWrapper);
+        // P1-COMBO-LEGACY-CLEANUP-001: 读新表 combo_ingredients（替代 legacy combo_ingredient）
+        LambdaQueryWrapper<ComboIngredientNew> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ComboIngredientNew::getComboId, Long.valueOf(comboId));
+        List<ComboIngredientNew> comboIngredients = comboIngredientNewMapper.selectList(queryWrapper);
         if (comboIngredients == null || comboIngredients.isEmpty()) {
             log.warn("套餐 {} 没有关联菜品数据", comboName);
             return allRequirements;
         }
-        for (ComboIngredient comboIngredient : comboIngredients) {
-            String foodId = comboIngredient.getFoodId();
-            Food food = foodMapper.selectOne(new LambdaQueryWrapper<Food>().eq(Food::getFoodCode, foodId));
-            if (food != null) {
-                Integer dishQuantity = comboIngredient.getQuantity() != null ? comboIngredient.getQuantity().intValue() * quantity : quantity;
-                List<OrderMaterialRequirement> dishRequirements = generateRequirementsForDish(foodId, food.getFoodName(), dishQuantity, orderId, kitchenOrderId, orderNumber);
+        for (ComboIngredientNew comboIngredient : comboIngredients) {
+            FoodNew foodNew = comboIngredient.getFoodId() != null ? foodNewMapper.selectById(comboIngredient.getFoodId()) : null;
+            if (foodNew != null) {
+                String foodCode = foodNew.getFoodCode();
+                Integer dishQuantity = comboIngredient.getQuantity() != null ? comboIngredient.getQuantity() * quantity : quantity;
+                List<OrderMaterialRequirement> dishRequirements = generateRequirementsForDish(foodCode, foodNew.getFoodName(), dishQuantity, orderId, kitchenOrderId, orderNumber);
                 for (OrderMaterialRequirement req : dishRequirements) {
                     req.setIsCombo(1);
                     req.setComboId(comboId);
@@ -103,11 +105,12 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
         return requirementMapper.findByKitchenOrderId(kitchenOrderId);
     }
 
-    public OrderMaterialRequirementServiceImpl(final OrderMaterialRequirementMapper requirementMapper, final DishRecipeMapper dishRecipeMapper, final ComboIngredientMapper comboIngredientMapper, final FoodMapper foodMapper, final ObjectMapper objectMapper) {
+    public OrderMaterialRequirementServiceImpl(final OrderMaterialRequirementMapper requirementMapper, final DishRecipeMapper dishRecipeMapper, final ComboIngredientNewMapper comboIngredientNewMapper, final FoodMapper foodMapper, final FoodNewMapper foodNewMapper, final ObjectMapper objectMapper) {
         this.requirementMapper = requirementMapper;
         this.dishRecipeMapper = dishRecipeMapper;
-        this.comboIngredientMapper = comboIngredientMapper;
+        this.comboIngredientNewMapper = comboIngredientNewMapper;
         this.foodMapper = foodMapper;
+        this.foodNewMapper = foodNewMapper;
         this.objectMapper = objectMapper;
     }
 }
