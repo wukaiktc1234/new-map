@@ -7784,7 +7784,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-COMBO-LEGACY-CLEANUP-001** |
-| 状态 | **PENDING（未启动，未建正式任务卡）** |
+| 状态 | **已启动 → BLOCKED_PENDING_WORKSPACE_CLEANUP（2026-09-25，PG-001 门禁拦截）**——PG-001 前置声明：工作区状态 = **DIRTY**（canonical 迁移 WIP，~1196 个已修改条目，属 W1-EC-01 其他批次）。**且 WIP 与本卡 scope 直接重叠**：legacy 三文件之一 `OrderMaterialRequirementServiceImpl` 在 WIP 修改集中；DishCombo/ComboIngredient 全域（`DishCombo*`/`ComboIngredient*`/`Menu` 实体+DTO+Controller）均未提交。后果：stash 路径将令本卡基于 pre-WIP 版本实施、恢复时必然冲突；在 WIP 之上实施 = 重演 ENV-1/ENV-2（PG-001 明文禁止）。**处置待 Owner 裁决**：① 先收口/提交 canonical WIP（独立分支）→ 本卡在干净基线启动（推荐）② Owner 确认 WIP 可弃置 → stash ③ 授权违规启动 → 按 PG-001 登记 ENV-3（不推荐） |
 | 前置 | ① `P1-COMBO-ORDER-001` 收口完成（已满足：2026-09-24 CLOSED_WITH_REGISTERED_LIMITATION）② 凭据清理完成（任务 A 确认部分完成 → 2026-09-25 已收尾：嵌套 `.auth` 残留已清 `0274549`、keystore.p12 两份已出库 + 生成脚本 `scripts/generate-test-keystore.sh` `c182e63`、`.env.example` JWT_SECRET 已改占位 `c3cbd3a`；遗留仅 git 历史明文 = KL-077，独立决策） |
 | 范围 | ① 废弃 combo_ingredient 旧表 ② 切 getFullMenu 从 legacy dish_combo 到 dish_combos ③ 清理旧 POS 兼容代码 ④ 完成 KL-080 三文件归并（`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl` 改读 `combo_ingredients`）⑤ 修正 DatabaseFixConfig 列名 bug（若 combo 卡未涵盖） |
 | 优先级 | 中（非阻塞，但属遗留债；对应 KL-080 处置列"待第二步卡排期"） |
