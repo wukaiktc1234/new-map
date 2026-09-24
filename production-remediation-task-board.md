@@ -7770,6 +7770,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
   - 2026-09-25 网络恢复：keystore 清理 commit `c182e63` 的 auto-push 成功（`e7cbf22..c182e63`，含此前待推的 `0274549`）；`.env.example` 修正 commit `c3cbd3a` 随后推送成功
   - 终态：`git ls-remote origin` = `c3cbd3a` = 本地 HEAD，**本地/远程完全同步，ahead=0**
 
+## 追加（2026-09-25）
+本批 4 commit 待推（同网络问题）：
+- 1a59f93 docs(governance): close out P1-COMBO-ORDER-001 (PWL)
+- bbd52b0 docs(governance): register ENV-2 and PG-001
+- 040be94 docs(project-context): add repo state snapshot
+- 0a7d963 docs(governance): register PG-002 (repo state sync)
+状态：PENDING（本地 ahead=4）
+恢复动作：网络恢复后 git push origin master
+
 ## 24.2 第二步卡预告（未建卡，仅预告）
 
 | 项 | 值 |
