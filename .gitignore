@@ -138,6 +138,9 @@ venv-*/
 .token.txt
 .login_response.json
 .login.json
+backend/login.json
+backend/login-captcha.json
+backend/*-login*.json
 cookies.txt
 *.token
 test_token*.txt
