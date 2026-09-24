@@ -5,14 +5,14 @@
 | 项 | 值 |
 |---|---|
 | Task ID | `P1-COMBO-ORDER-001` |
-| Stage | **READY_FOR_QA（2026-09-24，DS 抽检 6/6 PASS）** |
+| Stage | **QA_PASS_WITH_LIMITATION → REGRESSION_CANDIDATE（2026-09-24）** |
 | Owner 路径 | 治本——改读新表 `combo_ingredients`（非 legacy `combo_ingredient`） |
 | 前置依赖 | `P1-POS-FOODID-MAP-001` CLOSED_WITH_REGISTERED_LIMITATIONS（套餐入口临时禁用已恢复） |
 | 代码变更 | 后端 4 文件 + 测试 3 文件 + 前端 6 文件 |
 | 自测 | 单测 37/37 PASS；本地 HTTP E2E 双链 PASS；`vue-tsc` 前后端 EXIT=0；`mvn compile` EXIT=0 |
-| 验收 6 项 | **6/6 自评 PASS**（待 DS/QA 独立复核，§5） |
+| 验收 6 项 | **6/6 自评 PASS**；DS 抽检 6/6 PASS；QA 独立验收 **PASS_WITH_LIMITATION**（`docs/quality/P1-COMBO-ORDER-001-qa-report.md`，FAIL=0） |
 | 日期 | 2026-09-24 |
-| 下一步 | QA 独立验收（§11；UI 目检 + 抽检复核） |
+| 下一步 | 回归转基线 → planner 任务池回写 → architect roadmap |
 
 ---
 
@@ -235,7 +235,7 @@
 
 | 项 | 状态 |
 |----|------|
-| 本卡 | **READY_FOR_QA（2026-09-24，DS 抽检后）** |
+| 本卡 | **QA PASS_WITH_LIMITATION（2026-09-24）→ 回归候选** |
 | 5 项范围 | 全部实施 |
 | 验收 6 项自评 | **6/6 PASS** |
 | 单测 | 37/37 PASS |
@@ -245,11 +245,11 @@
 | 静默点新增 | **0** |
 | DB schema | 未改 |
 | P0 / Scope-002 / 其他卡 | 未动 |
-| 下一步 | **QA 独立验收**（DS 抽检 6/6 PASS，§11） |
+| 下一步 | **回归转基线**（QA PASS_WITH_LIMITATION，FAIL=0，§11；限制 L-01 UI 目检 / L-02 生产证据） |
 
 ---
 
-*报告状态：DS 抽检完成（§11）— 6/6 PASS，裁决 READY_FOR_QA；待 QA 独立验收后按 production-collab 节奏转回归。*
+*报告状态：DS 抽检 §11 READY_FOR_QA → QA 独立验收 `docs/quality/P1-COMBO-ORDER-001-qa-report.md` = **PASS_WITH_LIMITATION**（6/6 PASS，FAIL=0，无 `-R{n}`）；可进回归；生产仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`。*
 
 ---
 
