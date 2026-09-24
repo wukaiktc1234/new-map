@@ -2,17 +2,17 @@
 
 > **性质声明**：本文档为**视图层快照，非权威来源**。与 git 实际状态不一致时，**以 git 为准**。
 > 同步责任：PG-002（见同目录 `process-guards.md`）——每次卡片收口或 push 后由 developer 更新本文件。
-> 快照时点：2026-09-25（combo 卡收口落库 commit 1/2 之后、本文件与 PG-002 入库之前）
+> 快照时点：2026-09-25（push 批次 2026-09-25 销项后、P1-COMBO-LEGACY-CLEANUP-001 启动前）
 
 ## 当前状态
 
 | 项 | 值 |
 |----|------|
 | 分支 | `master`（单分支工作流） |
-| HEAD（快照时点） | `bbd52b0` docs(governance): register ENV-2 and PG-001 |
+| HEAD（快照时点） | `7a802ca` docs(governance): register pending push batch 2026-09-25 |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git |
-| 远程同步 | **ahead=2（快照时点）**：`bbd52b0` / `1a59f93` 待推送（auto-push 因网络抖动暂失败，将重试）；此前 `c3cbd3a` 已实时验证在远程 |
-| 工作区 | 存在大量既有未提交 WIP（canonical 迁移等，属 ENV-1/ENV-2 同源遗留债，不属任何当前活动卡） |
+| 远程同步 | **同步（ahead=0）**：push 批次 2026-09-25（5 commit：`1a59f93`→`7a802ca`）已推送成功，`c3cbd3a..7a802ca master -> master` |
+| 工作区 | **存在大量既有未提交 WIP（~1196 个已修改条目，canonical 迁移等，属 ENV-1/ENV-2 同源遗留债）**——P1-COMBO-LEGACY-CLEANUP-001 启动须先过 PG-001 门禁 |
 
 ## 已完成卡片
 
@@ -22,11 +22,11 @@
 | P1-POS-FOODID-MAP-001 | CLOSED_WITH_REGISTERED_LIMITATIONS | 2026-09-24 | POS food_id 映射；残余 KL-074~076 + ENV-1 |
 | P1-COMBO-ORDER-001 | CLOSED_WITH_REGISTERED_LIMITATION | 2026-09-24 | 套餐下单 + KDS components[]；限制 KL-078~080 + ENV-2；生产均 PROVISIONAL |
 
-## 待启动卡片
+## 活动/待启动卡片
 
 | Task ID | 状态 | 说明 |
 |---------|------|------|
-| P1-COMBO-LEGACY-CLEANUP-001 | PENDING（未建正式卡） | 废弃 combo_ingredient 旧表 / 切 getFullMenu / 清理旧 POS 兼容代码 / KL-080 三文件归并 / DatabaseFixConfig 列名 bug；预告见任务板 §24.2；前置已满足（combo 卡已收口 + 凭据清理已收尾） |
+| P1-COMBO-LEGACY-CLEANUP-001 | **启动中（2026-09-25）** | 废弃 combo_ingredient 旧表 / 切 getFullMenu 从 legacy dish_combo 到 dish_combos / 清理旧 POS 兼容代码 / KL-080 三文件归并 / DatabaseFixConfig 列名 bug；PG-001 门禁：工作区 WIP 处置为前置条件 |
 
 ## 已知环境问题（ENV 序列）
 
@@ -37,12 +37,15 @@
 
 ## 待处理项
 
-**无**。（git push PENDING 已于 2026-09-25 销项 → 任务板 §24.1 RESOLVED；若本轮收口 commit 推送再次遇网络抖动，按任务板 §24.1 恢复动作重试即可）
+**无**。（push 批次 2026-09-25 已于 2026-09-25 销项：5 commit 全部推送成功，ahead=0）
 
 ## 最近 10 commit（快照时点）
 
 | Hash | 消息 |
 |------|------|
+| 7a802ca | docs(governance): register pending push batch 2026-09-25 |
+| 0a7d963 | docs(governance): register PG-002 (repo state sync) |
+| 040be94 | docs(project-context): add repo state snapshot |
 | bbd52b0 | docs(governance): register ENV-2 and PG-001 |
 | 1a59f93 | docs(governance): close out P1-COMBO-ORDER-001 (PWL) |
 | c3cbd3a | docs(env): replace example JWT secret with placeholder |
@@ -50,9 +53,6 @@
 | 0274549 | chore(security): remove remaining nested e2e auth token |
 | e7cbf22 | P1-COMBO-ORDER-001: regression REG-ORDER-008~011, task board §23, KL-078~080, roadmap |
 | 24a1f60 | P1-COMBO-ORDER-001: QA PASS_WITH_LIMITATION report + status writeback |
-| 40fc776 | P1-COMBO-ORDER-001: DS spot-check section, READY_FOR_QA |
-| aec5c45 | P1-COMBO-ORDER-001: combo order via combo_ingredients, KDS components, restore POS combo entry |
-| 3dd22a2 | docs(quality): credential cleanup report 001 |
 
 ## 已知遗留（不阻塞，独立决策）
 
