@@ -99,6 +99,7 @@
 | KL-078 | **P1-COMBO-ORDER-001 限制 L-01：UI 浏览器目检未做（POS 套餐入口点击流 / KDS 卡片实拍）**：代码级 §3.5 + API live §2 + `vue-tsc` 已覆盖可自动化面；浏览器级目检未执行 | QA `docs/quality/P1-COMBO-ORDER-001-qa-report.md` §限制 L-01 + 任务池 §23.4（2026-09-24） | 低-中 | 否（不阻断本地放行；建议回归阶段补浏览器断言，与 FOODID 卡 L-01 口径一致） | 观察（回归阶段补浏览器断言后关闭；**不作 P1-COMBO-ORDER-001 返工条件**） |
 | KL-079 | **P1-COMBO-ORDER-001 限制 L-02：生产证据缺失 → `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`**：验收与回归证据均为本地（H-01~H-06、REG-ORDER-008~011），生产环境不可访问；与 KL-069（A1）/KL-076（FOODID）同族 | QA 报告 §限制 L-02 + 回归 `production-regression-test.md` Batch P1-COMBO-ORDER-001 门禁（2026-09-24） | 中（生产放行） | **是（仅对生产放行）**——本地 `ALLOW_LOCAL` 不受阻（Gate 逐条判定非阻断本地放行）；生产上线前须补验 | 观察（待生产侧抽验套餐下单/KDS 展开/出餐扣料或等价证据后由 Release Gate 裁定解除；**不作本地放行 FAIL**） |
 | KL-080 | **P1-COMBO-ORDER-001 限制 L-06：legacy 三文件仍读旧表 `combo_ingredient`（第二步卡范围）**：`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl` 仍为 `ComboIngredientMapper`——双表并存窗口，实施报告 §7.1 明确划归**第二步卡**、Scope 内声明的后续工作，非本卡缺陷 | QA 报告 §限制 L-06 + 实施报告 §7.1 + 任务池 §23.4（2026-09-24） | 中 | 否（本卡 scope 声明的后续工作，非活跃故障；双表并存窗口由 `DatabaseFixConfig` 幂等保底同步缓解） | 待第二步卡排期（legacy 三文件改读新表 `combo_ingredients` + 废弃旧表评估；**不作 P1-COMBO-ORDER-001 返工条件**） |
+| ENV-2 | **Commit `aec5c45` 内容混合（P1-COMBO-ORDER-001 交付 commit diff 不可隔离）**：`aec5c45` 实际包含 3 类内容——① combo 卡改动（属 P1-COMBO-ORDER-001 范围）② P0 编译修复（父提交 `3dd22a2` 接口声明无实现，此提交修复编译）③ canonical WIP（属其他批次）；实测 **15 文件 +2493/-583**（文件级 stage 清单与实施报告 §6 一致，但**行级/内容边界无法用 git 隔离**）；已推送远程；回滚 `aec5c45` = 同时回滚 P0 出餐扣料与 POS canonical 迁移；与 ENV-1 同源（开卡时工作区 WIP 未清理）但更严重（ENV-1 在工作区，ENV-2 已提交并推送）。**细化既有口径**：实施报告 §9.5「恰 15 文件未夹带」为文件级结论，仍成立；本条为其内容级修正 | Owner 任务 B 指令 + 抽样复核 `SCOPE_CONTAMINATION_FOUND`（2026-09-24）+ `git show --stat aec5c45`；详见文末 ENV-2 块 + `docs/project-context/process-guards.md` PG-001 | 中（已推送远程，diff 不可隔离） | 否（治理/环境债，非活跃功能故障；不阻断本地放行） | 不 rewrite history（与 KL-077 原则一致：已推送 + 收益<成本）；P1-COMBO-ORDER-001 按 CLOSED_WITH_REGISTERED_LIMITATION 收口；后续按 PG-001 预防 |
 
 > 状态字典：`待产品` / `待财务` / `待产品决策` / `待后端排期` / `待后端组` / `待联调` / `待渗透` / `待治理` / `观察` / `已拆卡` / `已解除` / `已建卡` / `家族专项统一治理中` / `待数据扫描验证` / `待第二步卡排期`
 
@@ -877,3 +878,37 @@
 *追加：2026-09-24 P2-GOV-IGNORE-EVIDENCE-001 独立登记（来源：A1 收口 commit `c5cec24` 事后复核，非新 KL 编号、不入主表）：**问题**——`.gitignore:232` 全局 `*.txt` 规则误伤 `docs/architecture/**/evidence/`（A1 证据 `.txt` 默认被忽略，仅 `!README.txt`/`!LICENSE.txt` 豁免）；**本批处理**——commit `c5cec24` 使用 `git add -f` 逐条绕过 26 个 evidence `.txt`，未改 `.gitignore`；**后续建议（不本次执行）**——为 evidence 目录加例外规则（如 `!docs/architecture/**/evidence/**/*.txt`）。**不 amend `c5cec24`**（改 hash 破坏已落盘标识）；不影响 A1 收口事实。planner 仅登记，未改代码、未改 `.gitignore`、未动 git 历史。*
 
 *追加：2026-09-24 P1-COMBO-ORDER-001 收口限制登记（来源：任务池 §23 收口回写 + `docs/quality/P1-COMBO-ORDER-001-qa-report.md` PASS_WITH_LIMITATION 6/6 FAIL=0 无 -R + 实施报告 §7.1/§11 + 回归 `production-regression-test.md` REG-ORDER-008~011 正式基线 121→125 PASS）：新增 **KL-078=QA L-01**（UI 浏览器目检未做——POS 套餐入口点击流 / KDS 卡片实拍未执行，代码级+API live+`vue-tsc` 已覆盖可自动化面；**不阻断本地放行**，建议回归阶段补浏览器断言，与 FOODID 卡 L-01 口径一致）、**KL-079=QA L-02**（生产证据缺失 → `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`，与 KL-069/076 同族，**阻断仅限生产放行**，本地 ALLOW_LOCAL 不受阻，解阻=生产侧抽验套餐下单/KDS 展开/出餐扣料或等价证据后 Gate 裁定，**不作本地放行 FAIL**）、**KL-080=QA L-06**（legacy 三文件 `PosApiServiceImpl`/`KitchenScanServiceImpl`/`OrderMaterialRequirementServiceImpl` 仍读旧表 `combo_ingredient`——实施报告 §7.1 划归**第二步卡**、Scope 内声明的后续工作，**非本卡缺陷、不作 P1-COMBO-ORDER-001 返工条件**）。其余限制不单列新编号：**L-03**（ENV 工作区混杂，既有债，同 KL-023 家族口径，本卡 commit `aec5c45` 恰 15 文件未夹带）、**L-04**（报告行号漂移，语义一致，DS §11.2.1 已登记，文档级）、**L-05**（soft 路径 `continue` 无日志，OBS-S1 同族 HEAD 既有 → 指向既有 **KL-074**）、**L-07**（HTTP `materialConsumed` 可能回 0，既有短路以 DB 为准 → 指向既有 **KL-073**）；**OBS-P1**（任务池无独立条目）已由任务池 §23 补建销项，不单列 KL。编号自 KL-078 起（KL-077 已用）。主表 77 → 80 行。planner 仅登记与状态回写，未写代码、未做正确性判断、未 commit；历史条目零修改，不改变既有 KL 状态与验收结论。*
+
+---
+
+ENV-2 — Commit aec5c45 内容混合
+
+日期：2026-09-24
+类型：ENVIRONMENT_DEBT
+严重度：中（已推送远程，diff 不可隔离）
+
+描述：
+  commit aec5c45 实际包含 3 类内容：
+  1. combo 卡改动（≈+33/-42，属 P1-COMBO-ORDER-001 范围）
+  2. P0 编译修复（+361/-215，父提交接口声明无实现，此提交修复编译）
+  3. canonical WIP（剩余部分，属其他批次）
+  实测总量：15 文件 +2493/-583（`git show --stat aec5c45`）；三类边界无法用 git
+  精确隔离，分类数字为登记时的估算口径。父提交 = `3dd22a2`（凭据清理报告）。
+
+后果：
+  - P1-COMBO-ORDER-001 的 diff 无法用 git 隔离
+  - 回滚 aec5c45 = 同时回滚 P0 出餐扣料与 POS canonical 迁移
+  - 与 ENV-1 同源，但更严重（ENV-1 在工作区，ENV-2 已提交并推送）
+
+处置：
+  - 不 rewrite history（与 KL-077 原则一致：已推送 + 收益<成本）
+  - P1-COMBO-ORDER-001 按 CLOSED_WITH_REGISTERED_LIMITATION 收口
+  - 后续按 PG-001 预防同类问题
+
+关联：
+  - ENV-1（FOODID 卡，同源问题，登记于
+    `p1-pos-foodid-map-001-implementation-record-001.md` §V9：工作区 +681 行 WIP）
+  - PG-001（预防规则，`docs/project-context/process-guards.md`）
+---
+
+*追加：2026-09-24 登记 ENV-2（来源：Owner 任务 B 指令 + 抽样复核 SCOPE_CONTAMINATION_FOUND）：主表新增 **ENV-2** 一行——commit `aec5c45` 内容混合（combo 卡改动 + P0 编译修复 + canonical WIP），已推送远程，diff 不可隔离；与 ENV-1（FOODID 卡 §V9 工作区 WIP）同源但更严重（已提交并推送）。ENV-2 为独立 ENV 编号序列，不占 KL 编号。**口径细化**：实施报告 §9.5「恰 15 文件未夹带」为文件级结论仍成立，本条为行级/内容级修正，历史条目零修改。处置：不 rewrite history（与 KL-077 原则一致）；P1-COMBO-ORDER-001 按 CLOSED_WITH_REGISTERED_LIMITATION 收口；预防规则 **PG-001** 见 `docs/project-context/process-guards.md`。主表 80 → 81 行。planner 仅登记，未写代码、未动 git 历史、未 commit。*
