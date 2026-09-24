@@ -26,7 +26,8 @@
 
 | Task ID | 状态 | 说明 |
 |---------|------|------|
-| P1-COMBO-LEGACY-CLEANUP-001 | **启动中（2026-09-25）** | 废弃 combo_ingredient 旧表 / 切 getFullMenu 从 legacy dish_combo 到 dish_combos / 清理旧 POS 兼容代码 / KL-080 三文件归并 / DatabaseFixConfig 列名 bug；PG-001 门禁：工作区 WIP 处置为前置条件 |
+| P1-COMBO-LEGACY-CLEANUP-001 | **IMPLEMENTED_READY_FOR_DS（2026-09-25）** | 代码 commit `05d4404`（4 文件）；单测 33/33 PASS；实施记录 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md`；待 DS→QA→regression→收口 |
+| P0-WORKSPACE-WIP-CONSOLIDATION-001 | PENDING（预告，任务板 §24.3） | 分五批入库工作区 WIP（canonical 迁移 / bug fix / 安全加固 / 新功能 / docs 287）；前置 = LEGACY-CLEANUP 收口 |
 
 ## 已知环境问题（ENV 序列）
 

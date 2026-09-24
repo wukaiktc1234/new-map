@@ -7793,4 +7793,25 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 ---
 
+## 24.3 新卡预告：P0-WORKSPACE-WIP-CONSOLIDATION-001（2026-09-25 登记）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P0-WORKSPACE-WIP-CONSOLIDATION-001** |
+| 状态 | **PENDING（未启动，未建正式任务卡）** |
+| 优先级 | P0 编号但**低于 LEGACY-CLEANUP**（编排上排后） |
+| 范围 | 分批入库工作区 WIP：466 真实改动 + 458 未跟踪文件（诊断见 `docs/quality/workspace-wip-diagnosis-001.md`） |
+| Batch 1 | W1-EC canonical 迁移（有任务板条目：W1-EC-01/04A/05） |
+| Batch 2 | Bug fix（ComboIngredientMapper BindingException 修复，现于 stash `pre-card isolation` 隔离中，须与本卡 LEGACY-CLEANUP 的 @Deprecated 合并裁决） |
+| Batch 3 | 安全加固（ComboInventory/DishCost/DishInventory 3 Controller @PreAuthorize） |
+| Batch 4 | 新功能（供应商/账户余额/OCR 等——**缺任务板条目，启动前须先补登记**） |
+| Batch 5 | docs 未跟踪 287 文件（docs/quality 189 + docs/architecture 98） |
+| 前置 | **LEGACY-CLEANUP 收口**（当前 IMPLEMENTED_READY_FOR_DS，未收口 → 本卡不可启动） |
+| 预计启动 | LEGACY-CLEANUP 完成 DS/QA/regression 收口后 |
+| 关联 | ENV-1/ENV-2 同源根治（PG-001 v2 落地后工作区长期清洁的前提）；行尾幻影已清（730），本卡只处理真实改动 |
+
+---
+
+*追加：2026-09-25 P0-WORKSPACE-WIP-CONSOLIDATION-001 预告登记（Owner 指令，§24.3 新建）：分五批入库工作区 WIP；PENDING 未启动；前置 = LEGACY-CLEANUP 收口。planner 仅登记，零业务代码、未 commit 工作区 WIP。*
+
 *追加：2026-09-25 任务 C 登记（§24 待处理项与预告区新建）：① push PENDING（ahead=2：`e7cbf22`+`0274549`，网络不可达，`git ls-remote` 连续 3 次失败）② P1-COMBO-LEGACY-CLEANUP-001 预告登记（未建卡、未启动、不改其他 pending 卡）。零业务代码、未 commit、未动 §23 收口内容。*
