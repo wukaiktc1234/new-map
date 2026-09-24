@@ -1,31 +1,28 @@
 # Process Guards
 
-## PG-001 — 开卡前工作区清洁检查
+## PG-001 — 开卡前隔离检查（v2）
 
-**规则**：
-在开始任何新任务卡（Task Card）的实施前，developer 必须确认：
-  1. 当前 git 工作区 clean（无 uncommitted 改动）
-  2. 或现有 WIP 已提交到独立分支
-  3. 或现有 WIP 已 git stash 并在新卡结束后恢复
+**规则**（v2，替代 v1"全工作区 clean"）：
+1. 开卡前必须清除行尾幻影
+   （校验：`git status` 的 M 数 = `git diff --numstat` 真实改动数；若有偏差，对幻影文件 `git checkout -- <file>` 消除）
+2. 开卡时需声明：本卡预计改动的文件清单
+3. 本卡 commit 时必须精确 `git add <指定文件>`
+   （**禁止** `git add .` / `git add -A` / 目录通配）
+4. commit 前必须 `git diff --cached` 检查 staged 内容，确认仅含本卡文件
+5. 若发现本卡目标文件与其他批次 WIP **真实内容重叠** → 仍是 BLOCKED
+   （仅行尾幻影重叠不算；真实重叠须 Owner 裁决，不得带重叠开工）
 
-**理由**：
-  ENV-1（FOODID 卡）与 ENV-2（combo 卡）同源——
-  developer 在开始新卡时未清理工作区 WIP，导致：
-  - 单卡 diff 无法用 git 隔离
-  - WIP 被误提交进新卡的 commit
-  - 回滚时波及其他批次
+**v1 → v2 修订理由**（ENV-1 / ENV-2 / LEGACY-CLEANUP 三次实战暴露）：
+- v1 的"全工作区 clean"在 467 真实改动 + 458 未跟踪环境下不可行
+- 730 个行尾幻影被 v1 误判为"真实 dirty"（见 `docs/quality/workspace-wip-diagnosis-001.md` §1）
+- v2 改为"开卡文件 clean + commit 隔离"，可执行且仍能拦截 ENV-2 类事故
 
 **违规处置**：
   - 首次：本卡按 ENV 登记，不豁免
-  - 连续两次：冻结新卡启动，直到工作区清洁
+  - 连续两次：冻结新卡启动
 
-**执行方式**：
-  任务卡模板中增加前置声明：
-  "工作区状态：CLEAN / 已提交到独立分支 / 已 stash"
-  若为后者，需列出 stash 内容与其他卡的任务 ID
-
-**生效日期**：2026-09-24
-**关联**：ENV-1 / ENV-2
+**生效日期**：2026-09-25（v1：2026-09-24）
+**关联**：ENV-1 / ENV-2 / ENV-3
 
 ## PG-002 — Repo 状态快照同步
 
