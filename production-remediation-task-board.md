@@ -7656,15 +7656,16 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 | 编号 | 等级 | 模块 | 一句话 | 状态 |
 |------|------|------|--------|------|
-| P1-COMBO-ORDER-001 | P1 | 订单-套餐下单 / KDS 组合套餐 | POS 套餐识别（`product_type=2`+`combo_id`+`food_id` 合法 null）+ 扣料改读新表 `combo_ingredients` + KDS `components[]` 单卡片展开 + 前端套餐入口还原 | **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**——范围 5 项全部完成；QA 独立验收 **PASS_WITH_LIMITATION**（`docs/quality/P1-COMBO-ORDER-001-qa-report.md`，验收 6/6 PASS、抽检 DB 5/5 + KDS live + 代码抽检 + 单测 37/37 EXIT=0，**FAIL=0、无 `-R{n}`、无 BLOCKED**）；DS 抽检 §11 = READY_FOR_QA 6/6；回归已转基线 **REG-ORDER-008~011**（正式基线 121 → 125，Regression Result: **PASS**，FAIL=0）；限制 L-01~L-07 + OBS-P1 → `production-known-limitations.md` KL-078~080（见 §23.4）；**生产放行仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`（L-02，仅阻断生产放行）** |
+| P1-COMBO-ORDER-001 | P1 | 订单-套餐下单 / KDS 组合套餐 | POS 套餐识别（`product_type=2`+`combo_id`+`food_id` 合法 null）+ 扣料改读新表 `combo_ingredients` + KDS `components[]` 单卡片展开 + 前端套餐入口还原 | **✅ CLOSED_WITH_REGISTERED_LIMITATION（2026-09-24 收口，见 §23.5）**——QA 独立验收 **PASS_WITH_LIMITATION 维持**（`docs/quality/P1-COMBO-ORDER-001-qa-report.md`，验收 6/6 PASS、抽检 DB 5/5 + KDS live + 代码抽检 + 单测 37/37 EXIT=0，**FAIL=0、无 `-R{n}`、无 BLOCKED**）；DS 抽检 §11 = READY_FOR_QA 6/6；回归已转基线 **REG-ORDER-008~011**（正式基线 121 → 125，Regression Result: **PASS**，FAIL=0）；限制 L-01~L-07 + OBS-P1 → `production-known-limitations.md` KL-078~080（见 §23.4）；抽样复核 **3 PASS + 1 SCOPE_CONTAMINATION_FOUND**（commit `aec5c45` 内容混合 → **ENV-2**）；**生产放行仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`（L-02，仅阻断生产放行）** |
 
 状态机归位：PASS_WITH_LIMITATION → 记录限制（L-01 UI 目检 / L-02 生产证据 / L-06 legacy 第二步卡——逐条确认**不阻断**本地放行与进回归，**不产生 `-R` 复验**；FAIL=0，回归已转正基线，本地放行成立）。实施报告 Stage = QA_PASS_WITH_LIMITATION → REGRESSION_CANDIDATE，回归完成后本板收口为 **QA PASS_WITH_LIMITATION + 回归 PASS**。
+**收口更新（2026-09-24，Owner 任务 B）**：状态机终态 → **CLOSED_WITH_REGISTERED_LIMITATION**；实施报告 §0/§10 已更新、§12 收口记录已追加；ENV-2 登记 + PG-001 预防规则建立（`docs/project-context/process-guards.md`）。
 
 ## 23.2 任务池总览（本节新增）
 
 | 编号 | 等级 | 类型 | 模块 | 一句话摘要 | 状态 |
 |------|------|------|------|------------|------|
-| P1-COMBO-ORDER-001 | P1 | 功能修复（套餐链路治本） | 订单-套餐下单 / KDS | 套餐下单落 `product_type=2`+`combo_id`+`food_id=NULL`（合法 null）；扣料 soft/strict/refund 三处改读新表 `combo_ingredients`；KDS 三端点展开 `components[]` 单卡片不拆；POS 套餐入口还原 | **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**——QA 6/6、FAIL=0、无 -R；REG-ORDER-008~011 已转正基线（121→125）；限制 KL-078~080；生产 PROVISIONAL |
+| P1-COMBO-ORDER-001 | P1 | 功能修复（套餐链路治本） | 订单-套餐下单 / KDS | 套餐下单落 `product_type=2`+`combo_id`+`food_id=NULL`（合法 null）；扣料 soft/strict/refund 三处改读新表 `combo_ingredients`；KDS 三端点展开 `components[]` 单卡片不拆；POS 套餐入口还原 | **✅ CLOSED_WITH_REGISTERED_LIMITATION（2026-09-24）**——QA PWL 维持 6/6、FAIL=0、无 -R；REG-ORDER-008~011 已转正基线（121→125）；限制 KL-078~080 + ENV-2；生产 PROVISIONAL |
 
 ## 23.3 任务卡详细
 
@@ -7737,6 +7738,18 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 - commit：`aec5c45`（15 文件业务）+ `40fc776`（DS §11）+ `24a1f60`（QA 报告）
 - 生产放行：仍 **`PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`**（与 A1 / FOODID 卡同口径，待生产证据 + Release Gate）
 
+## 23.5 收口回写块（2026-09-24，Owner 任务 B）
+
+| 项 | 值 |
+|----|------|
+| 终态 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-24）** |
+| QA 报告路径 | `docs/quality/P1-COMBO-ORDER-001-qa-report.md`（**PASS_WITH_LIMITATION 维持**，验收 6/6 PASS，FAIL=0，无 `-R{n}`） |
+| DS 抽检路径 | 实施记录 `docs/architecture/03-review/p1-combo-order-001-implementation-record-001.md` §11（READY_FOR_QA 6/6） |
+| 抽样复核报告路径 | 无独立报告文件——Owner 指令会话内独立复核（2026-09-24），结论 **3 PASS + 1 SCOPE_CONTAMINATION_FOUND**；SCOPE_CONTAMINATION_FOUND 登记 **ENV-2**（`production-known-limitations.md` 主表 ENV-2 行 + 文末 ENV-2 块），结论同步登记于实施记录 §12 |
+| 回归路径 | `production-regression-test.md` REG-ORDER-008~011（正式基线 121 → 125，PASS，FAIL=0） |
+| RESIDUALS 清单 | **L-01** → KL-078（UI 浏览器目检未做）；**L-02** → KL-079（生产证据缺失，仅阻断生产放行）；**KL-078~080**（含 L-06 legacy 三文件旧表 → 第二步卡）；**ENV-2**（commit `aec5c45` 内容混合，不 rewrite history，预防 = PG-001 `docs/project-context/process-guards.md`） |
+| 实施记录终态 | §0 Stage = CLOSED_WITH_REGISTERED_LIMITATION；§10 最终状态更新；§12 收口记录已追加 |
+
 ---
 
 **数量统计更新**：P0=42，P1=66→67，P2=25，合计 133→134 个任务。（2026-09-24 Batch P1-COMBO-ORDER-001 收口：本板此前无独立条目（仅 §22.4 下游提及 + QA OBS-P1），本节**新增 1 卡 P1-COMBO-ORDER-001**（P1，§23.3），状态直接收口为 **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**（QA 6/6、FAIL=0、无 -R；REG-ORDER-008~011 已转正基线 121→125）；限制 L-01/L-02/L-06 → KL-078~080，L-03/L-04/L-05/L-07/OBS-P1 并入说明或指向既有 KL；生产 PROVISIONAL；不改变既有卡状态与验收结论，零业务代码）
@@ -7746,3 +7759,29 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 
 
+
+# 24. 待处理项与预告区（2026-09-24 新建）
+
+## 24.1 待处理项
+
+- **RESOLVED（2026-09-25）：git push origin master——网络恢复后推送成功**
+  - 2026-09-24 首次发现：commit `0274549`（嵌套 e2e auth token 清理）auto-push 失败，`schannel: server closed abruptly (missing close_notify)`
+  - 2026-09-25 任务 C 重试：`git ls-remote origin` 连续 3 次失败（`Recv failure: Connection was reset` ×2 + `Failed to connect to github.com:443 after 21262 ms` ×1）→ 网络不可达确认，登记 PENDING
+  - 2026-09-25 网络恢复：keystore 清理 commit `c182e63` 的 auto-push 成功（`e7cbf22..c182e63`，含此前待推的 `0274549`）；`.env.example` 修正 commit `c3cbd3a` 随后推送成功
+  - 终态：`git ls-remote origin` = `c3cbd3a` = 本地 HEAD，**本地/远程完全同步，ahead=0**
+
+## 24.2 第二步卡预告（未建卡，仅预告）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-COMBO-LEGACY-CLEANUP-001** |
+| 状态 | **PENDING（未启动，未建正式任务卡）** |
+| 前置 | ① `P1-COMBO-ORDER-001` 收口完成（已满足：2026-09-24 CLOSED_WITH_REGISTERED_LIMITATION）② 凭据清理完成（任务 A 确认部分完成 → 2026-09-25 已收尾：嵌套 `.auth` 残留已清 `0274549`、keystore.p12 两份已出库 + 生成脚本 `scripts/generate-test-keystore.sh` `c182e63`、`.env.example` JWT_SECRET 已改占位 `c3cbd3a`；遗留仅 git 历史明文 = KL-077，独立决策） |
+| 范围 | ① 废弃 combo_ingredient 旧表 ② 切 getFullMenu 从 legacy dish_combo 到 dish_combos ③ 清理旧 POS 兼容代码 ④ 完成 KL-080 三文件归并（`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl` 改读 `combo_ingredients`）⑤ 修正 DatabaseFixConfig 列名 bug（若 combo 卡未涵盖） |
+| 优先级 | 中（非阻塞，但属遗留债；对应 KL-080 处置列"待第二步卡排期"） |
+| 预计启动条件 | 网络恢复 + 前一卡 push 成功（§24.1 销项后） |
+| 关联 | KL-080 / 实施记录 §7.1 / ENV-2（PG-001 开卡前工作区清洁检查必须先执行） |
+
+---
+
+*追加：2026-09-25 任务 C 登记（§24 待处理项与预告区新建）：① push PENDING（ahead=2：`e7cbf22`+`0274549`，网络不可达，`git ls-remote` 连续 3 次失败）② P1-COMBO-LEGACY-CLEANUP-001 预告登记（未建卡、未启动、不改其他 pending 卡）。零业务代码、未 commit、未动 §23 收口内容。*

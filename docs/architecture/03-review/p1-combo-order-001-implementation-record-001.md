@@ -5,7 +5,7 @@
 | 项 | 值 |
 |---|---|
 | Task ID | `P1-COMBO-ORDER-001` |
-| Stage | **QA_PASS_WITH_LIMITATION → REGRESSION_CANDIDATE（2026-09-24）** |
+| Stage | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-24，§12 收口）** |
 | Owner 路径 | 治本——改读新表 `combo_ingredients`（非 legacy `combo_ingredient`） |
 | 前置依赖 | `P1-POS-FOODID-MAP-001` CLOSED_WITH_REGISTERED_LIMITATIONS（套餐入口临时禁用已恢复） |
 | 代码变更 | 后端 4 文件 + 测试 3 文件 + 前端 6 文件 |
@@ -235,7 +235,7 @@
 
 | 项 | 状态 |
 |----|------|
-| 本卡 | **QA PASS_WITH_LIMITATION（2026-09-24）→ 回归候选** |
+| 本卡 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-24，终态，§12 收口记录）** |
 | 5 项范围 | 全部实施 |
 | 验收 6 项自评 | **6/6 PASS** |
 | 单测 | 37/37 PASS |
@@ -245,7 +245,7 @@
 | 静默点新增 | **0** |
 | DB schema | 未改 |
 | P0 / Scope-002 / 其他卡 | 未动 |
-| 下一步 | **回归转基线**（QA PASS_WITH_LIMITATION，FAIL=0，§11；限制 L-01 UI 目检 / L-02 生产证据） |
+| 下一步 | ~~回归转基线~~ **已回归转基线（REG-ORDER-008~011，121→125 PASS）→ 已收口**（CLOSED_WITH_REGISTERED_LIMITATION，2026-09-24；终态见 §12；限制 L-01 UI 目检 / L-02 生产证据 / L-06 第二步卡 → KL-078~080；ENV-2 见 `production-known-limitations.md`） |
 
 ---
 
@@ -283,3 +283,19 @@
 
 **READY_FOR_QA** — 问题清单空（无 FAIL / PARTIAL / UNVERIFIED）。  
 移交 QA 边界：浏览器 UI 目检（POS 套餐入口 + KDS 卡片明细）、生产证据、legacy 三文件第二步卡、OBS-S1、ENV 工作区债。
+
+---
+
+## 12. 收口记录（2026-09-24）
+
+| 项 | 值 |
+|----|------|
+| 终态 | **CLOSED_WITH_REGISTERED_LIMITATION**（2026-09-24） |
+| QA 结论 | **PASS_WITH_LIMITATION 维持**（`docs/quality/P1-COMBO-ORDER-001-qa-report.md`，验收 6/6 PASS，FAIL=0，无 `-R{n}`；生产仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`） |
+| 回归 | **REG-ORDER-008~011 已转正基线**（`production-regression-test.md`，正式基线 121 → 125，Regression Result: PASS，FAIL=0） |
+| 抽样复核结论 | **3 PASS + 1 SCOPE_CONTAMINATION_FOUND**（Owner 指令会话内独立复核，2026-09-24；SCOPE_CONTAMINATION_FOUND 即 commit `aec5c45` 内容混合 → 登记 **ENV-2**） |
+| RESIDUALS | **L-01**（UI 浏览器目检未做 → KL-078）/ **L-02**（生产证据缺失 → KL-079）/ **KL-078~080**（含 L-06 legacy 三文件旧表 → 第二步卡）/ **ENV-2**（commit `aec5c45` 内容混合，见 `production-known-limitations.md`） |
+| ENV-2 处置 | 不 rewrite history（与 KL-077 原则一致）；预防规则 **PG-001**（`docs/project-context/process-guards.md`，开卡前工作区清洁检查） |
+| 同步回写 | 任务池 §23（CLOSED_WITH_REGISTERED_LIMITATION + 收口回写块）、`remediation-roadmap.md` 页脚、`production-known-limitations.md`（ENV-2 主表行 + 文末块，主表 80 → 81 行） |
+
+> 口径细化：本报告 §9.5「恰 15 文件未夹带」为**文件级** stage 清单结论，仍成立；ENV-2 为**行级/内容级**修正（commit 内容含 P0 编译修复 + canonical WIP）。§10/§0 历史过程记录保留不改，终态以本节为准。planner 仅登记与状态回写，未写代码、未动 git 历史、未 commit。
