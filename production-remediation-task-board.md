@@ -6910,7 +6910,7 @@ mvn compile -DskipTests → BUILD SUCCESS（20.877s）
 | 编号 | 等级 | 类型 | 模块 | 一句话摘要 | 状态 |
 |------|------|------|------|------------|------|
 | W1-EC-04B-1 | P0 | 日结迁移 | 订单-日结对账 | OrderMapper.xml 4处SQL迁移：aggregateByPaymentMethod/sumDiscountAmount/aggregateRefunds/aggregateCancelled → 读orders表 | PASS_WITH_LIMITATION |
-| W1-EC-04B-1-R | P0 | Runtime Validation | 订单-日结对账 | W1-EC-04B-1 复验：从代码逻辑 PASS 升级为 Runtime Evidence PASS，9种场景真实数据验证 | TODO |
+| W1-EC-04B-1-R | P0 | Runtime Validation | 订单-日结对账 | W1-EC-04B-1 复验：从代码逻辑 PASS 升级为 Runtime Evidence PASS，9种场景真实数据验证 | PASS |
 | W1-EC-04B-2 | P1 | 财务/经营统计迁移 | 订单-统计聚合 | OrderNewServiceImpl 10处统计聚合迁移：getTodayStatistics/getOverallStatistics/getDailyTrend → 统一读orders表 | TODO |
 | W1-EC-04B-3 | P1 | 运营看板迁移 | 运营-仪表盘 | OperationsDashboardDataServiceImpl 2处迁移：sumRevenueByDate/countOrdersByDate → 统一读orders表 | DOING |
 | W1-EC-04B-4 | P2 | 剩余高频查询迁移 | 订单-分析/超时/旧服务 | SalesAnalysisServiceImpl 1处 + OrderTimeoutTask 1处 + OrderServiceImpl 5处迁移 → 统一读orders表 | TODO |
@@ -7399,7 +7399,350 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 ---
 
-**数量统计更新**：P0=40→41，P1=63→65，P2=24→25，合计 127→131 个任务。（2026-09-09 W1-EC-04B 统计/运营/日结迁移新增 4 卡：W1-EC-04B-1（P0）+ W1-EC-04B-2/3（P1×2）+ W1-EC-04B-4（P2），见 §20；全部 TODO，不改变既有卡状态与验收结论）**（2026-09-09 W1-EC-04B-1-R Runtime Validation 新增 1 卡（P0），见 §20；TODO，不改变既有卡状态与验收结论）**
+**数量统计更新**：P0=40→41，P1=63→65，P2=24→25，合计 127→131 个任务。（2026-09-09 W1-EC-04B 统计/运营/日结迁移新增 4 卡：W1-EC-04B-1（P0）+ W1-EC-04B-2/3（P1×2）+ W1-EC-04B-4（P2），见 §20；全部 TODO，不改变既有卡状态与验收结论）**（2026-09-09 W1-EC-04B-1-R Runtime Validation 新增 1 卡（P0），见 §20；TODO，不改变既有卡状态与验收结论）**（2026-09-09 W1-EC-04C-OrderQuery 管理端订单查询迁移新增 1 卡（P0），见 §21；TODO，不改变既有卡状态与验收结论）**
+
+---
+
+# 21. W1-EC-04C-OrderQuery｜管理端订单查询迁移（阶段二-D-C）
+
+> 来源：EC-04A 已 PASS/CLOSED（POS Terminal + Payment + Kitchen 读取迁移 + L1/L2/L3 写入修复）
+> EC-04C 范围：管理端"订单查询"页面（OrderQuery.vue）读取 orders_legacy 迁移
+> 分类：MIGRATE BEFORE GRAY（灰度前必须完成）
+> 前置：W1-EC-04A PASS
+
+## 21.1 任务池总览（本批次新增）
+
+| 编号 | 等级 | 类型 | 模块 | 一句话摘要 | 状态 |
+|------|------|------|------|------------|------|
+| W1-EC-04C-OrderQuery | P0 | 读取迁移 | 订单-管理端查询 | OrderNewServiceImpl queryPosOrders/getPosOrderDetail 从 orders_legacy 迁移到 orders 表，管理端订单查询页面数据源切换 | PASS_WITH_LIMITATION |
+
+---
+
+## 21.2 任务卡详细
+
+### 任务 1：W1-EC-04C-OrderQuery（管理端订单查询迁移，P0）
+
+**基础信息**
+- 编号：W1-EC-04C-OrderQuery
+- 优先级：P0（Gray 前置）
+- 类型：读取迁移
+- 模块：订单-管理端查询
+- 状态：TODO
+- 前置：W1-EC-04A PASS
+- 迁移复杂度：中等
+
+**Scope（精确到文件/方法）**
+- 主文件：`backend/src/main/java/com/foodtraceability/service/impl/OrderNewServiceImpl.java`（第 932-1096 行）
+- 目标方法（2个直接 legacy read）：
+  1. `queryPosOrders()` - 分页查询 POS 订单（管理端）
+  2. `getPosOrderDetail()` - 获取 POS 订单详情（管理端）
+- 辅助方法（7个）：
+  1. `buildPosQueryWrapper()` - 构建查询条件
+  2. `convertPosOrderToVO()` - 转换订单为 VO
+  3. `mapAdminStatusToPosStatus()` - 管理端状态映射
+  4. 其他4个辅助方法（待确认具体行号）
+- 关联文件：
+  - `backend/src/main/java/com/foodtraceability/controller/OrderNewController.java`（第 131-157 行）
+  - `backend/src/main/java/com/foodtraceability/mapper/OrderNewMapper.java`（第 58-262 行）
+  - `frontend/src/views/order/OrderQuery.vue`（管理端订单查询页面）
+
+**Current evidence（代码路径）**
+- 当前读取路径：
+  - `OrderNewController.getPosOrderPage()` → `OrderNewServiceImpl.queryPosOrders()` → 查询 `orders_legacy` 表
+  - `OrderNewController.getPosOrderDetail()` → `OrderNewServiceImpl.getPosOrderDetail()` → 查询 `orders_legacy` + `order_items_legacy` 表
+- 影响范围：管理端"订单查询"页面（OrderQuery.vue）读取 orders_legacy，是管理端核心页面唯一数据源
+
+**Truth source**
+- canonical 真相源：`orders` 表（OrderNew 实体）
+- 迁移后：管理端订单查询统一从 `orders` 表读取
+
+**Read/write paths**
+- 读取：`OrderNewServiceImpl.queryPosOrders()` → 查询 `orders` 表（order_source=1,2,3 对应 POS 来源）
+- 读取：`OrderNewServiceImpl.getPosOrderDetail()` → 查询 `orders` + `order_items` 表
+- 写入：无变更（纯读取迁移）
+
+**Data-unit conversion（元→分）**
+- `orders_legacy` 表：金额为元（BigDecimal）
+- `orders` 表：金额为分（Long）
+- 迁移后需调整：移除元→分转换逻辑，直接使用分（Long）
+
+**State conversion（legacy status→order_status+payment_status 映射表）**
+- `orders_legacy.ORDER_STATUS`：
+  - 0=待支付 → 对应 `orders.order_status=0`（待确认）+ `orders.payment_status=0`（未支付）
+  - 1=已支付 → 对应 `orders.payment_status=2`（已支付）
+  - 2=待配送 → 对应 `orders.order_status=1`（已确认）
+  - 3=配送中 → 对应 `orders.order_status=1`（已确认）
+  - 4=已完成 → 对应 `orders.order_status=2`（已完成）
+  - 5=已取消 → 对应 `orders.order_status=3`（已取消）
+  - 6=退款中 → 对应 `orders.order_status=4`（部分退款）
+  - 7=已退款 → 对应 `orders.order_status=5`（全额退款）
+
+**Field mapping（字段映射）**
+- `ORDER_NUMBER` → `order_code`
+- `CONTACT_NAME` → `customer_name`
+- `ORDER_AMOUNT` → `total_amount`（元→分）
+- `ACTUAL_AMOUNT` → `final_amount`（元→分）
+- `MERCHANT_ID` → `store_id`
+- `PAYMENT_METHOD`：legacy 0-4 → orders 1-6
+- `ORDER_TYPE`：legacy 0/1/2 → orders 1/2/3/4
+- 其他字段映射（待确认）
+
+**Legacy impact**
+- `orders_legacy` 表：管理端查询不再读取，仅保留历史查询能力
+- `order_items_legacy` 表：管理端详情不再读取
+- `Order` 实体：冻结，历史查询可保留但不推荐
+- 核心风险：POS 历史数据是否已全部同步到 orders 表
+
+**Event/side-effect impact**
+- 读取迁移无事件影响
+- 管理端展示数据源切换
+
+**Risk**
+- 核心风险：POS 历史数据是否已全部同步到 orders 表
+- 中风险：语义映射错误导致管理端展示异常
+- 中风险：金额单位转换错误导致金额显示偏差
+- 低风险：字段名映射错误导致数据展示不完整
+
+**Rollback**
+- 回滚条件：管理端订单查询失败或数据异常
+- 回滚操作：恢复查询 orders_legacy（代码回退 + 配置开关）
+- 回滚验证：管理端订单查询正常返回
+
+**Gray release**
+- 灰度范围：单门店试点
+- 灰度比例：10% → 50% → 100%
+- 灰度指标：管理端订单查询成功率、数据一致性
+- 灰度周期：每阶段 ≥24 小时观察期
+
+**QA criteria**
+1. 管理端订单列表查询 → 返回 orders 表数据
+2. 管理端订单详情查询 → 返回 orders + order_items 数据
+3. 金额展示：分转元正确
+4. 状态展示：order_status + payment_status 映射正确
+5. 字段映射：所有字段正确映射（order_code/customer_name 等）
+6. 筛选条件：门店、状态、时间等筛选正确
+7. 分页查询：分页数据正确
+8. 导出功能：订单导出数据正确（元→分→元保真）
+
+**Regression criteria**
+1. 管理端订单列表查询正常
+2. 管理端订单详情查询正常
+3. 金额展示正确
+4. 状态展示正确
+5. 筛选条件正确
+6. 分页正确
+7. 导出功能正常
+8. 构建 EXIT=0
+9. 无 orders_legacy 表读取（代码审查确认）
+
+**Freeze condition**
+- 阶段 D-C PASS 后，进入灰度观察期 ≥24 小时
+- 灰度期间无 P0/P1 缺陷
+- 产品确认放行后，进入阶段 E
+
+---
+
+**数量统计更新**：P0=41→42，P1=65，P2=25，合计 131→132 个任务。（2026-09-09 W1-EC-04C-OrderQuery 管理端订单查询迁移新增 1 卡（P0），见 §21；TODO，不改变既有卡状态与验收结论）**
+
+---
+
+*追加：2026-09-23 P0-KDS-DEDUCT 治理收口 + P1 启动定义（planner，未改业务代码）：*
+- *`docs/architecture/03-review/p0-kds-deduct-cutoff-001.md` 不存在，正式路径为 **`p0-kds-deduct-closure-001.md`**——状态 **`CLOSED_WITH_REGISTERED_RISKS`**（验收 33/33；残余 R1–R3 → KL-065~067；待决策 D-QTY-1/2 → PD-043）。*
+- *`docs/architecture/03-review/p1-order-number-scope-001.md`——方案 **A**（`buildOrderEntity` 补 `setOrderNumber`）为推荐路径；E2E 阻断 E1b 唯一主阻断=`/v1/orders`；回滚演练表 §6.1；生产 8 问；完成标准 5 条。*
+- *`docs/architecture/03-review/d-ig-requiredqty-owner-decision-request-001.md`——**PD-043** 已登记 `product-decision-backlog.md`（三裁定 + notes 持久化，不阻塞 P0/P1 Scope 关闭）。*
+- *`production-known-limitations.md` 新增 **KL-065~068**（KL-068=order_number NOT NULL 阻断 E2E，待 P1 关闭）。*
+- *结束条件 ① P0 `CLOSED_WITH_REGISTERED_RISKS` ✅ ② P1 可执行可审查 Scope ✅——**下一轮方可启动 `order_number` 业务代码修改**（须先选定方案 A/B 并完成 §6.1 回滚演练）。planner 仅登记与成文，未写业务代码、未做 requiredQty 业务裁定。*
+
+---
+
+*追加：2026-09-23 P1 Scope Amendment / Pre-Implementation Gate（planner，零业务代码）：新建 **`docs/architecture/03-review/p1-order-number-scope-002.md`** 为唯一有效 Scope；**`p1-order-number-scope-001.md` → `SUPERSEDED_BY_p1-order-number-scope-002.md`**。G1=P2-A 死代码/C、P2-B 旁路 404 residual、P2-C 鉴权独立（均不挡 P1 主链 CC）；G2=E1a PASS / E1b 主阻断 `/v1/orders` / E1c 快速单同根；G3=KL-068 发布范围 **PENDING_CONFIRMATION**（已回写 known-limitations 页脚）；G4=恢复原始 A=createOrder 赋值、B=可空、C=DEFAULT/trigger、D=语义统一（纠正 001 中 B/C 漂移）；无 E（统一生成器=A 子选项）。Completion Criteria 重写为 CC-1~CC-9；回滚=**实施中真实演练**；requiredQty 仍 PD-043 pending。Implementation 状态：`BLOCKED_PENDING_INDEPENDENT_REVIEW`（Amendment 独立审查通过后才实施）。未改业务代码/schema/P0/P2/requiredQty/PD-043。*
+
+*追加：2026-09-23 DS 六项治理澄清（planner，仍零业务代码、无 Scope-003）：①H-09/H-10 归 P2-A/B residual，机械规则 `R-BLOCKER-ONLY`+GATE/REG 集合，禁「E2E 全过/基本通过」 ②KL-068 主表分列 Historical（原「阻断发布=是」）vs **Current=UNKNOWN/PENDING_CONFIRMATION（唯一）** ③Gate `✅`=「已按证据纪律处理」≠问题解决 ④CC-8=residual registration mechanism（REG），永不豁免 GATE CC-1~7/9 ⑤E1c 与 E1b 共享根因但须 H-03 **独立**验证（CC-1a/1b） ⑥A/B/C/D 冻结不回退、001 仍 SUPERSEDED、回滚顺序/requiredQty/PD-043 不变。下一步=提交修订后 Scope-002 给 Independent Review。*
+
+---
+
+# 22. Batch ORDER-A1 收口登记 + P1-POS-FOODID-MAP-001（2026-09-23）
+
+> 来源：QA `docs/quality/P1-ORDER-NUMBER-002-A1-qa-report.md`（PASS_WITH_LIMITATION，H-01~H-06 6/6 PASS，FAIL=0，限制 L-01~L-05）+ Release Gate `docs/quality/P1-ORDER-NUMBER-002-A1-release-gate.md`（Regression Result: PASS，FAIL=0，Release: ALLOW_LOCAL，生产 PROVISIONAL 待 L-01）+ 回归 `production-regression-test.md`（REG-ORDER-001~007，正式基线 114 → 121 条）
+> 编号说明：本节任务卡编号采用 **P1-POS-FOODID-MAP-001**（与 QA 报告 / Release Gate / REG-ORDER-006 限制说明既有引用一致；不另用 `P1-POS-FOOD-ID-001`，避免编号漂移）。
+
+## 22.1 P1-ORDER-NUMBER-002（A1）任务状态回写
+
+| 编号 | 等级 | 模块 | 一句话 | 状态 |
+|------|------|------|--------|------|
+| P1-ORDER-NUMBER-002（A1） | P1 | 订单-order_number 唯一性 | `buildOrderEntity` 补 `order.setOrderNumber(orderCode)`（方案 A，L1819 +1 行），order_number=order_code 非空且全表唯一 | **✅ PASS_WITH_LIMITATION（2026-09-23）**——QA 独立验收 PWL（H 6/6、CC-1~9 全 PASS、单测 3/3、CC-6 33/33、FAIL=0、无 -R、无 -Rn 复验）；回归独立抽验 PASS，**REG-ORDER-001~007 已转正基线**（PASS 6 / PWL 1 / FAIL 0）；Release Gate **ALLOW_LOCAL**；限制 L-01~L-05 → **KL-069~073**（`production-known-limitations.md`，2026-09-23 登记）；**生产仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`（L-01=KL-069），生产放行待生产侧抽验 H-01/H-02/H-04** |
+
+状态机归位：PASS_WITH_LIMITATION → 记录限制（L-01 对生产放行的阻断性由 Release Gate/生产抽验裁定，**不产生 `-R` 复验**；本地 FAIL=0、回归已转正基线，本地放行成立）。A1 本板此前未单列计数卡（专项 Scope/实施记录在 `docs/architecture/03-review/` 体系），本节为**状态回写 + 补记**，数量统计仅计 §22.2 新增 1 卡（见文末统计）。
+
+## 22.2 任务池总览（本节新增）
+
+| 编号 | 等级 | 类型 | 模块 | 一句话摘要 | 状态 |
+|------|------|------|------|------------|------|
+| P1-POS-FOODID-MAP-001 | P1 | 缺陷修复（既有，NOT_CAUSED_BY_A1） | POS-下单 food_id 映射 | POS 客户端传数值 id 时 `foodCodeToIdMap.get()` miss → `log.warn` 不阻断 → `order_items.food_id` 写 null → 后续扣料路径 500 | **✅ CLOSED_WITH_REGISTERED_LIMITATIONS（2026-09-24）**——V1–V4/V6/V8/V9=PASS；V5=PWL（过程证据缺口已登记）；V7=PARTIAL（S1→OBS-S1）；QA 抽检 PASS（`docs/quality/P1-POS-FOODID-MAP-001-qa-report.md`，FAIL=0）；RESIDUALS=OBS-S1/OBS-B2-500/ENV-1 |
+
+## 22.3 任务卡详细
+
+### 任务卡：P1-POS-FOODID-MAP-001（POS 数值 id → food_id 映射修复，P1）
+
+**基础信息**
+- 编号：P1-POS-FOODID-MAP-001
+- 优先级：P1
+- 类型：缺陷修复（既有缺陷，非 A1 引入）
+- 模块：POS-下单 food_id 映射
+- 状态：**CLOSED_WITH_REGISTERED_LIMITATIONS（2026-09-24）**
+- 关联限制：KL-071（QA L-03，原缺陷卡已关）；残余 OBS-S1 / OBS-B2-500 / ENV-1（实施报告 §12.6）
+- 来源：`docs/quality/P1-ORDER-NUMBER-002-A1-qa-report.md` §5 L-03（建议另立 P 卡）+ Release Gate 判定「非阻断 GATE、已登记 P1-POS-FOODID-MAP-001（planner 池）」+ REG-ORDER-006 限制说明
+- **不标 BLOCKED_PRODUCT_RULE**（业务规则已知：产品明细需 foodId；本卡属缺陷修复，非未知业务规则——不进 `product-decision-backlog.md`）
+
+**文件**
+- 主文件：`backend/src/main/java/com/foodtraceability/service/impl/PosOrderCreateServiceImpl.java`
+  - L220-221：`foodCodeToIdMap` 以 foodCode 为 key 构建
+  - L447-450：`numericFoodId = foodCodeToIdMap.get(item.getFoodId())`；miss 时 `log.warn("未找到菜品的数字ID: ..., 将使用null")` **不阻断**，继续以 null 写入
+  - L469-477：扣料走 `foodCodeForDeduct`（foodCode 路径，已验证 PASS——本卡不改此路径行为）
+- 关联读写面：`order_items.food_id`（Long，可空）；`scan-serve` 扣料链路消费 food_id
+
+**问题**
+- POS 客户端 payload 的 `item.foodId` 传**数值 id**（非 foodCode 字符串）时，`foodCodeToIdMap.get(数值id)` 必 miss → warn 后以 `food_id=null` 插入 `order_items` → 后续 scan-serve/扣料路径 NPE 或 500 + FAILED 审计
+- QA 实测：新单 `O1790153488596` food_id=NULL；**foodCode 载荷路径已 PASS**（H-06 / REG-ORDER-006 用 `T20260923007` food_id=1、serve code=0）
+- 既有缺陷，**NOT_CAUSED_BY_A1**（A1 diff 仅 2 文件、业务侧仅 +1 行 order_number 赋值）
+
+**风险**
+- 中：生产 POS 客户端若发送数值 id，出餐扣料必败（500 + FAILED 审计），影响 H-06 类链路真实成功率
+- 中：food_id 静默 null 无插入期校验，脏数据可落库
+- 低：foodCode 路径为当前已验证主路径，修复时须保证不回归（双路径并存诉求属验收面）
+
+**修复目标**
+1. 数值 id 载荷路径：`item.foodId` 为数值 id 时能正确解析并写入 `order_items.food_id`（或按业务确认的契约明确拒绝，不静默 null）
+2. foodCode 载荷路径：行为**零回归**（H-06/REG-ORDER-006 既有 PASS 结果保持）
+3. 消除「warn 后仍插 null」的静默脏写：映射失败不得无声落库（明确失败或走已确认契约）
+
+**执行方式**（developer 执行，planner 不改代码）
+1. `PosOrderCreateServiceImpl` 构建 `foodCodeToIdMap` 时同时支持数值 id → foodId 的解析（或按点单契约：数值 id 直接透传为 food_id，需先核对 `item.foodId` 字段语义——**以既有 foodCode 契约为准实现，不猜新业务规则**）
+2. 映射失败路径：warn → 明确失败/拒绝（或按已确认契约处理），禁止 null 静默插入
+3. 补/扩单元测试：数值 id 路径 + foodCode 路径双覆盖；foodCode 路径回归断言
+
+**验收标准**（QA 独立验收）
+1. POS 数值 id 载荷下单 → `order_items.food_id` 非空且与 foods 表 id 一致
+2. foodCode 载荷下单 → food_id 正确（回归 H-06/REG-ORDER-006 断言，**零回归**）
+3. 映射失败载荷 → 明确失败/拒绝，**不出现** null food_id 落库 + 仅 warn 的静默成功
+4. 单测双路径覆盖 PASS；构建 EXIT=0
+5. 修复后随批回归：scan-serve 扣料链路（含数值 id 新单）serve code=0、`material_consumed=1`
+6. FAIL=0 → 转回归基线候选（REG 编号由 regression 固化，本板不预写 REG 号）
+
+**不做的事**
+- 不改 foodCode 扣料主路径语义（L469-477 既有 PASS 行为）
+- 不标 BLOCKED_PRODUCT_RULE、不新增 PD 条目
+- 不重开 Scope-003、不动 FROZEN Scope-002
+
+---
+
+**数量统计更新**：P0=42，P1=65→66，P2=25，合计 132→133 个任务。（2026-09-23 Batch ORDER-A1 收口：A1=P1-ORDER-NUMBER-002 状态回写 ✅ PASS_WITH_LIMITATION（§22.1，补记不另计数）+ 新增 1 卡 **P1-POS-FOODID-MAP-001**（P1，TODO→**2026-09-24 CLOSED_WITH_REGISTERED_LIMITATIONS**，§22.3，来源 QA L-03/KL-071）；限制 KL-069~073 → `production-known-limitations.md`；不改变既有卡状态与验收结论，零业务代码）**
+
+**收口回写（2026-09-24）**：P1-POS-FOODID-MAP-001 = **CLOSED_WITH_REGISTERED_LIMITATIONS**。
+- V1–V4 / V6 / V8 / V9 = **PASS**；V5 = **PASS_WITH_LIMITATION**（DELETE 前后过程证据缺口，实施报告 §12.5）；V7 = **PARTIAL**（POS 路径已消除；S1 静默点 = **OBS-S1**，HEAD 既有，不启独立卡）
+- QA 独立抽检：`docs/quality/P1-POS-FOODID-MAP-001-qa-report.md` = **PASS**，FAIL=0，无 `-R{n}`
+- RESIDUALS 登记：**OBS-S1** / **OBS-B2-500** / **ENV-1**（实施报告 §12.6；不扩面、不启动本卡返工）
+- 下游：可进回归（REG-ORDER-006 口径）；`P1-COMBO-ORDER-001` 套餐卡具备启动条件；生产放行仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`
+
+---
+
+# 23. Batch P1-COMBO-ORDER-001 收口登记（套餐下单/KDS 组合套餐专项，2026-09-24）
+
+> 来源：QA `docs/quality/P1-COMBO-ORDER-001-qa-report.md`（**PASS_WITH_LIMITATION**，验收 6/6 PASS，FAIL=0，无 `-R{n}`，限制 L-01~L-07 + OBS-P1）+ 实施报告 `docs/architecture/03-review/p1-combo-order-001-implementation-record-001.md`（Stage = QA_PASS_WITH_LIMITATION → REGRESSION_CANDIDATE，§0–§5 范围 5 项全完成，§11 DS 抽检 READY_FOR_QA 6/6）+ 回归 `production-regression-test.md`（**REG-ORDER-008~011**，正式基线 121 → 125 条，Regression Result: **PASS**，FAIL=0）
+> 证据链 commit：`aec5c45`（15 文件业务，恰与实施报告 §6 一致）+ `40fc776`（DS §11）+ `24a1f60`（QA 报告）
+> 编号说明：本板此前仅在 §22.4 下游提及 `P1-COMBO-ORDER-001`（QA OBS-P1：任务池无独立条目），本节为**独立任务卡补建 + 收口回写**（planner 依 OBS-P1 同步，QA 不改任务池）。
+
+## 23.1 P1-COMBO-ORDER-001 任务状态
+
+| 编号 | 等级 | 模块 | 一句话 | 状态 |
+|------|------|------|--------|------|
+| P1-COMBO-ORDER-001 | P1 | 订单-套餐下单 / KDS 组合套餐 | POS 套餐识别（`product_type=2`+`combo_id`+`food_id` 合法 null）+ 扣料改读新表 `combo_ingredients` + KDS `components[]` 单卡片展开 + 前端套餐入口还原 | **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**——范围 5 项全部完成；QA 独立验收 **PASS_WITH_LIMITATION**（`docs/quality/P1-COMBO-ORDER-001-qa-report.md`，验收 6/6 PASS、抽检 DB 5/5 + KDS live + 代码抽检 + 单测 37/37 EXIT=0，**FAIL=0、无 `-R{n}`、无 BLOCKED**）；DS 抽检 §11 = READY_FOR_QA 6/6；回归已转基线 **REG-ORDER-008~011**（正式基线 121 → 125，Regression Result: **PASS**，FAIL=0）；限制 L-01~L-07 + OBS-P1 → `production-known-limitations.md` KL-078~080（见 §23.4）；**生产放行仍 `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`（L-02，仅阻断生产放行）** |
+
+状态机归位：PASS_WITH_LIMITATION → 记录限制（L-01 UI 目检 / L-02 生产证据 / L-06 legacy 第二步卡——逐条确认**不阻断**本地放行与进回归，**不产生 `-R` 复验**；FAIL=0，回归已转正基线，本地放行成立）。实施报告 Stage = QA_PASS_WITH_LIMITATION → REGRESSION_CANDIDATE，回归完成后本板收口为 **QA PASS_WITH_LIMITATION + 回归 PASS**。
+
+## 23.2 任务池总览（本节新增）
+
+| 编号 | 等级 | 类型 | 模块 | 一句话摘要 | 状态 |
+|------|------|------|------|------------|------|
+| P1-COMBO-ORDER-001 | P1 | 功能修复（套餐链路治本） | 订单-套餐下单 / KDS | 套餐下单落 `product_type=2`+`combo_id`+`food_id=NULL`（合法 null）；扣料 soft/strict/refund 三处改读新表 `combo_ingredients`；KDS 三端点展开 `components[]` 单卡片不拆；POS 套餐入口还原 | **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**——QA 6/6、FAIL=0、无 -R；REG-ORDER-008~011 已转正基线（121→125）；限制 KL-078~080；生产 PROVISIONAL |
+
+## 23.3 任务卡详细
+
+### 任务卡：P1-COMBO-ORDER-001（套餐下单 / KDS 组合套餐专项，P1）
+
+**基础信息**
+- 编号：P1-COMBO-ORDER-001
+- 优先级：P1
+- 类型：功能修复（套餐链路治本——改读新表，非 legacy）
+- 模块：订单-套餐下单 / KDS 组合套餐展示 / POS 前端入口
+- 状态：**✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS（REG-ORDER-008~011）**
+- 前置依赖：`P1-POS-FOODID-MAP-001` CLOSED_WITH_REGISTERED_LIMITATIONS（套餐入口临时禁用已恢复）
+- 关联限制：QA L-01~L-07 + OBS-P1 → **KL-078~080**（`production-known-limitations.md`，2026-09-24 登记；L-03/L-04/L-05/L-07 指向既有 KL 或既有债，见 §23.4）
+- 来源：FOODID 卡收口下游（§22.4「套餐卡具备启动条件」）+ Owner 裁定套餐归独立卡 + 实施报告 §1 范围 5 项
+- **不标 BLOCKED_PRODUCT_RULE**（套餐下单/KDS 展开业务规则已知，属功能修复，非未知业务规则——不进 `product-decision-backlog.md`）
+
+**文件**（commit `aec5c45` 恰 15 文件，与实施报告 §6 逐文件一致）
+- 主文件（后端 4）：`PosOrderCreateServiceImpl.java`（combo 识别/预检 400/`productType=2`/`comboId`/`foodId=null`/JSON 标记）、`OrderNewServiceImpl.java`（soft/strict/refund 三处 `ComboIngredientNewMapper` 读新表）、`DatabaseFixConfig.java`（列名同步 + `syncComboIngredientsToLegacy` 幂等保底）、`KitchenOrderController.java`（三端点 `expandComboDishItems` → `components[]`）
+- 测试 3：`PosOrderCreateServiceFoodIdMapTest` / `OrderNewServiceImplDeductTest` / `OrderNewServiceImplOrderNumberA1Test`（行为适配）
+- 前端 6：`useMenu.ts` / `Order.vue` / `MenuSection.vue`（入口还原）+ `KitchenOrderCard.vue` / `kitchen.ts` / `Home.vue` / `ServeWindow.vue`（KDS 渲染）
+- 报告 1：实施报告本身
+
+**问题**
+- 套餐行此前被 STOP-1 临时禁用入口；后端无 `product_type=2` 分支，扣料仍读 legacy `combo_ingredient`，KDS 无法展开套餐明细
+- 直接调用会走 B2 fail-fast（不写 null），但套餐主链路（下单→KDS 展示→出餐扣料）不可用
+
+**风险**
+- 中：legacy 三文件（`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl`）仍读旧表——双表并存窗口，归**第二步卡**（报告 §7.1），本卡不做
+- 中：生产证据仅 local，生产放行 PROVISIONAL（L-02）
+- 低：UI 浏览器目检未做（L-01，代码级 + API live + `vue-tsc` 已覆盖可自动化面）；报告行号漂移（L-04）；HTTP `materialConsumed` 短路可能回 0（L-07，以 DB 为准）
+
+**修复目标**（5 项范围，实施报告 §1，全部 ✅）
+1. `PosOrderCreateServiceImpl` 识别 `dishType=combo`：预检存在性+配料非空 400；落 `productType=2`/`comboId`/`foodId=null`；跳过 foods 价格/库存覆盖
+2. `OrderNewServiceImpl` 改读新表 `combo_ingredients`（soft/strict/refund 三处 + helpers）
+3. `DatabaseFixConfig` 列名同步 + `combo_ingredients → combo_ingredient` 幂等保底同步
+4. KDS 三端点展开 `components[]`（单卡片不拆）+ 前端 3 处渲染
+5. POS 前端套餐入口还原（`useMenu` / `Order.vue` / `MenuSection`）
+
+**执行方式**（developer 已执行，planner 仅回写）
+- 按实施报告 §2–§4 落地 5 项范围；commit `aec5c45` 恰 15 文件、无 Scope 外；禁止项遵守（不废弃旧表、不切 `getFullMenu`、不动 P0 扣料主体、不动 Scope-002/A1/FOODID 卡）
+
+**验收标准**（QA 独立验收，6 项 — 已 6/6 PASS）
+1. 套餐下单成功（`product_type=2` + `combo_id` 非空 + `food_id` 合法 null）→ **PASS**（`T20260924004`）
+2. KDS 卡片套餐名 + 明细 `components[]`（单品行不误展开）→ **PASS（API live）**
+3. 出餐扣料 PASS（`material_consumed=1` + 库存 log 连续）→ **PASS**（`KO1790260472189` + log id=62）
+4. 单品零回归（H-06 复跑 + 单测 37/37）→ **PASS**（`T20260924003` + log id=61）
+5. 前端入口恢复 → **PASS（代码级）+ LIMITATION（L-01 浏览器目检未做）**
+6. 无新静默点 / 无 Scope 外改动 → **PASS**（当日新增 FAILED=0、`bad_null=0`、commit 恰 15 文件）
+- FAIL=0 → 转回归基线：**REG-ORDER-008~011 已由 regression 固化转正**
+
+**不做的事**
+- 不废弃旧表 `combo_ingredient`、不切 `getFullMenu`——归第二步卡
+- 不标 BLOCKED_PRODUCT_RULE、不新增 PD 条目
+- 不动 P0 扣料主体语义 / Scope-002 / A1 / FOODID 卡
+
+## 23.4 限制与下游登记
+
+| 限制 | 内容 | 处置 |
+|------|------|------|
+| L-01 | UI 浏览器目检未做（POS 套餐入口点击流 / KDS 卡片实拍） | **KL-078**，不阻断本地（建议回归阶段补浏览器断言） |
+| L-02 | 生产证据缺失 → `PROVISIONAL_PENDING_PRODUCTION_EVIDENCE` | **KL-079**，**仅阻断生产放行**，不阻断 local 回归准入 |
+| L-06 | legacy 三文件仍读旧表（`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl`） | **KL-080**，实施报告 §7.1 划归**第二步卡**，非本卡缺陷 |
+| L-03 | ENV 工作区混杂（既有债；本卡 commit 恰 15 文件未夹带） | 并入说明（同 KL-023 家族口径，不单列） |
+| L-04 | 报告行号漂移（语义一致，DS §11.2.1 已登记） | 并入说明（文档级，不单列） |
+| L-05 | soft 路径 `continue` 无日志（OBS-S1 同族，HEAD 既有） | 指向既有 **KL-074**（同族登记，不重复编号） |
+| L-07 | HTTP `materialConsumed` 可能回 0（既有短路，以 DB 为准） | 指向既有 **KL-073**（同族登记，不重复编号） |
+| OBS-P1 | 任务池无独立条目 | **本 §23 补建独立条目，已销项** |
+
+- 回归基线：**REG-ORDER-008**（套餐下单数据一致性）/ **REG-ORDER-009**（KDS `components[]` API）/ **REG-ORDER-010**（套餐出餐扣料）/ **REG-ORDER-011**（单品零回归 + 单测 37/37）——正式基线 **121 → 125**，只增不减，既有条目零修改
+- commit：`aec5c45`（15 文件业务）+ `40fc776`（DS §11）+ `24a1f60`（QA 报告）
+- 生产放行：仍 **`PROVISIONAL_PENDING_PRODUCTION_EVIDENCE`**（与 A1 / FOODID 卡同口径，待生产证据 + Release Gate）
+
+---
+
+**数量统计更新**：P0=42，P1=66→67，P2=25，合计 133→134 个任务。（2026-09-24 Batch P1-COMBO-ORDER-001 收口：本板此前无独立条目（仅 §22.4 下游提及 + QA OBS-P1），本节**新增 1 卡 P1-COMBO-ORDER-001**（P1，§23.3），状态直接收口为 **✅ PASS_WITH_LIMITATION（2026-09-24）+ 回归 PASS**（QA 6/6、FAIL=0、无 -R；REG-ORDER-008~011 已转正基线 121→125）；限制 L-01/L-02/L-06 → KL-078~080，L-03/L-04/L-05/L-07/OBS-P1 并入说明或指向既有 KL；生产 PROVISIONAL；不改变既有卡状态与验收结论，零业务代码）
+
+
+
 
 
 
