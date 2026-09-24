@@ -4464,3 +4464,40 @@ Regression Result: PASS（2026-09-24 Batch P1-COMBO-ORDER-001 套餐下单/KDS �
 - 既有基线：抽查无受影响（本卡 15 文件限于 POS/KDS 下单与展示链，不触碰财务/权限/数据治理既有模块）
 - 结论：FAIL=0 → 允许放行（Release Gate PASS；生产证据 L-02 登记为 PROVISIONAL_PENDING_PRODUCTION_EVIDENCE）
 ```
+## Batch P1-COMBO-LEGACY-CLEANUP-001 回归（POS 套餐菜单数据源切换：2026-09-25）
+
+> 来源：QA `docs/quality/P1-COMBO-LEGACY-CLEANUP-001-qa-report.md`（**PASS_WITH_LIMITATION**，活体 4/4 PASS + DB 断言 3/3，FAIL=0）+ 代码 commit `05d4404`（4 文件）+ DS 抽检 `...-sampling-review.md`（5/5 PASS）
+> 基线计数核对：追加前正式基线 **125 条** → 追加 1 条（REG-ORDER-012）后 **126 条**，只增不减纪律达成（既有 125 条条目零删除零修改）。
+
+### REG-ORDER-012
+
+- **测试编号**：REG-ORDER-012
+- **模块**：订单-POS 套餐菜单数据源切换（legacy dish_combo/combo_ingredient → dish_combos/combo_ingredients）
+- **关联任务**：P1-COMBO-LEGACY-CLEANUP-001（QA 独立验收 **PASS_WITH_LIMITATION** 2026-09-25）
+- **业务场景**：切表后功能真实工作——POS 菜单套餐来自 dish_combos（价格分→元、成分经 foods 反查）→ 下单落 product_type=2/combo_id/food_id=NULL → KDS components[] 展开 → scan-serve 出餐扣料
+- **测试步骤**：
+  1. `GET /api/v1/pos/api/combos`：套餐非空；`price=13.5`（combo_price=1350 分）；`items` foodId=food_code 且成分正确
+  2. `POST /api/v1/pos/orders/order`（id=1, dishType=combo）→ code=0；psql：`order_items.product_type=2 AND combo_id 非空 AND food_id IS NULL`
+  3. `GET /api/v1/kitchen/orders/recent/full`：套餐行 `productType=2` + `components=[{foodId,quantity,name}]`
+  4. tray 全链 `create→bind-order→scan-kitchen-in→scan-kitchen-out→scan-serve` → psql：`kitchen_order.material_consumed=1 status=served` + `store_inventory_log` 对应行（remark 含 T 码）
+- **预期结果**：四步全 code=0；三组 DB 断言全部成立
+- **测试类型**：活体回归（HTTP live + DB）
+- **当前状态**：PASS（2026-09-25，首跑证据 = QA 报告 §1：T20260925001 / KO1790277670325 / log id=65 生菜 8.400→8.300）
+- **限制说明**：
+  - 【OBS-1】`/api/v1/pos/api/menu` 聚合 500 为 HEAD 既有 `food_category` 实体/表主键不匹配缺陷（getCategories 非本卡改动），非本卡 FAIL；本条菜单断言由 `/combos` 承载
+  - 【OBS-3】生产证据 PROVISIONAL（同族 KL-069/076/079），仅阻断生产放行
+
+### Batch P1-COMBO-LEGACY-CLEANUP-001 门禁
+
+```text
+Regression Result: PASS（2026-09-25 Batch P1-COMBO-LEGACY-CLEANUP-001，POS 套餐菜单数据源切换）
+规则：FAIL > 0 禁止放行
+
+- 验收：QA 独立验收 PASS_WITH_LIMITATION（活体 4/4 + DB 3/3，FAIL=0，无 -R{n}）；DS 抽检 5/5 PASS
+- 证据链：commit 05d4404（4 文件 +55/-40，DS 靶点 1 核验）+ 11e05d4/58329c8（实施记录）+ 41d6e07（DS 报告）+ 本 QA 报告
+- 关键证据：/combos 套餐 生菜套餐 price=13.5（1350 分）；下单 T20260925001 order_items product_type=2/combo_id=1/food_id=NULL；KDS components=[{foodId:"1",quantity:1,name:"生菜串"}]；出餐 KO1790277670325 material_consumed=1 + log id=65（8.400→8.300）
+- FAIL 明细：0
+- 限制：OBS-1（既有聚合菜单 500，非本卡）/ OBS-3（生产 PROVISIONAL）/ OBS-4（UI 目检）——均不阻断本地放行
+- 基线：新增 REG-ORDER-012（正式 125 → 126 条，只增不减、既有条目零删除零修改）
+- 结论：FAIL=0 → 允许放行（Release Gate PASS；生产证据 OBS-3 登记为 PROVISIONAL_PENDING_PRODUCTION_EVIDENCE）
+```
