@@ -51,3 +51,17 @@
 1. POST foods 带 recipes[] → psql 断言 foods + dish_recipes 两表行一致（required_quantity 精度 3 位小数）
 2. 启动后检查 legacy food 行存在（F6 修复后应为创建即同步）
 3. material_template 缺 templateCode 应返回 400 字段级提示（F1 修复后）
+
+
+## 配方选料原则（2026-09-26，Owner 定则）
+
+**原则**：
+- 配方下拉数据源 = `material_archives`（物料主数据）——配方选料只从物料档案选，不读门店库存
+- 配方定义**不绑定门店库存**——dish_recipes 只描述"这道菜用什么料、用多少"
+- 门店"能不能做这道菜"由 **POS 端根据「配方 + 当前库存」动态判断**——不下沉到配方定义
+
+**理由**：配方是稳定的定义，库存是动态的状态；多门店统一配方，各店独立判断是否可做。
+
+**对实现的约束**（据此审代码）：
+- 配方相关接口/前端下拉不得 join store_inventory
+- 门店维度的"可做/不可做"判断必须实时计算（配方 × store_inventory），不得缓存进配方定义
