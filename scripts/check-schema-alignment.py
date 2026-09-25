@@ -74,25 +74,31 @@ def entity_mappings():
 def main():
     only = set(a for a in sys.argv[1:] if not a.startswith("-"))
     tables = flyway_columns()
-    problems = []
+    mismatches, no_table = [], []
     checked = 0
+    entity_tables = set()
     for name, table, cols in entity_mappings():
         if only and not any(o.lower() in name.lower() for o in only):
             continue
         checked += 1
+        entity_tables.add(table)
         if table not in tables:
-            problems.append(f"[NO-TABLE ] {name}: @TableName(\"{table}\") 在 Flyway migration 中无 CREATE TABLE")
+            no_table.append(f"[NO-TABLE ] {name}: @TableName(\"{table}\") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）")
             continue
         missing = sorted(c for c in set(cols.values()) if c not in tables[table])
         if missing:
-            pk = [v for k, v in cols.items() if k == "id" or "id" in k][0] if any(k == "id" for k in cols) else None
-            problems.append(f"[MISMATCH] {name}: 表 {table} 缺实体映射列 {missing}"
-                            + (f"（含主键 {pk}）" if pk in missing else ""))
+            mismatches.append(f"[MISMATCH] {name}: 表 {table} 缺实体映射列 {missing}")
+    no_entity = sorted(t for t in tables if t not in entity_tables)
     print(f"检查实体 {checked} 个；Flyway 表 {len(tables)} 张")
-    if problems:
-        print(f"发现 {len(problems)} 处实体/Flyway 错位：")
-        for p in problems:
-            print(" ", p)
+    print(f"分类统计：MISMATCH={len(mismatches)}  NO-TABLE={len(no_table)}  NO-ENTITY={len(no_entity)}")
+    for p in mismatches + no_table:
+        print(" ", p)
+    if "-v" in sys.argv:
+        print("NO-ENTITY（Flyway 有表、无实体引用，通常为中间表/历史表，仅计数不处置）：")
+        for t in no_entity:
+            print("  ", t)
+    if mismatches or no_table:
+        print("存在错位：收口前必须处置或单独立卡")
         sys.exit(1)
     print("OK：全部对齐")
 

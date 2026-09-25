@@ -1,0 +1,224 @@
+检查实体 299 个；Flyway 表 282 张
+分类统计：MISMATCH=93  NO-TABLE=70  NO-ENTITY=57
+  [MISMATCH] AccountingSubject.java: 表 accounting_subject 缺实体映射列 ['create_by', 'update_by']
+  [MISMATCH] AIModelConfig.java: 表 ai_model_configs 缺实体映射列 ['context_length', 'default_model', 'max_retries', 'max_tokens', 'model_version', 'provider']
+  [MISMATCH] AppealProcessLog.java: 表 appeal_process_logs 缺实体映射列 ['comment']
+  [MISMATCH] ApprovalRecord.java: 表 approval_record 缺实体映射列 ['comment', 'create_time', 'review_type', 'step_name', 'update_time']
+  [MISMATCH] ArticleReviewRecord.java: 表 article_review_record 缺实体映射列 ['comment']
+  [MISMATCH] AssetFlowRecord.java: 表 asset_flow_records 缺实体映射列 ['asset_code', 'asset_name', 'flow_time', 'from_status', 'from_store_id', 'from_store_name', 'id', 'operator_name', 'quantity', 'reason', 'related_kitchen_order_id', 'related_order_id', 'to_status', 'to_store_id', 'to_store_name']
+  [MISMATCH] AssetMaster.java: 表 asset_masters_enhanced 缺实体映射列 ['asset_type', 'bind_time', 'category_name', 'create_by', 'current_kitchen_order_id', 'current_order_id', 'custodian_id', 'custodian_name', 'department_id', 'department_name', 'invoice_number', 'last_use_time', 'purchase_order_id', 'purchase_order_no', 'purchase_price', 'request_id', 'request_no', 'residual_value', 'store_name', 'supplier_id', 'supplier_name', 'unit', 'update_by', 'use_count']
+  [MISMATCH] AttendanceRecord.java: 表 attendance_record 缺实体映射列 ['expected_end_time', 'expected_start_time', 'schedule_entry_id', 'schedule_plan_id', 'shift_type']
+  [MISMATCH] AuditLog.java: 表 audit_log 缺实体映射列 ['after_value', 'before_value', 'business_key', 'operation_type', 'request_id', 'response_body', 'risk_level', 'sensitive_flag', 'session_id', 'tenant_id', 'user_agent']
+  [MISMATCH] BackupRestoreLog.java: 表 backup_restore_log 缺实体映射列 ['deleted']
+  [MISMATCH] ComboInventory.java: 表 combo_inventory 缺实体映射列 ['create_by', 'create_time', 'update_by', 'update_time']
+  [MISMATCH] ComplianceCheckItem.java: 表 compliance_check_items 缺实体映射列 ['check_category', 'check_item_name']
+  [MISMATCH] DailySettlement.java: 表 daily_settlements 缺实体映射列 ['cancelled_amount', 'cancelled_count', 'payment_breakdown', 'refund_amount', 'refund_count', 'total_discount_amount']
+  [MISMATCH] DailySettlementShift.java: 表 daily_settlement_shifts 缺实体映射列 ['payment_breakdown']
+  [MISMATCH] Department.java: 表 departments 缺实体映射列 ['company_id', 'department_code', 'department_name', 'manager_id', 'manager_name', 'path', 'store_id', 'type']
+  [MISMATCH] Device.java: 表 devices 缺实体映射列 ['config_json', 'connection_params', 'create_time', 'device_code', 'driver_class', 'firmware_version', 'last_heartbeat_time', 'location', 'manufacturer', 'remark', 'serial_no', 'update_time']
+  [MISMATCH] DiningTableNew.java: 表 dining_tables 缺实体映射列 ['store_id']
+  [MISMATCH] DishCombo.java: 表 dish_combo 缺实体映射列 ['create_time', 'id', 'name', 'update_time']
+  [MISMATCH] DishComboNew.java: 表 dish_combos 缺实体映射列 ['version']
+  [MISMATCH] DishInventory.java: 表 dish_inventory 缺实体映射列 ['create_by', 'create_time', 'total_cost', 'unit_price', 'update_by', 'update_time']
+  [MISMATCH] DishRecipe.java: 表 dish_recipe 缺实体映射列 ['actual_cost', 'allow_variance', 'create_by', 'dish_code', 'estimated_cost', 'ingredient_code', 'ingredient_id', 'ingredient_name', 'remark', 'sort_order', 'update_by']
+  [MISMATCH] DishRecipeNew.java: 表 dish_recipes 缺实体映射列 ['version']
+  [MISMATCH] ElectronicContract.java: 表 electronic_contract 缺实体映射列 ['seal_id']
+  [MISMATCH] ElectronicInvoice.java: 表 electronic_invoice 缺实体映射列 ['check_code', 'checker', 'unique_code']
+  [MISMATCH] ElectronicInvoiceItem.java: 表 electronic_invoice_item 缺实体映射列 ['remark']
+  [MISMATCH] Employee.java: 表 employees 缺实体映射列 ['created_by', 'created_time', 'department_name', 'employment_type', 'id', 'name', 'position_name', 'updated_by', 'updated_time', 'warehouse_id', 'work_location_type']
+  [MISMATCH] ExpiryWarningRule.java: 表 expiry_warning_rules 缺实体映射列 ['check_frequency']
+  [MISMATCH] Food.java: 表 food 缺实体映射列 ['certification_info', 'collect_time', 'create_by', 'create_time', 'device_id', 'food_description', 'food_image_url', 'gps_location', 'nutrition_info', 'price', 'production_address', 'quality_check_date', 'quality_grade', 'quality_report_no', 'remarks', 'rfid_tag', 'sensor_data', 'shelf_life_days', 'storage_conditions', 'trace_code_image_url', 'trace_status', 'update_by', 'update_time', 'weight']
+  [MISMATCH] FoodCategoryNew.java: 表 food_categories 缺实体映射列 ['version']
+  [MISMATCH] FoodNew.java: 表 foods 缺实体映射列 ['version']
+  [MISMATCH] FoodTraceCode.java: 表 food_trace_code 缺实体映射列 ['create_time', 'dish_price', 'inventory_deduction', 'kitchen_order_id', 'labor_cost', 'make_complete_time', 'make_start_time', 'make_status', 'material_cost', 'order_number', 'order_type', 'print_count', 'produce_time', 'quantity', 'remark', 'serve_time', 'store_id', 'store_name', 'table_number', 'total_cost', 'update_by', 'update_time']
+  [MISMATCH] GlobalConfig.java: 表 global_config 缺实体映射列 ['config_desc', 'id']
+  [MISMATCH] HealthCertificate.java: 表 health_certificate 缺实体映射列 ['deleted_by', 'store_id', 'store_name']
+  [MISMATCH] HealthCertificateExpense.java: 表 health_certificate_expense 缺实体映射列 ['payment_method', 'payment_status', 'payment_transaction_id']
+  [MISMATCH] Interview.java: 表 interviews 缺实体映射列 ['background_check_remark', 'background_check_result', 'education_verification', 'education_verification_remark', 'hr_evaluation', 'hr_evaluation_score', 'hr_evaluation_time', 'hr_interview_status', 'hr_interviewer_id', 'hr_interviewer_name', 'store_evaluation', 'store_evaluation_score', 'store_evaluation_time', 'store_interviewer_id', 'store_interviewer_name']
+  [MISMATCH] Inventory.java: 表 inventory 缺实体映射列 ['batch_no', 'create_time', 'expiry_date', 'location_id', 'locked_quantity', 'material_category_id', 'material_category_name', 'material_code', 'material_id', 'material_name', 'max_stock_qty', 'min_safe_qty', 'production_date', 'specification', 'status', 'total_cost', 'unit_cost', 'update_time', 'version']
+  [MISMATCH] InventoryCheck.java: 表 inventory_checks 缺实体映射列 ['check_code', 'check_date', 'check_id', 'check_status', 'check_type']
+  [MISMATCH] InventoryCheckAsset.java: 表 inventory_check_assets 缺实体映射列 ['check_code', 'check_id', 'check_type']
+  [MISMATCH] InventoryCheckAssetItem.java: 表 inventory_check_asset_items 缺实体映射列 ['check_id']
+  [MISMATCH] InventoryCheckItem.java: 表 inventory_check_items 缺实体映射列 ['check_id', 'check_item_id']
+  [MISMATCH] InvitationSendRecord.java: 表 invitation_send_record 缺实体映射列 ['create_time', 'update_time']
+  [MISMATCH] KitchenOrder.java: 表 kitchen_order 缺实体映射列 ['bound_time', 'create_by', 'create_time', 'id', 'last_camera_snapshot_url', 'making_start_time', 'pickup_code', 'pickup_number', 'ready_time', 'served_time', 'update_by', 'update_time']
+  [MISMATCH] LoginLog.java: 表 login_log 缺实体映射列 ['created_at', 'device_type', 'failure_reason', 'session_id']
+  [MISMATCH] LossOutbound.java: 表 loss_outbound 缺实体映射列 ['approve_time', 'approver_id', 'approver_name', 'create_time', 'id', 'loss_amount', 'loss_date', 'loss_quantity', 'update_time']
+  [MISMATCH] MarketingMember.java: 表 members 缺实体映射列 ['level_code', 'level_name']
+  [MISMATCH] MaterialArchive.java: 表 material_archives 缺实体映射列 ['barcode', 'department_id', 'origin', 'shelf_life', 'storage_condition']
+  [MISMATCH] MaterialConsumption.java: 表 material_consumption 缺实体映射列 ['attempted_materials', 'bom_materials', 'consume_quantity', 'consume_time', 'create_by', 'create_time', 'dish_id', 'dish_name', 'failed_material_id', 'failed_material_name', 'failure_reason', 'failure_type', 'inventory_deduct_time', 'inventory_deducted', 'material_trace_code', 'operator_id', 'operator_name', 'order_id', 'order_number', 'product_code', 'product_id', 'product_name', 'remark', 'scan_device', 'status', 'store_id', 'store_name', 'total_cost', 'tray_code', 'unit_cost', 'update_by', 'update_time']
+  [MISMATCH] MaterialTraceCode.java: 表 material_trace_code 缺实体映射列 ['available_quantity', 'batch_number', 'bind_dish_id', 'bind_dish_name', 'create_time', 'entry_type', 'locked_quantity', 'shelf_life_days', 'storage_condition', 'store_id', 'store_name', 'trace_type', 'update_time', 'weight', 'weight_unit']
+  [MISMATCH] Member.java: 表 members 缺实体映射列 ['created_at', 'level_name']
+  [MISMATCH] MemberCoupon.java: 表 member_coupon 缺实体映射列 ['discount_desc', 'member_nickname', 'member_phone', 'min_consumption', 'template_name']
+  [MISMATCH] MemberPointsLog.java: 表 member_points_log 缺实体映射列 ['member_nickname', 'member_phone']
+  [MISMATCH] Menu.java: 表 menus 缺实体映射列 ['created_by', 'created_time', 'ext_data', 'keep_alive', 'menu_code', 'menu_id', 'menu_name', 'menu_type', 'updated_by', 'updated_time', 'url', 'version', 'visible']
+  [MISMATCH] MsgSendRecord.java: 表 msg_send_record 缺实体映射列 ['notification_id']
+  [MISMATCH] Notification.java: 表 notification 缺实体映射列 ['business_id', 'business_type', 'deleted', 'extra_data', 'priority', 'sender_id', 'sender_name', 'update_time', 'version']
+  [MISMATCH] NotificationSetting.java: 表 notification_user_preference 缺实体映射列 ['id', 'notification_method']
+  [MISMATCH] OnboardingArchive.java: 表 onboarding_archive 缺实体映射列 ['address', 'contract_id', 'create_time', 'personnel_type', 'update_time']
+  [MISMATCH] OnboardingRecord.java: 表 onboarding_records 缺实体映射列 ['code_expiry_time', 'interview_id']
+  [MISMATCH] Order.java: 表 orders_legacy 缺实体映射列 ['store_id', 'store_name']
+  [MISMATCH] OrderNew.java: 表 orders 缺实体映射列 ['order_number', 'store_id']
+  [MISMATCH] OrderRefundRecordNew.java: 表 order_refund_records 缺实体映射列 ['payment_channel_status', 'payment_channel_submit_time', 'refund_item_ids']
+  [MISMATCH] OtherInbound.java: 表 other_inbound 缺实体映射列 ['create_time', 'id', 'update_time']
+  [MISMATCH] PasswordHistory.java: 表 password_history 缺实体映射列 ['deleted']
+  [MISMATCH] PasswordResetLog.java: 表 password_reset_log 缺实体映射列 ['abnormal_type', 'browser', 'client_ip', 'client_location', 'code_type', 'created_at', 'device_type', 'error_count', 'failure_reason', 'is_abnormal', 'operation_detail', 'operation_status', 'operation_type', 'os', 'updated_at']
+  [MISMATCH] Permission.java: 表 permissions 缺实体映射列 ['component', 'created_by', 'icon', 'id', 'is_cache', 'is_hidden', 'level', 'module', 'path', 'permission_type', 'redirect', 'updated_by']
+  [MISMATCH] Position.java: 表 positions 缺实体映射列 ['created_by', 'department', 'department_sort_order', 'head_count', 'id', 'position_code_seq', 'updated_by']
+  [MISMATCH] PositionRoleMapping.java: 表 position_role_mapping 缺实体映射列 ['position_code', 'position_name', 'role_code', 'role_name']
+  [MISMATCH] Product.java: 表 product 缺实体映射列 ['create_time', 'update_time']
+  [MISMATCH] Promotion.java: 表 promotion 缺实体映射列 ['create_time', 'id', 'promotion_code', 'promotion_name', 'target_id', 'target_type', 'update_time']
+  [MISMATCH] PurchaseArrival.java: 表 purchase_arrivals 缺实体映射列 ['confirm_time', 'driver_name', 'driver_phone', 'freight_amount', 'logistics_company', 'order_code', 'quality_check_by', 'quality_check_by_name', 'quality_check_remark', 'quality_check_result', 'quality_check_time', 'supplier_name', 'transport_mode', 'vehicle_plate_no', 'vehicle_type']
+  [MISMATCH] PurchaseOrder.java: 表 purchase_orders 缺实体映射列 ['approval_remark', 'approval_time', 'approval_user_id', 'budget_id', 'budget_status', 'contact_person', 'contact_phone', 'create_by_name', 'create_time', 'create_user_id', 'discount_amount', 'final_amount', 'freeze_reason', 'freeze_time', 'freeze_user_id', 'frozen_from_status', 'order_code', 'order_status', 'paid_amount', 'payment_status', 'plan_id', 'purchase_type', 'remark', 'tax_amount', 'terminate_reason', 'terminate_time', 'terminate_user_id', 'update_time', 'warehouse_id']
+  [MISMATCH] PurchaseOrderItem.java: 表 purchase_order_items 缺实体映射列 ['amount', 'create_time', 'planned_receiver_type', 'planned_store_id', 'planned_warehouse_id', 'received_quantity', 'remark', 'specification', 'tax_rate', 'update_time']
+  [MISMATCH] PurchaseRequest.java: 表 purchase_request 缺实体映射列 ['create_by', 'create_time', 'receiver_store_id', 'receiver_type', 'receiver_warehouse_id', 'reject_count', 'store_id', 'update_by', 'update_time']
+  [MISMATCH] PurchaseRequestItem.java: 表 purchase_request_item 缺实体映射列 ['create_time', 'planned_receiver_type', 'planned_store_id', 'planned_warehouse_id', 'update_time']
+  [MISMATCH] PurchaseReturn.java: 表 purchase_returns 缺实体映射列 ['remark']
+  [MISMATCH] PurchaseStockin.java: 表 purchase_stockins 缺实体映射列 ['appearance_result', 'disposal_opinion', 'document_check', 'humidity', 'odor_result', 'order_no', 'sample_quantity', 'sample_rate', 'supplier_name', 'temperature', 'unqualified_type', 'void_by', 'void_remark', 'void_time']
+  [MISMATCH] ReceiptConfirmation.java: 表 receipt_confirmations 缺实体映射列 ['arrival_code', 'barcode', 'last_print_time', 'print_count', 'receipt_source', 'supplier_name', 'verify_code']
+  [MISMATCH] ReceiptConfirmationItem.java: 表 receipt_confirmation_items 缺实体映射列 ['issue_type', 'quality_check_result']
+  [MISMATCH] RechargeRecord.java: 表 recharge_record 缺实体映射列 ['member_nickname', 'member_phone', 'plan_name']
+  [MISMATCH] RecruitmentRequirement.java: 表 recruitment_requirements 缺实体映射列 ['applicant_count', 'education_requirement', 'hired_count', 'quota_id']
+  [MISMATCH] Role.java: 表 roles 缺实体映射列 ['accessible_departments', 'accessible_stores', 'created_by', 'created_time', 'data_scope', 'ext_data', 'id', 'parent_id', 'permissions', 'role_description', 'role_level', 'role_type', 'system_built', 'updated_by', 'updated_time']
+  [MISMATCH] SalesAnalysisReport.java: 表 sales_analysis_reports 缺实体映射列 ['store_id']
+  [MISMATCH] StoreInventory.java: 表 store_inventory 缺实体映射列 ['total_cost', 'unit_cost', 'version']
+  [MISMATCH] StoreNew.java: 表 stores_new 缺实体映射列 ['area', 'department_id', 'org_id']
+  [MISMATCH] Supplier.java: 表 suppliers 缺实体映射列 ['bank_account', 'bank_name', 'category', 'create_time', 'credit_level', 'delivery_area', 'email', 'industry', 'license_no', 'min_order_quantity', 'payment_terms', 'rating', 'registered_capital', 'remark', 'return_credit_balance', 'settlement_method', 'short_name', 'supplier_code', 'supplier_level', 'supplier_type', 'supply_categories', 'tax_no', 'unified_social_code', 'update_time']
+  [MISMATCH] SysSetting.java: 表 sys_settings 缺实体映射列 ['create_time', 'id', 'update_time']
+  [MISMATCH] TableReservationNew.java: 表 table_reservations 缺实体映射列 ['arrive_operator_id', 'cancel_operator_id', 'confirm_operator_id', 'remark', 'store_id']
+  [MISMATCH] Task.java: 表 tasks 缺实体映射列 ['allow_cross_dept', 'assignment_mode', 'cc_ids', 'target_id', 'target_type']
+  [MISMATCH] TraceCode.java: 表 food_trace_codes 缺实体映射列 ['create_by', 'inbound_time', 'inventory_type', 'operator_name', 'outbound_time', 'source_warehouse_id', 'target_warehouse_id', 'update_by', 'usage_purpose', 'used_by', 'warehouse_name']
+  [MISMATCH] Tray.java: 表 tray 缺实体映射列 ['camera_snapshot_time', 'camera_snapshot_url', 'last_scan_device_id', 'last_scan_time', 'last_state_change_time', 'yolo_verified', 'yolo_verify_time']
+  [MISMATCH] User.java: 表 users 缺实体映射列 ['company_id', 'create_time', 'department', 'id', 'permissions', 'store_name', 'update_time', 'version']
+  [MISMATCH] VoucherHeader.java: 表 voucher_header 缺实体映射列 ['auto_generated', 'create_by', 'id', 'is_reversed', 'period', 'quality_score', 'reverse_original_id', 'reverse_reason', 'review_remark', 'review_status', 'review_time', 'reviewer_id', 'source_business_id', 'source_business_no', 'source_type', 'summary', 'update_by', 'version']
+  [MISMATCH] VoucherLine.java: 表 voucher_line 缺实体映射列 ['auxiliary_account', 'auxiliary_customer', 'auxiliary_vendor', 'business_id', 'business_type', 'credit', 'debit', 'id', 'source_document_no', 'subject_id', 'update_time']
+  [MISMATCH] VoucherSignatureLog.java: 表 voucher_signature_log 缺实体映射列 ['certificate_info', 'error_code', 'sign_algorithm', 'sign_original', 'sign_time', 'sign_type', 'sign_value', 'signer_cert_no', 'timestamp_authority', 'timestamp_token']
+  [NO-TABLE ] AppDeviceRegistration.java: @TableName("app_device_registrations") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] Budget.java: @TableName("budget") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] CategoryOperationLog.java: @TableName("category_operation_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ComboIngredient.java: @TableName("combo_ingredient") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ContractDocument.java: @TableName("contract_document") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ContractTemplate.java: @TableName("contract_template") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] CostAllocation.java: @TableName("cost_allocation") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] CostAllocationDetail.java: @TableName("cost_allocation_detail") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] CostAllocationRule.java: @TableName("cost_allocation_rule") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] Coupon.java: @TableName("coupon") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] DataChangeHistory.java: @TableName("data_change_history") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] DataLinkEvent.java: @TableName("data_link_event") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] DepartmentPermission.java: @TableName("department_permissions") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] DiningTable.java: @TableName("dining_table") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] DishIngredient.java: @TableName("dish_ingredient") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] EmployeeDataScope.java: @TableName("employee_data_scope") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] FileAttachment.java: @TableName("file_attachment") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] FoodTrace.java: @TableName("food_trace") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] HardwareConfig.java: @TableName("hardware_config") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] HardwareConfigVersion.java: @TableName("hardware_config_version") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] HardwareOperationLog.java: @TableName("hardware_operation_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryCategory.java: @TableName("inventory_category") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryCode.java: @TableName("inventory_code") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventorySummary.java: @TableName("v_inventory_summary") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryTransferDetail.java: @TableName("inventory_transfer_detail") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryUnit.java: @TableName("inventory_unit") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryWarningRecord.java: @TableName("inventory_warning_records") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InventoryWarningRule.java: @TableName("inventory_warning_rules") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InvitationExpenseRecord.java: @TableName("invitation_expense_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] InvitationReminderLog.java: @TableName("invitation_reminder_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] LockerSlot.java: @TableName("locker_slot") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] MaterialTemplate.java: @TableName("material_template") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] MaterialUsageRecord.java: @TableName("material_usage_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] OcrRecord.java: @TableName("ocr_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] OperationLog.java: @TableName("operation_logs") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] OperationType.java: @TableName("operation_type") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] OrderMaterialRequirement.java: @TableName("order_material_requirement") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] OverAgeWorker.java: @TableName("over_age_worker") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] PermissionAssignmentLog.java: @TableName("permission_assignment_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] PlanItem.java: @TableName("plan_item") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] PositionCodeRule.java: @TableName("position_code_rules") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] PosShift.java: @TableName("pos_shifts") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] PrintFormatTemplate.java: @TableName("print_format_template") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ReceiptPrintLog.java: @TableName("receipt_print_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] Receivable.java: @TableName("receivable") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] RegistrationCodeLog.java: @TableName("registration_code_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] RoleDepartment.java: @TableName("role_departments") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] RoleStore.java: @TableName("role_stores") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SalaryAdjustment.java: @TableName("salary_adjustment") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SalaryRecord.java: @TableName("salary_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SalaryRule.java: @TableName("salary_rule") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SalesOrder.java: @TableName("sales_order") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SalesOrderDetail.java: @TableName("sales_order_detail") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ScanDevice.java: @TableName("scan_device") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] ScanRecord.java: @TableName("scan_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SelfPurchase.java: @TableName("self_purchase") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SelfPurchaseItem.java: @TableName("self_purchase_item") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SupplierEvaluation.java: @TableName("supplier_evaluations") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SysDevice.java: @TableName("sys_devices") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SysPermission.java: @TableName("sys_permissions") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SysPrintTemplate.java: @TableName("sys_print_templates") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SysRole.java: @TableName("sys_roles") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] SysStore.java: @TableName("sys_stores") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] TakeoutLocker.java: @TableName("takeout_locker") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] TraceabilityCode.java: @TableName("traceability_code") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] TraceCodeLog.java: @TableName("trace_code_log") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] TraceStage.java: @TableName("trace_stage") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] UserSession.java: @TableName("user_sessions") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] WeighingDevice.java: @TableName("weighing_device") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+  [NO-TABLE ] WeighingRecord.java: @TableName("weighing_record") 在 Flyway migration 中无 CREATE TABLE（可能由 DatabaseFixConfig/遗留脚本建表）
+NO-ENTITY（Flyway 有表、无实体引用，通常为中间表/历史表，仅计数不处置）：
+   accounting_periods
+   accounting_subjects
+   anomaly_alerts
+   approval_audit_logs
+   approval_flow_configs
+   approval_workflows
+   audit_log_archive
+   bank_account_reconciliation
+   bank_accounts
+   bank_payment_record
+   bonus_balance_details
+   budgets
+   cost_record
+   cost_records
+   device_status_log
+   employee_approvals
+   export_tasks
+   finance_records
+   finance_vouchers
+   finance_warnings
+   fund_flows
+   inventory_warning_record
+   inventory_warning_rule
+   invitation_codes
+   leave_requests
+   marketing_message_template
+   member_levels
+   notification_logs
+   order_sequence
+   overtime_requests
+   payables
+   payment
+   position_levels
+   receipt
+   recharge_finance_logs
+   recharge_plans
+   recharge_records
+   recharge_system_settings
+   refund_requests
+   reimbursement_requests
+   report_configs
+   report_insight_rules
+   rfm_calculation_log
+   salary_records
+   schedule_attendance_syncs
+   schedule_conflicts
+   schedule_entries
+   schedule_plans
+   schedule_rules
+   schedule_shift_types
+   schedule_templates
+   seal_usage_logs
+   seals
+   supplier_refund_requests
+   supplier_sign_links
+   swap_requests
+   user_permissions
+存在错位：收口前必须处置或单独立卡

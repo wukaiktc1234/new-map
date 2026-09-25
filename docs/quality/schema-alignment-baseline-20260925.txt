@@ -1,3 +1,5 @@
+SUPERSEDED_BY schema-alignment-baseline-20260925-v2.txt（v1 未分类；v2 含 MISMATCH/NO-TABLE/NO-ENTITY 分解）
+
 检查实体 299 个；Flyway 表 282 张
 发现 163 处实体/Flyway 错位：
   [MISMATCH] AccountingSubject.java: 表 accounting_subject 缺实体映射列 ['create_by', 'update_by']
