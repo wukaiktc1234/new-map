@@ -7,7 +7,8 @@ import java.time.LocalDateTime;
 
 @TableName("food_category")
 public class FoodCategory {
-    @TableId
+    // P1-POS-MENU-500-001: 列映射对齐 Flyway V1.0.0.100（生产真相源：主键 category_id、时间列 created_at/updated_at）
+    @TableId(value = "category_id")
     private String id;
     @TableField("category_code")
     private String categoryCode;
@@ -21,13 +22,13 @@ public class FoodCategory {
     private String description;
     @TableField("status")
     private String status;
-    @TableField("create_time")
+    @TableField("created_at")
     private LocalDateTime createTime;
-    @TableField("update_time")
+    @TableField("updated_at")
     private LocalDateTime updateTime;
-    @TableField("create_by")
+    @TableField("created_by")
     private String createBy;
-    @TableField("update_by")
+    @TableField("updated_by")
     private String updateBy;
 
     // Getter methods
