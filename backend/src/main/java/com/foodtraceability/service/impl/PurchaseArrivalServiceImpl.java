@@ -713,8 +713,9 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         private final Long warehouseId;
 
         ReceiverKey(PurchaseOrderItem item) {
+            // P1-PROCUREMENT-BLOCKERS-001: 归一为大写（DB CHECK 仅允许 STORE/WAREHOUSE；历史数据可能存小写）
             this.receiverType = StringUtils.hasText(item.getPlannedReceiverType())
-                    ? item.getPlannedReceiverType() : "STORE";
+                    ? item.getPlannedReceiverType().trim().toUpperCase() : "STORE";
             this.storeId = item.getPlannedStoreId();
             this.warehouseId = item.getPlannedWarehouseId();
         }

@@ -167,8 +167,16 @@ public class PayableServiceImpl extends ServiceImpl<PayableMapper, Payable>
         log.info("为采购入库单创建应付账款，入库单ID：{}，供应商：{}，金额：{}分",
                 stockinId, supplierName, amount);
 
-        // 1. 幂等性检查：通过确定性 payableNo 判断是否已存在
-        String payableNo = generateStockinPayableNo(stockinId);
+        // 1. 幂等性检查（P1-PROCUREMENT-BLOCKERS-001）：幂等键改为 stockin_id 查重，
+        //    不再依赖 payableNo 编码——旧编号 "AP"+0填充(stockinId) 与历史编号空间重叠导致唯一约束冲突（A1）
+        Payable existingByStockin = this.lambdaQuery()
+                .eq(Payable::getStockinId, stockinId)
+                .one();
+        if (existingByStockin != null) {
+            log.info("应付账款已存在（按 stockinId 幂等跳过），入库单ID：{}，应付编号：{}", stockinId, existingByStockin.getPayableNo());
+            return convertToVO(existingByStockin);
+        }
+        String payableNo = generateStockinPayableNo(stockinId, stockinDate);
         Payable existing = this.lambdaQuery()
                 .eq(Payable::getPayableNo, payableNo)
                 .one();
@@ -285,8 +293,29 @@ public class PayableServiceImpl extends ServiceImpl<PayableMapper, Payable>
      * 格式：AP + 0填充至10位的 stockinId
      * 示例：stockinId=123 → "AP0000000123"
      */
-    private String generateStockinPayableNo(Long stockinId) {
-        return "AP" + String.format("%010d", stockinId);
+    /**
+     * P1-PROCUREMENT-BLOCKERS-001（A1 修复）：应付单号改为「AP + 日期 + 当日序号」格式
+     * （如 AP20260926001），不再使用 "AP"+0填充(stockinId)——后者与历史编号空间
+     * （AP0000000001~0026）重叠，stockinId≤26 的入库单 confirm 必撞唯一约束。
+     * 幂等性改由 stockin_id 查重保证（见 createForStockin）。
+     */
+    private String generateStockinPayableNo(Long stockinId, LocalDate stockinDate) {
+        LocalDate base = stockinDate != null ? stockinDate : LocalDate.now();
+        String prefix = "AP" + base.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        Payable last = this.lambdaQuery()
+                .likeRight(Payable::getPayableNo, prefix)
+                .orderByDesc(Payable::getPayableNo)
+                .last("LIMIT 1")
+                .one();
+        int seq = 1;
+        if (last != null && last.getPayableNo() != null && last.getPayableNo().length() > prefix.length()) {
+            try {
+                seq = Integer.parseInt(last.getPayableNo().substring(prefix.length())) + 1;
+            } catch (NumberFormatException e) {
+                seq = 1;
+            }
+        }
+        return prefix + String.format("%03d", seq);
     }
 
     @Override

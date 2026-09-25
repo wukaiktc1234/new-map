@@ -392,6 +392,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setOrderStatus(STATUS_APPROVED);   // 待审核 -> 已审核
         order.setApprovalTime(LocalDateTime.now());
         order.setApprovalRemark(approvalRemark);
+        // P1-PROCUREMENT-BLOCKERS-001（议题6①）: 审批留痕——审批人落库
+        order.setApprovalUserId(SecurityUtils.getCurrentUserId());
         purchaseOrderMapper.updateById(order);
 
         log.info("审批通过采购订单成功，订单编号：{}", order.getOrderCode());
@@ -437,6 +439,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setOrderStatus(STATUS_REJECTED);   // 待审核 -> 已驳回（可修改后重新提交）
         order.setApprovalTime(LocalDateTime.now());
         order.setApprovalRemark(approvalRemark);
+        // P1-PROCUREMENT-BLOCKERS-001（议题6①）: 审批留痕——审批人落库
+        order.setApprovalUserId(SecurityUtils.getCurrentUserId());
         purchaseOrderMapper.updateById(order);
 
         log.info("驳回采购订单成功，订单编号：{}", order.getOrderCode());
@@ -564,7 +568,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             item.setTaxRate(dto.getTaxRate() != null ? dto.getTaxRate() : BigDecimal.ZERO);
             item.setReceivedQuantity(BigDecimal.ZERO);
             item.setRemark(dto.getRemark());
-            item.setPlannedReceiverType(dto.getPlannedReceiverType());
+            // P1-PROCUREMENT-BLOCKERS-001: 收货方类型归一为大写（到货表 CHECK 仅允许 STORE/WAREHOUSE）
+            item.setPlannedReceiverType(dto.getPlannedReceiverType() != null
+                    ? dto.getPlannedReceiverType().trim().toUpperCase() : null);
             item.setPlannedStoreId(dto.getPlannedStoreId());
             item.setPlannedWarehouseId(dto.getPlannedWarehouseId());
             purchaseOrderItemMapper.insert(item);
