@@ -7793,6 +7793,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 ---
 
+## 24.2b P1-POS-MENU-500-001（2026-09-25 开卡并实施，来源 LEGACY-CLEANUP QA OBS-1）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-POS-MENU-500-001** |
+| 状态 | **IMPLEMENTED_QA_PENDING（2026-09-25）**——代码 commit `872c874`（FoodCategory 实体对齐 Flyway，单文件 +6/-5）；活体：`/api/v1/pos/api/menu` 500→**code=0** |
+| 优先级 | **P1**（前端在用：posApi.ts:416 + CustomerOrder.vue:342） |
+| 根因 | 实体列映射与 Flyway V1.0.0.100（category_id 主键/created_at 时间列）错位；resources/sql 遗留脚本（id 主键）为误导源 |
+| 实施 | 实体映射修复 + 本地库 ALTER 对齐（环境动作）；活体验证 + 回归单测 EXIT=0 |
+| 实施记录 | `docs/architecture/03-review/p1-pos-menu-500-001-implementation-record-001.md`（L-01 生产库核对建议 / L-02 ALTER 未入库 / L-03 deleted 过滤未扩） |
+
 ## 24.3 新卡预告：P0-WORKSPACE-WIP-CONSOLIDATION-001（2026-09-25 登记）
 
 | 项 | 值 |
