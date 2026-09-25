@@ -31,6 +31,12 @@
 | P0-SCHEMA-SINGLE-SOURCE-001 | CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25） | Flyway 唯一真相源 + PG-003/PG-004；41 遗留 sql 归档；对齐基线 v2（KL-081=163 处）+ KL-082（47 黑箱表，应急快照已导出）；下游 P0-FLYWAY-COVERAGE-001（P0 预告） |
 | P0-WORKSPACE-WIP-CONSOLIDATION-001 | PENDING（预告，任务板 §24.3） | 分五批入库工作区 WIP（canonical 迁移 / bug fix / 安全加固 / 新功能 / docs 287）；前置 = LEGACY-CLEANUP 收口 |
 
+## PurchaseOrderServiceImpl 双版本状态（2026-09-25 登记）
+
+- **HEAD（已提交）** = 基线 + **P1-PURCHASE-SUPPLIER-BINDING-001 修复**（表头供应商优先，commit `0795665`）
+- **工作树（未提交）** = HEAD + 修复 + **115 行 W1-EC 批次 WIP**（countByStatus 等 dashboard 查询辅助方法 + 接口声明，与修复零重叠，部分提交法隔离）
+- ⚠ 后续 restoring/merge 该文件时：WIP 需在 P0-WORKSPACE-WIP-CONSOLIDATION-001 Batch 1 重新落库，注意与已提交修复区隔
+
 ## 已知环境问题（ENV 序列）
 
 | 编号 | 内容 | 登记 |
