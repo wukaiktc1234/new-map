@@ -7848,7 +7848,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-NEW-FOOD-LEGACY-SYNC-001** |
-| 状态 | **IMPLEMENTED_QA_PENDING（2026-09-25，Owner 指令回退）**——方案 A+B 交付（commit `ae6ddba`）+ DS 整改（D1/D2/D3 + 补测 8/8 PASS，DS 复核 PASS）；**CLOSED 回退原因：QA 独立验收未做**，5 项活体验收进行中（见 §24.2f QA 报告，通过后 CLOSED） |
+| 状态 | **✅ CLOSED（2026-09-26，QA 独立验收 5/5 PASS）**——方案 A+B 交付（`ae6ddba`）+ DS 整改（`33eee0e`）+ QA 独立活体 5/5（`docs/quality/P1-NEW-FOOD-LEGACY-SYNC-001-qa-report.md`：独立菜品 FD260926003/004，自愈复现 T20260926004、幂等 T20260926003）；业务链复跑全链贯通（`business-chain-verification-20260925.md` 复跑节） |
 | 活体验证 | 新建菜品 FD260926001 → **立即** POS 下单 code=0（T20260926001，修复前 100% 断）+ legacy 行同步存在（25.00 元/stock 49/active）；回归单测 2 套件 EXIT=0 |
 | 登记残留 | delete/批量删除无 legacy 对应、OrderTimeoutTask 只回 legacy food、Pricing 只改新表价格（低危漂移源，后续消化） |
 | 实施记录 | 诊断 `docs/quality/f6-new-food-sync-diagnosis-001.md`；文档 `docs/business-logic/03-foods-recipes.md` 已同步 |

@@ -545,3 +545,5 @@
 *追加：2026-09-25 P0-SCHEMA-SINGLE-SOURCE-001 收口：状态终态 = **CLOSED_WITH_REGISTERED_LIMITATION**（Flyway 唯一真相源 + PG-003/PG-004 治理规则落盘；41 遗留脚本归档；对齐基线 v2：MISMATCH 93 / NO-TABLE 70 / NO-ENTITY 57 = KL-081；NO-TABLE 溯源：16 归档 scripts + 1 DatabaseFixConfig + 6 其他 Java 类 + **47 真黑箱 = KL-082**，应急 DDL 快照已导出 PROVISIONAL）。下游 **P0-FLYWAY-COVERAGE-001**（P0：23 张转写 + 47 张活体导出+生产比对）与 **P0-WORKSPACE-WIP-CONSOLIDATION-001**（PENDING）为两大待启动卡。零业务代码、未动 Flyway、未改实体、未 commit WIP。*
 
 *追加：2026-09-25 F4 卡（P1-PURCHASE-SUPPLIER-BINDING-001）正式收口：**CLOSED_WITH_REGISTERED_LIMITATION**（Owner 裁决 DS/QA 豁免——1 文件 ~26 行 + 单测 2/2 + 活体 + warn 文案完整；历史 6 条审计 = 当时档案绑定一致）。同轮 F6 卡（P1-NEW-FOOD-LEGACY-SYNC-001）状态按 Owner 指令回退 CLOSED → **IMPLEMENTED_QA_PENDING**（QA 独立验收 5 项进行中，通过后 CLOSED）。零业务代码、未动 git 历史。*
+
+*追加：2026-09-26 P1-NEW-FOOD-LEGACY-SYNC-001 收口：QA 独立验收 **5/5 PASS**（独立菜品活体：即时下单/售罄映射/双表同步/自愈复现/幂等）→ **CLOSED**。同日业务链复跑全链贯通（F4 供应商绑定 in-chain 验证 = 新供应商 12 正确落库；F6 新建即下单）——**上线阻断项清零**（F1/F2/F3/F5/F7 为非阻断登记项）。零业务代码（验收轮）、未动 git 历史。*
