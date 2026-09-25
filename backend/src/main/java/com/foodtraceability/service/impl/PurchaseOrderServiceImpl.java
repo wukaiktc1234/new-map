@@ -178,21 +178,34 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             }
         }
 
-        // 按物料主供应商分组（多供应商 → 自动拆分为多张订单）
+        // P1-PURCHASE-SUPPLIER-BINDING-001: 表头供应商优先；未指定表头供应商时才按物料档案主供应商自动拆分
         java.util.Map<Long, java.util.List<PurchaseOrderItemDTO>> groups = new java.util.LinkedHashMap<>();
-        java.util.List<PurchaseOrderItemDTO> noSupplierItems = new java.util.ArrayList<>();
-        for (PurchaseOrderItemDTO item : createDTO.getItems()) {
-            Long supplierId = getMaterialPrimarySupplier(item.getMaterialId());
-            if (supplierId != null) {
-                groups.computeIfAbsent(supplierId, k -> new java.util.ArrayList<>()).add(item);
-            } else {
-                noSupplierItems.add(item);
+        Long headerSupplierId = createDTO.getSupplierId();
+        if (headerSupplierId != null) {
+            for (PurchaseOrderItemDTO item : createDTO.getItems()) {
+                Long archiveSupplierId = getMaterialPrimarySupplier(item.getMaterialId());
+                if (archiveSupplierId != null && !archiveSupplierId.equals(headerSupplierId)) {
+                    log.warn("物料{}档案主供应商({})与订单表头供应商({})不一致，按表头供应商落库",
+                            item.getMaterialId(), archiveSupplierId, headerSupplierId);
+                }
             }
-        }
-        // 无主供应商的物料并入表头供应商组（或独立成组）
-        if (!noSupplierItems.isEmpty()) {
-            Long fallback = createDTO.getSupplierId();
-            groups.computeIfAbsent(fallback, k -> new java.util.ArrayList<>()).addAll(noSupplierItems);
+            groups.computeIfAbsent(headerSupplierId, k -> new java.util.ArrayList<>()).addAll(createDTO.getItems());
+        } else {
+            // 按物料主供应商分组（多供应商 → 自动拆分为多张订单）
+            java.util.List<PurchaseOrderItemDTO> noSupplierItems = new java.util.ArrayList<>();
+            for (PurchaseOrderItemDTO item : createDTO.getItems()) {
+                Long supplierId = getMaterialPrimarySupplier(item.getMaterialId());
+                if (supplierId != null) {
+                    groups.computeIfAbsent(supplierId, k -> new java.util.ArrayList<>()).add(item);
+                } else {
+                    noSupplierItems.add(item);
+                }
+            }
+            // 无主供应商的物料并入表头供应商组（或独立成组）
+            if (!noSupplierItems.isEmpty()) {
+                Long fallback = createDTO.getSupplierId();
+                groups.computeIfAbsent(fallback, k -> new java.util.ArrayList<>()).addAll(noSupplierItems);
+            }
         }
         if (groups.isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "订单明细无法确定供应商");
