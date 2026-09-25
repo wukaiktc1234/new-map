@@ -43,3 +43,10 @@
 不做：
 - 不为未验证的链建文档
 - 不为文档而文档（没走查就不写）
+
+## 多门店模式（2026-09-26 Owner 决策）
+
+- 系统为**多门店共享**，各账号只看自己店
+- 数据隔离必须生效
+- 相关卡：P0-ROLE-STORE-SCHEMA-001（role_stores/role_departments Flyway + users.store_id 维护） / P1-ROLE-STORE-ISOLATION-001（SecurityUser/JWT/DataPermissionAspect 隔离）
+- 现状排查：`docs/quality/role-store-binding-audit-001.md`（JWT 隔离名存实亡 + role_stores 黑箱）

@@ -7853,14 +7853,24 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 登记残留 | delete/批量删除无 legacy 对应、OrderTimeoutTask 只回 legacy food、Pricing 只改新表价格（低危漂移源，后续消化） |
 | 实施记录 | 诊断 `docs/quality/f6-new-food-sync-diagnosis-001.md`；文档 `docs/business-logic/03-foods-recipes.md` 已同步 |
 
+## 24.3c P0-ROLE-STORE-SCHEMA-001 / P1-ROLE-STORE-ISOLATION-001（2026-09-26 Owner 决策建卡）
+
+| 项 | P0-ROLE-STORE-SCHEMA-001 | P1-ROLE-STORE-ISOLATION-001 |
+|----|---------------------------|------------------------------|
+| 状态 | **PENDING（未启动）** | **PENDING（未启动）** |
+| 优先级 | **P0** | **P1（安全，多门店必需）** |
+| 范围 | role_stores / role_departments 表 Flyway 补齐；users.store_id 维护端点（建/改用户可设门店）；数据回填（现有用户 store_id，admin 特殊处理） | SecurityUser 加 storeId；JWT 生成携带 storeId；getCurrentUserStoreId() 返回真实值；DataPermissionAspect 对非 admin 真正生效；到货门店来源改从 JWT/角色取（P3 修正）；全链回归（多门店账号隔离） |
+| 前置 | 无 | **P0-ROLE-STORE-SCHEMA-001 完成** |
+| 关联 | KL-083、BC-026、`docs/quality/role-store-binding-audit-001.md` | admin 例外维持全量（设计内）；KDS token 隔离不动（已生效） |
+
 ## 24.3b 新卡预告：P0-FLYWAY-COVERAGE-001（2026-09-25 登记）
 
 | 项 | 值 |
 |----|------|
-| Task ID | **P0-FLYWAY-COVERAGE-001** |
-| 状态 | **PENDING（未启动，只预告）** |
+| Task ID | **P0-FLYWAY-COVERAGE-002（原 001 拆分，2026-09-26 Owner 决策）** |
+| 状态 | **PENDING（未启动，只预告）——role_stores / role_departments 已拆出 → P0-ROLE-STORE-SCHEMA-001（§24.3c）** |
 | 优先级 | **P0（2026-09-25 收口轮升级，原 P1）**——KL-082 核心风险：47 张黑箱表在「从零重建库」场景下全部不会被创建，且 **43 张连本地活体 DB 都不存在**（schema 只可能在生产 DB） |
-| 范围 | 把 KL-081 中 **NO-TABLE 70 张表补进 Flyway**（新增 V* migration，只增不改） |
+| 范围 | 剩余黑箱表补进 Flyway（审计口径 70 − role_stores − role_departments = **68 张**；Owner 指令文本称"41 张"，以实际核查为准登记）（新增 V* migration，只增不改） |
 | 溯源结论（2026-09-25 只读核查） | 归档 scripts 可找到 CREATE：**16 张**（data_change_history / dining_table / dish_ingredient / file_attachment / food_trace / hardware_config / inventory_code / locker_slot / sales_order(+detail) / scan_device / scan_record / takeout_locker / traceability_code / weighing_device(+record)）→ 从归档脚本转写 Flyway 即可；DatabaseFixConfig：**1 张**（material_template）；其他 Java 初始化类（TableInitConfig / HrMigrationController / PositionRoleMappingTableConfig / SchemaFixMigration）：**6 张**（combo_ingredient / contract_document / contract_template / employee_data_scope / permission_assignment_log / pos_shifts）→ 从 Java DDL 转写；**真黑箱 47 张**（src 内无任何 CREATE，schema 仅存在于活体 DB）→ 须从活体 DB 反向导出 DDL，谨慎处理（列类型/默认值/索引以生产为准） |
 | 前置 | 溯源已完成（本条）；**启动后第一动作 = 生产 information_schema 比对**（L-01 风险：本地活体 DB 列型 ≠ 生产；且 43 张表只能从生产导出） |
 | 核心风险 | **KL-082**（47 张黑箱：4 张本地有 DDL 快照 + 43 张仅生产可能有）；应急快照 `docs/quality/db-blackbox-emergency-snapshot-20260925.sql`（PROVISIONAL_LOCAL_UNVERIFIED） |
