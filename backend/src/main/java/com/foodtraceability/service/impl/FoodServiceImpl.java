@@ -9,11 +9,13 @@ import com.foodtraceability.dataservice.FoodDataService;
 import com.foodtraceability.dto.product.*;
 import com.foodtraceability.entity.ComboIngredientNew;
 import com.foodtraceability.entity.DishRecipeNew;
+import com.foodtraceability.entity.Food;
 import com.foodtraceability.entity.FoodCategoryNew;
 import com.foodtraceability.entity.FoodNew;
 import com.foodtraceability.mapper.ComboIngredientNewMapper;
 import com.foodtraceability.mapper.DishRecipeNewMapper;
 import com.foodtraceability.mapper.FoodCategoryNewMapper;
+import com.foodtraceability.mapper.FoodMapper;
 import com.foodtraceability.mapper.FoodNewMapper;
 import com.foodtraceability.service.FoodService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -58,16 +60,22 @@ public class FoodServiceImpl extends ServiceImpl<FoodNewMapper, FoodNew> impleme
     private final FoodDataService foodDataService;
     private final ComboIngredientNewMapper comboIngredientMapper;
     private final DishRecipeNewMapper dishRecipeNewMapper;
+    private final FoodMapper foodMapper;
+    private final FoodCategoryNewMapper foodCategoryNewMapper;
 
     public FoodServiceImpl(FoodNewMapper foodNewMapper,
                            FoodCategoryNewMapper categoryMapper,
                            FoodDataService foodDataService,
                            ComboIngredientNewMapper comboIngredientMapper,
-                           DishRecipeNewMapper dishRecipeNewMapper) {
+                           DishRecipeNewMapper dishRecipeNewMapper,
+                           FoodMapper foodMapper,
+                           FoodCategoryNewMapper foodCategoryNewMapper) {
         this.foodNewMapper = foodNewMapper;
         this.categoryMapper = categoryMapper;
         this.foodDataService = foodDataService;
         this.comboIngredientMapper = comboIngredientMapper;
+        this.foodMapper = foodMapper;
+        this.foodCategoryNewMapper = foodCategoryNewMapper;
         this.dishRecipeNewMapper = dishRecipeNewMapper;
     }
 
@@ -111,7 +119,56 @@ public class FoodServiceImpl extends ServiceImpl<FoodNewMapper, FoodNew> impleme
             foodNewMapper.updateById(food);
         }
 
+        // P1-NEW-FOOD-LEGACY-SYNC-001: 创建即双写 legacy food
+        syncLegacyFood(food);
+
         return convertToVO(food);
+    }
+
+    /**
+     * P1-NEW-FOOD-LEGACY-SYNC-001: 双写 legacy food 表。
+     * POS 下单扣减走 legacy food（FoodMapper.deductStock），行缺失时报误导性"库存不足"；
+     * 本方法在菜品创建/更新/改状态后按 DatabaseFixConfig.syncFoodsToLegacyFood 同口径回填，消除同步真空期。
+     */
+    private void syncLegacyFood(FoodNew food) {
+        try {
+            String categoryName = null;
+            if (food.getCategoryId() != null) {
+                FoodCategoryNew fc = foodCategoryNewMapper.selectById(food.getCategoryId());
+                categoryName = fc != null ? fc.getCategoryName() : null;
+            }
+            Food legacy = foodMapper.selectById(food.getFoodCode());
+            if (legacy == null) {
+                legacy = new Food();
+                legacy.setFoodCode(food.getFoodCode());
+                legacy.setFoodName(food.getFoodName());
+                legacy.setFoodCategory(categoryName != null ? categoryName : "未分类");
+                legacy.setFoodPrice(food.getSalePrice() != null ? BigDecimal.valueOf(food.getSalePrice(), 2) : BigDecimal.ZERO);
+                legacy.setCostPrice(food.getCostPrice() != null ? BigDecimal.valueOf(food.getCostPrice(), 2) : BigDecimal.ZERO);
+                legacy.setFoodDesc(food.getDescription());
+                legacy.setFoodImage(food.getImageUrl());
+                legacy.setFoodStatus(food.getStatus() != null && food.getStatus() == 1 ? "active" : "inactive");
+                legacy.setStock(food.getStock() != null ? food.getStock() : 0);
+                foodMapper.insert(legacy);
+            } else {
+                legacy.setFoodName(food.getFoodName());
+                if (categoryName != null) {
+                    legacy.setFoodCategory(categoryName);
+                }
+                if (food.getSalePrice() != null) {
+                    legacy.setFoodPrice(BigDecimal.valueOf(food.getSalePrice(), 2));
+                }
+                if (food.getStock() != null) {
+                    legacy.setStock(food.getStock());
+                }
+                if (food.getStatus() != null) {
+                    legacy.setFoodStatus(food.getStatus() == 1 ? "active" : food.getStatus() == 0 ? "inactive" : "sold_out");
+                }
+                foodMapper.updateById(legacy);
+            }
+        } catch (Exception e) {
+            log.warn("同步菜品到 legacy food 表失败: foodCode={}, err={}", food.getFoodCode(), e.getMessage());
+        }
     }
 
     @Override
@@ -202,6 +259,9 @@ public class FoodServiceImpl extends ServiceImpl<FoodNewMapper, FoodNew> impleme
 
         // 6. 清除缓存
         foodDataService.clearFoodCache(foodId);
+
+        // P1-NEW-FOOD-LEGACY-SYNC-001: 更新即双写 legacy food
+        syncLegacyFood(existing);
 
         log.info("更新菜品成功: foodId={}", foodId);
         return convertToVO(existing);
@@ -327,10 +387,13 @@ public class FoodServiceImpl extends ServiceImpl<FoodNewMapper, FoodNew> impleme
         
         food.setStatus(status);
         foodNewMapper.updateById(food);
-        
+
+        // P1-NEW-FOOD-LEGACY-SYNC-001: 状态变更双写 legacy food
+        syncLegacyFood(food);
+
         // 清除缓存
         foodDataService.clearFoodCache(foodId);
-        
+
         log.info("更新菜品状态: foodId={}, status={}", foodId, status);
     }
 

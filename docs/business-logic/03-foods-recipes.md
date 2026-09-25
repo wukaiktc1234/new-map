@@ -1,6 +1,6 @@
 # 商品与配方业务逻辑（建档 → 配方 → 同步）
 
-> 验证状态：✅ 2026-09-25 活体（证据 `docs/quality/business-chain-verification-20260925.md`）
+> 验证状态：✅ 2026-09-25 活体（`docs/quality/business-chain-verification-20260925.md`）；2026-09-25 F6 修复后复验（新建即下单 T20260926001）
 > 文档性质：AI 理解稿，**待 Owner 审定**
 
 ## 应该做什么
@@ -15,7 +15,9 @@
 菜品  POST /v1/product-center/foods（FoodCreateDTO：foodName/categoryId/salePrice(分)/stock + recipes[]）
       → foods（新表，food_id Long 自增 + food_code FD 码自动生成）
       → 同时写 dish_recipes（recipes[].materialId 引用 material_archives.material_id）
-      → ⚠ 只写 foods，不写 legacy food（同步仅启动时）——F6
+      → 双写 legacy food（P1-NEW-FOOD-LEGACY-SYNC-001，2026-09-25：create/update/updateStatus 后按
+        DatabaseFixConfig 同口径回填 legacy food 行，消除启动同步真空期）
+      → 另有下单自愈兜底：POS 扣减返 0 时按 foods 补 legacy 行再重试一次（PosOrderCreateServiceImpl）
 配方  无独立管理端点（F2）：只能随菜品创建携带；编辑/删除路径待产品确认
 套餐  P1-COMBO-LEGACY-CLEANUP-001 起 POS 读 dish_combos/combo_ingredients；
       产品中心写新表，DatabaseFixConfig 启动时向 legacy dish_combo/combo_ingredient 反向同步
@@ -39,7 +41,7 @@
 
 ## 已知问题
 
-- **F6（高）**：创建菜品不同步 legacy food → 新菜品立即 POS 下单断链（见 02-pos-order.md）
+- **F6（高）→ 已修复（2026-09-25）**：P1-NEW-FOOD-LEGACY-SYNC-001（A 双写 + B 下单自愈）；活体验证：新建菜品立即下单 code=0（T20260926001），legacy 行同步存在（诊断 `docs/quality/f6-new-food-sync-diagnosis-001.md`）。残留：delete/批量删除无 legacy 对应（残留行）、OrderTimeoutTask 只回 legacy、Pricing 只改新表价格——均为低危漂移源，登记待后续
 - **F2（中）**：配方无独立 CRUD 端点
 - **F1（低）**：templateCode 不自动生成 + 错误响应为"系统繁忙"500 而非 400 字段提示
 

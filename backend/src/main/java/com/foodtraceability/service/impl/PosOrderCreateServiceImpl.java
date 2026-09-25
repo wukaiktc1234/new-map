@@ -553,6 +553,11 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             String foodCodeForDeduct = dbFood != null ? dbFood.getFoodCode() : item.getFoodId();
             int deductResult = foodMapper.deductStock(foodCodeForDeduct, item.getQuantity());
             if (deductResult == 0) {
+                // P1-NEW-FOOD-LEGACY-SYNC-001: 自愈——legacy food 行缺失（新建菜品未同步）时按 foods 补行后重试一次
+                ensureLegacyFoodRow(foodCodeForDeduct);
+                deductResult = foodMapper.deductStock(foodCodeForDeduct, item.getQuantity());
+            }
+            if (deductResult == 0) {
                 throw new BusinessException(400, "菜品【" + item.getFoodName() + "】库存不足");
             }
             int deductNewResult = foodNewMapper.deductStock(foodCodeForDeduct, item.getQuantity());
@@ -751,6 +756,11 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
 
             // 扣减库存（food 表 + foods 表，保证两表一致）
             int deductResult = foodMapper.deductStock(itemDTO.getId(), itemDTO.getQuantity());
+            if (deductResult == 0) {
+                // P1-NEW-FOOD-LEGACY-SYNC-001: 同上自愈
+                ensureLegacyFoodRow(itemDTO.getId());
+                deductResult = foodMapper.deductStock(itemDTO.getId(), itemDTO.getQuantity());
+            }
             if (deductResult == 0) {
                 throw new BusinessException(400, "菜品【" + itemDTO.getName() + "】库存不足");
             }
@@ -1068,4 +1078,31 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         sb.append("]");
         return sb.toString();
     }
+    /**
+     * P1-NEW-FOOD-LEGACY-SYNC-001: legacy food 行缺失时按 foods 新表数据补行（自愈兜底）。
+     * 覆盖 DatabaseFixConfig 启动同步无法覆盖的运行期新建菜品场景。
+     */
+    private void ensureLegacyFoodRow(String foodCode) {
+        try {
+            if (foodCode == null || foodMapper.selectByFoodCodeForUpdate(foodCode) != null) {
+                return;
+            }
+            FoodNew fn = foodNewMapper.selectByFoodCode(foodCode);
+            if (fn == null) {
+                return;
+            }
+            Food legacy = new Food();
+            legacy.setFoodCode(fn.getFoodCode());
+            legacy.setFoodName(fn.getFoodName());
+            legacy.setFoodPrice(fn.getSalePrice() != null ? BigDecimal.valueOf(fn.getSalePrice(), 2) : BigDecimal.ZERO);
+            legacy.setCostPrice(fn.getCostPrice() != null ? BigDecimal.valueOf(fn.getCostPrice(), 2) : BigDecimal.ZERO);
+            legacy.setFoodStatus(fn.getStatus() != null && fn.getStatus() == 1 ? "active" : "inactive");
+            legacy.setStock(fn.getStock() != null ? fn.getStock() : 0);
+            foodMapper.insert(legacy);
+            log.info("自愈：legacy food 行缺失，已按 foods 补行 foodCode={}", foodCode);
+        } catch (Exception e) {
+            log.warn("自愈补行失败: foodCode={}, err={}", foodCode, e.getMessage());
+        }
+    }
+
 }
