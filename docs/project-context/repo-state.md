@@ -26,7 +26,8 @@
 
 | Task ID | 状态 | 说明 |
 |---------|------|------|
-| P1-COMBO-LEGACY-CLEANUP-001 | **IMPLEMENTED_READY_FOR_DS（2026-09-25）** | 代码 commit `05d4404`（4 文件）；单测 33/33 PASS；实施记录 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md`；待 DS→QA→regression→收口 |
+| P1-COMBO-LEGACY-CLEANUP-001 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25）** | 代码 `05d4404`；DS 5/5 + QA PWL（活体 4/4）+ REG-ORDER-012 转正（125→126）；实施记录 §6 收口；RESIDUALS L-01/L-02/OBS-3/OBS-4（OBS-1 → 独立卡已修复） |
+| P1-POS-MENU-500-001 | IMPLEMENTED_QA_PENDING（2026-09-25） | OBS-1 升级卡：FoodCategory 实体对齐 Flyway（commit `872c874`），/menu 500→code=0；任务板 §24.2b |
 | P0-WORKSPACE-WIP-CONSOLIDATION-001 | PENDING（预告，任务板 §24.3） | 分五批入库工作区 WIP（canonical 迁移 / bug fix / 安全加固 / 新功能 / docs 287）；前置 = LEGACY-CLEANUP 收口 |
 
 ## 已知环境问题（ENV 序列）

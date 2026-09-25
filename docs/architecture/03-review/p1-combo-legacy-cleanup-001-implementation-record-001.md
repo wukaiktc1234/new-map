@@ -5,7 +5,7 @@
 | 项 | 值 |
 |----|------|
 | Task ID | `P1-COMBO-LEGACY-CLEANUP-001` |
-| Stage | **IMPLEMENTED_READY_FOR_DS（2026-09-25）** |
+| Stage | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25，§6 收口）** |
 | 前置 | P1-COMBO-ORDER-001 CLOSED_WITH_REGISTERED_LIMITATION；PG-001 v2 门禁 PASS（2026-09-25） |
 | 声明改动文件 | OrderNewServiceImpl / PosApiServiceImpl / OrderMaterialRequirementServiceImpl / KitchenScanServiceImpl / ComboIngredientMapper / DatabaseFixConfig / 前端 KitScan（若有） |
 | 实际改动文件 | **4 个**：`PosApiServiceImpl` / `OrderMaterialRequirementServiceImpl` / `KitchenScanServiceImpl` / `ComboIngredientMapper`（见 §2） |
@@ -47,3 +47,20 @@
 ## 5. 下一步
 
 DS 抽检 → QA 独立验收 → regression（建议 REG-ORDER-012：POS 菜单套餐列表数据源切换一致性）→ 收口回写。
+
+
+---
+
+## 6. 收口记录（2026-09-25）
+
+| 项 | 值 |
+|----|------|
+| 终态 | **CLOSED_WITH_REGISTERED_LIMITATION** |
+| DS 抽检 | **5/5 PASS**（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-sampling-review.md`，commit `41d6e07`） |
+| QA 独立验收 | **PASS_WITH_LIMITATION**（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-qa-report.md`：活体 4/4 + DB 断言 3/3，FAIL=0 无 `-R{n}`；T20260925001 全链 live 证据） |
+| 回归 | **REG-ORDER-012 已登记并随验收首跑转正**（`production-regression-test.md`，正式基线 125 → 126，只增不减） |
+| RESIDUALS | **L-01**（菜单数据依赖：dish_combos 无数据则 POS 套餐列表为空）/ **L-02**（generateRequirementsForCombo 死 API，Long.valueOf 依赖未来调用方）/ **OBS-1**（聚合 /menu 500 既有缺陷 → **已升级独立卡 P1-POS-MENU-500-001**，同日已实施修复）/ **OBS-3**（生产 PROVISIONAL）/ **OBS-4**（UI 目检未做） |
+| OBS-1 升级 | 独立卡预告 **P1-POS-MENU-500-001**（任务板 §24.2b/§24 预告区）——同日经前置澄清后已开卡实施（commit `872c874`，/menu 500→code=0），状态以其 §24.2b 登记为准 |
+| 同步回写 | 任务板 §24.2、`remediation-roadmap.md` 页脚、`docs/project-context/repo-state.md` |
+
+> planner 仅登记与状态回写，未写代码、未动 git 历史、未 commit 业务代码（卡片代码已于实施轮 commit `05d4404`）。历史条目零修改。

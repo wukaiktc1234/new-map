@@ -7784,7 +7784,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-COMBO-LEGACY-CLEANUP-001** |
-| 状态 | **QA PASS_WITH_LIMITATION（2026-09-25）+ 回归 PASS（REG-ORDER-012 转正，125→126）**——DS 抽检 5/5 PASS（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-sampling-review.md`）；QA 活体验证 4/4 + DB 断言 3/3（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-qa-report.md`：菜单/下单/KDS/扣料全链 live，T20260925001）；FAIL=0 无 -R；限制 OBS-1 既有聚合菜单 500（非本卡）/ OBS-3 生产 PROVISIONAL / OBS-4 UI 目检；原 IMPLEMENTED_READY_FOR_DS 记录见 git 历史 |（幻影清零 + 3 个重叠文件 stash 隔离 + 声明文件清单）；代码 commit `05d4404`（精确 add 4 文件：PosApiServiceImpl / OrderMaterialRequirementServiceImpl / KitchenScanServiceImpl / ComboIngredientMapper@Deprecated）；mvn compile EXIT=0 + 相关单测 33/33 PASS；范围 5 项：4 完成 + DatabaseFixConfig 列名 bug 免做（combo 卡 aec5c45 已修）；实施记录 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md`（限制 L-01 数据依赖 / L-02 死 API / L-03 JDK25 工具链）；旧表物理删除划后续卡。BLOCKED 记录见 git 历史（PG-001 v1 → v2 修订后解阻）——PG-001 前置声明：工作区状态 = **DIRTY**（canonical 迁移 WIP，~1196 个已修改条目，属 W1-EC-01 其他批次）。**且 WIP 与本卡 scope 直接重叠**：legacy 三文件之一 `OrderMaterialRequirementServiceImpl` 在 WIP 修改集中；DishCombo/ComboIngredient 全域（`DishCombo*`/`ComboIngredient*`/`Menu` 实体+DTO+Controller）均未提交。后果：stash 路径将令本卡基于 pre-WIP 版本实施、恢复时必然冲突；在 WIP 之上实施 = 重演 ENV-1/ENV-2（PG-001 明文禁止）。**处置待 Owner 裁决**：① 先收口/提交 canonical WIP（独立分支）→ 本卡在干净基线启动（推荐）② Owner 确认 WIP 可弃置 → stash ③ 授权违规启动 → 按 PG-001 登记 ENV-3（不推荐） |
+| 状态 | **✅ CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25 收口）**——DS 抽检 **5/5 PASS**（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-sampling-review.md`）→ QA 独立验收 **PASS_WITH_LIMITATION**（`docs/quality/P1-COMBO-LEGACY-CLEANUP-001-qa-report.md`：活体 4/4 + DB 断言 3/3，FAIL=0、无 `-R{n}`；全链 live 证据 `T20260925001`：菜单 13.5 元分转换正确 / 下单 product_type=2+combo_id=1+food_id=NULL / KDS components[] / scan-serve 扣料 material_consumed=1 + 库存 log id=65）→ **REG-ORDER-012 随验收首跑转正**（正式基线 125 → 126，只增不减）；PG-001 v2 门禁 PASS（幻影清零 + 3 重叠文件 stash 隔离 + 精确 add，代码 commit `05d4404` 4 文件 +55/-40）；范围 5 项：4 完成 + DatabaseFixConfig 列名 bug 免做（combo 卡 `aec5c45` 已修）；**收口回写块见下 §24.2 收口回写块**；历史过程状态（BLOCKED → IMPLEMENTED_READY_FOR_DS → QA）见 git 历史 |
 | 前置 | ① `P1-COMBO-ORDER-001` 收口完成（已满足：2026-09-24 CLOSED_WITH_REGISTERED_LIMITATION）② 凭据清理完成（任务 A 确认部分完成 → 2026-09-25 已收尾：嵌套 `.auth` 残留已清 `0274549`、keystore.p12 两份已出库 + 生成脚本 `scripts/generate-test-keystore.sh` `c182e63`、`.env.example` JWT_SECRET 已改占位 `c3cbd3a`；遗留仅 git 历史明文 = KL-077，独立决策） |
 | 范围 | ① 废弃 combo_ingredient 旧表 ② 切 getFullMenu 从 legacy dish_combo 到 dish_combos ③ 清理旧 POS 兼容代码 ④ 完成 KL-080 三文件归并（`PosApiServiceImpl` / `KitchenScanServiceImpl` / `OrderMaterialRequirementServiceImpl` 改读 `combo_ingredients`）⑤ 修正 DatabaseFixConfig 列名 bug（若 combo 卡未涵盖） |
 | 优先级 | 中（非阻塞，但属遗留债；对应 KL-080 处置列"待第二步卡排期"） |
@@ -7792,6 +7792,27 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 关联 | KL-080 / 实施记录 §7.1 / ENV-2（PG-001 开卡前工作区清洁检查必须先执行） |
 
 ---
+
+### 24.2 收口回写块（2026-09-25，Owner 收口指令）
+
+| 项 | 值 |
+|----|------|
+| 终态 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25）** |
+| DS 抽检路径 | `docs/quality/P1-COMBO-LEGACY-CLEANUP-001-sampling-review.md`（5/5 PASS） |
+| QA 报告路径 | `docs/quality/P1-COMBO-LEGACY-CLEANUP-001-qa-report.md`（PASS_WITH_LIMITATION，活体 4/4 + DB 3/3，FAIL=0） |
+| 回归路径 | `production-regression-test.md` REG-ORDER-012（正式基线 125 → 126，随验收首跑 PASS） |
+| RESIDUALS | L-01（菜单数据依赖）/ L-02（死 API）/ OBS-1（→ 独立卡 P1-POS-MENU-500-001，**同日已实施修复** commit `872c874`）/ OBS-3（生产 PROVISIONAL）/ OBS-4（UI 目检） |
+| 实施记录终态 | §0 Stage = CLOSED_WITH_REGISTERED_LIMITATION；§6 收口记录已追加 |
+
+## 24.2c OBS-1 独立卡预告（Owner 收口指令动作 4，2026-09-25）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-POS-MENU-500-001** |
+| 内容 | `/v1/pos/api/menu` 500——FoodCategory 实体与 DB schema（主键列/时间列）不匹配 |
+| 前置澄清 | ① 前端实际调用菜单接口 ② 生产 schema 主键列名 |
+| 优先级 | 待澄清后定（P1 若前端在用 / P2 若已切） |
+| 状态 | 指令登记为 PENDING（不建卡只预告）→ **同日实际进展**：两项前置澄清完成（前端在用 → **P1**；Flyway 生产 schema = category_id），已开卡并实施修复（commit `872c874`，/menu 500→code=0），见 §24.2b——本预告按指令落盘存档，现状以 §24.2b 为准 |
 
 ## 24.2b P1-POS-MENU-500-001（2026-09-25 开卡并实施，来源 LEGACY-CLEANUP QA OBS-1）
 
