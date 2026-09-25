@@ -18,6 +18,8 @@
         → 数字状态（order_status，真相源）：0 ─submit─▶ 1 ─approve─▶ 2 ─confirm─▶ 6
         → ⚠ 字符串 status 字段全程恒 'pending' 不动（双轨状态，勿读）
         → request_id 落库关联申请；request_no 不自动回填
+        → 转单预览：POST /v1/purchase/requests/{rid}/generate-order（回显申请全字段供参考；
+          正式创建仍需手工组装 items——2026-09-26 勘误，此前误记"无从申请生成的端点"）
         → items 的 planned_receiver_type/planned_store_id/planned_warehouse_id 原样透传落库（大小写不归一！）
 到货  POST /v1/purchase/arrivals（orderId, shipmentStatus）
         → 【关键语义】receiver_type = item.planned_receiver_type **原样透传**（hasText 时），否则默认 'STORE'
@@ -50,8 +52,8 @@
 
 ## 已知问题
 
-- **A1（高，上线阻断，2026-09-26 排查）**：收货 confirm 500——payableNo="AP"+0填充(stockinId) 与历史编号空间重叠（历史已占 AP0000000001~0026）；stockinId≤26 必炸，事务整体回滚（库存不入、应付不建）
-- **A2（高，上线阻断，2026-09-26 排查）**：到货创建 500——item.plannedReceiverType 大小写不归一透传，DB CHECK 仅允许大写 STORE/WAREHOUSE；前端传 'store' 的订单到货必炸
+- **A1（高）→ 已修复（2026-09-26，P1-PROCUREMENT-BLOCKERS-001）**：payableNo 改「AP+日期+当日序号」（AP20260926001）；幂等键改按 stockin_id 查重；活体：stockin 20（修复前必撞 AP0000000020）confirm 成功 + store_inventory +50。残留登记：历史 stockin 1/2 未确认单需人工处理
+- **A2（高）→ 已修复（2026-09-26，同卡）**：双侧归一——订单落库 + 到货 ReceiverKey 均大写；活体：写侧落库 STORE、模拟历史小写数据到货创建 code=0（receiverType=STORE）
 - A4（低）：order.request_no 不自动回填；A5（低）：字符串 status 双轨；A6（低）：申请 DTO.storeId 无落库列
 - 全流向细节：`docs/quality/procurement-chain-flow-audit-001.md`（字段流向表 + 异常清单）
 - **F4（高）→ 已修复（2026-09-25）**：P1-PURCHASE-SUPPLIER-BINDING-001 表头优先方案；活体验证：supplierId=11 订单落库 11（修复前落 1）+ 档案不一致 warn + 表头=档案回归无 warn；历史 6 条 supplier_id=1 经审计为当时档案绑定一致（正常，无需修数据）
