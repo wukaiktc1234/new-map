@@ -7839,7 +7839,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-PURCHASE-SUPPLIER-BINDING-001** |
-| 状态 | **IMPLEMENTED_VERIFIED（2026-09-25）**——修复 commit `0795665`（方案①表头优先，单文件 +26/-13，部分提交法隔离 115 行 WIP 零夹带）；活体：supplierId=11 → 落库 11 + warn、回归表头=档案无 warn；历史 6 条审计正常零修数 |
+| 状态 | **✅ CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25，Owner 裁决 DS/QA 豁免）**——修复 commit `0795665`（方案①表头优先，单文件 +26/-13，部分提交法零夹带）；单测 2/2（表头优先/档案拆分）；活体：supplierId=11 → 落库 11 + warn、回归无 warn；历史 6 条审计 = 当时档案绑定一致（正常，零修数）；豁免理由：1 文件 ~26 行 + 单测 + 活体 + warn 文案完整（Owner 2026-09-25 裁决） |
 | 实施记录 | `docs/architecture/03-review/p1-purchase-supplier-binding-001-implementation-record-001.md`；根因 `docs/quality/f4-supplier-binding-diagnosis-001.md` |
 | 文档同步 | `docs/business-logic/01-procurement.md`（F4 → 已修复；不变量 1 = 表头优先） |
 
@@ -7848,7 +7848,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-NEW-FOOD-LEGACY-SYNC-001** |
-| 状态 | **✅ CLOSED（2026-09-25）**——方案 A+B 交付（commit `ae6ddba`）+ DS 抽检整改（D1/D2/D3 对齐 + 补测 8/8 PASS）；DS 复核判定升级 **PASS**；活体：新建即下单（T20260926001）+ status=2 落 sold_out（FD260926002）；实施记录 001/002；`docs/business-logic/03-foods-recipes.md` 已同步 |
+| 状态 | **IMPLEMENTED_QA_PENDING（2026-09-25，Owner 指令回退）**——方案 A+B 交付（commit `ae6ddba`）+ DS 整改（D1/D2/D3 + 补测 8/8 PASS，DS 复核 PASS）；**CLOSED 回退原因：QA 独立验收未做**，5 项活体验收进行中（见 §24.2f QA 报告，通过后 CLOSED） |
 | 活体验证 | 新建菜品 FD260926001 → **立即** POS 下单 code=0（T20260926001，修复前 100% 断）+ legacy 行同步存在（25.00 元/stock 49/active）；回归单测 2 套件 EXIT=0 |
 | 登记残留 | delete/批量删除无 legacy 对应、OrderTimeoutTask 只回 legacy food、Pricing 只改新表价格（低危漂移源，后续消化） |
 | 实施记录 | 诊断 `docs/quality/f6-new-food-sync-diagnosis-001.md`；文档 `docs/business-logic/03-foods-recipes.md` 已同步 |

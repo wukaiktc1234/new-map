@@ -5,7 +5,7 @@
 | 项 | 值 |
 |----|------|
 | Task ID | `P1-PURCHASE-SUPPLIER-BINDING-001` |
-| Stage | **IMPLEMENTED_VERIFIED（2026-09-25；F4 修复卡，随修随验）** |
+| Stage | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25，Owner 裁决 DS/QA 豁免：1 文件 ~26 行 + 单测 2/2 + 活体 + warn 文案完整；历史 6 条审计正常）** |
 | 根因 | `docs/quality/f4-supplier-binding-diagnosis-001.md`（判定 E：物料档案主供应商自动分组设计 vs 表头语义冲突）
 
 
