@@ -7834,6 +7834,22 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 实施 | 实体映射修复 + 本地库 ALTER 对齐（环境动作）；活体验证 + 回归单测 EXIT=0 |
 | 实施记录 | `docs/architecture/03-review/p1-pos-menu-500-001-implementation-record-001.md`（L-01 生产库核对建议 / L-02 ALTER 未入库 / L-03 deleted 过滤未扩） |
 
+## 24.3b 新卡预告：P0-FLYWAY-COVERAGE-001（2026-09-25 登记）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P0-FLYWAY-COVERAGE-001** |
+| 状态 | **PENDING（未启动，只预告）** |
+| 优先级 | **P1（生产重建风险）**——NO-TABLE 表在"从零重建库"场景下不会被创建 |
+| 范围 | 把 KL-081 中 **NO-TABLE 70 张表补进 Flyway**（新增 V* migration，只增不改） |
+| 溯源结论（2026-09-25 只读核查） | 归档 scripts 可找到 CREATE：**16 张**（data_change_history / dining_table / dish_ingredient / file_attachment / food_trace / hardware_config / inventory_code / locker_slot / sales_order(+detail) / scan_device / scan_record / takeout_locker / traceability_code / weighing_device(+record)）→ 从归档脚本转写 Flyway 即可；DatabaseFixConfig：**1 张**（material_template）；其他 Java 初始化类（TableInitConfig / HrMigrationController / PositionRoleMappingTableConfig / SchemaFixMigration）：**6 张**（combo_ingredient / contract_document / contract_template / employee_data_scope / permission_assignment_log / pos_shifts）→ 从 Java DDL 转写；**真黑箱 47 张**（src 内无任何 CREATE，schema 仅存在于活体 DB）→ 须从活体 DB 反向导出 DDL，谨慎处理（列类型/默认值/索引以生产为准） |
+| 前置 | 溯源已完成（本条）；建议启动时先跑生产 information_schema 比对（L-01 风险：本地活体 DB 列型 ≠ 生产） |
+| 关联 | KL-081（消分主战场：70 张 NO-TABLE 全部计入）/ PG-003 / schema-governance.md |
+
+---
+
+*追加：2026-09-25 P0-FLYWAY-COVERAGE-001 预告登记（Owner 指令，§24.3b 新建；溯源数据来自 KL-081 基线 + 只读核查）。PENDING 未启动。planner 仅登记，零业务代码、未修错位、未动 Flyway、未 commit WIP。*
+
 ## 24.3 新卡预告：P0-WORKSPACE-WIP-CONSOLIDATION-001（2026-09-25 登记）
 
 | 项 | 值 |
