@@ -28,6 +28,7 @@
 |---------|------|------|
 | P1-COMBO-LEGACY-CLEANUP-001 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25）** | 代码 `05d4404`；DS 5/5 + QA PWL（活体 4/4）+ REG-ORDER-012 转正（125→126）；实施记录 §6 收口；RESIDUALS L-01/L-02/OBS-3/OBS-4（OBS-1 → 独立卡已修复） |
 | P1-POS-MENU-500-001 | IMPLEMENTED_QA_PENDING（2026-09-25） | OBS-1 升级卡：FoodCategory 实体对齐 Flyway（commit `872c874`），/menu 500→code=0；任务板 §24.2b |
+| P0-SCHEMA-SINGLE-SOURCE-001 | CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25） | Flyway 唯一真相源 + PG-003/PG-004；41 遗留 sql 归档；对齐基线 v2（KL-081=163 处）+ KL-082（47 黑箱表，应急快照已导出）；下游 P0-FLYWAY-COVERAGE-001（P0 预告） |
 | P0-WORKSPACE-WIP-CONSOLIDATION-001 | PENDING（预告，任务板 §24.3） | 分五批入库工作区 WIP（canonical 迁移 / bug fix / 安全加固 / 新功能 / docs 287）；前置 = LEGACY-CLEANUP 收口 |
 
 ## 已知环境问题（ENV 序列）

@@ -7819,7 +7819,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P0-SCHEMA-SINGLE-SOURCE-001** |
-| 状态 | **IMPLEMENTED_DONE（2026-09-25，治理卡）** |
+| 状态 | **✅ CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25 收口）**——三件事交付（治理文档+PG-003 / 41 脚本归档 / 对齐脚本+基线）；RESIDUALS = L-01/L-02/L-03 + KL-081（163 处对齐债）+ KL-082（47 张黑箱表，高）；下游 P0-FLYWAY-COVERAGE-001（P0）；实施记录 §4 收口记录 |
 | 实施 | ① `docs/project-context/schema-governance.md` + **PG-003**（Flyway 唯一真相源，禁止手写 schema 脚本）② 41 个遗留 sql `git mv` → `docs/archive/legacy-sql/`（零运行时引用已核实）③ 对齐检查脚本 `scripts/check-schema-alignment.py` + 基线 163 处（`docs/quality/schema-alignment-baseline-20260925.txt`，随卡逐个消化） |
 | 实施记录 | `docs/architecture/03-review/p0-schema-single-source-001-implementation-record-001.md` |
 
@@ -7840,10 +7840,11 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 |----|------|
 | Task ID | **P0-FLYWAY-COVERAGE-001** |
 | 状态 | **PENDING（未启动，只预告）** |
-| 优先级 | **P1（生产重建风险）**——NO-TABLE 表在"从零重建库"场景下不会被创建 |
+| 优先级 | **P0（2026-09-25 收口轮升级，原 P1）**——KL-082 核心风险：47 张黑箱表在「从零重建库」场景下全部不会被创建，且 **43 张连本地活体 DB 都不存在**（schema 只可能在生产 DB） |
 | 范围 | 把 KL-081 中 **NO-TABLE 70 张表补进 Flyway**（新增 V* migration，只增不改） |
 | 溯源结论（2026-09-25 只读核查） | 归档 scripts 可找到 CREATE：**16 张**（data_change_history / dining_table / dish_ingredient / file_attachment / food_trace / hardware_config / inventory_code / locker_slot / sales_order(+detail) / scan_device / scan_record / takeout_locker / traceability_code / weighing_device(+record)）→ 从归档脚本转写 Flyway 即可；DatabaseFixConfig：**1 张**（material_template）；其他 Java 初始化类（TableInitConfig / HrMigrationController / PositionRoleMappingTableConfig / SchemaFixMigration）：**6 张**（combo_ingredient / contract_document / contract_template / employee_data_scope / permission_assignment_log / pos_shifts）→ 从 Java DDL 转写；**真黑箱 47 张**（src 内无任何 CREATE，schema 仅存在于活体 DB）→ 须从活体 DB 反向导出 DDL，谨慎处理（列类型/默认值/索引以生产为准） |
-| 前置 | 溯源已完成（本条）；建议启动时先跑生产 information_schema 比对（L-01 风险：本地活体 DB 列型 ≠ 生产） |
+| 前置 | 溯源已完成（本条）；**启动后第一动作 = 生产 information_schema 比对**（L-01 风险：本地活体 DB 列型 ≠ 生产；且 43 张表只能从生产导出） |
+| 核心风险 | **KL-082**（47 张黑箱：4 张本地有 DDL 快照 + 43 张仅生产可能有）；应急快照 `docs/quality/db-blackbox-emergency-snapshot-20260925.sql`（PROVISIONAL_LOCAL_UNVERIFIED） |
 | 关联 | KL-081（消分主战场：70 张 NO-TABLE 全部计入）/ PG-003 / schema-governance.md |
 
 ---

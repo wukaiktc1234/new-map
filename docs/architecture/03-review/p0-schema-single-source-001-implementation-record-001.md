@@ -5,7 +5,7 @@
 | 项 | 值 |
 |----|------|
 | Task ID | `P0-SCHEMA-SINGLE-SOURCE-001` |
-| Stage | **IMPLEMENTED_DONE（2026-09-25；治理卡，无独立运行时面）** |
+| Stage | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25，§4 收口）** |
 | 背景 | P1-POS-MENU-500-001 根因之一：遗留 schema 脚本与 Flyway 并存冲突（`food_category`：遗留 `id` vs Flyway `category_id`）误导实体编码 |
 
 ## 1. 范围三件事
@@ -27,3 +27,15 @@
 
 - L-01：检查为单向（实体列 ⊆ Flyway 列），不做类型/默认值比对（最小实现口径）
 - L-02：NO-TABLE 类错位的根治依赖各业务卡补 Flyway migration（与"只增不改"兼容），非本卡范围
+
+---
+
+## 4. 收口记录（2026-09-25）
+
+| 项 | 值 |
+|----|------|
+| 终态 | **CLOSED_WITH_REGISTERED_LIMITATION** |
+| RESIDUALS | **L-01**（单向检查：不做类型/默认值比对）/ **L-02**（NO-TABLE 根治依赖各业务卡补 Flyway，非本卡范围）/ **L-03**（deleted 过滤等既有行为未扩 scope）/ **KL-081**（163 处对齐债，消分初始）/ **KL-082**（47 张黑箱表 schema 仅存于活体 DB，高风险，应急快照已导出） |
+| 溯源补充 | NO-TABLE 70 张已定位：归档 scripts 16 + DatabaseFixConfig 1 + 其他 Java 初始化类 6 + 真黑箱 47（精确复核："CREATE TABLE 与表名同行"规则，剔除 6 处注释误报） |
+| 下游 | **P0-FLYWAY-COVERAGE-001**（P0，任务板 §24.3b）：23 张转写 + 47 张活体导出比对 |
+| 同步回写 | 任务板 §24.2d、`remediation-roadmap.md` 页脚、`docs/project-context/repo-state.md`、KL-081/KL-082 |
