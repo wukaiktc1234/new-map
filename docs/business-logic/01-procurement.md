@@ -1,6 +1,6 @@
 # 采购链业务逻辑（申请 → 订单 → 到货 → 收货 → 库存）
 
-> 验证状态：✅ 2026-09-25 活体全链（证据 `docs/quality/business-chain-verification-20260925.md`）
+> 验证状态：✅ 2026-09-25 活体全链（证据 `docs/quality/business-chain-verification-20260925.md`）；2026-09-25 F4 修复后复验（PO202609260001）
 > 文档性质：AI 理解稿，**待 Owner 审定**
 
 ## 应该做什么
@@ -26,7 +26,7 @@
 
 | 字段 | 约束 | 语义 |
 |------|------|------|
-| `PurchaseOrderCreateDTO.supplierId` | @NotNull Long | **⚠ 仅 fallback**：item 的物料在 `material_archives` 有主供应商绑定时，按档案分组（表头被忽略）；无绑定才用表头。见"不变量" |
+| `PurchaseOrderCreateDTO.supplierId` | @NotNull Long | **表头优先（2026-09-25 修复 P1-PURCHASE-SUPPLIER-BINDING-001 后）**：指定表头供应商时全部 item 按表头落库，物料档案绑定不一致仅 log.warn 提示；未指定（防御分支）才按物料档案自动分组拆单 |
 | `material_archives.supplier_id` | 物料 ↔ 供应商绑定 | 自动分组的数据源；**改绑定会改变后续所有采购单的落库供应商** |
 | purchase 数量/单价 | quantity BigDecimal（业务单位）；unitPrice **Long 分** | total_amount 由系统按分计算 |
 | 质检枚举 | qualityCheckResult=1（合格）、appearanceResult/odorResult=`normal|abnormal` | 缺一不可，confirm 前置 |
@@ -34,14 +34,14 @@
 
 ## 不变量
 
-1. **订单供应商 = 物料档案主供应商（有绑定时）**——表头 supplierId 不能覆盖。⚠ 与"表头为准"直觉冲突，是 F4 的根因（根因诊断 `docs/quality/f4-supplier-binding-diagnosis-001.md`）
+1. **订单供应商 = 表头 supplierId（优先）**；物料档案绑定不一致时 log.warn 提示但不阻断（P1-PURCHASE-SUPPLIER-BINDING-001 修复，commit 0795665；根因诊断 `docs/quality/f4-supplier-binding-diagnosis-001.md`）。仅当表头未指定时才回退到物料档案自动分组拆单
 2. 收货必须先质检合格才能 confirm
 3. 数量与金额：数量按业务单位（斤等），金额一律 Long 分
 4. 单据编号：PR/PO/AR/SI + 日期 + 序号，系统生成
 
 ## 已知问题
 
-- **F4（高，上线阻断）**：表头 supplierId 语义陷阱——采购已绑主供应商的物料时，新建供应商通过表头传参不生效
+- **F4（高）→ 已修复（2026-09-25）**：P1-PURCHASE-SUPPLIER-BINDING-001 表头优先方案；活体验证：supplierId=11 订单落库 11（修复前落 1）+ 档案不一致 warn + 表头=档案回归无 warn；历史 6 条 supplier_id=1 经审计为当时档案绑定一致（正常，无需修数据）
 - **F5（中）**：收货入总仓后 inventory 行 product_name/unit 为 NULL（未回填）
 - 历史影响面：51 张采购单中 6 张 supplier_id=1，是否错绑待 Owner 逐单裁定
 

@@ -7834,6 +7834,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 实施 | 实体映射修复 + 本地库 ALTER 对齐（环境动作）；活体验证 + 回归单测 EXIT=0 |
 | 实施记录 | `docs/architecture/03-review/p1-pos-menu-500-001-implementation-record-001.md`（L-01 生产库核对建议 / L-02 ALTER 未入库 / L-03 deleted 过滤未扩） |
 
+## 24.2e P1-PURCHASE-SUPPLIER-BINDING-001（2026-09-25 开卡实施，来源业务链验证 F4）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-PURCHASE-SUPPLIER-BINDING-001** |
+| 状态 | **IMPLEMENTED_VERIFIED（2026-09-25）**——修复 commit `0795665`（方案①表头优先，单文件 +26/-13，部分提交法隔离 115 行 WIP 零夹带）；活体：supplierId=11 → 落库 11 + warn、回归表头=档案无 warn；历史 6 条审计正常零修数 |
+| 实施记录 | `docs/architecture/03-review/p1-purchase-supplier-binding-001-implementation-record-001.md`；根因 `docs/quality/f4-supplier-binding-diagnosis-001.md` |
+| 文档同步 | `docs/business-logic/01-procurement.md`（F4 → 已修复；不变量 1 = 表头优先） |
+
 ## 24.3b 新卡预告：P0-FLYWAY-COVERAGE-001（2026-09-25 登记）
 
 | 项 | 值 |
