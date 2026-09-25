@@ -34,3 +34,24 @@
 **性质**：视图层，非权威；与 git 不一致时以 git 为准
 
 **生效日期**：2026-09-25
+
+## PG-003 — Schema 单一真相源（Flyway）
+
+**规则**：
+  1. 所有表结构变更一律通过新增 Flyway migration（`backend/src/main/resources/db/migration/V*.sql`，只增不改）
+  2. **禁止**新增任何手写 schema 脚本（非 Flyway 位置的建表/改表 SQL）；遗留脚本已于 2026-09-25 归档至 `docs/archive/legacy-sql/`
+  3. 实体 `@TableId` / `@TableField` 必须与 Flyway 定义对齐；涉 schema/实体的卡片，收口前运行 `scripts/check-schema-alignment.py`
+  4. 新增错位 → 当卡修复或单独立卡，不得留盲
+
+**理由**：
+  遗留 schema 脚本与 Flyway 并存冲突（food_category：遗留 `id` vs Flyway `category_id`），
+  直接导致实体错位与 `/v1/pos/api/menu` 500（P1-POS-MENU-500-001）。
+
+**违规处置**：
+  - 手写脚本入库 → 当卡按 ENV 登记，脚本移除
+  - 实体错位新引入 → 当卡修复，不豁免
+
+**执行细节**：见 `docs/project-context/schema-governance.md`
+
+**生效日期**：2026-09-25
+**关联**：P1-POS-MENU-500-001 / P0-SCHEMA-SINGLE-SOURCE-001

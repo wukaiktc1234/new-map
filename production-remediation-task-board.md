@@ -7814,6 +7814,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 优先级 | 待澄清后定（P1 若前端在用 / P2 若已切） |
 | 状态 | 指令登记为 PENDING（不建卡只预告）→ **同日实际进展**：两项前置澄清完成（前端在用 → **P1**；Flyway 生产 schema = category_id），已开卡并实施修复（commit `872c874`，/menu 500→code=0），见 §24.2b——本预告按指令落盘存档，现状以 §24.2b 为准 |
 
+## 24.2d P0-SCHEMA-SINGLE-SOURCE-001（2026-09-25 开卡并实施，schema 治理）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P0-SCHEMA-SINGLE-SOURCE-001** |
+| 状态 | **IMPLEMENTED_DONE（2026-09-25，治理卡）** |
+| 实施 | ① `docs/project-context/schema-governance.md` + **PG-003**（Flyway 唯一真相源，禁止手写 schema 脚本）② 41 个遗留 sql `git mv` → `docs/archive/legacy-sql/`（零运行时引用已核实）③ 对齐检查脚本 `scripts/check-schema-alignment.py` + 基线 163 处（`docs/quality/schema-alignment-baseline-20260925.txt`，随卡逐个消化） |
+| 实施记录 | `docs/architecture/03-review/p0-schema-single-source-001-implementation-record-001.md` |
+
 ## 24.2b P1-POS-MENU-500-001（2026-09-25 开卡并实施，来源 LEGACY-CLEANUP QA OBS-1）
 
 | 项 | 值 |
