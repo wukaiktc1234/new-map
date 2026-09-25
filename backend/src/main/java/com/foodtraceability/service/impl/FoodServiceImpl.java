@@ -147,8 +147,15 @@ public class FoodServiceImpl extends ServiceImpl<FoodNewMapper, FoodNew> impleme
                 legacy.setCostPrice(food.getCostPrice() != null ? BigDecimal.valueOf(food.getCostPrice(), 2) : BigDecimal.ZERO);
                 legacy.setFoodDesc(food.getDescription());
                 legacy.setFoodImage(food.getImageUrl());
-                legacy.setFoodStatus(food.getStatus() != null && food.getStatus() == 1 ? "active" : "inactive");
+                // 与 DatabaseFixConfig.syncFoodsToLegacyFood 同口径（含 status=2 sold_out）
+                legacy.setFoodStatus(food.getStatus() == null ? "active"
+                        : food.getStatus() == 1 ? "active"
+                        : food.getStatus() == 0 ? "inactive"
+                        : food.getStatus() == 2 ? "sold_out" : "active");
                 legacy.setStock(food.getStock() != null ? food.getStock() : 0);
+                legacy.setCreateBy("system");
+                legacy.setUpdateBy("system");
+                legacy.setDeleted(0);
                 foodMapper.insert(legacy);
             } else {
                 legacy.setFoodName(food.getFoodName());

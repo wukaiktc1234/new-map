@@ -18,6 +18,7 @@
       → 双写 legacy food（P1-NEW-FOOD-LEGACY-SYNC-001，2026-09-25：create/update/updateStatus 后按
         DatabaseFixConfig 同口径回填 legacy food 行，消除启动同步真空期）
       → 另有下单自愈兜底：POS 扣减返 0 时按 foods 补 legacy 行再重试一次（PosOrderCreateServiceImpl）
+      → 双写口径（2026-09-25 DS 整改后）：status 1→active/0→inactive/2→sold_out、create_by/update_by='system'、deleted=0——与启动同步完全同口径
 配方  无独立管理端点（F2）：只能随菜品创建携带；编辑/删除路径待产品确认
 套餐  P1-COMBO-LEGACY-CLEANUP-001 起 POS 读 dish_combos/combo_ingredients；
       产品中心写新表，DatabaseFixConfig 启动时向 legacy dish_combo/combo_ingredient 反向同步

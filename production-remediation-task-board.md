@@ -7848,7 +7848,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-NEW-FOOD-LEGACY-SYNC-001** |
-| 状态 | **IMPLEMENTED_VERIFIED（2026-09-25）**——方案 A+B：FoodServiceImpl 双写 legacy food（create/update/updateStatus）+ PosOrderCreateServiceImpl 下单自愈（deductStock=0 时按 foods 补行重试）；commit 见 git log |
+| 状态 | **✅ CLOSED（2026-09-25）**——方案 A+B 交付（commit `ae6ddba`）+ DS 抽检整改（D1/D2/D3 对齐 + 补测 8/8 PASS）；DS 复核判定升级 **PASS**；活体：新建即下单（T20260926001）+ status=2 落 sold_out（FD260926002）；实施记录 001/002；`docs/business-logic/03-foods-recipes.md` 已同步 |
 | 活体验证 | 新建菜品 FD260926001 → **立即** POS 下单 code=0（T20260926001，修复前 100% 断）+ legacy 行同步存在（25.00 元/stock 49/active）；回归单测 2 套件 EXIT=0 |
 | 登记残留 | delete/批量删除无 legacy 对应、OrderTimeoutTask 只回 legacy food、Pricing 只改新表价格（低危漂移源，后续消化） |
 | 实施记录 | 诊断 `docs/quality/f6-new-food-sync-diagnosis-001.md`；文档 `docs/business-logic/03-foods-recipes.md` 已同步 |

@@ -1096,7 +1096,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             legacy.setFoodName(fn.getFoodName());
             legacy.setFoodPrice(fn.getSalePrice() != null ? BigDecimal.valueOf(fn.getSalePrice(), 2) : BigDecimal.ZERO);
             legacy.setCostPrice(fn.getCostPrice() != null ? BigDecimal.valueOf(fn.getCostPrice(), 2) : BigDecimal.ZERO);
-            legacy.setFoodStatus(fn.getStatus() != null && fn.getStatus() == 1 ? "active" : "inactive");
+            legacy.setFoodStatus(fn.getStatus() == null ? "active"
+                    : fn.getStatus() == 1 ? "active"
+                    : fn.getStatus() == 0 ? "inactive"
+                    : fn.getStatus() == 2 ? "sold_out" : "active");
             legacy.setStock(fn.getStock() != null ? fn.getStock() : 0);
             foodMapper.insert(legacy);
             log.info("自愈：legacy food 行缺失，已按 foods 补行 foodCode={}", foodCode);

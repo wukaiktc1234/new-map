@@ -54,3 +54,12 @@ D1~D3 均为低危口径偏差（功能正确），建议随补测小修对齐�
 | 口径偏差 | D1（status=2 映射）/ D2（create_by 空）/ D3（deleted 隐式默认）——低危，随补测卡对齐 |
 | **总判定** | **验证不完整（代码 PASS + 单测缺失）** |
 | 移交 | ① 补单测卡（syncLegacyFood×2 + ensureLegacyFoodRow×1 + D1 对齐）② D2/D3 是否对齐 'system'/显式 0 由 Owner 定 ③ QA 独立验收可在补测后合并进行 |
+
+---
+
+## DS 复核（2026-09-25，整改后）
+
+- 整改 commit：D1/D2/D3 修复 + 补测 `FoodLegacySyncTest`（5）+ `PosOrderEnsureLegacyRowTest`（3）——**8/8 PASS**
+- 活体复验：status=2 新建 → legacy 行 **sold_out / create_by=system / deleted=0**（FD260926002）——D1/D2/D3 全部实证关闭
+- **复核判定：验证不完整 → 解除，升级 PASS**（代码 PASS + 单测覆盖 PASS + 口径对齐 PASS）
+- 维持登记不修：Pricing / OrderTimeoutTask / delete 路径漂移源（范围外，001 §3）
