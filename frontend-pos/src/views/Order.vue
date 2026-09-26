@@ -193,7 +193,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, Bowl, Plus, ShoppingCart, Delete, ArrowRight } from '@element-plus/icons-vue'
-import { posApi, type Category, type Dish, type Combo } from '@/api/posApi'
+import { usePosMenu } from '@/composables/usePosMenu'
 
 interface CartItem {
   id: string;
@@ -206,14 +206,19 @@ interface CartItem {
 
 const router = useRouter()
 const tableNumber = ref<number>()
-const activeCategory = ref('all')
 const activeType = ref('all')
-const loading = ref(false)
 const addingItem = ref<string | null>(null)
 
-const categories = ref<Category[]>([])
-const dishes = ref<Dish[]>([])
-const combos = ref<Combo[]>([])
+// P1-POS-MENU-UNIFICATION-001 (3a)：菜单数据源切换至产品中心三接口（与 Home.vue 同源，见 usePosMenu）
+const {
+  loading,
+  categories,
+  dishes,
+  combos,
+  activeCategory,
+  loadMenu
+} = usePosMenu()
+
 const cart = ref<CartItem[]>([])
 
 // 分类指示器
@@ -246,7 +251,10 @@ const filteredItems = computed(() => {
   
   if (activeType.value === 'all' || activeType.value === 'single') {
     items = items.concat(dishes.value.map(d => ({
-      id: d.dishId,
+      // R1（P1-POS-MENU-UNIFICATION-001 §7.3）：身份键用 dishCode（food_code），非 dishId
+      // 后端 canonical 下单路径按 food_code 构建映射并扣减
+      // （PosOrderCreateServiceImpl L227-260 预检 / L553-563 扣减，mapper WHERE food_code）
+      id: d.dishCode,
       name: d.dishName,
       price: d.price,
       description: d.description,
@@ -330,27 +338,10 @@ const goToPayment = () => {
   })
 }
 
-const loadMenu = async () => {
-  loading.value = true
-  try {
-    const menu = await posApi.getFullMenu() as any
-    // P1-COMBO-ORDER-001: 恢复套餐分类 badge
-    categories.value = menu.categories || []
-    dishes.value = menu.dishes || []
-    combos.value = menu.combos || []
-    if (combos.value.length > 0 && !categories.value.some((c: any) => c.categoryId === 'combo')) {
-      categories.value.push({ categoryId: 'combo', categoryName: '套餐', sortOrder: 999 })
-    }
-    updateIndicator()
-  } catch (error) {
-    console.error('加载菜单失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(() => {
-  loadMenu()
+onMounted(async () => {
+  // 菜单数据源加载（usePosMenu：产品中心三接口并行；套餐分类 badge 亦由 usePosMenu 注入）
+  await loadMenu()
+  updateIndicator()
 })
 </script>
 

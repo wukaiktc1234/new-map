@@ -219,6 +219,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart, Minus, Plus, CircleCheckFilled, Loading, Goods, Picture, Delete, FullScreen, Close, List, Document, Refresh } from '@element-plus/icons-vue'
 import request from '../api/request'
+import { usePosMenu } from '@/composables/usePosMenu'
 
 interface Category {
   categoryId: string
@@ -254,10 +255,39 @@ interface DiningTable {
 const route = useRoute()
 const loading = ref(true)
 const table = ref<DiningTable | null>(null)
-const categories = ref<Category[]>([])
-const dishes = ref<Dish[]>([])
 const activeCategory = ref('all')
 const cart = ref<CartItem[]>([])
+
+// P1-POS-MENU-UNIFICATION-001 (3a)：菜单数据源切换至产品中心三接口（与 Home.vue 同源，见 usePosMenu）
+// 保留本页既有展示形状（本地 Category/Dish 接口），经 computed 映射
+const {
+  categories: menuCategories,
+  dishes: menuDishes,
+  loadMenu: loadMenuData
+} = usePosMenu()
+
+/** 侧边栏分类：顶部保留"推荐"入口（既有 UI），其余为产品中心 food_categories
+ *  本页只展示单品（套餐入口在 Order.vue/Home.vue），排除 composable 注入的 'combo' 虚拟分类，
+ *  避免侧边栏出现无对应菜品区块的空分类（切换前本页无"套餐"入口，保持既有 UI） */
+const categories = computed<Category[]>(() => [
+  { categoryId: 'all', categoryName: '推荐' },
+  ...menuCategories.value.filter(cat => cat.categoryId !== 'combo')
+])
+
+/** 展示菜品：产品中心 Dish → 本页本地形状
+ *  R1（§7.3）：身份键 id 用 dishCode（food_code），非 dishId——
+ *  后端 canonical 下单路径按 food_code 构建映射并扣减
+ *  （PosOrderCreateServiceImpl L227-260 预检 / L553-563 扣减，mapper WHERE food_code）
+ *  salesCount/likeCount 本地 VO 无对应真实字段，保持不传（UI 显示 '--'，与切换前一致） */
+const dishes = computed<Dish[]>(() => menuDishes.value.map(d => ({
+  id: d.dishCode,
+  name: d.dishName,
+  price: d.price,
+  description: d.description,
+  image: d.imageUrl,
+  categoryId: d.categoryId,
+  dishType: 'single'
+})))
 const showCart = ref(false)
 const showSuccess = ref(false)
 const orderNumber = ref('')
@@ -339,25 +369,8 @@ const loadTableInfo = async () => {
 
 const loadMenu = async () => {
   try {
-    const res = await request.get('/v1/pos/api/menu') as any
-    const data = res || {}
-    
-    categories.value = [{ categoryId: 'all', categoryName: '推荐' }, ...(data.categories || [])]
-    
-    const dishList: Dish[] = []
-    const dishData = data.dishes || []
-    for (const dish of dishData) {
-      dishList.push({
-        id: dish.dishId || dish.id,
-        name: dish.dishName || dish.name,
-        price: dish.price || 0,
-        description: dish.description || '',
-        image: dish.imageUrl || dish.image || '',
-        categoryId: dish.categoryId || '',
-        dishType: dish.dishType || 'single'
-      })
-    }
-    dishes.value = dishList
+    // P1-POS-MENU-UNIFICATION-001 (3a)：legacy /v1/pos/api/menu → 产品中心三接口（usePosMenu 共享数据源）
+    await loadMenuData()
   } catch (error) {
     console.error('加载菜单失败:', error)
   } finally {
