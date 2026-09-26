@@ -25,6 +25,16 @@
         ORDER BY create_time DESC
     </select>
     <select id="selectConsumptionStats" resultType="java.util.Map">
-        SELECT SUM(change_quantity) AS total FROM inventory_log
+        SELECT SUM(change_amount) AS total FROM inventory_log
+        WHERE deleted = 0
+        <if test="operationType != null and operationType != ''">
+            AND operation_type = #{operationType}
+        </if>
+        <if test="startTime != null and startTime != ''">
+            AND create_time &gt;= #{startTime}::timestamp
+        </if>
+        <if test="endTime != null and endTime != ''">
+            AND create_time &lt;= #{endTime}::timestamp
+        </if>
     </select>
 </mapper>
