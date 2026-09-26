@@ -7920,13 +7920,16 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | Task ID | **P1-PROCUREMENT-UX-BLOCKERS-001** |
 | 状态 | **PENDING（未启动，范围暂定）** |
 | 优先级 | P1 |
-| 范围（暂定） | ① **F1**：原料模板 templateCode 不自动生成（缺 → 500"系统繁忙"，应 400 字段级提示）② **F5**：采购收货入总仓后 inventory 行 product_name/unit 为 NULL（应回填非空）③ **配方下拉数据源切换**——**条件项：走查确认是小改/中改才纳入** |
-| 决策规则（Owner 2026-09-26） | 配方下拉数据源切换若走查确认为**大改** → 从本卡移出，走查后**独立卡** |
+| 范围（暂定） | ① **F1**：原料模板 templateCode 不自动生成（缺 → 500"系统繁忙"，应 400 字段级提示）② **F5**：采购收货入总仓后 inventory 行 product_name/unit 为 NULL（应回填非空）③ **配方下拉数据源切换 + 分类过滤**（条件项）：数据源 = `material_archives`（已定，03 文档）+ 分类过滤仅显示"可用于配方"的分类；**约束：不得硬编码分类名**——须通过分类的业务字段（如 `usable_in_recipe`）判定（避免用户不用预设分类时失效） |
+| 决策规则（Owner 2026-09-26） | ① 配方下拉数据源切换若走查确认为**大改** → 从本卡移出，走查后**独立卡**；② 若**现有分类表无此字段**（"可用于配方"业务字段，如 `usable_in_recipe`）→ ③ 升级为"大改"，**移出本卡** |
+| ③ 升级核查（2026-09-26 只读） | **条件已触发（PROVISIONAL）**：`material_categories`（Flyway V20260629_005 DDL + 实体 `MaterialCategory` 10 字段 + 本地活体 DB `information_schema` 三方核对一致）无 `usable_in_recipe` 类业务字段 → 按规则 ③ 升级"大改"、**移出本卡**（生产 DB 未核实；若生产已有该字段，以走查结论降级）。**本卡生效范围 = F1 + F5**；③ 走查后独立卡（范围预告：数据源切换 + 分类表补业务字段 + 分类过滤） |
 | 来源 | F5：`docs/business-logic/01-procurement.md` 已知问题（中，待修复）；F1：`docs/business-logic/03-foods-recipes.md` 已知问题（低，待排期）；配方选料原则：`docs/business-logic/03-foods-recipes.md`「配方选料原则（2026-09-26，Owner 定则）」——配方下拉数据源 = `material_archives`，配方接口/前端下拉不得 join `store_inventory` |
-| 前置 | 无硬前置；**启动前第一动作 = 配方下拉走查**（审现状数据源，裁定小/中/大改，据此定稿本卡范围） |
-| 验收基准 | F1：material_template 缺 templateCode → 400 字段级提示（03 文档验证方式 3）；F5：收货 confirm 后 inventory 行 product_name/unit 非空（01 文档验证方式 3）；配方下拉：接口/前端下拉数据源 = material_archives 且无 store_inventory join（03 文档「对实现的约束」） |
+| 前置 | 无硬前置；本卡范围已定稿 = F1 + F5（③ 经升级核查移出，见上行）；配方下拉走查归 ③ 独立卡 |
+| 验收基准 | F1：material_template 缺 templateCode → 400 字段级提示（03 文档验证方式 3）；F5：收货 confirm 后 inventory 行 product_name/unit 非空（01 文档验证方式 3）；（③ 配方下拉验收基准随独立卡：数据源 = material_archives 且无 store_inventory join + 分类过滤走业务字段不硬编码） |
 | 关联 | 与 P1-PROCUREMENT-BLOCKERS-001（A1 payableNo / A2 receiverType / approval_user_id）无文件重叠 |
 
 ---
 
 *追加：2026-09-26 P1-PROCUREMENT-UX-BLOCKERS-001 登记（Owner 决策，§24.3d 新建）：暂定范围 = F1 + F5 + 配方下拉数据源切换（条件项）；配方下拉大改 → 走查后独立卡。planner 仅登记，零业务代码、未 commit 其他 WIP。*
+
+*追加：2026-09-26 Owner 细化 ③（数据源 + 分类过滤 + 不硬编码约束 + 分类表无字段即升级规则）+ 只读核查（Flyway V20260629_005 DDL / 实体 / 本地活体 DB information_schema 三方核对）：material_categories 无 usable_in_recipe 类业务字段 → ③ 条件触发升级"大改"、移出本卡（PROVISIONAL：生产 DB 未核实）；本卡生效范围 = F1 + F5，③ 走查后独立卡。零业务代码。*
