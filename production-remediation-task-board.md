@@ -7912,3 +7912,21 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 *追加：2026-09-25 P0-WORKSPACE-WIP-CONSOLIDATION-001 预告登记（Owner 指令，§24.3 新建）：分五批入库工作区 WIP；PENDING 未启动；前置 = LEGACY-CLEANUP 收口。planner 仅登记，零业务代码、未 commit 工作区 WIP。*
 
 *追加：2026-09-25 任务 C 登记（§24 待处理项与预告区新建）：① push PENDING（ahead=2：`e7cbf22`+`0274549`，网络不可达，`git ls-remote` 连续 3 次失败）② P1-COMBO-LEGACY-CLEANUP-001 预告登记（未建卡、未启动、不改其他 pending 卡）。零业务代码、未 commit、未动 §23 收口内容。*
+
+## 24.3d P1-PROCUREMENT-UX-BLOCKERS-001（2026-09-26 Owner 决策登记，暂定范围）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-PROCUREMENT-UX-BLOCKERS-001** |
+| 状态 | **PENDING（未启动，范围暂定）** |
+| 优先级 | P1 |
+| 范围（暂定） | ① **F1**：原料模板 templateCode 不自动生成（缺 → 500"系统繁忙"，应 400 字段级提示）② **F5**：采购收货入总仓后 inventory 行 product_name/unit 为 NULL（应回填非空）③ **配方下拉数据源切换**——**条件项：走查确认是小改/中改才纳入** |
+| 决策规则（Owner 2026-09-26） | 配方下拉数据源切换若走查确认为**大改** → 从本卡移出，走查后**独立卡** |
+| 来源 | F5：`docs/business-logic/01-procurement.md` 已知问题（中，待修复）；F1：`docs/business-logic/03-foods-recipes.md` 已知问题（低，待排期）；配方选料原则：`docs/business-logic/03-foods-recipes.md`「配方选料原则（2026-09-26，Owner 定则）」——配方下拉数据源 = `material_archives`，配方接口/前端下拉不得 join `store_inventory` |
+| 前置 | 无硬前置；**启动前第一动作 = 配方下拉走查**（审现状数据源，裁定小/中/大改，据此定稿本卡范围） |
+| 验收基准 | F1：material_template 缺 templateCode → 400 字段级提示（03 文档验证方式 3）；F5：收货 confirm 后 inventory 行 product_name/unit 非空（01 文档验证方式 3）；配方下拉：接口/前端下拉数据源 = material_archives 且无 store_inventory join（03 文档「对实现的约束」） |
+| 关联 | 与 P1-PROCUREMENT-BLOCKERS-001（A1 payableNo / A2 receiverType / approval_user_id）无文件重叠 |
+
+---
+
+*追加：2026-09-26 P1-PROCUREMENT-UX-BLOCKERS-001 登记（Owner 决策，§24.3d 新建）：暂定范围 = F1 + F5 + 配方下拉数据源切换（条件项）；配方下拉大改 → 走查后独立卡。planner 仅登记，零业务代码、未 commit 其他 WIP。*
