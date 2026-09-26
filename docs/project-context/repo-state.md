@@ -21,6 +21,7 @@
 | P1-ORDER-NUMBER-002（A1） | PASS_WITH_LIMITATION（本地放行 / Gate ALLOW_LOCAL） | 2026-09-23 | order_number 唯一性；限制 KL-069~073 |
 | P1-POS-FOODID-MAP-001 | CLOSED_WITH_REGISTERED_LIMITATIONS | 2026-09-24 | POS food_id 映射；残余 KL-074~076 + ENV-1 |
 | P1-COMBO-ORDER-001 | CLOSED_WITH_REGISTERED_LIMITATION | 2026-09-24 | 套餐下单 + KDS components[]；限制 KL-078~080 + ENV-2；生产均 PROVISIONAL |
+| P1-INVENTORY-LOG-FILTER-001 | **CLOSED（Owner 活体验证收口）** | 2026-09-26 | 库存日志详情过滤；修复 `ece7e6e`（动态 WHERE）+ 4/4 集成测试 + MVN_EXIT=0；Owner 指令：活体截图 + 三调用方代码核对，不走 DS/QA 全流程；残留 1（selectConsumptionStats）→ 独立卡 P1-INVENTORY-CONSUMPTION-STATS-001 |
 
 ## 活动/待启动卡片
 
@@ -30,6 +31,9 @@
 | P1-POS-MENU-500-001 | IMPLEMENTED_QA_PENDING（2026-09-25） | OBS-1 升级卡：FoodCategory 实体对齐 Flyway（commit `872c874`），/menu 500→code=0；任务板 §24.2b |
 | P0-SCHEMA-SINGLE-SOURCE-001 | CLOSED_WITH_REGISTERED_LIMITATION（2026-09-25） | Flyway 唯一真相源 + PG-003/PG-004；41 遗留 sql 归档；对齐基线 v2（KL-081=163 处）+ KL-082（47 黑箱表，应急快照已导出）；下游 P0-FLYWAY-COVERAGE-001（P0 预告） |
 | P0-WORKSPACE-WIP-CONSOLIDATION-001 | PENDING（预告，任务板 §24.3） | 分五批入库工作区 WIP（canonical 迁移 / bug fix / 安全加固 / 新功能 / docs 287）；前置 = LEGACY-CLEANUP 收口 |
+| P1-FOODS-STOCK-SEMANTICS-001 | 阶段 1 完成，待 Owner 审（2026-09-26） | foods.stock 语义诊断：报告 `docs/quality/foods-stock-semantics-diagnosis-001.md`（commit `22ccbdd`）；结论 = 当前人工计数器（Count Down），反推引擎已实现但孤立（StockForecast）；审过 → 阶段 2 |
+| P1-POS-MENU-UNIFICATION-001 | 阶段 2 完成，待 Owner 审 + 4 项拍板（2026-09-26） | POS 菜单统一到 foods/food_categories：设计 `docs/design/pos-menu-unification-design-001.md`（commit `f3eeda4`）；拍板后 → 阶段 3（3a 切换/3b 观察/3c 下线/3d 废弃） |
+| P1-INVENTORY-CONSUMPTION-STATS-001 | PENDING（2026-09-26 建卡，任务板 §24.3f） | selectConsumptionStats 列名错位（change_quantity vs change_amount）+ 三参数未落 WHERE；来源 = LOG-FILTER 残留 1 + Owner 活体截图 500 |
 
 ## PurchaseOrderServiceImpl 双版本状态（2026-09-25 登记）
 

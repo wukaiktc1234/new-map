@@ -108,13 +108,10 @@ Order.vue / CustomerOrder.vue → **与 Home.vue 完全相同的三个产品中�
 
 **Q1 切换顺序**：**先动前端，后端不动**（方案 A 下三接口已存在且生产在用）。若 Owner 选方案 B，则后端先行。
 
-**Q2 灰度方案（待 Owner 拍板）**：
+**Q2 灰度方案（设计推荐 + Owner 确认，见 §8-5）**：
 - POS 客户端 = 每门店部署的 SPA（无原生壳、无客户端版本残留 → 新 build 覆盖旧 build）。
 - 本地单门店（8 菜品/1 门店）→ "单门店灰度"本地近似全量；真实灰度价值只在多门店生产环境（R10）。
-- 候选粒度（按风险从低到高）：
-  1. **按页切换（推荐）**：CustomerOrder（公开扫码页、流量低、无下单资金路径耦合）先切 → 观察 1-3 个营业日 → Order.vue（收银主路径）。
-  2. **feature flag**：`VITE_POS_MENU_SOURCE=unified|legacy`（build-time），多门店可逐店发版。
-  3. 全量一刀切：两页同 build 切换。
+- **设计推荐 = 按页切换**：CustomerOrder（公开扫码页、流量低、无下单资金路径耦合）先切 → 观察 1-3 个营业日 → Order.vue（收银主路径）；不做 feature flag（备选：多门店时 `VITE_POS_MENU_SOURCE=unified|legacy` build-time 逐店发版）。
 - 观察指标：菜单加载成功率（500/401 计数）、产品中心新建菜品 ≤1 次刷新在三页可见（A3）、下单成功率、`/v1/pos/api/menu` 命中数（切换后应归零，A9）、价格展示与 `foods.salePrice` 一致（A10）。
 
 **Q3 双写窗口期**：**两套接口并存**（product-center 三接口本就在生产；legacy `/v1/pos/api/menu` 切流后不下线，留观察窗口）。数据面 `syncLegacyFood` 持续运行（订单路径仍双扣）→ 期间 `food`/`foods` 双表一致性由现有双写维持，**窗口期两套接口都可用**，非单点切换。窗口结束点 = legacy 接口下线（Q6）。
@@ -130,7 +127,7 @@ Order.vue / CustomerOrder.vue → **与 Home.vue 完全相同的三个产品中�
 
 **Q5 分类统一**：`food_categories` = 唯一真相源（自切换日起三页同源）。`food_category`（legacy）**直接逻辑停用**（0 行/0 活写方/唯一读方随本卡消失，见 §2.3）；**本卡不 DROP 表**（无 DB 改动原则），物理删除留废弃阶段迁移卡。`food.food_category` 列（存名字，诊断 3 断点 2）在 `syncLegacyFood` 窗口期继续被写（F6），随 P1-P6 一起废弃。
 
-**Q6 legacy 接口下线节奏（待 Owner 拍板保留时长）**：
+**Q6 legacy 接口下线节奏（保留时长 = 设计推荐 1 个发布周期，Owner 确认，见 §8-6）**：
 - 切流后保留 `/v1/pos/api/*`（5 个接口）至少 1-2 个发布周期。
 - 残留调用方验证三件套：① 代码库 grep（本核查 = 2 处，§2.1）② 观察窗口内访问日志 `/v1/pos/api/*` 命中 = 0（A9）③ POS SPA 发版覆盖确认（顾客扫码页浏览器缓存风险低，PROVISIONAL）。
 - 下线方式：先发版 410 Gone（保留一个周期暴露残留调用）→ 下周期删 `PosApiController` 菜单端点 + `PosApiServiceImpl` + DTO（若 `getAllCombos` L125-171 无其他调用方可同删；`PosApiService` 其余方法先 grep 确认）。
@@ -181,23 +178,65 @@ Order.vue / CustomerOrder.vue → **与 Home.vue 完全相同的三个产品中�
 | R9 | 套餐 `items.foodId` 字符串形状变化（foodCode → 数字串）：`:key` 仅展示用 | 低 | 阶段 3 核实无下游消费 |
 | R10 | 本地单门店 → "单门店灰度"退化为全量；真实灰度只存在于多门店生产 | 信息 | 若生产亦单门店，灰度按"按页 + 时间窗"执行（Q2 候选 1） |
 
-## 7. 实施阶段划分（供阶段 3 建卡参考，本卡不建卡）
+## 7. 执行模型（阶段 3）
+
+### 7.1 实施阶段划分（供阶段 3 建卡参考，本卡不建卡）
 
 | 阶段 | 内容 | 独立回滚面 |
 |---|---|---|
-| 3a 切换 | 前端两页切三接口（+ 可选 flag） | 前端 build |
-| 3b 观察窗口 | 1-2 发布周期，跑 A1-A10 + 访问日志归零 | — |
+| 3a 切换 | 前端两页切三接口（+ 可选 flag）；**第一动作 = §7.3 R1 验证** | 前端 build |
+| 3b 观察窗口 | 1 个发布周期，跑 A1-A10 + 访问日志归零（时长 = §8-5 设计推荐，待 Owner 确认） | — |
 | 3c 接口下线 | legacy `/v1/pos/api/*` 410 → 删代码 | 后端发版 |
 | 3d 废弃（另卡） | P1-P6 → 删 `syncLegacyFood` + DROP `food_category`（+ `food` 表裁定） | 后端发版 + 迁移 |
 
-## 8. 待 Owner 拍板清单
+### 7.2 接口字段 gap 对比表（legacy vs 新，3a 切换与 A1/A2/A10 验收参照）
+
+**端点级**：
+
+| 项 | legacy（Order/CustomerOrder 现状） | 新（Home 现状 = 切换目标） | gap / 处置 |
+|---|---|---|---|
+| 端点 | `GET /v1/pos/api/menu`（单请求） | `GET /v1/product-center/foods/on-sale` + `/combos/on-sale` + `/categories/tree/enabled`（3 并行请求） | 请求数 1→3（并行；Home.vue 已生产运行此模式） |
+| 认证 | JWT（`SecurityConfig` L123） | JWT（L170 落 anyRequest） | 对等（§2.4）；CustomerOrder 免登录页 401 为既有风险（R2） |
+| 数据源 | legacy `food` 表（`food_status ∈ {'1','active'}`）+ legacy `food_category`（0 行） | `foods`（on-sale 口径）+ `food_categories`（enabled） | 真相源归一（本卡目标） |
+| 分类形状 | `PosCategoryDTO{categoryId = categoryCode（字符串 code）, categoryName, sortOrder}` | `CategoryVO{categoryId: number, categoryName, parentId, children[], sortOrder, foodCount}` | id 语义 = **code 字符串 → 数字 id 字符串**（`String()` 后均为字符串，`el-radio :label`/`activeCategory` 比较兼容；§3.3） |
+| 套餐形状 | `PosComboDTO{price: 元, peopleCount = 硬编码 2（L142）, items[].foodId = foodCode 字符串}` | `ComboVO → Combo{price: 元, 无 peopleCount, items[].foodId = 数字串}` | peopleCount 缺失（R4）；items.foodId 字符串语义（R9）——均 3a 核实 |
+
+**字段级（菜品）**：
+
+| 字段 | legacy `PosDishDTO` 值 | 新 `foodVOToDish` 输出 | gap / 动作 |
+|---|---|---|---|
+| `dishId` | `foodCode`（码） | `String(foodId)`（数字串） | **R1（最高风险）**：订单 payload 身份键须 = `dishCode`；验证 = §7.3 |
+| `dishCode` | `foodCode` | `vo.foodCode`（L150） | ✓ 一致（订单身份键，不变） |
+| `categoryId` | 分类**名字**（L88 直存 `food.food_category`） | `String(categoryId)` 数字串 | radio 字符串比较兼容；"其他"兜底语义消失（R3） |
+| `categoryName` | code 表查 + "其他"兜底（L89） | 后端拼好直出 | ✓ |
+| `price` | 元（BigDecimal） | 分 → `fenToYuanNumber` | ✓ 转换已处理（A10 验收） |
+| `stock` | **无字段** | 真实值（999 兜底 L160） | 新增数据；切换期 UI 建议不显示（R5，§8-3 待拍板） |
+| `description`/`imageUrl` | ✓ 同 | ✓ 同 | — |
+| 套餐 `items[].foodId` | `foodCode` 字符串 | 数字串 | 展示用 `:key`（R9，3a 核实无下游） |
+| 套餐 `peopleCount` | 硬编码 2 | 无字段 | 3a 核实模板是否消费（R4） |
+
+### 7.3 R1 缓解：具体验证步骤（3a 第一动作，全过方可切流发布）
+
+1. **前端 payload 静态审计**：读 `Order.vue` goToPayment（L322-331，`items` JSON 经 query 传 `/payment`）→ `Payment.vue` L662 / `usePayment.ts` L101 `posApi.createOrder(orderData)` 的构造路径。断言：`orderData.items[*]` 身份字段 = `foodCode`/`dishCode`（**非** `dishId`），且其值源自 `foodVOToDish` L150（`vo.foodCode`）
+2. **后端消费静态审计**：读 `PosOrderCreateServiceImpl` canonical 路径——订单项携 `food_code`（字符串；`useMenu.ts` L32 注释："后端 PosOrderCreateServiceImpl.createOrder 通过 food_code 查询 food 表并扣减库存"），映射数字 id 落库（P1-POS-FOODID-MAP-001 B2 既有机制）；断言扣减键 = `food_code`（`FoodNewMapper.deductStock` L54 `WHERE food_code = ?`），不消费 `dishId`
+3. **e2e 正例（活体）**：Order.vue 选已知菜品（如 `FD202608010001`，记切换前 `foods.stock` = S0）下 N 份 → 断言：① `order_items` 行 `food_id` = 该菜数字 id（非 foodCode 字符串、非其他菜）② `foods.stock` = S0−N ③ `food.stock` 同步 −N（双写窗口）④ KDS 收到正确菜名
+4. **e2e 交叉例（活体）**：CustomerOrder.vue 对**另一分类**菜品下单 → 断言 `order_items.food_id` 正确（防分类 id 语义翻转串菜）
+5. **套餐路径（活体）**：Order.vue 下含套餐单 → 断言组件扣料 `combo_ingredients` 命中正确 food_id（与 P1-COMBO-ORDER-001 REG-ORDER-012 基线 126 项一致）
+6. **门禁**：1-5 任一不过 → 不切流（回滚面 = 前端 build，§7.1）
+
+## 8. Owner 拍板/确认清单
+
+**拍板项（4 项，Owner 裁决后进入阶段 3）**：
 
 1. 方案 A（推荐，后端零改动）vs 方案 B（新增统一端点）
-2. 灰度粒度：按页切换（推荐）/ feature flag / 一刀切；观察窗口时长
-3. 切换后 Order/CustomerOrder 是否显示 stock（R5：建议不显示）
-4. CustomerOrder 顾客页 401 基线核实结果（R2）——是否随本卡一并修复
-5. legacy 接口下线保留时长（1-2 周期建议）
-6. Q4-P1 二选一：订单路径切 foods 硬扣 vs 接受自愈+双扣机制（属 3d 卡，但需现在定方向）
+2. 切换后 Order/CustomerOrder 是否显示 stock（R5：建议不显示）
+3. CustomerOrder 顾客页 401 基线核实结果（R2）——是否随本卡一并修复
+4. Q4-P1 二选一：订单路径切 foods 硬扣 vs 接受自愈+双扣机制（属 3d 卡，但需现在定方向）
+
+**确认项（2 项，设计已给推荐，Owner 确认即可）**：
+
+5. 灰度粒度 + 观察窗口（**设计推荐**）：**按页切换**——CustomerOrder（公开扫码页、流量低、无下单资金路径耦合）先切 → 观察 **1-3 个营业日** → Order.vue；不做 feature flag（单门店 SPA，build 级切换已足够细；若 Owner 知生产为多门店，改为 `VITE_POS_MENU_SOURCE=unified|legacy` build-time 逐店发版）；3b 观察窗口 = **1 个发布周期**，准出 = A9 访问日志归零。（依据：R10——单门店假设下门店级灰度无意义）
+6. legacy 接口下线保留时长（**设计推荐**）：**保留 1 个发布周期**（不取 2 周期——5 个 legacy 接口中 4 个已是死接口，唯一活路径即本卡切换的 2 处，残留概率低）；准出 = A9（观察窗口 `/v1/pos/api/*` 命中 = 0）+ SPA 发版覆盖确认；下线方式 = 410 Gone（1 周期）→ 删代码（下周期）
 
 ## 9. 阶段 1 登记清单（本卡发现、不顺手修）
 

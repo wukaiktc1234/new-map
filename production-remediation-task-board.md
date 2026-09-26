@@ -7933,3 +7933,34 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 *追加：2026-09-26 P1-PROCUREMENT-UX-BLOCKERS-001 登记（Owner 决策，§24.3d 新建）：暂定范围 = F1 + F5 + 配方下拉数据源切换（条件项）；配方下拉大改 → 走查后独立卡。planner 仅登记，零业务代码、未 commit 其他 WIP。*
 
 *追加：2026-09-26 Owner 细化 ③（数据源 + 分类过滤 + 不硬编码约束 + 分类表无字段即升级规则）+ 只读核查（Flyway V20260629_005 DDL / 实体 / 本地活体 DB information_schema 三方核对）：material_categories 无 usable_in_recipe 类业务字段 → ③ 条件触发升级"大改"、移出本卡（PROVISIONAL：生产 DB 未核实）；本卡生效范围 = F1 + F5，③ 走查后独立卡。零业务代码。*
+
+## 24.3e P1-INVENTORY-LOG-FILTER-001（2026-09-26 开卡并实施，来源三项诊断报告诊断 1）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-INVENTORY-LOG-FILTER-001** |
+| 状态 | **✅ CLOSED（2026-09-26，Owner 活体验证收口）**——修复 commit `ece7e6e`（`InventoryLogMapper.xml` `selectInventoryLogPage` 补动态 WHERE，3 文件 +211）+ 集成测试 4/4 + BUILD SUCCESS（MVN_EXIT=0）；**Owner 指令：Owner 活体截图 + 三调用方代码核对收口，不走 DS/QA 全流程** |
+| PG-005.1 豁免 | Owner 批准（修复方向唯一 / 无产品决策 / 无架构变更，跳过设计阶段） |
+| 根因 | `selectInventoryLogPage` XML 无 WHERE，mapper 接口 6 个 @Param 全部被静默丢弃 → 库存详情弹窗展示全局日志（仅 create_time DESC） |
+| 三调用方代码核对（2026-09-26 对 HEAD `ece7e6e` 逐条复核） | ① `StoreInventory.vue` L350-369 详情弹窗：`handleView` → `loadTransactionRecords(row.materialId, row.warehouseId)` → `inventory-log.ts` L69-70 `materialId→productId` + `warehouseId` → WHERE 命中 `product_id` + `warehouse_id`（XML L7-12）✓（本 bug 路径：弹窗仅见该物料+该仓库日志）② `InventoryConsumptionController` L47：`getInventoryLogPage(pageParam, null, null, "out", null, null, null)` → WHERE 命中 `operation_type='out'`（XML L13-15）✓ ③ `WarehouseOverview.vue` L271-275 近期动态：不传参或仅 warehouseId → `deleted=0` 全局（或按仓库过滤）（XML L4/L10-12）✓（全局语义维持）；全库无第三方依赖"无 WHERE"行为 |
+| 活体证据 | Owner 活体截图（2026-09-26，Owner 持有） |
+| 实施记录 | `docs/architecture/03-review/p1-inventory-log-filter-001-implementation-record-001.md`（§6 收口记录） |
+| 残留处置 | 残留 1（`selectConsumptionStats` 列名错位）→ **升级独立卡 §24.3f**；残留 2（argLine 环境）/ 残留 3（时间参数无格式校验）维持登记 |
+
+## 24.3f P1-INVENTORY-CONSUMPTION-STATS-001（2026-09-26 Owner 指令建卡，新 bug）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-INVENTORY-CONSUMPTION-STATS-001** |
+| 状态 | **PENDING（未启动）** |
+| 优先级 | P1 |
+| 来源 | ① P1-INVENTORY-LOG-FILTER-001 实施记录 §4 残留 1（登记，存量问题）② **Owner 活体截图（2026-09-26）**：`GET /v1/inventory/consumptions/stats` 返回 500 |
+| Bug 事实（2026-09-26 代码 + 活体 DB 核对） | `InventoryLogMapper.xml` L27-29 `selectConsumptionStats`：① SQL 写 `SUM(change_quantity)`，实表/实体列名是 **`change_amount`**（实体 `InventoryLog` L56 `@TableField("change_amount")` + 活体 `information_schema` 12 列核对：id/product_id/warehouse_id/operation_type/before_stock/after_stock/**change_amount**/operator_id/remark/create_time/update_time/deleted）→ 任何调用 500（PG column does not exist）② mapper 接口 L45-47 三参数（startTime/endTime/operationType）在 XML **全部未引用（无 WHERE）** → 修列名后仍是全局统计 ③ 服务层硬编码 `operationType="out"`（`InventoryLogServiceImpl` L62）未落入 SQL |
+| 接口/调用方 | `GET /v1/inventory/consumptions/stats`（`InventoryConsumptionController` L127-141，`@PreAuthorize inventory:query`）；**前端 0 直连**（frontend/src 全 grep；最近似为另一端点 `/v1/inventory/stats/consumption-trend` → `InventoryStatsController` L89）→ 当前仅直调 API 触达（Owner 截图路径即此） |
+| 修复方向（初步，阶段 2 裁定） | 列名修正 `change_amount` + 补动态 WHERE（startTime/endTime/operationType + `deleted=0`）；模板现成 = 同文件 L4-26（本批修复同款） |
+| 验证约束 | 本地 `inventory_log` 0 行 → 行级验证需造测试数据（沿 `InventoryLogFilterIntegrationTest` fixture 模式）或生产数据（PROVISIONAL） |
+| 关联 | P1-INVENTORY-LOG-FILTER-001（同文件/同模式）；`docs/quality/pos-menu-inventory-category-diagnostics-001.md` 诊断 1（同链路） |
+
+---
+
+*追加：2026-09-26 Owner 批量指令（任务 A/B/C 批次）：① §24.3e P1-INVENTORY-LOG-FILTER-001 收口登记（Owner 活体截图 + 三调用方代码核对，不走 DS/QA 全流程）② §24.3f 新卡 P1-INVENTORY-CONSUMPTION-STATS-001（PENDING）③ 在途卡补登：P1-FOODS-STOCK-SEMANTICS-001（阶段 1 诊断完成，报告 `docs/quality/foods-stock-semantics-diagnosis-001.md` commit `22ccbdd`，待 Owner 审 → 阶段 2）/ P1-POS-MENU-UNIFICATION-001（阶段 2 设计完成，`docs/design/pos-menu-unification-design-001.md` commit `f3eeda4`，待 Owner 审 + 4 项拍板 → 阶段 3）④ 本批零业务代码。*

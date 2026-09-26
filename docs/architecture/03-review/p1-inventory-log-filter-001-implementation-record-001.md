@@ -5,7 +5,7 @@
 | 项 | 值 |
 |----|------|
 | Task ID | `P1-INVENTORY-LOG-FILTER-001` |
-| Stage | **IMPLEMENTED_VERIFIED（2026-09-26）**——修复 + 4/4 测试通过 + BUILD SUCCESS；待 DS 抽检 + QA 独立验收 |
+| Stage | **CLOSED（2026-09-26，Owner 活体验证收口）**——修复 + 4/4 测试通过 + BUILD SUCCESS；Owner 指令：活体截图 + 三调用方代码核对收口，**不走 DS/QA 全流程**（收口记录见 §6） |
 | 根因 | `docs/quality/pos-menu-inventory-category-diagnostics-001.md` 诊断 1：`InventoryLogMapper.xml` 的 `selectInventoryLogPage` 无 WHERE，mapper 接口 6 个 @Param 全部被静默丢弃 |
 | PG-005.1 豁免 | Owner 批准（修复方向唯一 / 无产品决策 / 无架构变更，跳过设计阶段） |
 
@@ -47,3 +47,13 @@
 - 开卡前：464 M 全部真实改动（463 存量 + 1 本卡编辑）+ 1 存量删除，**零幻影**；目标 XML 开卡时零 WIP 重叠
 - 精确 add：本卡 3 文件（XML + 测试 + 实施记录），无 `.`/`-A`/目录通配
 - commit 前 `git diff --cached` 审查通过
+
+## 6. 收口记录（2026-09-26，Owner 指令）
+
+- **收口方式**：Owner 活体验证（活体截图，Owner 持有）+ 三调用方代码核对；**按 Owner 指令不走 DS/QA 全流程**
+- **三调用方代码核对**（对 HEAD `ece7e6e` 逐条复核，2026-09-26）：
+  1. `frontend/src/views/warehouse/StoreInventory.vue` L350-369：详情弹窗 `handleView(row)` → `loadTransactionRecords(row.materialId, row.warehouseId)` → `inventoryLogApi.getPage`（`frontend/src/api/warehouse/inventory-log.ts` L69-70：`materialId→productId`、`warehouseId→warehouseId`）→ WHERE 命中 `product_id` + `warehouse_id`（XML L7-12）✓——本 bug 路径：弹窗仅见该物料+该仓库日志
+  2. `InventoryConsumptionController` L47：`getInventoryLogPage(pageParam, null, null, "out", null, null, null)` → WHERE 命中 `operation_type = 'out'`（XML L13-15）✓——消耗记录仅 out
+  3. `WarehouseOverview.vue` L271-275：近期动态不传参或仅 `warehouseId` → `deleted = 0` 全局（或按仓库过滤）（XML L4 / L10-12）✓——全局语义维持
+- **残留 1 升级独立卡**：`selectConsumptionStats` 列名错位 → **P1-INVENTORY-CONSUMPTION-STATS-001**（任务板 §24.3f，PENDING）
+- **登记同步**：任务板 §24.3e 收口登记；`docs/project-context/repo-state.md` 已更新（PG-002）
