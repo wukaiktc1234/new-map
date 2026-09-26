@@ -1,4 +1,4 @@
-﻿# 生产整改任务池（Production Remediation Task Board）
+# 生产整改任务池（Production Remediation Task Board）
 
 > 生成日期：2026-08-10
 > 输入：`production-audit-report.md`（前端 664 文件）+ `docs/quality/data-authenticity-audit-20260810.md`（前后端 3,400 文件）
@@ -7776,6 +7776,9 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
   - `437aff9` docs: correct generate-order endpoint finding
   - `d8104a4` docs(governance): record multi-store decision + split role-store cards
 - 恢复动作：网络恢复后 `git push origin master`，结果回写本条
+
+## 追加 3（2026-09-26）：历史测试单 stockin 1/2 卡 status=0 登记（来源 P1-PROCUREMENT-BLOCKERS-001 A1 收口确认 4）
+- **PENDING（建议人工处理）**：历史测试单 stockin 1/2 因 A1 撞号（旧编号 "AP"+0填充 stockinId 与历史编号空间 AP0000000001~0026 重叠）卡在 status=0（未 confirm）；A1 修复后（payableNo 改 AP+日期+当日序号 + 幂等键改按 stockin_id 查重）可通过 confirm 解卡；建议人工处理（数据清理或补 confirm）。此前仅存在于实施记录与 `docs/business-logic/01-procurement.md` 已知问题节，本条为 task-board 正式登记。
 
 ## 追加（2026-09-25）
 本批 4 commit 待推（同网络问题）：
