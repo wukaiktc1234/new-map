@@ -52,3 +52,14 @@
 - 已完成：S1、S2（草案）；开工前清（任务板 / INDEX.md 独立 commit `23aa2e1` / 前置包 commit `0c3126e` / `14b9639` 已上远端）
 - 下一步：S3 核心实体/Mapper 层（工作量最大段 S3-S8 的起点）
 - 风险提示：S4 服务合并触及 16 个 InventoryService 调用方文件与 5 个旁路，回归面全在行为快照覆盖内
+
+## 5. S4c-1 影响面核实（Owner 指令，2026-09-28 活体）
+
+「未映射仓库显式拒绝」的影响面（三条链逐查）：
+
+1. **purchase_stockins**：13 张 wh∈{3..10}（wh4/5/8/9/10，全为 7 月底 E2E/Test 产物）**全部 status=1 已入库（终态）**，无待确认单。唯一暴露面 = 作废这些历史测试单时将命中新拒绝逻辑（测试遗留，可接受）。
+2. **purchase_arrivals**：0 张 wh∈{3..10}（全部 wh1 或 NULL），零暴露。
+3. **inventory_transfers**：全部 7 张均为 1→2（WH_A/WH_B，两仓皆已映射）✅；4 张待执行（transfer_status=2 已审批）中 TR20260724001/002 的 product_id=999999 为虚构物料——执行将命中"出抛 NOT_FOUND"（999999 虚账已按 §一.19 清除），属预期拒绝而非事故。
+
+**结论**：无真实业务路径受影响，测试遗留为主 → S4c-1 维持通过。
+**测试重锚性质确认**：5 个测试文件中实际修改仅 2 个（PurchaseStockinServiceImplTest / PurchaseReturnServiceImplTest），均为 mock 目标变更；断言值变化仅 1 处——PurchaseStockin 的 verify 由 `anyString()` 收紧为 `eq(1001L)`（= fixture warehouseId 的恒等映射，语义等价更严格）；其余 3 个测试文件（MaterialDeductionAudit / OrderNewDeduct / ConsumptionStats）零改动全绿。
