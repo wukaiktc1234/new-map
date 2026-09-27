@@ -254,44 +254,53 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
         return "IC" + productId + "-" + System.currentTimeMillis();
     }
     
+    /**
+     * 销售出库扣减（M3-M4 S4c-2 收编，对照表 #1）：
+     * - 移除直写旁路（inventoryMapper.updateById）与 product_id/store_id 污染列查询
+     * - Q5=B（Owner 2026-09-28 批复）：扣减不足改抛 INVENTORY_INSUFFICIENT，订单链感知缺货；
+     *   原"静默钳 0"与"不写流水"行为废止
+     * - locationId 经 store_id 别名解析（规则 3/4）
+     */
     private void deductInventoryForOrder(Long orderId) {
         // OICBE-B2-001 类型适配（T-1 主键 String 化）：Mapper.selectOrderDetailList 签名 Long → String
         List<SalesOrderDetail> details = salesOrderMapper.selectOrderDetailList(String.valueOf(orderId));
-        
+
         String storeIdStr = SecurityUtils.getCurrentUserStoreId();
         Long storeId = storeIdStr != null ? Long.parseLong(storeIdStr) : null;
         String username = SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "system";
-        
-        for (SalesOrderDetail detail : details) {
-            LambdaQueryWrapper<Inventory> inventoryQuery = new LambdaQueryWrapper<>();
-            inventoryQuery.eq(Inventory::getProductId, detail.getProductId());
-            inventoryQuery.eq(Inventory::getStoreId, storeId);
-            
-            Inventory inventory = inventoryMapper.selectOne(inventoryQuery);
-            
-            if (inventory != null && inventory.getCurrentStock() != null) {
-                BigDecimal currentStock = inventory.getCurrentStock();
-                BigDecimal quantity = BigDecimal.valueOf(detail.getQuantity());
-                BigDecimal newStock = currentStock.subtract(quantity);
-                if (newStock.compareTo(BigDecimal.ZERO) < 0) {
-                    newStock = BigDecimal.ZERO;
-                }
-                inventory.setCurrentStock(newStock);
-                inventory.setUpdateTime(LocalDateTime.now());
-                inventoryMapper.updateById(inventory);
-                
-                InventoryCode inventoryCode = new InventoryCode();
-                inventoryCode.setInventoryId(inventory.getId());
-                inventoryCode.setCodeType("CUSTOM");
-                inventoryCode.setUniqueCode(detail.getInventoryCode() != null ? detail.getInventoryCode() : "");
-                inventoryCode.setQrCode(generateQRCode(detail.getInventoryCode() != null ? detail.getInventoryCode() : ""));
-                inventoryCode.setStatus(1);
-                inventoryCode.setStoreId(storeId);
-                inventoryCode.setCreatedBy(username);
-                inventoryCodeMapper.insert(inventoryCode);
-            }
+
+        Long locationId = inventoryService.resolveLocationIdByStoreId(storeId);
+        if (locationId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                "当前用户未分配门店（或门店未映射位置），无法执行销售出库扣减：storeId=" + storeId);
         }
-        
+
+        for (SalesOrderDetail detail : details) {
+            // detail.productId 为 varchar（T-7），统一账 material_id 为 BIGINT：非数值直接报错（禁止静默跳过）
+            final Long materialId;
+            try {
+                materialId = Long.parseLong(detail.getProductId());
+            } catch (NumberFormatException e) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "订单明细物料ID非数值，无法定位库存：productId=" + detail.getProductId());
+            }
+            // Q5=B：库存行不存在或数量不足均抛出（INVENTORY_NOT_FOUND / INVENTORY_INSUFFICIENT），由订单链感知缺货
+            inventoryService.decreaseStockAtLocation(locationId, materialId,
+                    BigDecimal.valueOf(detail.getQuantity()), 2,
+                    "销售出库 - 订单:" + orderId);
+
+            Inventory ledger = inventoryService.getByLocationAndMaterial(locationId, materialId);
+            InventoryCode inventoryCode = new InventoryCode();
+            inventoryCode.setInventoryId(ledger != null ? ledger.getInventoryId() : null);
+            inventoryCode.setCodeType("CUSTOM");
+            inventoryCode.setUniqueCode(detail.getInventoryCode() != null ? detail.getInventoryCode() : "");
+            inventoryCode.setQrCode(generateQRCode(detail.getInventoryCode() != null ? detail.getInventoryCode() : ""));
+            inventoryCode.setStatus(1);
+            inventoryCode.setStoreId(storeId);
+            inventoryCode.setCreatedBy(username);
+            inventoryCodeMapper.insert(inventoryCode);
+        }
+
         createFinanceVoucherForOrder(orderId);
     }
     

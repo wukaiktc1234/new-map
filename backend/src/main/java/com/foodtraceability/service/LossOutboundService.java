@@ -12,6 +12,10 @@ import com.foodtraceability.entity.LossOutbound;
 import com.foodtraceability.entity.Product;
 import com.foodtraceability.entity.Warehouse;
 import com.foodtraceability.mapper.InventoryMapper;
+import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.service.LocationService;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.mapper.LossOutboundMapper;
 import com.foodtraceability.mapper.ProductMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
@@ -30,11 +34,13 @@ public class LossOutboundService {
     private static final Logger log = LoggerFactory.getLogger(LossOutboundService.class);
 
 
-    public LossOutboundService(LossOutboundMapper lossOutboundMapper, ProductMapper productMapper, WarehouseMapper warehouseMapper, InventoryMapper inventoryMapper) {
+    public LossOutboundService(LossOutboundMapper lossOutboundMapper, ProductMapper productMapper, WarehouseMapper warehouseMapper, InventoryMapper inventoryMapper, InventoryService inventoryService, LocationService locationService) {
         this.lossOutboundMapper = lossOutboundMapper;
         this.productMapper = productMapper;
         this.warehouseMapper = warehouseMapper;
         this.inventoryMapper = inventoryMapper;
+        this.inventoryService = inventoryService;
+        this.locationService = locationService;
     }
 
     private final LossOutboundMapper lossOutboundMapper;
@@ -44,6 +50,8 @@ public class LossOutboundService {
     private final WarehouseMapper warehouseMapper;
 
     private final InventoryMapper inventoryMapper;
+    private final InventoryService inventoryService;
+    private final LocationService locationService;
 
     public IPage<LossOutbound> getPage(int page, int pageSize, String lossNo, String status, String startDate, String endDate) {
         Page<LossOutbound> pageParam = new Page<>(page, pageSize);
@@ -104,7 +112,7 @@ public class LossOutboundService {
             throw new RuntimeException("报损单状态不正确，无法审核");
         }
 
-        updateInventory(lossOutbound.getProductId(), lossOutbound.getWarehouseId(), -lossOutbound.getLossQuantity());
+        updateInventory(lossOutbound.getProductId(), lossOutbound.getWarehouseId(), -lossOutbound.getLossQuantity(), lossOutbound.getLossNo());
 
         lossOutbound.setStatus("approved");
         lossOutbound.setApproverId(approverId);
@@ -119,38 +127,24 @@ public class LossOutboundService {
         return lossOutbound;
     }
 
-    private void updateInventory(Long productId, Long warehouseId, Integer quantity) {
-        LambdaQueryWrapper<Inventory> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(Inventory::getProductId, productId)
-                .eq(Inventory::getWarehouseId, warehouseId);
-
-        Inventory inventory = inventoryMapper.selectOne(queryWrapper);
-
-        if (inventory == null) {
-            if (quantity < 0) {
-                throw new RuntimeException("库存不足，无法扣减");
-            }
-            inventory = new Inventory();
-            inventory.setProductId(productId);
-            inventory.setWarehouseId(warehouseId);
-            inventory.setCurrentStock(BigDecimal.valueOf(quantity));
-            inventory.setSafetyStock(BigDecimal.ZERO);
-            inventory.setCreateTime(LocalDateTime.now());
-            inventory.setUpdateTime(LocalDateTime.now());
-            inventory.setDeleted(0);
-            inventoryMapper.insert(inventory);
-            log.info("创建库存记录: productId={}, warehouseId={}, stock={}", productId, warehouseId, quantity);
+    /**
+     * M3-M4 S4c-2 收编（对照表 #2）：报损出库经统一库存服务，
+     * 污染列 product_id 查询与直写旁路移除，自然获得乐观锁重试与流水。
+     */
+    private void updateInventory(Long productId, Long warehouseId, Integer quantity, String lossNo) {
+        com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "仓库未映射到位置，无法执行报损库存变动：warehouseId=" + warehouseId);
+        }
+        Long locationId = location.getLocationId();
+        String sourceRef = "报损出库 - " + lossNo;
+        if (quantity < 0) {
+            inventoryService.decreaseStockAtLocation(locationId, productId,
+                    BigDecimal.valueOf(-quantity), 2, sourceRef);
         } else {
-            BigDecimal oldStock = inventory.getCurrentStock();
-            BigDecimal newStock = oldStock.add(BigDecimal.valueOf(quantity));
-            if (newStock.compareTo(BigDecimal.ZERO) < 0) {
-                throw new RuntimeException("库存不足，当前库存: " + oldStock);
-            }
-            inventory.setCurrentStock(newStock);
-            inventory.setUpdateTime(LocalDateTime.now());
-            inventoryMapper.updateById(inventory);
-            log.info("更新库存: productId={}, warehouseId={}, oldStock={}, change={}, newStock={}",
-                    productId, warehouseId, oldStock, quantity, newStock);
+            inventoryService.increaseStockAtLocation(locationId, productId,
+                    null, BigDecimal.valueOf(quantity), null, null, 1, sourceRef);
         }
     }
 

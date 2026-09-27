@@ -10,6 +10,10 @@ import com.foodtraceability.entity.Product;
 import com.foodtraceability.entity.Warehouse;
 import com.foodtraceability.mapper.OtherInboundMapper;
 import com.foodtraceability.mapper.InventoryMapper;
+import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.service.LocationService;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.mapper.ProductMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
 import org.slf4j.Logger;
@@ -27,16 +31,20 @@ public class OtherInboundService {
     private static final Logger log = LoggerFactory.getLogger(OtherInboundService.class);
     
 
-    public OtherInboundService(OtherInboundMapper otherInboundMapper, InventoryMapper inventoryMapper, ProductMapper productMapper, WarehouseMapper warehouseMapper) {
+    public OtherInboundService(OtherInboundMapper otherInboundMapper, InventoryMapper inventoryMapper, ProductMapper productMapper, WarehouseMapper warehouseMapper, InventoryService inventoryService, LocationService locationService) {
         this.otherInboundMapper = otherInboundMapper;
         this.inventoryMapper = inventoryMapper;
         this.productMapper = productMapper;
         this.warehouseMapper = warehouseMapper;
+        this.inventoryService = inventoryService;
+        this.locationService = locationService;
     }
 
     private final OtherInboundMapper otherInboundMapper;
     
     private final InventoryMapper inventoryMapper;
+    private final InventoryService inventoryService;
+    private final LocationService locationService;
     
     private final ProductMapper productMapper;
     
@@ -93,40 +101,19 @@ public class OtherInboundService {
         return inbound;
     }
     
+    /**
+     * M3-M4 S4c-2 收编（对照表 #3）：其他入库经统一库存服务；
+     * 直写旁路与 intValue() 精度截断移除，自然获得乐观锁重试与流水。
+     */
     private void updateInventory(Long productId, Long warehouseId, Integer quantity, String productName, String warehouseName, String unit) {
-        /* 修复：使用getMaterialId替代getProductId */
-        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Inventory::getMaterialId, productId)
-               .eq(Inventory::getWarehouseId, warehouseId)
-               .eq(Inventory::getDeleted, 0);
-
-        Inventory inventory = inventoryMapper.selectOne(wrapper);
-
-        if (inventory == null) {
-            inventory = new Inventory();
-            /* 修复：使用setMaterialId替代setProductId */
-            inventory.setMaterialId(productId);
-            /* 修复：使用setMaterialName替代setProductName */
-            inventory.setMaterialName(productName);
-            inventory.setWarehouseId(warehouseId);
-            /* 注意：Inventory实体没有warehouseName字段，此行可能需要移除或调整 */
-            // inventory.setWarehouseName(warehouseName);
-            /* 修复：使用setQuantity（BigDecimal）替代setCurrentStock（int） */
-            inventory.setQuantity(BigDecimal.valueOf(quantity));
-            /* 注意：Inventory实体没有safetyStock字段，此行可能需要移除或调整为minSafeQty */
-            // inventory.setSafetyStock(0);
-            inventory.setUnit(unit);
-            inventory.setDeleted(0);
-            inventoryMapper.insert(inventory);
-            log.info("创建新库存记录，物料ID：{}，仓库ID：{}，数量：{}", productId, warehouseId, quantity);
-        } else {
-            /* 修复：使用quantity字段进行计算 */
-            int currentStock = inventory.getQuantity() != null ? inventory.getQuantity().intValue() : 0;
-            inventory.setQuantity(BigDecimal.valueOf(currentStock + quantity));
-            inventoryMapper.updateById(inventory);
-            log.info("更新库存，物料ID：{}，仓库ID：{}，增加数量：{}，当前库存：{}",
-                    productId, warehouseId, quantity, inventory.getQuantity());
+        com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "仓库未映射到位置，无法执行其他入库：warehouseId=" + warehouseId);
         }
+        inventoryService.increaseStockAtLocation(location.getLocationId(), productId,
+                productName, BigDecimal.valueOf(quantity), unit, null, 1,
+                "其他入库 - " + warehouseName);
     }
     
     private String generateInboundNo() {

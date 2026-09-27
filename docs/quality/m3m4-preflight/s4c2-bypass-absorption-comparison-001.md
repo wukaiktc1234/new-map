@@ -26,3 +26,18 @@
 ---
 
 **停点**：本表交 Owner 过目。批复前 S4c-2 不动工；#1 文件在静默钳 0 问题表态前保持现状。
+
+
+---
+
+## 执行结果（2026-09-28，Owner 批复后）
+
+| # | 批复/结果 |
+|---|---|
+| 1 | SalesOrder：**Q5=B 已执行**——扣减不足改抛 INVENTORY_INSUFFICIENT（订单链感知缺货），静默钳 0 与"不写流水"废止；另：明细 productId 为 varchar（T-7），非数值时报 PARAM_ERROR（禁止静默跳过）；未分配门店/未映射位置显式拒绝。SalesOrderServiceImplTest 7/7 绿（该测试未覆盖扣减路径，Q5=B 的行为变化由 S8 测试重锚补用例） |
+| 2 | LossOutbound：已收编——经 decrease/increaseStockAtLocation，污染列 product_id 查询与直写旁路移除，自然获得乐观锁重试与流水（行为增强已登记） |
+| 3 | OtherInbound：已收编——intValue() 精度截断随直写旁路移除而修复（数量精度 NUMERIC(14,4)） |
+| 4 | HardwareDevice：未动（现状迁移，统一表列兼容） |
+| 5 | WarningScheduler：未动（S7 中改扫描 SQL 列名） |
+| 附 | 第 5 处冒充（PurchaseArrival:554-555）随 M5（Owner 指令） |
+| 验证 | 编译 BUILD SUCCESS；四类测试 29/29 绿 |
