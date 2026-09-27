@@ -16,8 +16,7 @@ const getConnectHeaders = (): Record<string, string> => {
 
 const defaultConfig: WebSocketConfig = {
   url: getWebSocketUrl(),
-  reconnectInterval: 3000,
-  maxReconnectAttempts: 10
+  reconnectInterval: 3000
 };
 
 class WebSocketService {
