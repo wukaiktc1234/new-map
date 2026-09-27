@@ -20,6 +20,48 @@ import java.util.List;
  */
 public interface InventoryService extends IService<Inventory> {
 
+    // ==================== M3-M4 位置维度方法（S4a 新增；S4b 前委托 StoreInventoryService，运行时行为不变） ====================
+
+    /**
+     * 按位置ID+物料ID查库存（统一账唯一键定位）
+     * @param locationId 位置ID（STORE/CENTRAL/DEPOT 统一维度）
+     * @return 不存在返回 null
+     */
+    Inventory getByLocationAndMaterial(Long locationId, Long materialId);
+
+    /**
+     * 按位置增加库存（入建出抛不对称的"入"侧：不存在则新建行）
+     * 加权平均法计算单位成本
+     */
+    void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
+                                 java.math.BigDecimal quantity, String unit, Long unitCost,
+                                 Integer changeType, String sourceRef);
+
+    /**
+     * 按位置扣减库存（"出"侧：不存在或不足抛 BusinessException）
+     * @return 出库总成本（分）
+     */
+    Long decreaseStockAtLocation(Long locationId, Long materialId,
+                                 java.math.BigDecimal quantity,
+                                 Integer changeType, String sourceRef);
+
+    /**
+     * 按位置分页查库存（统一账维度）
+     */
+    IPage<Inventory> getStockPageAtLocation(Page<Inventory> page, Long locationId,
+                                            Long materialId, String materialName);
+
+    /**
+     * 低库存列表（location 维度；阈值列按位置类型语义：安全线/预警阈值双列并存，宪法裁定日志）
+     */
+    java.util.List<Inventory> getLowStockAtLocation(Long locationId);
+
+    /**
+     * store_id（STORE 型 location 别名）→ location_id 解析（规则 3/4 标准入口的便捷方法）。
+     * 解析失败返回 null，调用方决定拒绝语义。
+     */
+    Long resolveLocationIdByStoreId(Long storeId);
+
     /**
      * 分页查询库存列表
      *

@@ -20,9 +20,14 @@ import com.foodtraceability.mapper.PurchaseArrivalMapper;
 import com.foodtraceability.mapper.PurchaseOrderItemMapper;
 import com.foodtraceability.mapper.PurchaseOrderMapper;
 import com.foodtraceability.mapper.SupplierMapper;
+import com.foodtraceability.mapper.UserMapper;
+import com.foodtraceability.entity.User;
 import com.foodtraceability.dto.InventoryIncreaseDTO;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseArrivalService;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.SystemConfigService;
 import com.foodtraceability.service.finance.PayableService;
@@ -76,8 +81,10 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private final PurchaseOrderItemMapper orderItemMapper;
     private final SystemConfigService systemConfigService;
     private final SupplierMapper supplierMapper;
+    private final UserMapper userMapper;
     private final InventoryService inventoryService;
     private final StoreInventoryService storeInventoryService;
+    private final LocationService locationService;
     private final PayableService payableService;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final MaterialTraceCodeService materialTraceCodeService;
@@ -88,8 +95,10 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
                                       PurchaseOrderItemMapper orderItemMapper,
                                       SystemConfigService systemConfigService,
                                       SupplierMapper supplierMapper,
+                                      UserMapper userMapper,
                                       InventoryService inventoryService,
                                       StoreInventoryService storeInventoryService,
+                                      LocationService locationService,
                                       PayableService payableService,
                                       ApplicationEventPublisher applicationEventPublisher,
                                       MaterialTraceCodeService materialTraceCodeService) {
@@ -99,8 +108,10 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         this.orderItemMapper = orderItemMapper;
         this.systemConfigService = systemConfigService;
         this.supplierMapper = supplierMapper;
+        this.userMapper = userMapper;
         this.inventoryService = inventoryService;
         this.storeInventoryService = storeInventoryService;
+        this.locationService = locationService;
         this.payableService = payableService;
         this.applicationEventPublisher = applicationEventPublisher;
         this.materialTraceCodeService = materialTraceCodeService;
@@ -296,6 +307,8 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         }
         arrival.setQualityCheckResult(result);
         arrival.setQualityCheckRemark(remark);
+        arrival.setQualityCheckBy(SecurityUtils.getCurrentUserId());
+        arrival.setQualityCheckTime(LocalDateTime.now());
         if (result == QC_FAILED) {
             // 质检失败：到货单关闭，等待退货/作废处理
             arrival.setStatus(STATUS_CLOSED);
@@ -339,10 +352,13 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         // 3. 回写采购订单明细实收数量
         writeBackOrderReceived(arrival);
 
-        // 4. 同步生成原料追溯码（每条明细一个批次）
+        // 4. 回写采购订单状态（部分入库=3 / 已完成=4），与采购入库链路保持一致
+        updateOrderStatus(arrival.getOrderId());
+
+        // 5. 同步生成原料追溯码（每条明细一个批次）
         generateMaterialTraceCodes(arrival);
 
-        // 5. 发布事件：记录采购成本记录
+        // 6. 发布事件：记录采购成本记录
         publishPurchaseStockInEvent(arrival);
 
         return getArrivalDetail(arrivalId);
@@ -351,10 +367,13 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     /** 增加仓库库存 + 门店库存（含 unit_cost 覆盖与流水） */
     private void increaseInventoryForArrival(PurchaseArrival arrival) {
         List<PurchaseArrivalItem> items = loadArrivalItems(arrival.getArrivalId());
-        // 集中式单店：门店维度 = 仓库维度；无仓库时兜底默认仓库 1
-        String storeIdForSync = arrival.getWarehouseId() != null
-                ? String.valueOf(arrival.getWarehouseId())
-                : "1";
+        // M3-M4 规则4：warehouseId 经 map 解析（兜底默认仓库 1 已按宪法 §三.4 删除）
+        com.foodtraceability.entity.Location syncLocation = locationService.resolveByWarehouseId(arrival.getWarehouseId());
+        if (syncLocation == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "到货单仓库未映射到位置，无法同步门店库存：warehouseId=" + arrival.getWarehouseId());
+        }
+        Long locationIdForSync = syncLocation.getLocationId();
 
         for (PurchaseArrivalItem item : items) {
             BigDecimal actualQty = item.getReceivedQuantity() != null && item.getReceivedQuantity().compareTo(BigDecimal.ZERO) > 0
@@ -376,20 +395,20 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
             } catch (Exception e) {
                 log.warn("仓库库存增加失败（继续门店同步）: materialId={}, err={}", item.getMaterialId(), e.getMessage());
             }
-            if (storeIdForSync != null) {
+            {
                 try {
-                    storeInventoryService.increaseStock(
-                            storeIdForSync,
+                    inventoryService.increaseStockAtLocation(
+                            locationIdForSync,
                             item.getMaterialId(),
                             item.getMaterialName(),
                             actualQty,
                             item.getUnit(),
-                            item.getUnitPrice() != null ? item.getUnitPrice() : null,
+                            item.getUnitPrice() != null ? item.getUnitPrice().longValue() : null,
                             1,
                             "采购入库 - 到货单:" + arrival.getArrivalCode());
                 } catch (Exception syncEx) {
                     log.error("门店库存同步失败（事务回滚）: storeId={}, materialId={}, err={}",
-                            storeIdForSync, item.getMaterialId(), syncEx.getMessage());
+                            locationIdForSync, item.getMaterialId(), syncEx.getMessage());
                     throw syncEx;
                 }
             }
@@ -457,6 +476,50 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
             orderItem.setReceivedQuantity(received.add(actualQty));
             orderItemMapper.updateById(orderItem);
         }
+    }
+
+    /**
+     * 回写采购订单状态：累计实收>=总量 → 已完成(4)；0<实收<总量 → 部分入库(3)。
+     * 仅允许从 已审核(2)/已下单(6) 状态改写，避免覆盖 终止(8)/冻结(9) 等终态。
+     */
+    private void updateOrderStatus(Long orderId) {
+        if (orderId == null) {
+            return;
+        }
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            return;
+        }
+        int currentStatus = order.getOrderStatus() != null ? order.getOrderStatus() : 0;
+        if (currentStatus != 2 && currentStatus != 6) {
+            return;
+        }
+        LambdaQueryWrapper<PurchaseOrderItem> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PurchaseOrderItem::getOrderId, orderId);
+        List<PurchaseOrderItem> items = orderItemMapper.selectList(wrapper);
+        if (items.isEmpty()) {
+            return;
+        }
+        BigDecimal totalQuantity = BigDecimal.ZERO;
+        BigDecimal totalReceived = BigDecimal.ZERO;
+        for (PurchaseOrderItem item : items) {
+            if (item.getQuantity() != null) {
+                totalQuantity = totalQuantity.add(item.getQuantity());
+            }
+            if (item.getReceivedQuantity() != null) {
+                totalReceived = totalReceived.add(item.getReceivedQuantity());
+            }
+        }
+        if (totalReceived.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        int newStatus = totalReceived.compareTo(totalQuantity) >= 0 ? 4 : 3;
+        if (currentStatus == newStatus) {
+            return;
+        }
+        order.setOrderStatus(newStatus);
+        orderMapper.updateById(order);
+        log.info("到货确认回写订单状态：orderId={}, {} → {}", orderId, currentStatus, newStatus);
     }
 
     /** 同步生成原料追溯码（每条明细生成一个批次） */
@@ -667,6 +730,12 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
             arrival.setOrderCode(order.getOrderCode());
             if (!StringUtils.hasText(arrival.getSupplierName())) {
                 arrival.setSupplierName(order.getSupplierName());
+            }
+        }
+        if (arrival.getQualityCheckBy() != null) {
+            User user = userMapper.selectById(arrival.getQualityCheckBy());
+            if (user != null && StringUtils.hasText(user.getFullName())) {
+                arrival.setQualityCheckByName(user.getFullName());
             }
         }
     }

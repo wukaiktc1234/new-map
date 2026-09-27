@@ -5,35 +5,36 @@
     <!-- 库存结果映射 -->
     <resultMap id="BaseResultMap" type="com.foodtraceability.entity.Inventory">
         <id column="inventory_id" property="inventoryId"/>
+        <result column="location_id" property="locationId"/>
         <result column="material_id" property="materialId"/>
         <result column="material_name" property="materialName"/>
         <result column="specification" property="specification"/>
         <result column="unit" property="unit"/>
-        <result column="warehouse_id" property="warehouseId"/>
-        <result column="location_id" property="locationId"/>
-        <result column="current_stock" property="quantity"/>
+        <result column="quantity" property="quantity"/>
         <result column="locked_quantity" property="lockedQuantity"/>
         <result column="batch_no" property="batchNo"/>
         <result column="production_date" property="productionDate"/>
         <result column="expiry_date" property="expiryDate"/>
         <result column="unit_cost" property="unitCost"/>
         <result column="total_cost" property="totalCost"/>
+        <result column="safety_stock" property="safetyStock"/>
         <result column="min_safe_qty" property="minSafeQty"/>
-        <result column="max_stock_qty" property="maxStockQty"/>
+        <result column="max_stock" property="maxStock"/>
+        <result column="status" property="status"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
     <!-- 分页查询库存列表 -->
     <select id="selectInventoryPage" resultMap="BaseResultMap">
-        SELECT inventory_id, material_id, material_name, specification, unit,
-               warehouse_id, location_id, current_stock, locked_quantity, batch_no,
-               production_date, expiry_date, unit_cost, total_cost,
-               min_safe_qty, max_stock_qty, create_time, update_time
+        SELECT inventory_id, location_id, material_id, material_name, specification, unit,
+               quantity, locked_quantity, batch_no, production_date, expiry_date,
+               unit_cost, total_cost, safety_stock, min_safe_qty, max_stock, status,
+               create_time, update_time
         FROM inventory
         WHERE deleted = 0
-        <if test="warehouseId != null">
-            AND warehouse_id = #{warehouseId}
+        <if test="locationId != null">
+            AND location_id = #{locationId}
         </if>
         <if test="materialId != null">
             AND material_id = #{materialId}
@@ -48,6 +49,15 @@
     </select>
 
     <!-- 根据物料ID和仓库ID查询库存 -->
+    <select id="selectByMaterialAndLocation" resultMap="BaseResultMap">
+        SELECT * FROM inventory
+        WHERE deleted = 0
+          AND location_id = #{locationId}
+          AND material_id = #{materialId}
+        LIMIT 1
+    </select>
+
+    <!-- @deprecated S4 收编调用方后删除 -->
     <select id="selectByMaterialAndWarehouse" resultMap="BaseResultMap">
         SELECT * FROM inventory
         WHERE deleted = 0

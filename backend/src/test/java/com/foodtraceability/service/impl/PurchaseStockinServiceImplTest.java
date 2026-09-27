@@ -13,6 +13,7 @@ import com.foodtraceability.mapper.PurchaseStockinItemMapper;
 import com.foodtraceability.mapper.PurchaseStockinMapper;
 import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.finance.PayableService;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +86,9 @@ class PurchaseStockinServiceImplTest {
     private StoreInventoryService storeInventoryService;
 
     @Mock
+    private LocationService locationService;
+
+    @Mock
     private PayableService payableService;
 
     @Mock
@@ -106,6 +110,15 @@ class PurchaseStockinServiceImplTest {
         ReflectionTestUtils.setField(service, "purchaseOrderItemMapper", purchaseOrderItemMapper);
         ReflectionTestUtils.setField(service, "supplierMapper", supplierMapper);
         ReflectionTestUtils.setField(service, "storeInventoryService", storeInventoryService);
+        ReflectionTestUtils.setField(service, "locationService", locationService);
+        // S4c-1 通用恒等解析 stub：warehouseId=X → locationId=X（覆盖全部用例；单测专用）
+        when(locationService.resolveByWarehouseId(any())).thenAnswer(inv -> {
+            Long id = inv.getArgument(0);
+            if (id == null) return null;
+            com.foodtraceability.entity.Location loc = new com.foodtraceability.entity.Location();
+            loc.setLocationId(id);
+            return loc;
+        });
         ReflectionTestUtils.setField(service, "applicationEventPublisher", applicationEventPublisher);
     }
 
@@ -332,6 +345,10 @@ class PurchaseStockinServiceImplTest {
         List<PurchaseStockinItem> items = Collections.singletonList(item);
         when(purchaseStockinMapper.selectById(stockinId)).thenReturn(stockin);
         stubVoidAux(stockin, items);
+        // S4c-1：仓库→位置解析 stub（测试值 warehouseId=1001 → locationId=1001）
+        com.foodtraceability.entity.Location syncLocation = new com.foodtraceability.entity.Location();
+        syncLocation.setLocationId(1001L);
+        when(locationService.resolveByWarehouseId(1001L)).thenReturn(syncLocation);
 
         // when
         PurchaseStockin result = service.voidStockin(stockinId, "测试作废", 1001L);
@@ -342,7 +359,9 @@ class PurchaseStockinServiceImplTest {
         assertEquals(1001L, result.getVoidBy());
         verify(payableService, times(1)).voidPayableByStockinId(stockinId);
         verify(inventoryService, times(1)).decreaseInventory(any(InventoryDecreaseDTO.class));
-        verify(storeInventoryService, times(1)).decreaseStock(anyString(), eq(9001L), eq(new BigDecimal("5.000")));
+        // S4c-1 重锚：门店账同步改走统一账（warehouseId=1001 经 map 解析为 locationId）
+        verify(inventoryService, times(1)).decreaseStockAtLocation(
+                eq(1001L), eq(9001L), eq(new BigDecimal("5.000")), eq(2), anyString());
     }
 
     @Test

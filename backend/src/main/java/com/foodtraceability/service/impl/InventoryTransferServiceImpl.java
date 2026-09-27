@@ -14,6 +14,8 @@ import com.foodtraceability.mapper.InventoryTransferMapper;
 import com.foodtraceability.mapper.ProductMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
 import com.foodtraceability.service.InventoryTransferService;
+import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,12 +44,16 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
                                         ProductMapper productMapper,
                                         WarehouseMapper warehouseMapper,
                                         InventoryMapper inventoryMapper,
-                                        StoreInventoryService storeInventoryService) {
+                                        StoreInventoryService storeInventoryService,
+                                        InventoryService inventoryService,
+                                        LocationService locationService) {
         this.inventoryTransferMapper = inventoryTransferMapper;
         this.productMapper = productMapper;
         this.warehouseMapper = warehouseMapper;
         this.inventoryMapper = inventoryMapper;
         this.storeInventoryService = storeInventoryService;
+        this.inventoryService = inventoryService;
+        this.locationService = locationService;
     }
 
     private final InventoryTransferMapper inventoryTransferMapper;
@@ -63,6 +69,8 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
      * 与 inventory 表（中央仓库存）双写保持一致
      */
     private final StoreInventoryService storeInventoryService;
+    private final InventoryService inventoryService;
+    private final LocationService locationService;
     
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -255,34 +263,34 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
             return;
         }
 
-        String fromStoreId = transfer.getFromWarehouseId() != null
-                ? String.valueOf(transfer.getFromWarehouseId()) : null;
-        String toStoreId = transfer.getToWarehouseId() != null
-                ? String.valueOf(transfer.getToWarehouseId()) : null;
+        com.foodtraceability.entity.Location fromLocation = locationService.resolveByWarehouseId(transfer.getFromWarehouseId());
+        com.foodtraceability.entity.Location toLocation = locationService.resolveByWarehouseId(transfer.getToWarehouseId());
+        Long fromLocationId = fromLocation == null ? null : fromLocation.getLocationId();
+        Long toLocationId = toLocation == null ? null : toLocation.getLocationId();
 
         // 从调出门店扣减库存（库存不足会抛 BusinessException，触发主事务回滚）
-        if (fromStoreId != null) {
-            storeInventoryService.decreaseStock(fromStoreId, productId, quantity, 3, "库存调拨出库");
-            log.debug("调出门店库存扣减成功: storeId={}, productId={}, quantity={}",
-                    fromStoreId, productId, quantity);
+        if (fromLocationId != null) {
+            inventoryService.decreaseStockAtLocation(fromLocationId, productId, quantity, 3, "库存调拨出库");
+            log.debug("调出位置库存扣减成功: locationId={}, productId={}, quantity={}",
+                    fromLocationId, productId, quantity);
         }
 
         // 向调入门店增加库存（unitCost 传 null，目标门店库存以 0 成本初始化，
         // 与采购入库同步门店库存时使用 item.getUnitPrice() 的行为一致；
         // 调拨场景下成本追踪由 inventory 表承担，store_inventory 仅做数量同步）
-        if (toStoreId != null) {
-            storeInventoryService.increaseStock(
-                    toStoreId,
+        if (toLocationId != null) {
+            inventoryService.increaseStockAtLocation(
+                    toLocationId,
                     productId,
                     transfer.getProductName(),
                     quantity,
-                    null, // 单位：调拨单未携带，由 store_inventory 记录已有的单位保持不变
-                    null, // 单位成本：调拨场景不传成本
+                    null, // 单位：调拨单未携带，由库存行记录已有的单位保持不变
+                    null, // 单位成本：调拨场景不传成本（§6-6 现状迁移，Q3 批复前不改）
                     3,
                     "库存调拨入库"
             );
-            log.debug("调入门店库存增加成功: storeId={}, productId={}, quantity={}",
-                    toStoreId, productId, quantity);
+            log.debug("调入位置库存增加成功: locationId={}, productId={}, quantity={}",
+                    toLocationId, productId, quantity);
         }
     }
     

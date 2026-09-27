@@ -15,10 +15,10 @@ import org.springframework.stereotype.Repository;
 public interface InventoryMapper extends BaseMapper<Inventory> {
 
     /**
-     * 分页查询库存列表
+     * 分页查询库存列表（M3-M4：统一账按 location_id 维度）
      *
      * @param page 分页对象
-     * @param warehouseId 仓库ID（可选）
+     * @param locationId 位置ID（可选；STORE/CENTRAL/DEPOT 统一维度）
      * @param materialId 物料ID（可选）
      * @param materialName 物料名称（可选，模糊查询）
      * @param batchNo 批次号（可选）
@@ -26,19 +26,26 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
      * @return 分页结果
      */
     IPage<Inventory> selectInventoryPage(Page<Inventory> page,
-                                        @Param("warehouseId") Long warehouseId,
+                                        @Param("locationId") Long locationId,
                                         @Param("materialId") Long materialId,
                                         @Param("materialName") String materialName,
                                         @Param("batchNo") String batchNo,
                                         @Param("status") Integer status);
 
     /**
-     * 根据物料ID和仓库ID查询库存
+     * 根据位置ID和物料ID查询库存（统一账唯一键定位点）
      *
+     * @param locationId 位置ID
      * @param materialId 物料ID
-     * @param warehouseId 仓库ID
      * @return 库存实体
      */
+    Inventory selectByMaterialAndLocation(@Param("locationId") Long locationId,
+                                          @Param("materialId") Long materialId);
+
+    /**
+     * @deprecated S4 收编调用方后删除（临时保留以维持逐步编译绿；运行时查询列已按新表口径）
+     */
+    @Deprecated
     Inventory selectByMaterialAndWarehouse(@Param("materialId") Long materialId,
                                           @Param("warehouseId") Long warehouseId);
 }

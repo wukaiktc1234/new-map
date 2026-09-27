@@ -24,6 +24,7 @@ import com.foodtraceability.mapper.finance.SupplierRefundRequestMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseReturnService;
 import com.foodtraceability.service.PurchaseStockinService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.SupplierService;
 import com.foodtraceability.service.finance.PayableService;
@@ -75,6 +76,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
     private final PurchaseStockinService purchaseStockinService;
     private final InventoryService inventoryService;
     private final StoreInventoryService storeInventoryService;
+    private final LocationService locationService;
     private final PayableService payableService;
     private final SupplierService supplierService;
 
@@ -84,6 +86,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
                                      PurchaseStockinService purchaseStockinService,
                                      InventoryService inventoryService,
                                      StoreInventoryService storeInventoryService,
+                                     LocationService locationService,
                                      PayableService payableService,
                                      SupplierService supplierService) {
         this.purchaseReturnMapper = purchaseReturnMapper;
@@ -92,6 +95,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
         this.purchaseStockinService = purchaseStockinService;
         this.inventoryService = inventoryService;
         this.storeInventoryService = storeInventoryService;
+        this.locationService = locationService;
         this.payableService = payableService;
         this.supplierService = supplierService;
     }
@@ -438,8 +442,12 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
     }
 
     private void decreaseInventoryForReturn(PurchaseReturn purchaseReturn, List<PurchaseReturnItem> items) {
-        String storeIdForSync = purchaseReturn.getWarehouseId() != null
-                ? String.valueOf(purchaseReturn.getWarehouseId()) : null;
+        com.foodtraceability.entity.Location syncLocation = locationService.resolveByWarehouseId(purchaseReturn.getWarehouseId());
+        if (syncLocation == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "仓库未映射到位置，无法扣减门店库存：warehouseId=" + purchaseReturn.getWarehouseId());
+        }
+        Long locationIdForSync = syncLocation.getLocationId();
 
         for (PurchaseReturnItem item : items) {
             try {
@@ -455,15 +463,15 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
                 inventoryService.decreaseInventory(decreaseDTO);
                 log.debug("退货库存扣减成功：物料ID={}，数量={}", item.getMaterialId(), item.getQuantity());
 
-                if (storeIdForSync != null && item.getQuantity() != null) {
+                if (item.getQuantity() != null) {
                     try {
-                        storeInventoryService.decreaseStock(storeIdForSync, item.getMaterialId(), item.getQuantity(),
+                        inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getQuantity(),
                                 2, "采购退货出库 - 退货单:" + purchaseReturn.getReturnNo());
-                        log.debug("门店库存退货扣减成功：storeId={}, 物料ID={}, 数量={}",
-                                storeIdForSync, item.getMaterialId(), item.getQuantity());
+                        log.debug("门店库存退货扣减成功：locationId={}, 物料ID={}, 数量={}",
+                                locationIdForSync, item.getMaterialId(), item.getQuantity());
                     } catch (Exception syncEx) {
                         log.error("门店库存退货扣减失败，事务将回滚：storeId={}, 物料ID={}, 错误={}",
-                                storeIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
+                                locationIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                                 "门店库存扣减失败：物料" + item.getMaterialName() + " - " + syncEx.getMessage());
                     }

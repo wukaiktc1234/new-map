@@ -20,6 +20,7 @@ import com.foodtraceability.mapper.PurchaseReturnMapper;
 import com.foodtraceability.mapper.finance.SupplierRefundRequestMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseStockinService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.SupplierService;
 import com.foodtraceability.service.finance.PayableService;
@@ -83,12 +84,23 @@ class PurchaseReturnServiceImplTest {
     @Mock
     private SupplierService supplierService;
 
+    @Mock
+    private LocationService locationService;
+
     @InjectMocks
     private PurchaseReturnServiceImpl service;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(service, "baseMapper", purchaseReturnMapper);
+        // S4c-1 通用恒等解析 stub：warehouseId=X → locationId=X
+        when(locationService.resolveByWarehouseId(any())).thenAnswer(inv -> {
+            Long id = inv.getArgument(0);
+            if (id == null) return null;
+            com.foodtraceability.entity.Location loc = new com.foodtraceability.entity.Location();
+            loc.setLocationId(id);
+            return loc;
+        });
     }
 
     // ============================================================
@@ -156,7 +168,8 @@ class PurchaseReturnServiceImplTest {
         PurchaseReturnVO vo = service.approvePurchaseReturn(1L, dto);
 
         verify(inventoryService, times(1)).decreaseInventory(any());
-        verify(storeInventoryService, times(1)).decreaseStock(any(), any(), any());
+        // S4c-1 重锚：门店账同步改走统一账
+verify(inventoryService, times(1)).decreaseStockAtLocation(any(), any(), any(), any(), any());
         verify(payableService, times(1)).createRedPayableForReturn(
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(supplierService, never()).updateById(any(Supplier.class));

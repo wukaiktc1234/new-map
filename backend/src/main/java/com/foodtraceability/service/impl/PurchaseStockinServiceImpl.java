@@ -29,6 +29,7 @@ import com.foodtraceability.mapper.PurchaseStockinMapper;
 import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseStockinService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.finance.PayableService;
 import com.foodtraceability.service.purchase.PurchasePlanService;
@@ -81,6 +82,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
     private final SupplierMapper supplierMapper;
     private final InventoryService inventoryService;
     private final StoreInventoryService storeInventoryService;
+    private final LocationService locationService;
     private final PayableService payableService;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final AssetMasterMapper assetMasterMapper;
@@ -95,6 +97,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                                       SupplierMapper supplierMapper,
                                       InventoryService inventoryService,
                                       @Lazy StoreInventoryService storeInventoryService,
+                                      LocationService locationService,
                                       PayableService payableService,
                                       ApplicationEventPublisher applicationEventPublisher,
                                       AssetMasterMapper assetMasterMapper,
@@ -108,6 +111,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
         this.supplierMapper = supplierMapper;
         this.inventoryService = inventoryService;
         this.storeInventoryService = storeInventoryService;
+        this.locationService = locationService;
         this.payableService = payableService;
         this.applicationEventPublisher = applicationEventPublisher;
         this.assetMasterMapper = assetMasterMapper;
@@ -714,9 +718,13 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
         itemWrapper.eq(PurchaseStockinItem::getStockinId, stockin.getStockinId());
         List<PurchaseStockinItem> items = purchaseStockinItemMapper.selectList(itemWrapper);
 
-        // 门店ID：PurchaseStockin无storeId字段，使用warehouseId作为门店ID
-        String storeIdForSync = stockin.getWarehouseId() != null
-                ? String.valueOf(stockin.getWarehouseId()) : null;
+        // M3-M4 规则4：warehouseId 经 location_id_map 解析为 locationId（不再冒充 storeId）
+        com.foodtraceability.entity.Location syncLocation = locationService.resolveByWarehouseId(stockin.getWarehouseId());
+        if (syncLocation == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "仓库未映射到位置，无法同步门店库存：warehouseId=" + stockin.getWarehouseId());
+        }
+        Long locationIdForSync = syncLocation.getLocationId();
 
         for (PurchaseStockinItem item : items) {
             try {
@@ -735,10 +743,10 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                 log.debug("入库明细库存增加成功：物料ID={}，数量={}", item.getMaterialId(), item.getActualQuantity());
 
                 // 同步门店库存（独立门店库存维度）
-                if (storeIdForSync != null && item.getActualQuantity() != null) {
+                if (item.getActualQuantity() != null) {
                     try {
-                        storeInventoryService.increaseStock(
-                                storeIdForSync,
+                        inventoryService.increaseStockAtLocation(
+                                locationIdForSync,
                                 item.getMaterialId(),
                                 item.getMaterialName(),
                                 item.getActualQuantity(),
@@ -746,13 +754,13 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                                 item.getUnitPrice() != null ? item.getUnitPrice().longValue() : null,
                                 1,
                                 "采购入库 - 入库单:" + stockin.getStockinCode());
-                        log.debug("门店库存同步成功：storeId={}, 物料ID={}, 数量={}, 单位成本={}分",
-                                storeIdForSync, item.getMaterialId(), item.getActualQuantity(), item.getUnitPrice());
+                        log.debug("门店库存同步成功：locationId={}, 物料ID={}, 数量={}, 单位成本={}分",
+                                locationIdForSync, item.getMaterialId(), item.getActualQuantity(), item.getUnitPrice());
                     } catch (Exception syncEx) {
                         // DF-001 修复：门店库存同步失败必须回滚整个入库事务，避免库存数据不一致
                         // （采购入库表显示已入库但门店库存表未增加）。库存一致性是 ERP 核心约束。
                         log.error("门店库存同步失败，事务将回滚：storeId={}, 物料ID={}, 错误={}",
-                                storeIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
+                                locationIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                             "门店库存同步失败：物料" + item.getMaterialName() + " - " + syncEx.getMessage());
                     }
@@ -769,8 +777,12 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
      * 作废入库单时回滚库存
      */
     private void decreaseInventoryForVoidStockin(PurchaseStockin stockin) {
-        String storeIdForSync = stockin.getWarehouseId() != null
-                ? String.valueOf(stockin.getWarehouseId()) : null;
+        com.foodtraceability.entity.Location syncLocation = locationService.resolveByWarehouseId(stockin.getWarehouseId());
+        if (syncLocation == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                "仓库未映射到位置，无法回滚门店库存：warehouseId=" + stockin.getWarehouseId());
+        }
+        Long locationIdForSync = syncLocation.getLocationId();
 
         for (PurchaseStockinItem item : stockin.getItems()) {
             try {
@@ -786,15 +798,15 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                 inventoryService.decreaseInventory(decreaseDTO);
                 log.debug("入库作废库存扣减成功：物料ID={}，数量={}", item.getMaterialId(), item.getActualQuantity());
 
-                if (storeIdForSync != null && item.getActualQuantity() != null) {
+                if (item.getActualQuantity() != null) {
                     try {
-                        storeInventoryService.decreaseStock(storeIdForSync, item.getMaterialId(), item.getActualQuantity(),
+                        inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getActualQuantity(),
                                 2, "采购入库作废回滚 - 入库单:" + stockin.getStockinCode());
-                        log.debug("门店库存作废回滚成功：storeId={}, 物料ID={}, 数量={}",
-                                storeIdForSync, item.getMaterialId(), item.getActualQuantity());
+                        log.debug("门店库存作废回滚成功：locationId={}, 物料ID={}, 数量={}",
+                                locationIdForSync, item.getMaterialId(), item.getActualQuantity());
                     } catch (Exception syncEx) {
                         log.error("门店库存作废回滚失败，事务将回滚：storeId={}, 物料ID={}, 错误={}",
-                                storeIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
+                                locationIdForSync, item.getMaterialId(), syncEx.getMessage(), syncEx);
                         throw new BusinessException(ErrorCode.INTERNAL_ERROR,
                             "门店库存回滚失败：物料" + item.getMaterialName() + " - " + syncEx.getMessage());
                     }
