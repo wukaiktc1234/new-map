@@ -274,6 +274,29 @@ const voiceSettings = ref({
 })
 
 let stompClient: Client | null = null
+// 应用层监督重连：stompjs v7 内部重连在重试以 ws-error（无 close）收场时会永久停摆
+// （P1-STOMP-RECONNECT-001），关闭内部重连、由本页统一调度
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearWsReconnectTimer = () => {
+  if (wsReconnectTimer !== null) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
+}
+
+const scheduleWsReconnect = () => {
+  if (wsReconnectTimer !== null) {
+    return
+  }
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null
+    const oldClient = stompClient
+    stompClient = null
+    oldClient?.deactivate().catch(() => {})
+    initWebSocket()
+  }, 5000)
+}
 let pollingInterval: number | null = null
 
 const filteredOrders = computed(() => {
@@ -736,15 +759,25 @@ const initWebSocket = () => {
         client.connectHeaders = { Authorization: `Bearer ${token}` }
       }
     },
-    reconnectDelay: 5000,
+    reconnectDelay: 0, // 内部重连已停用：由 scheduleWsReconnect 接管
     heartbeatIncoming: 4000,
     heartbeatOutgoing: 4000,
 
     onConnect: () => {
+      clearWsReconnectTimer()
       stompClient?.subscribe('/topic/call-number/new', handleNewCallRecord)
       stompClient?.subscribe('/topic/call-number/called', handleCalledRecord)
       stompClient?.subscribe('/topic/call-number/picked', handlePickedRecord)
       stompClient?.subscribe('/topic/orders/ready', handleNewCallRecord)
+    },
+
+    onWebSocketClose: () => {
+      scheduleWsReconnect()
+    },
+
+    onWebSocketError: () => {
+      // ws-error 可能不带 close（stompjs 重连停摆场景），兜底调度（含去重护栏）
+      scheduleWsReconnect()
     },
 
     onDisconnect: () => {
@@ -920,6 +953,7 @@ const handleStorageEvent = (event: StorageEvent): void => {
 }
 
 onUnmounted(() => {
+  clearWsReconnectTimer()
   if (stompClient) {
     stompClient.deactivate()
     stompClient = null

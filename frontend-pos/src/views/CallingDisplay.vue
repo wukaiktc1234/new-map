@@ -86,6 +86,30 @@ const storeName = ref('快餐收银系统')
 
 let timeTimer: number | null = null
 let stompClient: Client | null = null
+// 应用层监督重连：stompjs v7 内部重连在重试以 ws-error（无 close）收场时会永久停摆
+// （P1-STOMP-RECONNECT-001），关闭内部重连、由本页统一调度
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearWsReconnectTimer = () => {
+  if (wsReconnectTimer !== null) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
+}
+
+const scheduleWsReconnect = () => {
+  if (wsReconnectTimer !== null) {
+    return
+  }
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null
+    console.warn('[CallingDisplay] 监督重连...')
+    const oldClient = stompClient
+    stompClient = null
+    oldClient?.deactivate().catch(() => {})
+    initWebSocket()
+  }, 5000)
+}
 let pollingTimer: number | null = null
 
 // ==================== 计算属性 ====================
@@ -262,11 +286,12 @@ const initWebSocket = () => {
         client.connectHeaders = { Authorization: `Bearer ${token}` }
       }
     },
-    reconnectDelay: 5000,
+    reconnectDelay: 0, // 内部重连已停用：由 scheduleWsReconnect 接管
     heartbeatIncoming: 4000,
     heartbeatOutgoing: 4000,
 
     onConnect: () => {
+      clearWsReconnectTimer()
       // 订阅叫号相关主题
       stompClient?.subscribe('/topic/call-number/called', handleCalledEvent)
       stompClient?.subscribe('/topic/call-number/picked', handlePickedEvent)
@@ -280,6 +305,15 @@ const initWebSocket = () => {
     onDisconnect: () => {
       console.warn('[CallingDisplay] WebSocket断开，启动轮询备用方案')
       startPolling()
+    },
+
+    onWebSocketClose: () => {
+      scheduleWsReconnect()
+    },
+
+    onWebSocketError: () => {
+      // ws-error 可能不带 close（stompjs 重连停摆场景），兜底调度（含去重护栏）
+      scheduleWsReconnect()
     },
 
     onStompError: (frame) => {
@@ -332,6 +366,7 @@ onUnmounted(() => {
     clearInterval(timeTimer)
     timeTimer = null
   }
+  clearWsReconnectTimer()
   
   stopPolling()
   

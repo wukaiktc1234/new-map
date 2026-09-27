@@ -22,12 +22,15 @@ const defaultConfig: WebSocketConfig = {
 
 class WebSocketService {
   private client: Client | null = null;
-  private reconnectAttempts = 0;
   private config: WebSocketConfig;
   private subscriptions: Map<string, any> = new Map();
   private isConnected = false;
   private connectionPromise: Promise<void> | null = null;
   private onConnectionChange: ((connected: boolean) => void) | null = null;
+  // 应用层监督重连：stompjs v7 的内部重连只在 ws-close 事件续期，
+  // 重试以 ws-error（无 close）收场时链路会永久停摆（P1-STOMP-RECONNECT-001），
+  // 因此关闭内部重连，由本类统一调度。
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config?: Partial<WebSocketConfig>) {
     this.config = { ...defaultConfig, ...config };
@@ -35,6 +38,30 @@ class WebSocketService {
 
   setOnConnectionChange(callback: (connected: boolean) => void) {
     this.onConnectionChange = callback;
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.isConnected || this.reconnectTimer !== null) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.isConnected) {
+        return;
+      }
+      console.log('WebSocket监督重连...');
+      const oldClient = this.client;
+      this.client = null;
+      oldClient?.deactivate().catch(() => {});
+      this.connect().catch(() => {});
+    }, this.config.reconnectInterval);
   }
 
   async connect(): Promise<void> {
@@ -55,8 +82,8 @@ class WebSocketService {
         this.client = new Client({
           webSocketFactory: () => socket,
           connectHeaders: getConnectHeaders(),
+          reconnectDelay: 0, // 内部重连已停用：由 scheduleReconnect 接管
           debug: (str) => console.log('STOMP Debug:', str),
-          reconnectDelay: this.config.reconnectInterval,
           heartbeatIncoming: 10000,
           heartbeatOutgoing: 10000,
           connectionTimeout: 10000
@@ -65,7 +92,7 @@ class WebSocketService {
         this.client.onConnect = (frame) => {
           console.log('WebSocket连接成功:', frame);
           this.isConnected = true;
-          this.reconnectAttempts = 0;
+          this.clearReconnectTimer();
           this.connectionPromise = null;
           this.onConnectionChange?.(true);
           resolve();
@@ -76,7 +103,9 @@ class WebSocketService {
           this.isConnected = false;
           this.connectionPromise = null;
           this.onConnectionChange?.(false);
-          this.tryReconnect();
+          // STOMP ERROR 后连接通常随即关闭，由 close 分支调度重连；
+          // 若无 close（同 ws-error 停摆场景），这里兜底调度（含去重护栏）
+          this.scheduleReconnect();
           reject(new Error('STOMP error'));
         };
 
@@ -84,6 +113,14 @@ class WebSocketService {
           console.error('WebSocket错误:', event);
           this.isConnected = false;
           this.onConnectionChange?.(false);
+        };
+
+        this.client.onWebSocketClose = () => {
+          console.log('WebSocket已关闭');
+          this.isConnected = false;
+          this.connectionPromise = null;
+          this.onConnectionChange?.(false);
+          this.scheduleReconnect();
         };
 
         this.client.onDisconnect = () => {
@@ -99,26 +136,12 @@ class WebSocketService {
         this.isConnected = false;
         this.connectionPromise = null;
         this.onConnectionChange?.(false);
-        this.tryReconnect();
+        this.scheduleReconnect();
         reject(error);
       }
     });
 
     return this.connectionPromise;
-  }
-
-  private tryReconnect(): void {
-    if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      console.error('WebSocket重连次数已达上限，停止重连');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    console.log(`WebSocket尝试重连 (${this.reconnectAttempts}/${this.config.maxReconnectAttempts})...`);
-
-    setTimeout(() => {
-      this.connect().catch(err => console.error('重连失败:', err));
-    }, this.config.reconnectInterval);
   }
 
   async subscribe(
@@ -172,6 +195,7 @@ class WebSocketService {
   }
 
   disconnect(): void {
+    this.clearReconnectTimer();
     this.subscriptions.forEach((subscription) => subscription.unsubscribe());
     this.subscriptions.clear();
 
