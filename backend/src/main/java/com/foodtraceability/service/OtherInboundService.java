@@ -112,7 +112,7 @@ public class OtherInboundService {
                 "仓库未映射到位置，无法执行其他入库：warehouseId=" + warehouseId);
         }
         inventoryService.increaseStockAtLocation(location.getLocationId(), productId,
-                productName, BigDecimal.valueOf(quantity), unit, null, 1,
+                productName, BigDecimal.valueOf(quantity), unit, null, "OTHER",
                 "其他入库 - " + warehouseName);
     }
     

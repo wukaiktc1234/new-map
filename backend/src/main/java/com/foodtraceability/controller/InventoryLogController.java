@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * 库存日志控制器
  * 处理库存日志管理相关的HTTP请求
+ * S5：写后门已关闭（宪法 §III.7 / 禁区 7：inventory_log 为只读历史表，仅提供查询/导出，无 create/update/delete）
  */
 @RestController
 @RequestMapping("/v1/inventory/logs")
@@ -30,28 +31,12 @@ public class InventoryLogController {
     private final InventoryLogService inventoryLogService;
     
     /**
-     * 创建库存日志
-     * 日志通常由系统自动生成，此接口仅供内部调用
-     */
-    @PostMapping
-    @Operation(summary = "创建库存日志")
-    @ApiResponse(responseCode = "200", description = "创建成功")
-    @PreAuthorize("hasAuthority('inventory:create')")
-    public Result<InventoryLog> createInventoryLog(@RequestBody InventoryLog inventoryLog) {
-        try {
-            InventoryLog createdLog = inventoryLogService.createInventoryLog(inventoryLog);
-            return Result.success(createdLog, "创建库存日志成功");
-        } catch (Exception e) {
-            return Result.error(500, "创建库存日志失败：" + e.getMessage());
-        }
-    }
-    
-    /**
      * 根据ID获取库存日志
      */
     @GetMapping("/{id}")
     @Operation(summary = "根据ID获取库存日志")
     @ApiResponse(responseCode = "200", description = "获取成功")
+    @PreAuthorize("hasAuthority('inventory:query')")
     public Result<InventoryLog> getInventoryLogById(
             @Parameter(description = "库存日志ID") @PathVariable("id") Long id) {
         try {

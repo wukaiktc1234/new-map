@@ -21,7 +21,7 @@
 | S2 | DDL 迁移脚本草案（V20260927_002）+ 数据迁移裁定日志 | 本文件 §3 | ✅ 草案，未应用 |
 | S3 | 核心实体/Mapper 层：新 Inventory 实体（locationId 键）、InventoryMovement 实体、两 Mapper；legacy 实体改造（StoreInventory→新表视图兼容或删除） | 代码 | ✅ 完成（编译绿） |
 | S4 | 服务层合并：InventoryService 收编 StoreInventoryService 全部签名（含入建出抛不对称、3 次重试）；5 个旁路文件收编（SalesOrder/LossOutbound/OtherInbound/HardwareDevice/WarningScheduler） | 代码 | **进行中**——S4a ✅（接口新增 6 个位置维度方法，S4a 委托实现，编译绿）；**S4b ✅（2026-09-28）**：6 方法改为统一账直算（Inventory entity/mapper 直算，String.valueOf 委托已删除；入建出抛不对称/3 次乐观锁重试/最新入库价格法/流水降级 全部现状移植）；单测 `InventoryServiceImplLocationStockTest` **9/9 绿**（五类覆盖：入建/出抛×2/乐观锁重试/成本结转/source 约束×2 + 已有行累加/解析委托）；**grep 确认新方法仍无业务调用方**（仅接口/实现/测试）；行为敏感点 4 项签字见方法头 javadoc；**S4c-1 ✅（2026-09-28）**：4 处 `String.valueOf(warehouseId)` 冒充点改为 `LocationService.resolveByWarehouseId` 经 map 解析（PurchaseStockin increase+void / PurchaseArrival / PurchaseReturn / InventoryTransfer 双向），Arrival 兜底仓库"1"删除，未映射仓库显式拒绝（宪法 §三.4），周边事务语义原样（Q4 未批复）；受影响 mock 测试重锚全绿（PurchaseStockin 8/8、PurchaseReturn 5/5、MaterialDeductionAudit 4/4、OrderNewDeduct 28/28、ConsumptionStats 5/5）。**新增发现（未动，上报）**：PurchaseArrivalServiceImpl:554-555 存在第 5 处同族冒充（DTO setStoreId=String.valueOf(warehouseId) 喂收货确认链），超出点名范围。S4c-2 ✅（2026-09-28 Owner 批复后执行）：#1 SalesOrder 收编（Q5=B：不足抛 INVENTORY_INSUFFICIENT，钳 0 废止；productId varchar 非数值报 PARAM_ERROR）、#2 LossOutbound/#3 OtherInbound 收编（直写与 intValue 截断移除）、#4/#5 现状迁移；测试 29/29 绿；执行结果详见对照表"执行结果"节 |
-| S5 | 流水统一：InventoryMovementService（source_type+source_ref NOT NULL）；关 inventory_log 后门（Controller update/delete 下线） | 代码 | ⏳ |
+| S5 | 流水统一：InventoryMovementService（source_type+source_ref NOT NULL）；关 inventory_log 后门（Controller update/delete 下线） | 代码 | **✅（2026-09-28）**：InventoryMovementService/Impl 新增（严格校验：locationId/materialId/changeQty/movementType/sourceType/sourceRef 缺一即 PARAM_ERROR 拒绝，无兜底填充、无 update/delete API，§III.4/§IV.4）；InventoryService 两位置方法 **changeType 移除**、sourceType/sourceRef 必填（movementType 派生 IN/OUT）；**8 个业务调用点重接**（Loss/Other/Transfer 出+入/Arrival/Return/Stockin 入+作废出/SalesOrder）；**inventory_log 后门关闭**（InventoryConsumptionController POST/PUT/DELETE 下线、InventoryLogController createInventoryLog 下线、InventoryLogService/Impl create/update/delete 下线，GET/export/stats 保留）；DRAFT 修订 3 处（重复 min_safe_qty 列删除、movement_type 按 quantity_change 符号派生、注释合并）；单测重锚（LocationStockTest 降级语义重写）+ 新增 InventoryMovementServiceImplTest 9 例；详见 §7 |
 | S6 | 4 处 warehouseId 冒充点改经 map（PurchaseStockin:716 / PurchaseArrival:366 / PurchaseReturn:443 / InventoryTransfer:258-261）+ 双写删除 + 调拨 updateInventory 收编 | 代码 | ⏳ |
 | S7 | 读取方与 XML：InventorySummaryMapper 重写、DishInventoryMapper JOIN 修正、StockForecastMapper 改键、死代码删除 | 代码 | ⏳ |
 | S8 | 编译 + 测试重锚定（矩阵 §5 缺口补乐观锁/成本/双写用例） | 测试 | ⏳ |
@@ -63,3 +63,31 @@
 
 **结论**：无真实业务路径受影响，测试遗留为主 → S4c-1 维持通过。
 **测试重锚性质确认**：5 个测试文件中实际修改仅 2 个（PurchaseStockinServiceImplTest / PurchaseReturnServiceImplTest），均为 mock 目标变更；断言值变化仅 1 处——PurchaseStockin 的 verify 由 `anyString()` 收紧为 `eq(1001L)`（= fixture warehouseId 的恒等映射，语义等价更严格）；其余 3 个测试文件（MaterialDeductionAudit / OrderNewDeduct / ConsumptionStats）零改动全绿。
+
+## 6. ENV-4 登记（2026-09-28，PG-001 首次违规，Owner 裁决不冻结）
+
+- **事件**：S4c-2 提交使用 `git add .`，违反 PG-001 v2 commit 隔离条——commit `cb8ee06` 实际含 **524 文件**：S4c-2 合法改动 **5**（LossOutboundService / OtherInboundService / SalesOrderServiceImpl / 本实施记录 / s4c2 对照表）+ 工作区残留 **519**（498 新 docs + 16 陈旧 Flyway SQL（bank/finance/position 系列 WIP）+ 5 个 cb8ee06 既有修改的 WIP docs）。
+- **处置**：clean redo **`bf4f6b2`**（恰 5 文件，与 cb8ee06 合法部分逐字节一致，标题同，共同父提交 `9e8aa29`）。push 前三项验证全 PASS（**A**：16 个 SQL 全部为磁盘 untracked 残留；**B**：5 个 WIP docs 工作树内容与 cb8ee06 版本逐字节一致）→ Owner 批准 force-push → **remote master = `bf4f6b2`**（GitHub API 验证，tree `e209be07`，ahead=0）。
+- **残留处置**：519 文件**留盘不删除**；`.gitignore` 新增 ENV-4 专用段 **576 条逐文件条目**（514 残留 + 32 根目录工作产物 + 3 scripts + `test/`）防止再次误吞。5 个 WIP docs（purchase-action/field/permission/state-matrix.md + project-diagnosis-20260802.md）为 tracked WIP，**不** gitignore，随后续合法提交入库。`.gitignore` 变更本身在既有 462 个已修改 tracked 文件中，随下一提交入库。
+- **裁定**：PG-001 **首次违规**，登记 **ENV-4**，**不冻结**（工作区不冻结，S5 继续）；不再二次 rewrite history；后续严格执行 PG-001 v2（开卡文件 clean + commit 隔离，禁用 `git add .`）。
+- **登记位置**：`production-known-limitations.md` 主表 ENV-4 行（86→87）+ 文末 ENV-4 块 + 追加行；`docs/project-context/repo-state.md` ENV 序列表。
+
+## 7. S5 执行结果与裁定日志（2026-09-28）
+
+**裁定日志**（宪法 §四.2：细节缺口 → 本地约定 + 裁定日志；均非新拍板）：
+
+1. **sourceType 词表映射**（全部取 -001 §1.4 既有词表，无新造词）：LossOutbound → `LOSS`（出库/回补均 LOSS，出入由 movement_type 区分）；OtherInbound → `OTHER`；InventoryTransfer 出 → `TRANSFER_OUT` / 入 → `TRANSFER_IN`；PurchaseStockin 入库+作废回滚出 → `PURCHASE_STOCKIN`×2；PurchaseArrival → `PURCHASE_STOCKIN`；PurchaseReturn → `OTHER`（词表无退货出库专词）；SalesOrder → `SALE_DEDUCT`。source_ref 统一为"业务名 - 单据号: 编码"人读描述串（新表语义定义，非旧行为迁移）。
+2. **changeType 参数移除**：S4b 遗留的两位置方法 Integer changeType 参数移除，接口收敛为 sourceType/sourceRef 必填；movementType 实现派生（increase→IN / decrease→OUT）。S4b 曾以 changeType=3 记调拨入（新表下会被记成 IN 的家族问题）随之消除——仅新表语义，legacy inventory_transactions 路径不受影响。
+3. **change_qty 符号与 DRAFT 4b 修订**：新表按 -001 §1.4"正=入 负=出"（S5 写路径 decrease 传 `quantity.negate()`）。**legacy 实查（2026-09-28 活体 DB）**：inventory_transactions 未删 31 行**全为正**，15 行待迁全正且逐行 `after_qty = before_qty + quantity_change` 无 OUT 行；DDL 注释同为"正数为增加，负数为减少" → **DRAFT 4b 直拷原值不取反**（早期草稿对 OUT 取反的 CASE 与实查数据不符，撤回）；movement_type 按 quantity_change 符号派生（`>=0 → IN`），15 行中 3 行 transaction_type NULL（TXN 2/3/28）由此判 IN。
+4. **recordTransaction 保留**：legacy InventoryService 11 个方法（increaseInventory/decreaseInventory/deduct/lock/unlock 等）在 S6/S8 前继续写 inventory_transactions（S9 更名为 legacy）。
+5. **T3 假流水保留 + 标记**：MaterialTraceCode:159/:442 假流水（Q2 未批复）不动，§2 已登记。
+6. **unitCost 0 兜底保留**：§6-6 现状迁移 unitCost=null 按 0，行级与流水级同口径（S5 不改变）。
+7. **DRAFT 4a 重复列修复**：`min_safe_qty` 重复列定义删除，注释合并至保留列。
+
+**后门关闭明细**：
+- `InventoryConsumptionController`：POST/PUT/DELETE 下线（createLog/updateLog/deleteLog），GET 列表/导出保留；
+- `InventoryLogController`：createInventoryLog 下线（原即 createLog 透传），GET/导出/统计保留；
+- `InventoryLogService/Impl`：createLog/updateLog/deleteLog 下线（updateLog 无外部调用方），读侧 3 方法保留；
+- `InventoryLogMapper` + XML 零改动（读侧仍经 Service）。
+
+**测试**：定向 4 类 31/31 绿（InventoryServiceImplLocationStockTest 9/9、InventoryMovementServiceImplTest 9/9 新增、PurchaseStockinServiceImplTest 8/8、PurchaseReturnServiceImplTest 5/5；PurchaseReturn 仅 L172 verify 重锚，`any()`×5 签名兼容零改动）。**环境限制**：本会话本机 JAVA_HOME 失效（H:\fuwu\jdk-17.0.17+10 缺失），仅 JDK 25 可用（pom target 21）；JDK 25 下 bytebuddy 1.14.x 不识别 class file 69，跑单测须附加 `-DargLine=-Dnet.bytebuddy.experimental=true`（S8 测试重锚定同样适用，非代码问题）。

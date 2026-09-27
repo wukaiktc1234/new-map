@@ -404,7 +404,7 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
                             actualQty,
                             item.getUnit(),
                             item.getUnitPrice() != null ? item.getUnitPrice().longValue() : null,
-                            1,
+                            "PURCHASE_STOCKIN",
                             "采购入库 - 到货单:" + arrival.getArrivalCode());
                 } catch (Exception syncEx) {
                     log.error("门店库存同步失败（事务回滚）: storeId={}, materialId={}, err={}",

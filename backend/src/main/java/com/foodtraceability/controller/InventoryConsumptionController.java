@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * 库存消耗控制器
- * 处理库存消耗相关的HTTP请求
+ * S5：写后门已关闭（宪法 §III.7 / 禁区 7：inventory_log 为只读历史表，不提供 create/update/delete API），仅保留查询
  */
 @RestController
 @RequestMapping("/v1/inventory/consumptions")
@@ -65,57 +65,6 @@ public class InventoryConsumptionController {
             return Result.success(consumption, "获取库存消耗记录详情成功");
         } catch (Exception e) {
             return Result.error(500, "获取库存消耗记录详情失败：" + e.getMessage());
-        }
-    }
-    
-    /**
-     * 创建库存消耗记录
-     */
-    @PostMapping
-    @Operation(summary = "创建库存消耗记录")
-    @ApiResponse(responseCode = "200", description = "创建成功")
-    @PreAuthorize("hasAuthority('inventory:create')")
-    public Result<InventoryLog> createConsumption(@RequestBody InventoryLog consumption) {
-        try {
-            // 设置操作类型为消耗
-            consumption.setOperationType("out");
-            InventoryLog createdConsumption = inventoryLogService.createInventoryLog(consumption);
-            return Result.success(createdConsumption, "创建库存消耗记录成功");
-        } catch (Exception e) {
-            return Result.error(500, "创建库存消耗记录失败：" + e.getMessage());
-        }
-    }
-    
-    /**
-     * 更新库存消耗记录
-     */
-    @PutMapping("/{id}")
-    @Operation(summary = "更新库存消耗记录")
-    @ApiResponse(responseCode = "200", description = "更新成功")
-    public Result<InventoryLog> updateConsumption(
-            @Parameter(description = "消耗记录ID") @PathVariable("id") Long id,
-            @RequestBody InventoryLog consumption) {
-        try {
-            InventoryLog updatedConsumption = inventoryLogService.updateInventoryLog(id, consumption);
-            return Result.success(updatedConsumption, "更新库存消耗记录成功");
-        } catch (Exception e) {
-            return Result.error(500, "更新库存消耗记录失败：" + e.getMessage());
-        }
-    }
-    
-    /**
-     * 删除库存消耗记录
-     */
-    @DeleteMapping("/{id}")
-    @Operation(summary = "删除库存消耗记录")
-    @ApiResponse(responseCode = "200", description = "删除成功")
-    public Result<Void> deleteConsumption(
-            @Parameter(description = "消耗记录ID") @PathVariable("id") Long id) {
-        try {
-            inventoryLogService.deleteInventoryLog(id);
-            return Result.success(null, "删除库存消耗记录成功");
-        } catch (Exception e) {
-            return Result.error(500, "删除库存消耗记录失败：" + e.getMessage());
         }
     }
     

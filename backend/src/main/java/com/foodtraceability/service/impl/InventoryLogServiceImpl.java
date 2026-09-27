@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 /**
  * 库存日志服务实现类
  * 实现库存日志管理相关的业务方法
+ * S5：写后门已关闭（宪法 §III.7 / 禁区 7：inventory_log 为只读历史表，无 create/update/delete 实现）
  */
 @Service
 public class InventoryLogServiceImpl extends ServiceImpl<InventoryLogMapper, InventoryLog> implements InventoryLogService {
@@ -23,26 +24,8 @@ public class InventoryLogServiceImpl extends ServiceImpl<InventoryLogMapper, Inv
     private final InventoryLogMapper inventoryLogMapper;
     
     @Override
-    public InventoryLog createInventoryLog(InventoryLog inventoryLog) {
-        this.save(inventoryLog);
-        return inventoryLog;
-    }
-    
-    @Override
     public InventoryLog getInventoryLogById(Long id) {
         return this.getById(id);
-    }
-    
-    @Override
-    public InventoryLog updateInventoryLog(Long id, InventoryLog inventoryLog) {
-        inventoryLog.setId(id);
-        this.updateById(inventoryLog);
-        return this.getById(id);
-    }
-    
-    @Override
-    public void deleteInventoryLog(Long id) {
-        this.removeById(id);
     }
     
     @Override

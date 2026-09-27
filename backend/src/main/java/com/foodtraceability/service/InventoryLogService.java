@@ -7,29 +7,15 @@ import java.util.Map;
 
 /**
  * 库存日志服务接口
+ * S5：写后门已关闭（宪法 §III.7 / 禁区 7：inventory_log 为只读历史表，无 create/update/delete 方法）
  * 定义库存日志管理相关的业务方法
  */
 public interface InventoryLogService {
     
     /**
-     * 创建库存日志
-     */
-    InventoryLog createInventoryLog(InventoryLog inventoryLog);
-    
-    /**
      * 根据ID获取库存日志
      */
     InventoryLog getInventoryLogById(Long id);
-    
-    /**
-     * 更新库存日志
-     */
-    InventoryLog updateInventoryLog(Long id, InventoryLog inventoryLog);
-    
-    /**
-     * 删除库存日志
-     */
-    void deleteInventoryLog(Long id);
     
     /**
      * 分页查询库存日志列表

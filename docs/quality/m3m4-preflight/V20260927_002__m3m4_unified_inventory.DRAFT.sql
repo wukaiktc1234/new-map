@@ -30,9 +30,8 @@ CREATE TABLE inventory (
     safety_stock    NUMERIC(14,4),                    -- 吸收 T1 门店安全线
     max_stock       NUMERIC(14,4),
     production_date DATE,
-    min_safe_qty    NUMERIC(14,4),                    -- 吸收 T2（行为保留列，矩阵 §7）
+    min_safe_qty    NUMERIC(14,4),                    -- 吸收 T2（行为保留列，矩阵 §7；预警阈值，getLowStockList 现状迁移）
     locked_quantity NUMERIC(14,4) NOT NULL DEFAULT 0, -- 吸收 T2 锁定语义
-    min_safe_qty    NUMERIC(14,4),                    -- 吸收 T2 预警阈值（getLowStockList 现状迁移）
     status          SMALLINT NOT NULL DEFAULT 1,      -- 吸收 T2（预警调度器维护 1/2/3/4）
     expiry_date     DATE,                             -- 吸收 T2 临期/过期语义
     batch_no        VARCHAR(64),                      -- 可空，不进唯一键（D-3 单行化）
@@ -86,11 +85,12 @@ WHERE i.deleted = 0
   AND i.material_id <> 999999;
 
 -- 4b. T4a 仓库流水 → 统一流水（15 行：wh1/wh2 经 map；584 污染 / 测试仓 / NULL 剔除）
+--      movement_type 按 quantity_change 符号派生（15 行实查全为正=IN，before/after 佐证；legacy 已带正入负出符号，原值直拷不取反）
 INSERT INTO inventory_movement (location_id, material_id, change_qty, balance_after,
                                 movement_type, source_type, source_ref,
                                 operator_id, unit_cost, total_cost, create_time)
 SELECT m.location_id, t.material_id, t.quantity_change, t.after_qty,
-       CASE WHEN t.transaction_type = 1 THEN 'IN' ELSE 'OUT' END,
+       CASE WHEN t.quantity_change >= 0 THEN 'IN' ELSE 'OUT' END,
        'MIGRATED_WAREHOUSE_LEGACY',
        COALESCE(t.reference_no, 'TXN-' || t.transaction_id),
        t.create_user_id, t.unit_cost, t.total_cost, t.create_time

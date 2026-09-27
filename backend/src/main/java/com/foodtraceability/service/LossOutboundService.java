@@ -141,10 +141,10 @@ public class LossOutboundService {
         String sourceRef = "报损出库 - " + lossNo;
         if (quantity < 0) {
             inventoryService.decreaseStockAtLocation(locationId, productId,
-                    BigDecimal.valueOf(-quantity), 2, sourceRef);
+                    BigDecimal.valueOf(-quantity), "LOSS", sourceRef);
         } else {
             inventoryService.increaseStockAtLocation(locationId, productId,
-                    null, BigDecimal.valueOf(quantity), null, null, 1, sourceRef);
+                    null, BigDecimal.valueOf(quantity), null, null, "LOSS", sourceRef);
         }
     }
 

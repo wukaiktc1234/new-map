@@ -32,18 +32,24 @@ public interface InventoryService extends IService<Inventory> {
     /**
      * 按位置增加库存（入建出抛不对称的"入"侧：不存在则新建行）
      * 加权平均法计算单位成本
+     *
+     * @param sourceType 来源业务类型（S5 必填，词表见 -001 §1.4；宪法 §IV.4 强制非空）
+     * @param sourceRef  来源单据号（S5 必填）
      */
     void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
                                  java.math.BigDecimal quantity, String unit, Long unitCost,
-                                 Integer changeType, String sourceRef);
+                                 String sourceType, String sourceRef);
 
     /**
      * 按位置扣减库存（"出"侧：不存在或不足抛 BusinessException）
+     *
+     * @param sourceType 来源业务类型（S5 必填，词表见 -001 §1.4；宪法 §IV.4 强制非空）
+     * @param sourceRef  来源单据号（S5 必填）
      * @return 出库总成本（分）
      */
     Long decreaseStockAtLocation(Long locationId, Long materialId,
                                  java.math.BigDecimal quantity,
-                                 Integer changeType, String sourceRef);
+                                 String sourceType, String sourceRef);
 
     /**
      * 按位置分页查库存（统一账维度）

@@ -270,7 +270,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
 
         // 从调出门店扣减库存（库存不足会抛 BusinessException，触发主事务回滚）
         if (fromLocationId != null) {
-            inventoryService.decreaseStockAtLocation(fromLocationId, productId, quantity, 3, "库存调拨出库");
+            inventoryService.decreaseStockAtLocation(fromLocationId, productId, quantity, "TRANSFER_OUT", "库存调拨出库");
             log.debug("调出位置库存扣减成功: locationId={}, productId={}, quantity={}",
                     fromLocationId, productId, quantity);
         }
@@ -286,7 +286,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
                     quantity,
                     null, // 单位：调拨单未携带，由库存行记录已有的单位保持不变
                     null, // 单位成本：调拨场景不传成本（§6-6 现状迁移，Q3 批复前不改）
-                    3,
+                    "TRANSFER_IN",
                     "库存调拨入库"
             );
             log.debug("调入位置库存增加成功: locationId={}, productId={}, quantity={}",

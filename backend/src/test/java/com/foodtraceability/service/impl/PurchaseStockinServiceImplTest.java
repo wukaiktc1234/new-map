@@ -361,7 +361,7 @@ class PurchaseStockinServiceImplTest {
         verify(inventoryService, times(1)).decreaseInventory(any(InventoryDecreaseDTO.class));
         // S4c-1 重锚：门店账同步改走统一账（warehouseId=1001 经 map 解析为 locationId）
         verify(inventoryService, times(1)).decreaseStockAtLocation(
-                eq(1001L), eq(9001L), eq(new BigDecimal("5.000")), eq(2), anyString());
+                eq(1001L), eq(9001L), eq(new BigDecimal("5.000")), eq("PURCHASE_STOCKIN"), anyString());
     }
 
     @Test

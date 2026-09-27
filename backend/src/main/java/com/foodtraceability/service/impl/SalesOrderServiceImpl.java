@@ -286,7 +286,7 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
             }
             // Q5=B：库存行不存在或数量不足均抛出（INVENTORY_NOT_FOUND / INVENTORY_INSUFFICIENT），由订单链感知缺货
             inventoryService.decreaseStockAtLocation(locationId, materialId,
-                    BigDecimal.valueOf(detail.getQuantity()), 2,
+                    BigDecimal.valueOf(detail.getQuantity()), "SALE_DEDUCT",
                     "销售出库 - 订单:" + orderId);
 
             Inventory ledger = inventoryService.getByLocationAndMaterial(locationId, materialId);

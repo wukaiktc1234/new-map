@@ -17,7 +17,7 @@ import com.foodtraceability.entity.InventoryMovement;
 import com.foodtraceability.service.LocationService;
 import com.foodtraceability.entity.InventoryTransaction;
 import com.foodtraceability.mapper.InventoryMapper;
-import com.foodtraceability.mapper.InventoryMovementMapper;
+import com.foodtraceability.service.InventoryMovementService;
 import com.foodtraceability.mapper.InventoryTransactionMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.utils.SecurityUtils;
@@ -63,16 +63,16 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
 
     private final InventoryMapper inventoryMapper;
     private final InventoryTransactionMapper transactionMapper;
-    private final InventoryMovementMapper inventoryMovementMapper;
+    private final InventoryMovementService inventoryMovementService;
     private final LocationService locationService;
 
     public InventoryServiceImpl(InventoryMapper inventoryMapper,
                                InventoryTransactionMapper transactionMapper,
-                               InventoryMovementMapper inventoryMovementMapper,
+                               InventoryMovementService inventoryMovementService,
                                LocationService locationService) {
         this.inventoryMapper = inventoryMapper;
         this.transactionMapper = transactionMapper;
-        this.inventoryMovementMapper = inventoryMovementMapper;
+        this.inventoryMovementService = inventoryMovementService;
         this.locationService = locationService;
     }
 
@@ -472,7 +472,7 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     @Transactional(rollbackFor = Exception.class)
     public void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
                                         BigDecimal quantity, String unit, Long unitCost,
-                                        Integer changeType, String sourceRef) {
+                                        String sourceType, String sourceRef) {
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "增加数量必须大于0");
         }
@@ -497,8 +497,8 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             log.debug("新建统一库存行：locationId={}, materialId={}, 数量={}, 单位成本={}分",
                     locationId, materialId, quantity, incomingUnitCost);
             writeMovement(locationId, materialId, materialName,
-                    BigDecimal.ZERO, quantity, quantity, changeType, sourceRef,
-                    inv.getInventoryId(), incomingUnitCost, incomingTotalCost);
+                    BigDecimal.ZERO, quantity, quantity, "IN", sourceType, sourceRef,
+                    incomingUnitCost, incomingTotalCost);
             return;
         }
 
@@ -531,8 +531,8 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             int rows = inventoryMapper.updateById(fresh);
             if (rows > 0) {
                 writeMovement(locationId, materialId, materialName,
-                        beforeStock, newStock, quantity, changeType, sourceRef,
-                        fresh.getInventoryId(), incomingUnitCost, incomingTotalCost);
+                        beforeStock, newStock, quantity, "IN", sourceType, sourceRef,
+                        incomingUnitCost, incomingTotalCost);
                 return;
             }
             lastException = new BusinessException(ErrorCode.INVENTORY_CONFLICT,
@@ -546,7 +546,7 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     @Transactional(rollbackFor = Exception.class)
     public Long decreaseStockAtLocation(Long locationId, Long materialId,
                                         BigDecimal quantity,
-                                        Integer changeType, String sourceRef) {
+                                        String sourceType, String sourceRef) {
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "扣减数量必须大于0");
         }
@@ -578,8 +578,8 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             int rows = inventoryMapper.updateById(current);
             if (rows > 0) {
                 writeMovement(locationId, materialId, current.getMaterialName(),
-                        beforeStock, afterStock, quantity, changeType, sourceRef,
-                        current.getInventoryId(), currentUnitCost, outgoingTotalCost);
+                        beforeStock, afterStock, quantity.negate(), "OUT", sourceType, sourceRef,
+                        currentUnitCost, outgoingTotalCost);
                 // 返回出库成本，供成本结转使用
                 return outgoingTotalCost;
             }
@@ -618,31 +618,33 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     }
 
     /**
-     * 统一流水写入（§6-3 现状迁移：尽力而为，失败仅记日志不回滚）。
-     * source_type/source_ref 为 NOT NULL 约束：调用方未传时插入失败走降级路径并告警日志。
+     * 统一流水写入（M3-M4 S5 流水统一；§6-3 现状迁移：尽力而为，失败仅记日志不回滚）。
+     * source_type/source_ref 为 NOT NULL（宪法 §IV.4 DDL 红线）：缺来源时由
+     * InventoryMovementService 以异常拒绝；此处捕获后降级（仅日志）——不写无来源流水、
+     * 不伪造兜底值（§III.4 禁止默认兜底）。
+     * change_qty 符号约定按 -001 §1.4：正=入、负=出。
      */
     private void writeMovement(Long locationId, Long materialId, String materialName,
                                BigDecimal beforeStock, BigDecimal afterStock, BigDecimal changeQty,
-                               Integer changeType, String sourceRef,
-                               Long inventoryId, Long unitCost, Long totalCost) {
+                               String movementType, String sourceType, String sourceRef,
+                               Long unitCost, Long totalCost) {
         try {
             InventoryMovement movement = new InventoryMovement();
             movement.setLocationId(locationId);
             movement.setMaterialId(materialId);
             movement.setChangeQty(changeQty);
             movement.setBalanceAfter(afterStock);
-            movement.setMovementType(changeType != null && changeType == 2 ? "OUT" : "IN");
-            movement.setSourceType("LEGACY_CHANGE_TYPE_" + (changeType != null ? changeType : 1));
-            movement.setSourceRef(sourceRef != null ? sourceRef : "UNSPECIFIED-" + System.currentTimeMillis());
+            movement.setMovementType(movementType);
+            movement.setSourceType(sourceType);
+            movement.setSourceRef(sourceRef);
             movement.setOperatorId(SecurityUtils.getCurrentUserId());
             movement.setUnitCost(unitCost);
             movement.setTotalCost(totalCost);
             movement.setRemark(materialName);
-            inventoryMovementMapper.insert(movement);
+            inventoryMovementService.recordMovement(movement);
         } catch (Exception e) {
-            log.error("写入统一库存流水失败: locationId={}, materialId={}, sourceRef={}, 错误={}",
-                    locationId, materialId, sourceRef, e.getMessage(), e);
+            log.error("写入统一库存流水失败（降级，库存变更不回滚）: locationId={}, materialId={}, sourceType={}, sourceRef={}, 错误={}",
+                    locationId, materialId, sourceType, sourceRef, e.getMessage(), e);
         }
     }
-
 }

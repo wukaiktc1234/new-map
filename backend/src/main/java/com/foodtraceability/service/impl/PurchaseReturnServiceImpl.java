@@ -466,7 +466,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
                 if (item.getQuantity() != null) {
                     try {
                         inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getQuantity(),
-                                2, "采购退货出库 - 退货单:" + purchaseReturn.getReturnNo());
+                                "OTHER", "采购退货出库 - 退货单:" + purchaseReturn.getReturnNo());
                         log.debug("门店库存退货扣减成功：locationId={}, 物料ID={}, 数量={}",
                                 locationIdForSync, item.getMaterialId(), item.getQuantity());
                     } catch (Exception syncEx) {

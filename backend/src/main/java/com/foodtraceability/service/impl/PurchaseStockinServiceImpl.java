@@ -752,7 +752,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                                 item.getActualQuantity(),
                                 item.getUnit(),
                                 item.getUnitPrice() != null ? item.getUnitPrice().longValue() : null,
-                                1,
+                                "PURCHASE_STOCKIN",
                                 "采购入库 - 入库单:" + stockin.getStockinCode());
                         log.debug("门店库存同步成功：locationId={}, 物料ID={}, 数量={}, 单位成本={}分",
                                 locationIdForSync, item.getMaterialId(), item.getActualQuantity(), item.getUnitPrice());
@@ -801,7 +801,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                 if (item.getActualQuantity() != null) {
                     try {
                         inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getActualQuantity(),
-                                2, "采购入库作废回滚 - 入库单:" + stockin.getStockinCode());
+                                "PURCHASE_STOCKIN", "采购入库作废回滚 - 入库单:" + stockin.getStockinCode());
                         log.debug("门店库存作废回滚成功：locationId={}, 物料ID={}, 数量={}",
                                 locationIdForSync, item.getMaterialId(), item.getActualQuantity());
                     } catch (Exception syncEx) {

@@ -5,7 +5,7 @@ import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.Inventory;
 import com.foodtraceability.entity.InventoryMovement;
 import com.foodtraceability.mapper.InventoryMapper;
-import com.foodtraceability.mapper.InventoryMovementMapper;
+import com.foodtraceability.service.InventoryMovementService;
 import com.foodtraceability.service.LocationService;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -27,10 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -38,8 +36,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * M3-M4 S4b 单测：InventoryService 位置维度方法（统一账直算）。
- * 五类覆盖：入建 / 出抛 / 乐观锁重试 / 成本结转 / source 约束。
+ * M3-M4 S5 单测：InventoryService 位置维度方法（统一账直算 + 统一流水 InventoryMovementService）。
+ * 五类覆盖：入建 / 出抛 / 乐观锁重试 / 成本结转 / 流水降级（§6-3 尽力而为：流水失败不回滚库存）。
  * 模式沿 OrderNewServiceImplDeductTest（纯 Mockito，无 Spring 上下文）。
  */
 @ExtendWith(MockitoExtension.class)
@@ -53,7 +51,7 @@ class InventoryServiceImplLocationStockTest {
     private InventoryMapper inventoryMapper;
 
     @Mock
-    private InventoryMovementMapper inventoryMovementMapper;
+    private InventoryMovementService inventoryMovementService;
 
     @Mock
     private LocationService locationService;
@@ -71,7 +69,7 @@ class InventoryServiceImplLocationStockTest {
 
     @BeforeEach
     void setUp() {
-        service = new InventoryServiceImpl(inventoryMapper, null, inventoryMovementMapper, locationService);
+        service = new InventoryServiceImpl(inventoryMapper, null, inventoryMovementService, locationService);
     }
 
     private Inventory row(Long inventoryId, String qty, Long unitCost, Long totalCost) {
@@ -89,7 +87,7 @@ class InventoryServiceImplLocationStockTest {
     // ============ 1. 入建：increase 不存在则 INSERT ============
 
     @Test
-    @DisplayName("入建：无库存行时 increase 新建行并写 IN 流水")
+    @DisplayName("入建：无库存行时 increase 新建行并经统一服务写 IN 流水")
     void increaseCreatesRowWhenAbsent() {
         when(inventoryMapper.selectByMaterialAndLocation(LOCATION_ID, MATERIAL_ID)).thenReturn(null);
         when(inventoryMapper.insert(any(Inventory.class))).thenAnswer(inv -> {
@@ -99,7 +97,7 @@ class InventoryServiceImplLocationStockTest {
         });
 
         service.increaseStockAtLocation(LOCATION_ID, MATERIAL_ID, "新物料",
-                new BigDecimal("5"), "斤", 300L, 1, "SI202609280001");
+                new BigDecimal("5"), "斤", 300L, "PURCHASE_STOCKIN", "SI202609280001");
 
         ArgumentCaptor<Inventory> captor = ArgumentCaptor.forClass(Inventory.class);
         verify(inventoryMapper).insert(captor.capture());
@@ -112,10 +110,14 @@ class InventoryServiceImplLocationStockTest {
         assertNotNull(inserted.getInventoryId());
 
         ArgumentCaptor<InventoryMovement> mvCaptor = ArgumentCaptor.forClass(InventoryMovement.class);
-        verify(inventoryMovementMapper).insert(mvCaptor.capture());
+        verify(inventoryMovementService).recordMovement(mvCaptor.capture());
         assertEquals("IN", mvCaptor.getValue().getMovementType());
         assertEquals(LOCATION_ID, mvCaptor.getValue().getLocationId());
+        assertEquals("PURCHASE_STOCKIN", mvCaptor.getValue().getSourceType());
         assertEquals("SI202609280001", mvCaptor.getValue().getSourceRef());
+        assertEquals(new BigDecimal("5"), mvCaptor.getValue().getChangeQty()); // 正=入（-001 §1.4）
+        assertEquals(300L, mvCaptor.getValue().getUnitCost());
+        assertEquals(1500L, mvCaptor.getValue().getTotalCost());
     }
 
     // ============ 2. 出抛：decrease 无行/不足时抛异常，不建行 ============
@@ -126,11 +128,12 @@ class InventoryServiceImplLocationStockTest {
         when(inventoryMapper.selectByMaterialAndLocation(LOCATION_ID, MATERIAL_ID)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID, new BigDecimal("1"), 2, "T1"));
+                service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID, new BigDecimal("1"), "SALE_DEDUCT", "T1"));
 
         assertEquals(ErrorCode.NOT_FOUND.getCode(), ex.getCode());
         verify(inventoryMapper, never()).insert(any(Inventory.class));
         verify(inventoryMapper, never()).updateById(any(Inventory.class));
+        verify(inventoryMovementService, never()).recordMovement(any());
     }
 
     @Test
@@ -140,10 +143,11 @@ class InventoryServiceImplLocationStockTest {
                 .thenReturn(row(10L, "2", 500L, 1000L));
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID, new BigDecimal("5"), 2, "T2"));
+                service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID, new BigDecimal("5"), "SALE_DEDUCT", "T2"));
 
         assertEquals(ErrorCode.INVENTORY_INSUFFICIENT.getCode(), ex.getCode());
         verify(inventoryMapper, never()).updateById(any(Inventory.class));
+        verify(inventoryMovementService, never()).recordMovement(any());
     }
 
     // ============ 3. 乐观锁重试：updateById 返回 0 后重读重试 ============
@@ -159,7 +163,7 @@ class InventoryServiceImplLocationStockTest {
         when(inventoryMapper.updateById(any(Inventory.class))).thenReturn(0).thenReturn(1);
 
         Long outgoingCost = service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID,
-                new BigDecimal("3"), 2, "T3");
+                new BigDecimal("3"), "SALE_DEDUCT", "T3");
 
         assertEquals(1500L, outgoingCost);
         verify(inventoryMapper, times(2)).updateById(any(Inventory.class));
@@ -172,14 +176,14 @@ class InventoryServiceImplLocationStockTest {
     // ============ 4. 成本结转：decrease 按当前单位成本结转并回写总成本 ============
 
     @Test
-    @DisplayName("成本结转：出库总成本=当前单位成本×数量，totalCost 同步扣减，流水带成本")
+    @DisplayName("成本结转：出库总成本=当前单位成本×数量，totalCost 同步扣减，流水带成本且负号出")
     void decreaseCarriesCostByCurrentUnitCost() {
         when(inventoryMapper.selectByMaterialAndLocation(LOCATION_ID, MATERIAL_ID))
                 .thenReturn(row(10L, "10", 400L, 4000L));
         when(inventoryMapper.updateById(any(Inventory.class))).thenReturn(1);
 
         Long outgoingCost = service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID,
-                new BigDecimal("2"), 2, "T20260928001");
+                new BigDecimal("2"), "SALE_DEDUCT", "T20260928001");
 
         assertEquals(800L, outgoingCost);
         ArgumentCaptor<Inventory> captor = ArgumentCaptor.forClass(Inventory.class);
@@ -190,48 +194,54 @@ class InventoryServiceImplLocationStockTest {
         assertEquals(400L, captor.getValue().getUnitCost());
 
         ArgumentCaptor<InventoryMovement> mvCaptor = ArgumentCaptor.forClass(InventoryMovement.class);
-        verify(inventoryMovementMapper).insert(mvCaptor.capture());
+        verify(inventoryMovementService).recordMovement(mvCaptor.capture());
         assertEquals("OUT", mvCaptor.getValue().getMovementType());
-        assertEquals(new BigDecimal("2"), mvCaptor.getValue().getChangeQty());
+        assertEquals(new BigDecimal("-2"), mvCaptor.getValue().getChangeQty()); // 负=出（-001 §1.4）
         assertEquals(new BigDecimal("8"), mvCaptor.getValue().getBalanceAfter());
+        assertEquals("SALE_DEDUCT", mvCaptor.getValue().getSourceType());
         assertEquals(400L, mvCaptor.getValue().getUnitCost());
         assertEquals(800L, mvCaptor.getValue().getTotalCost());
     }
 
-    // ============ 5. source 约束：无 sourceRef 时降级填充，流水写失败不回滚库存 ============
+    // ============ 5. 流水降级：§6-3 尽力而为——流水失败不回滚库存 ============
 
     @Test
-    @DisplayName("source约束A：sourceRef 为空时降级填 UNSPECIFIED- 前缀，不抛异常")
-    void increaseWithNullSourceRefFillsFallbackRef() {
+    @DisplayName("降级A：increase 路径统一流水抛异常时降级，库存 INSERT 不受影响")
+    void increaseMovementFailureDoesNotRollbackStock() {
         when(inventoryMapper.selectByMaterialAndLocation(LOCATION_ID, MATERIAL_ID)).thenReturn(null);
         when(inventoryMapper.insert(any(Inventory.class))).thenReturn(1);
+        // 模拟 InventoryMovementService 严格校验拒绝（source 缺失/词表非法等）
+        when(inventoryMovementService.recordMovement(any()))
+                .thenThrow(new BusinessException(ErrorCode.PARAM_ERROR, "source_type 不得为空"));
 
+        // 不抛异常 = 库存变更照常提交（§6-3 尽力而为现状迁移）
         service.increaseStockAtLocation(LOCATION_ID, MATERIAL_ID, "物料",
-                new BigDecimal("1"), "斤", null, 1, null);
+                new BigDecimal("1"), "斤", null, "OTHER", "REF-A");
 
-        ArgumentCaptor<InventoryMovement> mvCaptor = ArgumentCaptor.forClass(InventoryMovement.class);
-        verify(inventoryMovementMapper).insert(mvCaptor.capture());
-        assertTrue(mvCaptor.getValue().getSourceRef().startsWith("UNSPECIFIED-"));
-        assertEquals(0L, mvCaptor.getValue().getUnitCost()); // unitCost=null → 0（§6-6 现状迁移）
+        ArgumentCaptor<Inventory> captor = ArgumentCaptor.forClass(Inventory.class);
+        verify(inventoryMapper, times(1)).insert(captor.capture());
+        assertEquals(new BigDecimal("1"), captor.getValue().getQuantity());
+        assertEquals(0L, captor.getValue().getUnitCost()); // §6-6 现状迁移：unitCost=null 按 0（行级与流水级同口径）
+        verify(inventoryMovementService, times(1)).recordMovement(any());
     }
 
     @Test
-    @DisplayName("source约束B：流水写入失败（约束/异常）被降级吞掉，库存变更不受影响")
+    @DisplayName("降级B：decrease 路径流水写入失败被降级吞掉，出库成本正常返回")
     void movementFailureDoesNotRollbackStock() {
         when(inventoryMapper.selectByMaterialAndLocation(LOCATION_ID, MATERIAL_ID))
                 .thenReturn(row(10L, "10", 400L, 4000L));
         when(inventoryMapper.updateById(any(Inventory.class))).thenReturn(1);
-        // 模拟 NOT NULL/约束违规：流水 insert 抛异常
-        when(inventoryMovementMapper.insert(any(InventoryMovement.class)))
-                .thenThrow(new RuntimeException("NOT NULL violation: source_ref"));
+        // 模拟 NOT NULL/约束违规：统一流水记录抛异常
+        when(inventoryMovementService.recordMovement(any()))
+                .thenThrow(new BusinessException(ErrorCode.PARAM_ERROR, "source_ref 不得为空"));
 
         // 不抛异常 = 库存变更照常提交（§6-3 尽力而为现状迁移）
         Long outgoingCost = service.decreaseStockAtLocation(LOCATION_ID, MATERIAL_ID,
-                new BigDecimal("1"), 2, null);
+                new BigDecimal("1"), "SALE_DEDUCT", "T30");
 
         assertEquals(400L, outgoingCost);
         verify(inventoryMapper).updateById(any(Inventory.class));
-        verify(inventoryMovementMapper, times(1)).insert(any(InventoryMovement.class));
+        verify(inventoryMovementService, times(1)).recordMovement(any());
     }
 
     // ============ 附：increase 已有行走累加分支（非入建） ============
@@ -244,7 +254,7 @@ class InventoryServiceImplLocationStockTest {
         when(inventoryMapper.updateById(any(Inventory.class))).thenReturn(1);
 
         service.increaseStockAtLocation(LOCATION_ID, MATERIAL_ID, "测试物料",
-                new BigDecimal("4"), "斤", 300L, 1, "SI-2");
+                new BigDecimal("4"), "斤", 300L, "PURCHASE_STOCKIN", "SI-2");
 
         ArgumentCaptor<Inventory> captor = ArgumentCaptor.forClass(Inventory.class);
         verify(inventoryMapper).updateById(captor.capture());
