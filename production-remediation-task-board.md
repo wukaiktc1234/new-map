@@ -7952,7 +7952,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-INVENTORY-CONSUMPTION-STATS-001** |
-| 状态 | **PENDING（未启动）** |
+| 状态 | **✅ CLOSED（2026-09-27 Owner 收口）**——修复 commit `9187286`（列名 `change_amount` + 动态 WHERE，3 文件 +304）；收口证据（2026-09-27 活体）：① `GET /api/v1/inventory/consumptions/stats` 无参 + 带 startTime/endTime 时间窗均 HTTP 200 / code 0（修复前任何调用必 500）② 活体 schema 核对 `inventory_log.change_amount` 存在、`change_quantity` 不存在 ③ 集成测试 `InventoryLogConsumptionStatsIntegrationTest` 5/5 绿。备注：本地 inventory_log 0 行，data=null 为真实空数据；行级正确性由集成测试覆盖 |
 | 优先级 | P1 |
 | 来源 | ① P1-INVENTORY-LOG-FILTER-001 实施记录 §4 残留 1（登记，存量问题）② **Owner 活体截图（2026-09-26）**：`GET /v1/inventory/consumptions/stats` 返回 500 |
 | Bug 事实（2026-09-26 代码 + 活体 DB 核对） | `InventoryLogMapper.xml` L27-29 `selectConsumptionStats`：① SQL 写 `SUM(change_quantity)`，实表/实体列名是 **`change_amount`**（实体 `InventoryLog` L56 `@TableField("change_amount")` + 活体 `information_schema` 12 列核对：id/product_id/warehouse_id/operation_type/before_stock/after_stock/**change_amount**/operator_id/remark/create_time/update_time/deleted）→ 任何调用 500（PG column does not exist）② mapper 接口 L45-47 三参数（startTime/endTime/operationType）在 XML **全部未引用（无 WHERE）** → 修列名后仍是全局统计 ③ 服务层硬编码 `operationType="out"`（`InventoryLogServiceImpl` L62）未落入 SQL |
@@ -7964,3 +7964,54 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 ---
 
 *追加：2026-09-26 Owner 批量指令（任务 A/B/C 批次）：① §24.3e P1-INVENTORY-LOG-FILTER-001 收口登记（Owner 活体截图 + 三调用方代码核对，不走 DS/QA 全流程）② §24.3f 新卡 P1-INVENTORY-CONSUMPTION-STATS-001（PENDING）③ 在途卡补登：P1-FOODS-STOCK-SEMANTICS-001（阶段 1 诊断完成，报告 `docs/quality/foods-stock-semantics-diagnosis-001.md` commit `22ccbdd`，待 Owner 审 → 阶段 2）/ P1-POS-MENU-UNIFICATION-001（阶段 2 设计完成，`docs/design/pos-menu-unification-design-001.md` commit `f3eeda4`，待 Owner 审 + 4 项拍板 → 阶段 3）④ 本批零业务代码。*
+
+## 24.3g P1-LOCATION-MODEL-001（2026-09-27 Owner 拍板后登记；同日 M1-M2 实施完成、M3-M4 经 Owner 授权启动）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-LOCATION-MODEL-001** |
+| 状态 | **实施中**——M1-M2 ✅ 完成（commit `a956cd4`：locations + location_id_map 建表迁移 + 只读核心层，回滚演练通过，实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-001.md`）；**M3-M4 实施中（2026-09-27 Owner 授权，一张卡做透不拆分）**：范围=合并 T1+T2 键(location_id,material_id) / 合并 T3+T4a+T4b 流水 / 污染全清 / 5 个绕过直写文件收编 / 4 处 String.valueOf(warehouseId) 经 map 改写 / 死代码删除 / InventorySummaryMapper UNION ALL 重写 / inventory_log 后门关闭；纪律依据 `docs/quality/m3m4-preflight/implementation-constitution-001.md`（含 4 项未批复行为敏感点按现状迁移）；回归基线 `docs/quality/m3m4-preflight/inventory-chain-snapshot-20260927-001.json` |
+| 优先级 | P1 |
+| 性质 | 架构级重构（Location 模型一期：locations 统一 stores_new+warehouses / 库存单表 / 流水合并 / 单据单落点） |
+| 前置 | D-1~D-7 已拍板（✅ 2026-09-27 完成，含 3 处务实简化） |
+| 依赖 | 无（可独立启动） |
+| 设计 | `docs/design/location-organization-separation-design-001.md`（主体）+ `-002.md`（§7 ID 空间规则 / §4.1 核实清单 A32+C28+B250 / §1.3 批次单行化 / §2.5 设备归属），实施以 -002 修订为准 |
+| 关键事实（-002 §4.1 核实） | store_id 全仓 439 文件；实改 A 类 32 + C 类 28 后端文件 + ~18 前端；B 类 ~250 仅语义标注；users.store_id DB 实为 VARCHAR（需类型迁移）；3 个高危混用点（PurchaseRequestServiceImpl:325-338 / DataPermissionAspect:113-164 / InventoryTransferServiceImpl:226-245）回归必测 |
+| 估算 | 9~12 人天（Owner 全清生效取 10 人天上限口径） |
+| 验收基准 | 迁移演练 ×2 通过；库存全链 E2E（采购→入库→调拨（含仓→店）→销售→出餐扣料→日结）；store_inventory/inventory 合并后行数与映射表对账一致；3 个高危混用点用例通过；回滚演练（M1-M6 DOWN + 快照恢复）成功 |
+| 启动条件 | **Owner 明确指令后** |
+
+## 24.3h P1-USER-LOCATION-001（2026-09-27 Owner 拍板后登记，未启动）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-USER-LOCATION-001** |
+| 状态 | **PENDING（未启动）** |
+| 优先级 | P1 |
+| 性质 | 身份层重构 + 用户归属（JWT 携带 locationId / SecurityUtils / 13 处兜底消除 / 分配入口 / 入职链路 / users.location_id 改名） |
+| 前置 | U-1~U-7 已拍板（✅ 2026-09-27 完成，含附加 2/3/4） |
+| 依赖 | **P1-LOCATION-MODEL-001**（users.location_id 命名与 location_id_map 依赖 Location 模型核心层）；可在其前端/回归阶段并行启动 |
+| 设计 | `docs/design/user-store-assignment-design-001.md`（主体）+ `-002.md`（§5 users.location_id 改名 + admin 位置上下文解析链 / §5.2 JWT 写 locationId 单字段 / §5.3 设备归属 / §7 仓库员工操作边界 + NoLocationAssignedException 更名），实施以 -002 修订为准 |
+| 估算 | 7~8 人天 |
+| 验收基准 | JWT claim 含 locationId 且 5 个生成点一致；15 个 NULL 用户按处置表逐人核对；13 处兜底逐项消除（拒绝路径 403/400 文案正确）；仓库员工（emp-l/n）边界：允许仓库操作、拒绝门店单据；admin 写侧位置上下文解析链三级生效；assign-store 分配有审计留痕 |
+| 启动条件 | P1-LOCATION-MODEL-001 一期核心层落地后 |
+
+## 24.3i P1-STOMP-RECONNECT-001（2026-09-27 QA 验收发现登记；同日实施完成，待 Owner 验收收口）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-STOMP-RECONNECT-001** |
+| 状态 | **实施完成（commit `c975a8f`），待 Owner 验收收口**——根因（stompjs v7 仅 ws-close 续期重连，ws-error 无 close 时链路永久停摆）+ 应用层监督重连修复 + 浏览器级验证（宕机 105s 恢复后 10s 内自动重连、重连后收推送断言通过），见 `docs/architecture/03-review/p1-stomp-reconnect-001-implementation-record-001.md` |
+| 优先级 | P1 |
+| 性质 | 通信层修复（浏览器级长宕机后 STOMP 客户端不自动重连） |
+| 前置 | D #2（STOMP CONNECT 帧头）已收口（✅ 2026-09-27，QA 有条件通过：`docs/quality/d2-stomp-auth-fix-001-qa-report.md` §2） |
+| 依赖 | 无（可独立启动） |
+| Bug 事实（QA 实测 2026-09-27） | 后端宕机 90s+ 重启后，frontend-pos / frontend-kitchen 的 `.ts` WebSocketService 客户端 400s+ 零重连尝试（KDS 页 performance 仅初始 1 条 /api/ws/info；两标签页均无新会话），页面刷新后立即恢复；CallNumber/CallingDisplay 同机制。定性：既有行为，非 D #2 修复引入 |
+| 排查范围 | stompjs v7 close 后重试调度（`client.js:422` `_connect`/reconnectDelay 链）、`connectionTimeout: 10000` forceDisconnect 与重连调度交互、`onWebSocketError`/`onDisconnect` 自定义处理是否干扰内部重连；CallNumber/CallingDisplay 相对路径 SockJS 在 vite dev 代理下需 `ws: true`（`frontend-pos/vite.config.ts:24-29`） |
+| 验收基准 | 浏览器级：后端宕机 90s+ 恢复后，4 处客户端在无人工干预下自动重连并收到后续推送（KDS 看板卡片移动作为收消息断言） |
+| 估算 | 0.5~1 人天 |
+| 启动条件 | **Owner 明确指令后** |
+
+---
+
+*追加：2026-09-27 Owner 拍板批次（19 项 + 3 处务实简化）执行登记：① 两份补充设计落盘（`location-organization-separation-design-002.md` / `user-store-assignment-design-002.md`，-001 均未改动）② 新建三卡：§24.3g P1-LOCATION-MODEL-001（PENDING）、§24.3h P1-USER-LOCATION-001（PENDING，依赖 24.3g）、§24.3i P1-STOMP-RECONNECT-001（PENDING，可独立）。历史条目未改动；本批零业务代码、零 DB 变更。下一轮：Owner 审两份补充设计 → 确认 → 启动 P1-LOCATION-MODEL-001。*
