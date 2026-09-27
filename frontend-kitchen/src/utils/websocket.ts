@@ -8,6 +8,12 @@ const getWebSocketUrl = (): string => {
   return `http://${host}:${apiPort}/api/ws`
 }
 
+// 后端 STOMP CONNECT 帧强制 JWT 鉴权（WebSocketConfig 拦截器只读帧头，不读 HTTP 头）
+const getConnectHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('token') || localStorage.getItem('access_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 const defaultConfig: WebSocketConfig = {
   url: getWebSocketUrl(),
   reconnectInterval: 3000,
@@ -48,6 +54,7 @@ class WebSocketService {
         const socket = new SockJS(this.config.url);
         this.client = new Client({
           webSocketFactory: () => socket,
+          connectHeaders: getConnectHeaders(),
           debug: (str) => console.log('STOMP Debug:', str),
           reconnectDelay: this.config.reconnectInterval,
           heartbeatIncoming: 10000,

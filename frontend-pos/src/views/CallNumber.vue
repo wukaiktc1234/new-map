@@ -729,10 +729,17 @@ const initWebSocket = () => {
   
   stompClient = new Client({
     webSocketFactory: () => socket as any,
+    // 后端 STOMP CONNECT 帧强制 JWT 鉴权（拦截器只读帧头）；beforeConnect 保证每次重连取最新 token
+    beforeConnect: (client) => {
+      const token = localStorage.getItem('pos-token')
+      if (token) {
+        client.connectHeaders = { Authorization: `Bearer ${token}` }
+      }
+    },
     reconnectDelay: 5000,
     heartbeatIncoming: 4000,
     heartbeatOutgoing: 4000,
-    
+
     onConnect: () => {
       stompClient?.subscribe('/topic/call-number/new', handleNewCallRecord)
       stompClient?.subscribe('/topic/call-number/called', handleCalledRecord)
