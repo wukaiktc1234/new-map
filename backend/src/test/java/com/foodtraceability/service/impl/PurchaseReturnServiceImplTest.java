@@ -21,7 +21,7 @@ import com.foodtraceability.mapper.finance.SupplierRefundRequestMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseStockinService;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
+
 import com.foodtraceability.service.SupplierService;
 import com.foodtraceability.service.finance.PayableService;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,9 +74,6 @@ class PurchaseReturnServiceImplTest {
 
     @Mock
     private InventoryService inventoryService;
-
-    @Mock
-    private StoreInventoryService storeInventoryService;
 
     @Mock
     private PayableService payableService;

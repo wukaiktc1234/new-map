@@ -14,7 +14,7 @@ import com.foodtraceability.mapper.PurchaseStockinMapper;
 import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
+
 import com.foodtraceability.service.finance.PayableService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -83,9 +83,6 @@ class PurchaseStockinServiceImplTest {
     private InventoryService inventoryService;
 
     @Mock
-    private StoreInventoryService storeInventoryService;
-
-    @Mock
     private LocationService locationService;
 
     @Mock
@@ -109,7 +106,7 @@ class PurchaseStockinServiceImplTest {
         ReflectionTestUtils.setField(service, "baseMapper", purchaseStockinMapper);
         ReflectionTestUtils.setField(service, "purchaseOrderItemMapper", purchaseOrderItemMapper);
         ReflectionTestUtils.setField(service, "supplierMapper", supplierMapper);
-        ReflectionTestUtils.setField(service, "storeInventoryService", storeInventoryService);
+
         ReflectionTestUtils.setField(service, "locationService", locationService);
         // S4c-1 通用恒等解析 stub：warehouseId=X → locationId=X（覆盖全部用例；单测专用）
         when(locationService.resolveByWarehouseId(any())).thenAnswer(inv -> {

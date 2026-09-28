@@ -28,7 +28,7 @@ import com.foodtraceability.service.PurchaseArrivalService;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
+
 import com.foodtraceability.service.SystemConfigService;
 import com.foodtraceability.service.finance.PayableService;
 import com.foodtraceability.service.MaterialTraceCodeService;
@@ -83,7 +83,6 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private final SupplierMapper supplierMapper;
     private final UserMapper userMapper;
     private final InventoryService inventoryService;
-    private final StoreInventoryService storeInventoryService;
     private final LocationService locationService;
     private final PayableService payableService;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -97,7 +96,6 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
                                       SupplierMapper supplierMapper,
                                       UserMapper userMapper,
                                       InventoryService inventoryService,
-                                      StoreInventoryService storeInventoryService,
                                       LocationService locationService,
                                       PayableService payableService,
                                       ApplicationEventPublisher applicationEventPublisher,
@@ -110,7 +108,6 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         this.supplierMapper = supplierMapper;
         this.userMapper = userMapper;
         this.inventoryService = inventoryService;
-        this.storeInventoryService = storeInventoryService;
         this.locationService = locationService;
         this.payableService = payableService;
         this.applicationEventPublisher = applicationEventPublisher;

@@ -91,3 +91,48 @@
 - `InventoryLogMapper` + XML 零改动（读侧仍经 Service）。
 
 **测试**：定向 4 类 31/31 绿（InventoryServiceImplLocationStockTest 9/9、InventoryMovementServiceImplTest 9/9 新增、PurchaseStockinServiceImplTest 8/8、PurchaseReturnServiceImplTest 5/5；PurchaseReturn 仅 L172 verify 重锚，`any()`×5 签名兼容零改动）。**环境限制**：本会话本机 JAVA_HOME 失效（H:\fuwu\jdk-17.0.17+10 缺失），仅 JDK 25 可用（pom target 21）；JDK 25 下 bytebuddy 1.14.x 不识别 class file 69，跑单测须附加 `-DargLine=-Dnet.bytebuddy.experimental=true`（S8 测试重锚定同样适用，非代码问题）。
+
+## 8. S6a 执行结果与裁定日志（2026-09-28）
+
+**改动面**（StoreInventoryMapper → InventoryMapper 收编；T1 写路径全部切统一账 location 维度）：
+
+| 文件 | 改动 |
+|---|---|
+| `InventoryService.java` | `resolveLocationIdByStoreId` 接口方法已存在（S4a L69），无新增（本次曾误加重复声明，已撤） |
+| `OrderNewServiceImpl.java` | 注入 StoreInventoryService→InventoryService；3 调用点（L644 扣料 / L901 KDS / L1125-1131 退款回补）改 `resolveLocationIdByStoreId` + `decreaseStockAtLocation`/`increaseStockAtLocation`（8 参，sourceType=SALE_DEDUCT/SALE_REFUND）；未映射门店 → BusinessException PARAM_ERROR |
+| `ReceiptConfirmationServiceImpl.java` | 移除 StoreInventoryService 注入；store 分支改 resolveLocationIdByStoreId + increaseStockAtLocation（sourceType=PURCHASE_STOCKIN）；默认门店兜底 `resolveStoreIdIfMissing` 禁区不动 |
+| `StoreInventoryController.java` | /list 改 getStockPageAtLocation(location 维度)；/adjust 改 increase/decreaseStockAtLocation(sourceType=OTHER)；响应实体 StoreInventory→Inventory（S10 前端适配）；未映射门店 → 空页容错（现状保留）；/summary、/logs、/stores 不变 |
+| `PurchasePlanServiceImpl.java` | 注入 StoreInventoryMapper→InventoryMapper；低库存查询 selectList(wrapper) 改 Inventory 字段（quantity/safety_stock/max_stock/unit_cost） |
+| `InventoryTransferServiceImpl.java` | 移除死注入 StoreInventoryService（零调用） |
+| `PurchaseArrivalServiceImpl.java` | 移除死注入 StoreInventoryService（零调用） |
+| `PurchaseReturnServiceImpl.java` | 移除死注入 StoreInventoryService（零调用） |
+| `PurchaseStockinServiceImpl.java` | 移除死注入 StoreInventoryService（零调用，含 @Lazy） |
+| **删除** `StoreInventoryService.java` / `StoreInventoryServiceImpl.java` / `StoreInventoryMapper.java` | T1 服务/实现/mapper 三文件下线；实体 `StoreInventory` 保留（MaterialDeductionAuditIntegrationTest fixture + legacy 观察用） |
+
+**测试重锚**：
+- `OrderNewServiceImplDeductTest`（28 例）：mock StoreInventoryService→InventoryService；stubHappyPath 加 `resolveLocationIdByStoreId(anyLong())→1L`；全部 `decreaseStock(anyString(),anyLong(),any(BigDecimal),anyInt(),anyString())` → `decreaseStockAtLocation(anyLong(),anyLong(),any(BigDecimal),anyString(),anyString())`。
+- `OrderNewServiceImplOrderNumberA1Test`（3 例）：构造器参数 swap。
+- `PurchaseReturnServiceImplTest`（5 例）/ `PurchaseStockinServiceImplTest`（8 例）：移除死注入 mock 字段 + ReflectionTestUtils.setField。
+- `MaterialDeductionAuditIntegrationTest`：**未重锚**——该集成测试 fixture 用 store_id=9901（不在 location_id_map），且直插 `store_inventory` 表；S6a 后 deduct 路径走 location 维度，该测试在 DDL 应用前无法通过（预期，S8 重锚）。
+
+**测试结果**：定向 4 类 **44/44 绿**（OrderNewDeduct 28 + OrderNumberA1 3 + PurchaseReturn 5 + PurchaseStockin 8）。compile + test-compile 全绿。
+
+**裁定日志**（宪法 §四.2）：
+1. **Controller 响应实体变更**：/list、/adjust 返回 Inventory 而非 StoreInventory——API 契约字段名变化（current_stock→quantity, store_id→location_id 等），S10 前端适配；路径/参数不变。
+2. **/adjust sourceType=OTHER**：手动调整无专属词表项，取 OTHER（-001 §1.4 既有词表）。
+3. **未映射门店 /list 空页**：保持原 try-catch 容错现状（不抛异常），仅数据为空；与 §三.4"显式拒绝"的写路径不同——读路径空页是前端兼容现状迁移。
+4. **PurchasePlanServiceImpl 低库存查询改 Inventory 字段**：原 StoreInventory.current_stock/safety_stock/max_stock → Inventory.quantity/min_safe_qty/max_stock_qty（语义等价，列名映射）。
+
+**⚠️ 关键发现 + 排序冲突（需 Owner 裁决）**：
+
+**实查活体 DB**：`inventory` 表**已有 location_id 列**（nullable），但 **15 行数据全部 location_id=NULL**（全为 warehouse_id 键控）；`store_inventory` 仍有 18 行。即：
+- S6a/S6b 改写后的读路径按 location_id 查询 → **当前返回空**（无行有 location_id）。
+- 13 端点快照重放（S6b 后）将显示"库存全空"而非预期的"伪门店账消失"——**diff 不可接受**。
+- 根因：DDL V20260927_002（rename inventory→inventory_legacy + create new inventory + 数据迁移 location_id 回填）**尚未应用**（宪法 §四.5 定 S8/S9 停机窗口）。
+
+**选项**：
+- **(A) 提前应用 DDL**（S6b 后、S7 前）：V20260927_002 执行后 inventory 表有 location_id 数据 → 13 端点重放可正确 diff（仅伪门店账消失）。需 Owner 批准提前停机窗口（宪法 §四.5 红线条目，非我单方决定）。
+- **(B) 维持现状**：S6a/S6b 仅代码级完成（compile/test 绿），13 端点重放推迟到 S8/S9 DDL 应用后。S7 继续（DishInventoryMapper JOIN 修复等，不依赖 DDL）。
+- **(C) in-place 回填**：不改表结构，仅 `UPDATE inventory SET location_id = (SELECT location_id FROM location_id_map WHERE ...)` 回填现有 15 行 → 统一读路径立即可用；最终 DDL 简化为后续清理。需 Owner 批准变更 DRAFT 策略。
+
+**待 Owner 裁决后继续 S6b。**

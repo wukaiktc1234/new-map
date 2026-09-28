@@ -25,7 +25,7 @@ import com.foodtraceability.mapper.OrderNewMapper;
 import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.mapper.OrderRefundRecordNewMapper;
 import com.foodtraceability.service.MaterialConsumptionAuditService;
-import com.foodtraceability.service.StoreInventoryService;
+import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.finance.BankAccountService;
 import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.FundFlowService;
@@ -80,7 +80,7 @@ class OrderNewServiceImplOrderNumberA1Test {
     @Mock private DishRecipeNewMapper dishRecipeNewMapper;
     @Mock private ComboIngredientNewMapper comboIngredientNewMapper;
     @Mock private KitchenOrderMapper kitchenOrderMapper;
-    @Mock private StoreInventoryService storeInventoryService;
+    @Mock private InventoryService inventoryService;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private CostRecordService costRecordService;
     @Mock private FundFlowService fundFlowService;
@@ -109,7 +109,7 @@ class OrderNewServiceImplOrderNumberA1Test {
         service = new OrderNewServiceImpl(
                 orderNewMapper, orderItemNewMapper, orderPaymentRecordNewMapper, orderRefundRecordNewMapper,
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
-                comboIngredientNewMapper, kitchenOrderMapper, storeInventoryService,
+                comboIngredientNewMapper, kitchenOrderMapper, inventoryService,
                 applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
                 materialConsumptionAuditService);
 

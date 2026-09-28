@@ -16,7 +16,6 @@ import com.foodtraceability.mapper.WarehouseMapper;
 import com.foodtraceability.service.InventoryTransferService;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,14 +43,12 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
                                         ProductMapper productMapper,
                                         WarehouseMapper warehouseMapper,
                                         InventoryMapper inventoryMapper,
-                                        StoreInventoryService storeInventoryService,
                                         InventoryService inventoryService,
                                         LocationService locationService) {
         this.inventoryTransferMapper = inventoryTransferMapper;
         this.productMapper = productMapper;
         this.warehouseMapper = warehouseMapper;
         this.inventoryMapper = inventoryMapper;
-        this.storeInventoryService = storeInventoryService;
         this.inventoryService = inventoryService;
         this.locationService = locationService;
     }
@@ -64,11 +61,6 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
 
     private final InventoryMapper inventoryMapper;
 
-    /**
-     * 门店库存服务：用于调拨执行时同步 store_inventory 表
-     * 与 inventory 表（中央仓库存）双写保持一致
-     */
-    private final StoreInventoryService storeInventoryService;
     private final InventoryService inventoryService;
     private final LocationService locationService;
     

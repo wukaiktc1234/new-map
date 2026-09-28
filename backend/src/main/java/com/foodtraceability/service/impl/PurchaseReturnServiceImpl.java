@@ -25,7 +25,7 @@ import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseReturnService;
 import com.foodtraceability.service.PurchaseStockinService;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
+
 import com.foodtraceability.service.SupplierService;
 import com.foodtraceability.service.finance.PayableService;
 import org.slf4j.Logger;
@@ -75,7 +75,6 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
     private final SupplierRefundRequestMapper supplierRefundRequestMapper;
     private final PurchaseStockinService purchaseStockinService;
     private final InventoryService inventoryService;
-    private final StoreInventoryService storeInventoryService;
     private final LocationService locationService;
     private final PayableService payableService;
     private final SupplierService supplierService;
@@ -85,7 +84,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
                                      SupplierRefundRequestMapper supplierRefundRequestMapper,
                                      PurchaseStockinService purchaseStockinService,
                                      InventoryService inventoryService,
-                                     StoreInventoryService storeInventoryService,
+
                                      LocationService locationService,
                                      PayableService payableService,
                                      SupplierService supplierService) {
@@ -94,7 +93,7 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
         this.supplierRefundRequestMapper = supplierRefundRequestMapper;
         this.purchaseStockinService = purchaseStockinService;
         this.inventoryService = inventoryService;
-        this.storeInventoryService = storeInventoryService;
+
         this.locationService = locationService;
         this.payableService = payableService;
         this.supplierService = supplierService;

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.exception.MaterialDeductionContext;
 import com.foodtraceability.common.exception.MaterialDeductionFailureException;
 import com.foodtraceability.dto.PageResult;
@@ -15,9 +16,9 @@ import com.foodtraceability.entity.*;
 import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.event.OrderRefundEvent;
 import com.foodtraceability.mapper.*;
+import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.MaterialConsumptionAuditService;
 import com.foodtraceability.service.OrderNewService;
-import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.finance.CostRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +59,8 @@ public class OrderNewServiceImpl implements OrderNewService {
     private final DishRecipeNewMapper dishRecipeNewMapper;
     private final ComboIngredientNewMapper comboIngredientNewMapper;
     private final KitchenOrderMapper kitchenOrderMapper;
-    private final StoreInventoryService storeInventoryService;
+    // M3-M4 S6a：门店账收编——原 StoreInventoryService 注入改为统一账 InventoryService（location_id 维度）
+    private final InventoryService inventoryService;
     // W1-EC-04C: posOrderMapper/posOrderItemMapper 已移除
     // queryPosOrders/getPosOrderDetail 已迁移至 orders 表（canonical read），不再读 orders_legacy
     /** 事件发布器：用于发布订单完成事件，触发财务收入/凭证等异步联动（DF-008 修复） */
@@ -83,7 +85,7 @@ public class OrderNewServiceImpl implements OrderNewService {
             DishRecipeNewMapper dishRecipeNewMapper,
             ComboIngredientNewMapper comboIngredientNewMapper,
             KitchenOrderMapper kitchenOrderMapper,
-            StoreInventoryService storeInventoryService,
+            InventoryService inventoryService,
             ApplicationEventPublisher applicationEventPublisher,
             CostRecordService costRecordService,
             com.foodtraceability.service.finance.FundFlowService fundFlowService,
@@ -99,7 +101,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         this.dishRecipeNewMapper = dishRecipeNewMapper;
         this.comboIngredientNewMapper = comboIngredientNewMapper;
         this.kitchenOrderMapper = kitchenOrderMapper;
-        this.storeInventoryService = storeInventoryService;
+        this.inventoryService = inventoryService;
         this.applicationEventPublisher = applicationEventPublisher;
         this.costRecordService = costRecordService;
         this.fundFlowService = fundFlowService;
@@ -580,6 +582,24 @@ public class OrderNewServiceImpl implements OrderNewService {
      * 按菜品BOM配方展开，扣减每种原料的库存数量，同时结转对应的成本
      * @return 订单总成本（单位：分）
      */
+    /**
+     * M3-M4 S6a：订单门店 → 统一账位置解析（location_id_map，规则 4）。
+     * 门店为空或未映射 → 显式拒绝（宪法 §三.4 禁止默认兜底）。
+     */
+    private Long resolveOrderLocationId(OrderNew order) {
+        Long storeId = order.getStoreId();
+        if (storeId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "订单门店为空，无法定位库存（orderId=" + order.getOrderId() + "）");
+        }
+        Long locationId = inventoryService.resolveLocationIdByStoreId(storeId);
+        if (locationId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "订单门店未映射到位置，禁止扣减库存（storeId=" + storeId + "）");
+        }
+        return locationId;
+    }
+
     private long deductInventoryAndCalculateCost(OrderNew order) {
         Long storeId = order.getStoreId();
         List<OrderItemNew> orderItems = getOrderItems(order.getOrderId());
@@ -640,13 +660,13 @@ public class OrderNewServiceImpl implements OrderNewService {
             }
 
             try {
-                // 扣减库存，返回出库成本（分）
-                Long cost = storeInventoryService.decreaseStock(
-                        String.valueOf(storeId),
+                // M3-M4 S6a：统一账扣减（门店经 location_id_map 解析；返回出库成本，分）
+                Long cost = inventoryService.decreaseStockAtLocation(
+                        resolveOrderLocationId(order),
                         materialId,
                         qty,
-                        2,
-                        "订单销售出库 - 订单:" + order.getOrderCode());
+                        "SALE_DEDUCT",
+                        "销售出库 - 订单:" + order.getOrderCode());
                 if (cost != null) {
                     totalCost += cost;
                 }
@@ -880,11 +900,24 @@ public class OrderNewServiceImpl implements OrderNewService {
             log.error("出餐扣料：订单 storeId 为空, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
             throw MaterialDeductionFailureException.of(ctx,
                     MaterialDeductionFailureException.ORDER_STORE_ID_NULL,
-                    "出餐扣料失败：订单门店 storeId 为空，无法定位门店库存（orderId=" + orderId
+                    "出餐扣料失败：订单门店 storeId 为空，无法定位库存（orderId=" + orderId
                             + ", kitchenOrderId=" + kitchenOrderId + "）");
         }
 
-        // 6. 逐原料扣减（复用 storeInventoryService.decreaseStock()）
+        // M3-M4 S6a：统一账位置解析（location_id_map；未映射 → 整体失败 + 审计）
+        Long locationId = null;
+        if (!materialDeductionMap.isEmpty()) {
+            locationId = inventoryService.resolveLocationIdByStoreId(order.getStoreId());
+            if (locationId == null) {
+                log.error("出餐扣料：订单门店未映射到位置, orderId={}, kitchenOrderId={}", orderId, kitchenOrderId);
+                throw MaterialDeductionFailureException.of(ctx,
+                        MaterialDeductionFailureException.ORDER_STORE_ID_NULL,
+                        "出餐扣料失败：订单门店 storeId=" + order.getStoreId() + " 未映射到位置，无法定位库存（orderId="
+                                + orderId + ", kitchenOrderId=" + kitchenOrderId + "）");
+            }
+        }
+
+        // 6. 逐原料扣减（M3-M4 S6a：统一账 inventoryService.decreaseStockAtLocation()）
         //    任一原料失败 → MaterialDeductionFailureException → 事务回滚 + REQUIRES_NEW 审计
         for (Map.Entry<Long, BigDecimal> entry : materialDeductionMap.entrySet()) {
             Long materialId = entry.getKey();
@@ -898,9 +931,9 @@ public class OrderNewServiceImpl implements OrderNewService {
 
             ctx.addAttempted(materialId, qty, materialName);
             try {
-                storeInventoryService.decreaseStock(
-                        String.valueOf(order.getStoreId()),
-                        materialId, qty, 2, sourceRef);
+                inventoryService.decreaseStockAtLocation(
+                        locationId,
+                        materialId, qty, "SALE_DEDUCT", sourceRef);
             } catch (BusinessException e) {
                 // decreaseStock 的显式失败（库存不足/记录不存在/冲突）：映射为失败类型，整体失败 + 审计
                 ctx.setFailedMaterial(materialId, materialName);
@@ -1121,22 +1154,22 @@ public class OrderNewServiceImpl implements OrderNewService {
                 continue;
             }
 
-            // 获取当前库存记录，用当前单位成本回补（保持单位成本不变）
-            StoreInventory currentInventory = storeInventoryService.getByStoreAndMaterial(
-                    String.valueOf(storeId), materialId);
+            // M3-M4 S6a：统一账——获取当前行，用当前单位成本回补（保持单位成本不变）
+            Inventory currentInventory = inventoryService.getByLocationAndMaterial(
+                    resolveOrderLocationId(order), materialId);
             Long currentUnitCost = (currentInventory != null && currentInventory.getUnitCost() != null)
                     ? currentInventory.getUnitCost() : 0L;
 
             try {
-                storeInventoryService.increaseStock(
-                        String.valueOf(storeId),
+                inventoryService.increaseStockAtLocation(
+                        resolveOrderLocationId(order),
                         materialId,
                         materialName,
                         qty,
                         null,
                         currentUnitCost,
-                        1,
-                        "订单退款回补库存 - 订单:" + order.getOrderCode());
+                        "REFUND_RESTOCK",
+                        "退款回补 - 订单:" + order.getOrderCode());
                 log.info("退款回补库存, orderId: {}, materialId: {}, materialName: {}, qty: {}, unitCost: {}分",
                         order.getOrderId(), materialId, materialName, qty, currentUnitCost);
             } catch (Exception e) {

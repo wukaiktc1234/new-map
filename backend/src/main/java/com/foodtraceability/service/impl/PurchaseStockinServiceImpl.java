@@ -30,7 +30,6 @@ import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.PurchaseStockinService;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.service.StoreInventoryService;
 import com.foodtraceability.service.finance.PayableService;
 import com.foodtraceability.service.purchase.PurchasePlanService;
 import org.slf4j.Logger;
@@ -81,7 +80,6 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final SupplierMapper supplierMapper;
     private final InventoryService inventoryService;
-    private final StoreInventoryService storeInventoryService;
     private final LocationService locationService;
     private final PayableService payableService;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -96,7 +94,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
                                       PurchaseOrderItemMapper purchaseOrderItemMapper,
                                       SupplierMapper supplierMapper,
                                       InventoryService inventoryService,
-                                      @Lazy StoreInventoryService storeInventoryService,
+
                                       LocationService locationService,
                                       PayableService payableService,
                                       ApplicationEventPublisher applicationEventPublisher,
@@ -110,7 +108,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
         this.supplierMapper = supplierMapper;
         this.inventoryService = inventoryService;
-        this.storeInventoryService = storeInventoryService;
+
         this.locationService = locationService;
         this.payableService = payableService;
         this.applicationEventPublisher = applicationEventPublisher;
@@ -710,7 +708,7 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
     /**
      * 确认入库后逐项增加库存
      * 遍历入库明细，为每个物料调用InventoryService增加库存
-     * 同时同步门店库存（StoreInventoryService），保证门店库存维度一致
+     * M3-M4 S6a：统一账入账（原 StoreInventoryService 门店同步已收编至 location 维度）
      */
     private void increaseInventoryForStockin(PurchaseStockin stockin) {
         // 查询入库明细

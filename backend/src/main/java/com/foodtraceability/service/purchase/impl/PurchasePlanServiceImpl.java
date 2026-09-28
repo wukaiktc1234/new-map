@@ -15,13 +15,13 @@ import com.foodtraceability.entity.PurchasePlan;
 import com.foodtraceability.entity.PurchasePlanItem;
 import com.foodtraceability.entity.PurchaseOrder;
 import com.foodtraceability.entity.PurchaseOrderItem;
-import com.foodtraceability.entity.StoreInventory;
+import com.foodtraceability.entity.Inventory;
 import com.foodtraceability.mapper.MaterialArchiveMapper;
 import com.foodtraceability.mapper.PurchaseOrderItemMapper;
 import com.foodtraceability.mapper.PurchaseOrderMapper;
 import com.foodtraceability.mapper.PurchasePlanItemMapper;
 import com.foodtraceability.mapper.PurchasePlanMapper;
-import com.foodtraceability.mapper.StoreInventoryMapper;
+import com.foodtraceability.mapper.InventoryMapper;
 import com.foodtraceability.service.purchase.PurchasePlanService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.poi.ss.usermodel.Row;
@@ -80,20 +80,21 @@ public class PurchasePlanServiceImpl extends ServiceImpl<PurchasePlanMapper, Pur
     private final PurchasePlanItemMapper itemMapper;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
-    private final StoreInventoryMapper storeInventoryMapper;
+    // M3-M4 S6a：门店账收编——低库存扫描改读统一 inventory 表
+    private final InventoryMapper inventoryMapper;
     private final MaterialArchiveMapper materialArchiveMapper;
 
     public PurchasePlanServiceImpl(PurchasePlanMapper planMapper,
                                     PurchasePlanItemMapper itemMapper,
                                     PurchaseOrderMapper purchaseOrderMapper,
                                     PurchaseOrderItemMapper purchaseOrderItemMapper,
-                                    StoreInventoryMapper storeInventoryMapper,
+                                    InventoryMapper inventoryMapper,
                                     MaterialArchiveMapper materialArchiveMapper) {
         this.planMapper = planMapper;
         this.itemMapper = itemMapper;
         this.purchaseOrderMapper = purchaseOrderMapper;
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
-        this.storeInventoryMapper = storeInventoryMapper;
+        this.inventoryMapper = inventoryMapper;
         this.materialArchiveMapper = materialArchiveMapper;
     }
 
@@ -594,7 +595,7 @@ public class PurchasePlanServiceImpl extends ServiceImpl<PurchasePlanMapper, Pur
     /**
      * 从库存预警自动生成采购计划（草稿状态）
      *
-     * <p>扫描 store_inventory 中 safety_stock &gt; 0 且当前库存低于安全库存的物料，
+     * <p>M3-M4 S6a：扫描统一 inventory 表中 safety_stock &gt; 0 且当前库存低于安全库存的物料，
      * 建议采购量 = max_stock - current_stock（未设置 max_stock 时按 safety_stock×2 - current_stock），
      * 至少为 1；预估单价取库存最新成本价（unit_cost），无则 0（待人工填写）。</p>
      *
@@ -603,20 +604,19 @@ public class PurchasePlanServiceImpl extends ServiceImpl<PurchasePlanMapper, Pur
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PurchasePlanVO generateFromStock() {
-        LambdaQueryWrapper<StoreInventory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(StoreInventory::getDeleted, 0)
-                .gt(StoreInventory::getSafetyStock, BigDecimal.ZERO)
-                .apply("current_stock < safety_stock")
-                .orderByAsc(StoreInventory::getMaterialId);
-        List<StoreInventory> lowStockItems = storeInventoryMapper.selectList(wrapper);
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.gt(Inventory::getSafetyStock, BigDecimal.ZERO)
+                .apply("quantity < safety_stock")
+                .orderByAsc(Inventory::getMaterialId);
+        List<Inventory> lowStockItems = inventoryMapper.selectList(wrapper);
         if (lowStockItems.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "暂无库存低于安全库存的物料，无需生成采购计划");
         }
 
-        // 去重：同一物料多次出现时按最小库存合并（取库存最低的店）
-        Map<Long, StoreInventory> merged = new java.util.LinkedHashMap<>();
-        for (StoreInventory inv : lowStockItems) {
-            StoreInventory existing = merged.get(inv.getMaterialId());
+        // 去重：同一物料多次出现时按最小库存合并（取库存最低的位置）
+        Map<Long, Inventory> merged = new java.util.LinkedHashMap<>();
+        for (Inventory inv : lowStockItems) {
+            Inventory existing = merged.get(inv.getMaterialId());
             if (existing == null || inv.getCurrentStock().compareTo(existing.getCurrentStock()) < 0) {
                 merged.put(inv.getMaterialId(), inv);
             }
@@ -636,7 +636,7 @@ public class PurchasePlanServiceImpl extends ServiceImpl<PurchasePlanMapper, Pur
 
         long totalAmountFen = 0L;
         List<PurchasePlanItem> itemEntities = new ArrayList<>();
-        for (StoreInventory inv : merged.values()) {
+        for (Inventory inv : merged.values()) {
             BigDecimal suggestQty = inv.getMaxStock() != null && inv.getMaxStock().compareTo(BigDecimal.ZERO) > 0
                     ? inv.getMaxStock().subtract(inv.getCurrentStock())
                     : inv.getSafetyStock().multiply(new BigDecimal("2")).subtract(inv.getCurrentStock());

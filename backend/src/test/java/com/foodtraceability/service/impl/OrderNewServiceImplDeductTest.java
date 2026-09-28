@@ -21,7 +21,7 @@ import com.foodtraceability.mapper.OrderNewMapper;
 import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.mapper.OrderRefundRecordNewMapper;
 import com.foodtraceability.service.MaterialConsumptionAuditService;
-import com.foodtraceability.service.StoreInventoryService;
+import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.finance.BankAccountService;
 import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.FundFlowService;
@@ -89,7 +89,7 @@ class OrderNewServiceImplDeductTest {
     @Mock private DishRecipeNewMapper dishRecipeNewMapper;
     @Mock private ComboIngredientNewMapper comboIngredientNewMapper;
     @Mock private KitchenOrderMapper kitchenOrderMapper;
-    @Mock private StoreInventoryService storeInventoryService;
+    @Mock private InventoryService inventoryService;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private CostRecordService costRecordService;
     @Mock private FundFlowService fundFlowService;
@@ -115,7 +115,7 @@ class OrderNewServiceImplDeductTest {
         service = new OrderNewServiceImpl(
                 orderNewMapper, orderItemNewMapper, orderPaymentRecordNewMapper, orderRefundRecordNewMapper,
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
-                comboIngredientNewMapper, kitchenOrderMapper, storeInventoryService,
+                comboIngredientNewMapper, kitchenOrderMapper, inventoryService,
                 applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
                 materialConsumptionAuditService);
     }
@@ -195,11 +195,13 @@ class OrderNewServiceImplDeductTest {
         when(comboIngredientNewMapper.selectList(any())).thenReturn(list);
     }
 
-    /** 标准成功路径桩：占位成功 + 订单/明细/菜品/配方齐备 */
+    /** 标准成功路径桩：占位成功 + 订单/明细/菜品/配方齐备 + M3-M4 S6a 位置解析 */
     private void stubHappyPath() {
         when(kitchenOrderMapper.update(any(), any())).thenReturn(1);
         when(kitchenOrderMapper.selectOne(any())).thenReturn(kitchenOrder());
         when(orderNewMapper.selectById(ORDER_ID)).thenReturn(order());
+        // M3-M4 S6a：订单门店 → 统一账位置（location_id_map 桩）
+        when(inventoryService.resolveLocationIdByStoreId(anyLong())).thenReturn(1L);
     }
 
     private void stubDish(Long foodId, Long materialId, BigDecimal requiredQty) {
@@ -207,7 +209,7 @@ class OrderNewServiceImplDeductTest {
         when(foodNewMapper.selectById(foodId)).thenReturn(food(foodId));
         when(dishRecipeNewMapper.selectList(any()))
                 .thenReturn(Collections.singletonList(recipe(foodId, materialId, requiredQty)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenReturn(0L);
     }
 
@@ -395,7 +397,7 @@ class OrderNewServiceImplDeductTest {
         when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(
                 recipe(100L, 11L, BigDecimal.ONE),
                 recipe(100L, 22L, new BigDecimal("2"))));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenReturn(0L)
                 .thenThrow(new BusinessException(8802, "库存不足: 原料22"));
         assertFailure(MaterialDeductionFailureException.STOCK_INSUFFICIENT);
@@ -407,8 +409,8 @@ class OrderNewServiceImplDeductTest {
         assertTrue(audited.getContext().getAttemptedMaterials().stream()
                 .anyMatch(s -> s.startsWith("22:")));
         // A 成功 + B 失败 = 2 次调用
-        verify(storeInventoryService, org.mockito.Mockito.times(2))
-                .decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, org.mockito.Mockito.times(2))
+                .decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString());
     }
 
     @Test
@@ -418,7 +420,7 @@ class OrderNewServiceImplDeductTest {
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(singleItem(100L)));
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenThrow(new BusinessException(404, "库存记录不存在"));
         assertFailure(MaterialDeductionFailureException.STORE_INVENTORY_NOT_FOUND);
     }
@@ -430,7 +432,7 @@ class OrderNewServiceImplDeductTest {
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(singleItem(100L)));
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenThrow(new BusinessException(8803, "库存并发冲突"));
         assertFailure(MaterialDeductionFailureException.STOCK_DEDUCTION_CONFLICT);
     }
@@ -442,7 +444,7 @@ class OrderNewServiceImplDeductTest {
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(singleItem(100L)));
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("db down"));
         assertFailure(MaterialDeductionFailureException.DECREASE_STOCK_ERROR);
     }
@@ -458,7 +460,7 @@ class OrderNewServiceImplDeductTest {
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ONE)));
         assertFailure(MaterialDeductionFailureException.ORDER_STORE_ID_NULL);
-        verify(storeInventoryService, never()).decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, never()).decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString());
     }
 
     // ==================== 成功路径（不得失败、不得触发审计） ====================
@@ -472,11 +474,11 @@ class OrderNewServiceImplDeductTest {
         when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(
                 recipe(100L, 11L, BigDecimal.ONE),
                 recipe(100L, 22L, new BigDecimal("2"))));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenReturn(0L);
         service.deductMaterialsForServe(KITCHEN_ORDER_ID, SOURCE_REF, TRAY_CODE);
-        verify(storeInventoryService, org.mockito.Mockito.times(2))
-                .decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, org.mockito.Mockito.times(2))
+                .decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString());
         verify(materialConsumptionAuditService, never()).recordDeductionFailure(any());
     }
 
@@ -487,14 +489,14 @@ class OrderNewServiceImplDeductTest {
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(singleItem(100L)));
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ZERO)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenReturn(0L);
         // 不应抛异常（PENDING：保持原成功行为）
         service.deductMaterialsForServe(KITCHEN_ORDER_ID, SOURCE_REF, TRAY_CODE);
         // 零数量原料不进入实际扣减
         org.mockito.ArgumentCaptor<Long> matCaptor = org.mockito.ArgumentCaptor.forClass(Long.class);
-        verify(storeInventoryService, never())
-                .decreaseStock(anyString(), matCaptor.capture(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, never())
+                .decreaseStockAtLocation(anyLong(), matCaptor.capture(), any(BigDecimal.class), anyString(), anyString());
         verify(materialConsumptionAuditService, never()).recordDeductionFailure(any());
     }
 
@@ -506,7 +508,7 @@ class OrderNewServiceImplDeductTest {
         refunded.setKitchenStatus(4);
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(refunded));
         service.deductMaterialsForServe(KITCHEN_ORDER_ID, SOURCE_REF, TRAY_CODE);
-        verify(storeInventoryService, never()).decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, never()).decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString());
         verify(materialConsumptionAuditService, never()).recordDeductionFailure(any());
     }
 
@@ -526,11 +528,11 @@ class OrderNewServiceImplDeductTest {
         when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(
                 recipe(200L, 31L, BigDecimal.ONE),
                 recipe(201L, 32L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenReturn(0L);
         service.deductMaterialsForServe(KITCHEN_ORDER_ID, SOURCE_REF, TRAY_CODE);
-        verify(storeInventoryService, org.mockito.Mockito.times(2))
-                .decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString());
+        verify(inventoryService, org.mockito.Mockito.times(2))
+                .decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString());
         verify(materialConsumptionAuditService, never()).recordDeductionFailure(any());
     }
 
@@ -543,7 +545,7 @@ class OrderNewServiceImplDeductTest {
         when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(
                 recipe(100L, 11L, BigDecimal.ONE),
                 recipe(100L, 22L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenThrow(new BusinessException(8802, "库存不足"));
         assertFailure(MaterialDeductionFailureException.STOCK_INSUFFICIENT);
         MaterialDeductionFailureException audited = captureAuditFailure();
@@ -593,7 +595,7 @@ class OrderNewServiceImplDeductTest {
         when(orderItemNewMapper.selectList(any())).thenReturn(Collections.singletonList(singleItem(100L)));
         when(foodNewMapper.selectById(100L)).thenReturn(food(100L));
         when(dishRecipeNewMapper.selectList(any())).thenReturn(Collections.singletonList(recipe(100L, 11L, BigDecimal.ONE)));
-        when(storeInventoryService.decreaseStock(anyString(), anyLong(), any(BigDecimal.class), anyInt(), anyString()))
+        when(inventoryService.decreaseStockAtLocation(anyLong(), anyLong(), any(BigDecimal.class), anyString(), anyString()))
                 .thenThrow(new BusinessException(8802, "库存不足"));
         doThrow(new RuntimeException("审计连接断开"))
                 .when(materialConsumptionAuditService).recordDeductionFailure(any());

@@ -38,7 +38,7 @@ import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.ReceiptConfirmationService;
-import com.foodtraceability.service.StoreInventoryService;
+
 import com.foodtraceability.service.SupplierService;
 import com.foodtraceability.service.finance.PayableService;
 import com.foodtraceability.utils.IpUtils;
@@ -95,7 +95,6 @@ public class ReceiptConfirmationServiceImpl extends ServiceImpl<ReceiptConfirmat
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper orderItemMapper;
     private final InventoryService inventoryService;
-    private final StoreInventoryService storeInventoryService;
     private final PayableService payableService;
     private final SupplierService supplierService;
     private final EventPublisher eventPublisher;
@@ -113,7 +112,6 @@ public class ReceiptConfirmationServiceImpl extends ServiceImpl<ReceiptConfirmat
                                           PurchaseOrderMapper orderMapper,
                                           PurchaseOrderItemMapper orderItemMapper,
                                           InventoryService inventoryService,
-                                          StoreInventoryService storeInventoryService,
                                           PayableService payableService,
                                           SupplierService supplierService,
                                           EventPublisher eventPublisher,
@@ -130,7 +128,6 @@ UserMapper userMapper,
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.inventoryService = inventoryService;
-        this.storeInventoryService = storeInventoryService;
         this.payableService = payableService;
         this.supplierService = supplierService;
         this.eventPublisher = eventPublisher;
@@ -693,14 +690,28 @@ UserMapper userMapper,
         String receiverType = arrival.getReceiverType();
         Long unitPrice = arrivalItem.getUnitPrice() != null ? arrivalItem.getUnitPrice() : 0L;
         if (RECEIVER_STORE.equals(receiverType)) {
-            storeInventoryService.increaseStock(
-                    arrival.getStoreId(),
+            // M3-M4 S6a：统一账入账（门店经 location_id_map 解析；未映射显式拒绝，宪法 §三.4）
+            String storeIdStr = arrival.getStoreId();
+            Long storeId;
+            try {
+                storeId = (storeIdStr == null || storeIdStr.trim().isEmpty()) ? null : Long.valueOf(storeIdStr.trim());
+            } catch (NumberFormatException e) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "收货确认门店ID非数值，禁止入账（storeId=" + storeIdStr + "）");
+            }
+            Long locationId = inventoryService.resolveLocationIdByStoreId(storeId);
+            if (locationId == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "收货确认门店未映射到位置，禁止入账（storeId=" + storeIdStr + "）");
+            }
+            inventoryService.increaseStockAtLocation(
+                    locationId,
                     arrivalItem.getMaterialId(),
                     arrivalItem.getMaterialName(),
                     confirmedQty,
                     arrivalItem.getUnit(),
                     unitPrice,
-                    1,
+                    "RECEIPT_CONFIRM",
                     "采购到货确认入库 - 确认单:" + confirmationCode);
         } else if (RECEIVER_WAREHOUSE.equals(receiverType)) {
             InventoryIncreaseDTO increaseDTO = new InventoryIncreaseDTO();
