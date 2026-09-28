@@ -4,12 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.foodtraceability.entity.Inventory;
+
 import com.foodtraceability.entity.InventoryTransfer;
 import com.foodtraceability.entity.Product;
 import com.foodtraceability.entity.Warehouse;
 import com.foodtraceability.entity.enums.InventoryTransferStatus;
-import com.foodtraceability.mapper.InventoryMapper;
+
 import com.foodtraceability.mapper.InventoryTransferMapper;
 import com.foodtraceability.mapper.ProductMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
@@ -42,13 +42,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
     public InventoryTransferServiceImpl(InventoryTransferMapper inventoryTransferMapper,
                                         ProductMapper productMapper,
                                         WarehouseMapper warehouseMapper,
-                                        InventoryMapper inventoryMapper,
                                         InventoryService inventoryService,
                                         LocationService locationService) {
         this.inventoryTransferMapper = inventoryTransferMapper;
         this.productMapper = productMapper;
         this.warehouseMapper = warehouseMapper;
-        this.inventoryMapper = inventoryMapper;
         this.inventoryService = inventoryService;
         this.locationService = locationService;
     }
@@ -58,8 +56,6 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
     private final ProductMapper productMapper;
 
     private final WarehouseMapper warehouseMapper;
-
-    private final InventoryMapper inventoryMapper;
 
     private final InventoryService inventoryService;
     private final LocationService locationService;
@@ -216,15 +212,10 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
             throw new RuntimeException("调拨数量必须大于0");
         }
 
-        // 1. 更新中央仓 inventory 表（同事务强一致）
-        // 从调出仓库扣减库存
-        updateInventory(productId, fromWarehouseId, quantity.negate());
-        // 向调入仓库增加库存
-        updateInventory(productId, toWarehouseId, quantity);
+        // M3-M4 S7b：原 updateInventory（warehouse_id + current_stock 列）已删除——
+        // post-DDL 这些列不存在；syncStoreInventory 已通过统一 InventoryService 完成 location 维度增减。
 
-        // 2. 同步门店库存 store_inventory 表（修复 DF-018：原实现只更新 inventory 表）
-        // 仓库与门店的映射沿用 PurchaseStockinServiceImpl 既有约定：warehouseId 作为 storeId
-        // （与项目现有 DF-006 设计限制保持一致，不在本次修复范围内变更）
+        // 同步库存（统一账 location 维度，S6a 已收编）
         syncStoreInventory(inventoryTransfer, quantity);
 
         // 更新调拨单状态为「已完成」
@@ -286,41 +277,4 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
         }
     }
     
-    /**
-     * 更新库存
-     */
-    private void updateInventory(Long productId, Long warehouseId, BigDecimal quantity) {
-        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
-        // inventory 表使用 material_id 作为物料标识，与调拨单的 product_id 等价
-        wrapper.eq(Inventory::getMaterialId, productId)
-               .eq(Inventory::getWarehouseId, warehouseId)
-               .eq(Inventory::getDeleted, 0);
-
-        Inventory inventory = inventoryMapper.selectOne(wrapper);
-
-        if (inventory == null) {
-            if (quantity.compareTo(BigDecimal.ZERO) < 0) {
-                throw new RuntimeException("库存不足，无法扣减");
-            }
-            // 创建新库存记录
-            inventory = new Inventory();
-            inventory.setMaterialId(productId);
-            inventory.setWarehouseId(warehouseId);
-            inventory.setCurrentStock(quantity);
-            inventory.setSafetyStock(BigDecimal.ZERO);
-            inventory.setDeleted(0);
-            inventoryMapper.insert(inventory);
-            log.info("创建库存记录: productId={}, warehouseId={}, stock={}", productId, warehouseId, quantity);
-        } else {
-            BigDecimal oldStock = inventory.getCurrentStock();
-            BigDecimal newStock = oldStock.add(quantity);
-            if (newStock.compareTo(BigDecimal.ZERO) < 0) {
-                throw new RuntimeException("库存不足，当前库存: " + oldStock);
-            }
-            inventory.setCurrentStock(newStock);
-            inventoryMapper.updateById(inventory);
-            log.info("更新库存: productId={}, warehouseId={}, oldStock={}, change={}, newStock={}",
-                    productId, warehouseId, oldStock, quantity, newStock);
-        }
-    }
 }
