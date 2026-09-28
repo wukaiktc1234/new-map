@@ -265,3 +265,40 @@
 5. 应用同步重启方案
 
 **不允许跳过 S8b-prep 直接上活体。**（S8b-prep 已通过，此条件满足。）
+
+## 13. S8b 执行结果：活体 DDL 应用成功（2026-09-29）
+
+**Owner 指令**：S8b 现在执行。前置 8 步按顺序完成。
+
+### 执行序列
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | 沙箱 DOWN + legacy 恢复验证（回滚演练） | ✅ DOWN 成功→pre-DDL 状态完整恢复→重新 DDL |
+| 2 | 停后端，确认调度器无写库 | ✅ 无 java 进程，活体库 0 活跃连接 |
+| 3 | 二次 pg_dump → m3m4-predump-20260929.dump | ✅ 2.12 MB |
+| 4 | 手工执行 DDL（活体，事务内） | ✅ 5 RENAME + 2 CREATE + INSERT 13+15 |
+| 5 | 校验新表 13 行 / legacy 15 行 | ✅ inventory=13, movement=15, legacy=15, FK orphaned=0, null loc=0 |
+| 6 | 重启后端 | ✅ health 200 |
+| 7 | 13 端点快照重放 → diff | **✅ 13/13 PASS** |
+| 8 | 全程日志存文件 | ✅ s8b-run/s8b-full-log.txt (14.6 KB, 425 lines) |
+
+### 活体 post-DDL 数据确认
+
+- `inventory`（新）= 13 行，全部 location_id 已设
+- `inventory_movement`（新）= 15 行
+- `inventory_legacy` = 15 行（原 T2 完整保留）
+- `store_inventory_legacy` = 18, `store_inventory_log_legacy` = 49
+- `inventory_transactions_legacy` = 31, `inventory_log_legacy` = 0
+
+### Diff 结论
+
+活体 post-DDL 13 端点结果 **与沙箱完全一致**：除"伪门店账消失"外零差异。
+
+### 回滚点（保留至 M7）
+
+- DOWN 脚本：DRAFT SQL 尾部
+- 备份：`backups/m3m4-predump-20260929.dump`（2.12 MB）
+- 日志：`s8b-run/s8b-full-log.txt`
+
+**M3-M4 核心迁移完成。** 下一步：S9（前端/E2E 验证 + integration test re-anchor）。
