@@ -136,3 +136,44 @@
 - **(C) in-place 回填**：不改表结构，仅 `UPDATE inventory SET location_id = (SELECT location_id FROM location_id_map WHERE ...)` 回填现有 15 行 → 统一读路径立即可用；最终 DDL 简化为后续清理。需 Owner 批准变更 DRAFT 策略。
 
 **待 Owner 裁决后继续 S6b。**
+
+## 9. S6b 执行结果与沙箱验证（2026-09-28）
+
+**Owner 裁决**：选 B + 沙箱验证。活体 DB 不动，DRAFT SQL 仍在 preflight。S9 真应用。
+
+**改动面**：
+
+| 文件 | 改动 |
+|---|---|
+| `InventorySummaryMapper.xml` | T2+T1 UNION ALL 整段重写为统一 inventory 单表 GROUP BY（经 locations JOIN 区分 CENTRAL/DEPOT vs STORE） |
+| `InventoryMapper.java` | 删除 `selectByMaterialAndWarehouse` 方法声明 |
+| `InventoryMapper.xml` | 删除 `selectByMaterialAndWarehouse` SQL |
+| `InventoryServiceImpl.getByMaterialAndWarehouse` | 改为 warehouse→location 解析 + LambdaQueryWrapper（兼容 legacy 调用方） |
+| `InventoryServiceImpl.getLowStockList` | raw SQL `current_stock` → `quantity`；warehouseId→locationId 解析 |
+
+**测试**：compile + test-compile 全绿；定向 6 类 **62/62 绿**（同 S6a 范围）。
+
+**沙箱验证**（Owner 指令）：
+- 本地 PG 18.3 创建 `m3m4_sandbox` 库 → `pg_restore` 从 `backups/m3m4-predump-20260927.dump` 恢复 → 手工执行 V20260927_002 DDL（5 RENAME + 2 CREATE + 数据迁移 13+15 行）
+- Spring Boot 启动指向沙箱（`PG_DB_NAME=m3m4_sandbox`，flyway 禁用），JWT 认证通过
+- **13 端点快照重放结果**：
+
+| 端点 | 结果 | diff 判定 |
+|---|---|---|
+| /v1/inventory?page=1&size=100 | total=13 | 伪门店账消失（原 15→13）✓ |
+| /v1/store-inventory/list | 空页 | 伪门店账消失（原 18→0）✓ |
+| /v1/store-inventory/summary | total=12 | 伪门店账消失（UNION ALL→单表）✓ |
+| /v1/inventory/low-stock | 空列表 | 与快照一致（原亦空）✓ |
+| /v1/locations, by-store/*, by-warehouse/* | ✅ | 零差异 ✓ |
+| /v1/stores/active, /v1/warehouses/active | ✅ | 零差异 ✓ |
+| /v1/inventory/logs/page | 500（表更名） | **预期**：S7/S8 范围（log 合并） |
+| /v1/store-inventory/logs | 500（表更名） | **预期**：S7/S8 范围 |
+
+**结论**：除"伪门店账消失"（3 端点）+ 2 个表更名 500（S7/S8 范围，非 S6b 代码缺陷）外，**零差异**。沙箱 diff **通过**。
+
+**裁定日志**：
+1. **getLowStockList 列名修复**：raw SQL `current_stock`→`quantity`（新表列名）；warehouseId→locationId 解析（未映射仓返回空列表）。属 S6b 发现的代码缺陷，非新拍板。
+2. **getByMaterialAndWarehouse 兼容 shim**：原 raw SQL 删除后改为 resolve+LambdaQueryWrapper——legacy 调用方（InventoryServiceImpl 内部 + MaterialArchiveServiceImpl）无需改动即可工作。
+3. **沙箱 500 端点不阻塞 S6b**：inventory_log/store_inventory_log 表更名是 DDL 的 RENAME 操作，代码侧对应改写属 S7（log 合并）/S8（编译测试重锚）。
+
+**下一步**：S7（DishInventoryMapper JOIN 修复、StockForecastMapper 改键、死代码清理）。

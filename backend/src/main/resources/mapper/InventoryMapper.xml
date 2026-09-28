@@ -57,13 +57,4 @@
         LIMIT 1
     </select>
 
-    <!-- @deprecated S4 收编调用方后删除 -->
-    <select id="selectByMaterialAndWarehouse" resultMap="BaseResultMap">
-        SELECT * FROM inventory
-        WHERE deleted = 0
-          AND material_id = #{materialId}
-          AND warehouse_id = #{warehouseId}
-        LIMIT 1
-    </select>
-
 </mapper>

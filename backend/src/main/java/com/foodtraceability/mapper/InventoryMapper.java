@@ -41,11 +41,4 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
      */
     Inventory selectByMaterialAndLocation(@Param("locationId") Long locationId,
                                           @Param("materialId") Long materialId);
-
-    /**
-     * @deprecated S4 收编调用方后删除（临时保留以维持逐步编译绿；运行时查询列已按新表口径）
-     */
-    @Deprecated
-    Inventory selectByMaterialAndWarehouse(@Param("materialId") Long materialId,
-                                          @Param("warehouseId") Long warehouseId);
 }

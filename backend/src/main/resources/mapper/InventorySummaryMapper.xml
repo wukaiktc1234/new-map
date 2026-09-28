@@ -3,59 +3,29 @@
 
 <mapper namespace="com.foodtraceability.mapper.InventorySummaryMapper">
 
+    <!-- M3-M4 S6b：原 T2+T1 UNION ALL 整段重写为统一 inventory 单表 GROUP BY（经 locations JOIN 区分仓/店） -->
     <select id="selectSummaryPage" resultType="com.foodtraceability.entity.InventorySummary">
         SELECT
-            COALESCE(t.product_id, 0) AS productId,
-            MAX(t.product_name) AS productName,
-            MAX(t.unit) AS unit,
-            CASE WHEN COALESCE(SUM(t.total_stock), 0) > 0
-                 THEN COALESCE(SUM(t.total_value), 0) / SUM(t.total_stock)
+            i.material_id AS "productId",
+            MAX(i.material_name) AS "productName",
+            MAX(i.unit) AS unit,
+            CASE WHEN COALESCE(SUM(i.quantity), 0) > 0
+                 THEN COALESCE(SUM(i.total_cost), 0) / SUM(i.quantity)
                  ELSE 0
-            END AS costPrice,
-            COALESCE(SUM(t.warehouse_stock), 0) AS warehouseStock,
-            COALESCE(SUM(t.store_stock), 0) AS storeStock,
-            COALESCE(SUM(t.total_stock), 0) AS totalStock,
-            COALESCE(SUM(t.total_value), 0) AS totalValue,
-            COALESCE(MAX(t.store_count), 0) AS storeCount
-        FROM (
-            -- 仓库库存汇总
-            SELECT
-                i.material_id AS product_id,
-                MAX(i.material_name) AS product_name,
-                MAX(i.unit) AS unit,
-                COALESCE(SUM(i.current_stock), 0) AS warehouse_stock,
-                0 AS store_stock,
-                COALESCE(SUM(i.current_stock), 0) AS total_stock,
-                COALESCE(SUM(i.total_cost), 0) AS total_value,
-                0 AS store_count
-            FROM inventory i
-            WHERE i.deleted = 0
-            <if test="productName != null and productName != ''">
-                AND i.material_name LIKE CONCAT('%', #{productName}, '%')
-            </if>
-            GROUP BY i.material_id
-
-            UNION ALL
-
-            -- 门店库存汇总
-            SELECT
-                si.material_id AS product_id,
-                MAX(si.material_name) AS product_name,
-                MAX(si.unit) AS unit,
-                0 AS warehouse_stock,
-                COALESCE(SUM(si.current_stock), 0) AS store_stock,
-                COALESCE(SUM(si.current_stock), 0) AS total_stock,
-                COALESCE(SUM(si.total_cost), 0) AS total_value,
-                COUNT(DISTINCT si.store_id) AS store_count
-            FROM store_inventory si
-            WHERE si.deleted = 0
-            <if test="productName != null and productName != ''">
-                AND si.material_name LIKE CONCAT('%', #{productName}, '%')
-            </if>
-            GROUP BY si.material_id
-        ) t
-        GROUP BY t.product_id
-        ORDER BY totalStock DESC
+            END AS "costPrice",
+            COALESCE(SUM(CASE WHEN l.location_type IN ('CENTRAL', 'DEPOT') THEN i.quantity ELSE 0 END), 0) AS "warehouseStock",
+            COALESCE(SUM(CASE WHEN l.location_type = 'STORE' THEN i.quantity ELSE 0 END), 0) AS "storeStock",
+            COALESCE(SUM(i.quantity), 0) AS "totalStock",
+            COALESCE(SUM(i.total_cost), 0) AS "totalValue",
+            COALESCE(COUNT(DISTINCT CASE WHEN l.location_type = 'STORE' THEN i.location_id END), 0) AS "storeCount"
+        FROM inventory i
+        JOIN locations l ON l.location_id = i.location_id AND l.deleted = 0
+        WHERE i.deleted = 0
+        <if test="productName != null and productName != ''">
+            AND i.material_name LIKE CONCAT('%', #{productName}, '%')
+        </if>
+        GROUP BY i.material_id
+        ORDER BY "totalStock" DESC
     </select>
 
 </mapper>

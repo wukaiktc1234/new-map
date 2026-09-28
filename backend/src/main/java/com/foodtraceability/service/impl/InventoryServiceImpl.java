@@ -337,25 +337,33 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
 
     @Override
     public Inventory getByMaterialAndWarehouse(Long materialId, Long warehouseId) {
-        return inventoryMapper.selectByMaterialAndWarehouse(materialId, warehouseId);
+        // M3-M4 S6b：原 raw SQL selectByMaterialAndWarehouse 删除；
+        // 改为 warehouse→location 解析 + 统一账 LambdaQueryWrapper 查询（兼容 legacy 调用方）
+        com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            return null;
+        }
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Inventory::getLocationId, location.getLocationId())
+               .eq(Inventory::getMaterialId, materialId)
+               .last("LIMIT 1");
+        return inventoryMapper.selectOne(wrapper);
     }
 
     @Override
     public List<Inventory> getLowStockList(Long warehouseId) {
-        // 注意：inventory 表的 quantity 字段已重命名为 current_stock，
-        // 此处 raw SQL 必须使用真实数据库列名 current_stock
+        // M3-M4 S6b：原 raw SQL current_stock 列名改为新表 quantity；warehouseId→locationId 解析
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNotNull(Inventory::getMinSafeQty)
+               .apply("quantity <= min_safe_qty");
         if (warehouseId != null) {
-            return this.lambdaQuery()
-                    .eq(Inventory::getWarehouseId, warehouseId)
-                    .isNotNull(Inventory::getMinSafeQty)
-                    .apply("current_stock <= min_safe_qty")
-                    .list();
-        } else {
-            return this.lambdaQuery()
-                    .isNotNull(Inventory::getMinSafeQty)
-                    .apply("current_stock <= min_safe_qty")
-                    .list();
+            com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+            if (location == null) {
+                return java.util.Collections.emptyList();
+            }
+            wrapper.eq(Inventory::getLocationId, location.getLocationId());
         }
+        return inventoryMapper.selectList(wrapper);
     }
 
     @Override
