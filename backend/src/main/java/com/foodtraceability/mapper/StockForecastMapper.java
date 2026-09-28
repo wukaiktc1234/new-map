@@ -26,10 +26,11 @@ public interface StockForecastMapper {
     /**
      * 近 N 天某原料的实际出库消耗量（Σ 库存减少，含销售/损耗/调拨出/调整减，天然含损耗）
      */
-    @Select("SELECT COALESCE(SUM(before_stock - after_stock), 0) FROM store_inventory_log " +
-            "WHERE product_id = #{materialId} AND before_stock > after_stock " +
-            "AND deleted = 0 AND create_time >= #{since} " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR store_id = #{storeId, jdbcType=VARCHAR})")
+    @Select("SELECT COALESCE(SUM(ABS(m.change_qty)), 0) FROM inventory_movement m " +
+            "JOIN locations l ON l.location_id = m.location_id AND l.deleted = 0 " +
+            "WHERE m.material_id = #{materialId} AND m.movement_type = 'OUT' " +
+            "AND l.location_type = 'STORE' AND m.create_time >= #{since} " +
+            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR})")
     BigDecimal getActualConsumed(@Param("materialId") Long materialId,
                                  @Param("since") LocalDateTime since, @Param("storeId") String storeId);
 
@@ -71,17 +72,19 @@ public interface StockForecastMapper {
     /**
      * 某原料当前可用库存（按门店，可为空=所有门店）
      */
-    @Select("SELECT COALESCE(SUM(current_stock), 0) FROM store_inventory " +
-            "WHERE material_id = #{materialId} AND deleted = 0 " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR store_id = #{storeId, jdbcType=VARCHAR})")
+    @Select("SELECT COALESCE(SUM(i.quantity), 0) FROM inventory i " +
+            "JOIN locations l ON l.location_id = i.location_id AND l.deleted = 0 " +
+            "WHERE i.material_id = #{materialId} AND i.deleted = 0 AND l.location_type = 'STORE' " +
+            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR})")
     BigDecimal getAvailableStock(@Param("materialId") Long materialId, @Param("storeId") String storeId);
 
     /**
      * 某原料当前安全库存（单店取一条）
      */
-    @Select("SELECT COALESCE(safety_stock, 0) FROM store_inventory " +
-            "WHERE material_id = #{materialId} AND deleted = 0 " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR store_id = #{storeId, jdbcType=VARCHAR}) LIMIT 1")
+    @Select("SELECT COALESCE(i.safety_stock, 0) FROM inventory i " +
+            "JOIN locations l ON l.location_id = i.location_id AND l.deleted = 0 " +
+            "WHERE i.material_id = #{materialId} AND i.deleted = 0 AND l.location_type = 'STORE' " +
+            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR}) LIMIT 1")
     BigDecimal getSafetyStock(@Param("materialId") Long materialId, @Param("storeId") String storeId);
 
     /**

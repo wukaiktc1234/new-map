@@ -1,40 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.foodtraceability.mapper.InventoryLogMapper">
+    <!-- M3-M4 S7a：原 inventory_log（T4b，0 行）→ 统一流水 inventory_movement 读路径 -->
     <select id="selectInventoryLogPage" resultType="com.foodtraceability.entity.InventoryLog">
-        SELECT * FROM inventory_log
-        WHERE deleted = 0
+        SELECT
+            m.movement_id AS id,
+            m.material_id AS product_id,
+            m.location_id AS warehouse_id,
+            CASE m.movement_type
+                WHEN 'IN' THEN 'in'
+                WHEN 'OUT' THEN 'out'
+                ELSE 'check'
+            END AS operation_type,
+            NULL::numeric AS before_stock,
+            m.balance_after AS after_stock,
+            m.change_qty AS change_amount,
+            m.source_ref AS remark,
+            NULL::bigint AS operator_id,
+            m.create_time
+        FROM inventory_movement m
+        WHERE 1=1
         <if test="productId != null">
-            AND product_id = #{productId}
+            AND m.material_id = #{productId}
         </if>
         <if test="warehouseId != null">
-            AND warehouse_id = #{warehouseId}
+            AND m.location_id = #{warehouseId}
         </if>
         <if test="operationType != null and operationType != ''">
-            AND operation_type = #{operationType}
+            AND CASE m.movement_type WHEN 'IN' THEN 'in' WHEN 'OUT' THEN 'out' ELSE 'check' END = #{operationType}
         </if>
         <if test="operatorId != null">
-            AND operator_id = #{operatorId}
+            AND m.operator_id = #{operatorId}
         </if>
         <if test="startTime != null and startTime != ''">
-            AND create_time &gt;= #{startTime}::timestamp
+            AND m.create_time &gt;= #{startTime}::timestamp
         </if>
         <if test="endTime != null and endTime != ''">
-            AND create_time &lt;= #{endTime}::timestamp
+            AND m.create_time &lt;= #{endTime}::timestamp
         </if>
-        ORDER BY create_time DESC
+        ORDER BY m.create_time DESC
     </select>
     <select id="selectConsumptionStats" resultType="java.util.Map">
-        SELECT SUM(change_amount) AS total FROM inventory_log
-        WHERE deleted = 0
+        SELECT COALESCE(SUM(m.change_qty), 0) AS total
+        FROM inventory_movement m
+        WHERE m.movement_type = 'OUT'
         <if test="operationType != null and operationType != ''">
-            AND operation_type = #{operationType}
+            AND CASE m.movement_type WHEN 'IN' THEN 'in' WHEN 'OUT' THEN 'out' ELSE 'check' END = #{operationType}
         </if>
         <if test="startTime != null and startTime != ''">
-            AND create_time &gt;= #{startTime}::timestamp
+            AND m.create_time &gt;= #{startTime}::timestamp
         </if>
         <if test="endTime != null and endTime != ''">
-            AND create_time &lt;= #{endTime}::timestamp
+            AND m.create_time &lt;= #{endTime}::timestamp
         </if>
     </select>
 </mapper>

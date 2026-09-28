@@ -177,3 +177,25 @@
 3. **沙箱 500 端点不阻塞 S6b**：inventory_log/store_inventory_log 表更名是 DDL 的 RENAME 操作，代码侧对应改写属 S7（log 合并）/S8（编译测试重锚）。
 
 **下一步**：S7（DishInventoryMapper JOIN 修复、StockForecastMapper 改键、死代码清理）。
+
+## 10. S7a 执行结果与沙箱验证（2026-09-28）
+
+**Owner 裁决**：24.3f InventoryLogMapper.xml **已解锁**（建议解锁→执行）。S7 拆两步：S7a 读路径收尾 + S7b 死代码清理。
+
+**改动面**（S7a 读路径收尾）：
+
+| 文件 | 改动 |
+|---|---|
+| `InventoryLogMapper.xml` | 原 `inventory_log`（T4b，0 行）→ 统一 `inventory_movement` 读取；列别名映射到 InventoryLog 实体字段 |
+| `StoreInventoryLogMapper.xml` | 原 `store_inventory_log`（T1 log）→ `inventory_movement` JOIN `locations`（type=STORE）过滤 |
+| `DishInventoryMapper.xml:25` | `i.cost_price` → `i.unit_cost`（新表列名） |
+| `StockForecastMapper.java` | 3 方法改键：getActualConsumed→inventory_movement；getAvailableStock/getSafetyStock→unified inventory |
+
+**沙箱验证**：13 端点重放 **13/13 PASS**（含之前 500 的 /v1/inventory/logs/page + /v1/store-inventory/logs）。零失败。
+
+**裁定日志**：
+1. **InventoryLogMapper.xml 解锁执行**：24.3f 禁区解除（Owner 批准）；原表 T4b 本身 0 行，改读统一流水无数据风险。
+2. **StoreInventoryLogMapper JOIN locations**：STORE 类型过滤等价于原 store_inventory_log 语义（仅门店维度的出入记录）。
+3. **StockForecastMapper 改键**：getActualConsumed 从 `store_inventory_log.type='out'` → `inventory_movement.change_qty<0`（负值=出）；getAvailableStock/getSafetyStock 从 `store_inventory` → unified `inventory` by location。
+
+**S7b 待做**：死代码清理（transient 字段引用、已删除方法的残留 import 等）。

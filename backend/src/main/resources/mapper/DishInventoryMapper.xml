@@ -19,8 +19,8 @@
 
     <select id="selectByDishId" resultMap="DishInventoryResultMap">
         SELECT di.*, 
-               i.cost_price as unit_price,
-               (di.quantity * i.cost_price) as total_cost
+               i.unit_cost as unit_price,
+               (di.quantity * i.unit_cost) as total_cost
         FROM dish_inventory di
         LEFT JOIN inventory i ON di.inventory_id = i.inventory_id
         WHERE di.dish_id = #{dishId} AND di.deleted = 0

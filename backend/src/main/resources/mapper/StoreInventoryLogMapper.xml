@@ -2,20 +2,34 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.foodtraceability.mapper.StoreInventoryLogMapper">
-
+    <!-- M3-M4 S7a：原 store_inventory_log（T3）→ 统一流水 inventory_movement（STORE 型 location 过滤） -->
     <select id="selectLogPage" resultType="com.foodtraceability.entity.StoreInventoryLog">
-        SELECT * FROM store_inventory_log
-        WHERE deleted = 0
+        SELECT
+            m.movement_id AS id,
+            m.material_id AS product_id,
+            l.location_code AS store_id,
+            CASE m.movement_type
+                WHEN 'IN' THEN '入库'
+                WHEN 'OUT' THEN '出库'
+                ELSE '调整'
+            END AS type,
+            m.change_qty AS change_amount,
+            m.balance_after AS after_stock,
+            m.source_ref AS remark,
+            m.create_time
+        FROM inventory_movement m
+        JOIN locations l ON l.location_id = m.location_id AND l.deleted = 0
+        WHERE l.location_type = 'STORE'
         <if test="storeId != null and storeId != ''">
-            AND store_id = #{storeId}
+            AND l.location_code = #{storeId}
         </if>
         <if test="productId != null">
-            AND product_id = #{productId}
+            AND m.material_id = #{productId}
         </if>
         <if test="type != null">
-            AND type = #{type}
+            AND CASE m.movement_type WHEN 'IN' THEN '入库' WHEN 'OUT' THEN '出库' ELSE '调整' END = #{type}
         </if>
-        ORDER BY create_time DESC
+        ORDER BY m.create_time DESC
     </select>
 
 </mapper>
