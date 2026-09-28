@@ -302,3 +302,36 @@
 - 日志：`s8b-run/s8b-full-log.txt`
 
 **M3-M4 核心迁移完成。** 下一步：S9（前端/E2E 验证 + integration test re-anchor）。
+
+## 14. S8b 后观察期机制 + S9 拆分裁定（2026-09-29）
+
+### 观察期规则（Owner 指令，写死）
+
+| 项 | 规则 |
+|---|---|
+| 即时观察 | 上线后 **1-2 小时**：后端日志无异常 + 用户反馈无报错 + 定时任务正常 → 方可进 S9 |
+| legacy 表观察期 | 上线后 **14 天**（至 2026-10-13）：无回滚需求 / 无库存报错 / 无用户反馈 → Owner 批准后随 M7 退役 |
+| 备份保留 | `m3m4-predump-20260929.dump` 观察期 14 天内**不动**（不删、不覆盖） |
+| 回滚点 | DOWN 脚本 + predump dump，随时可用 |
+
+### S8 遗留归属裁定（Owner 指令）
+
+原"S8b-prep 已知遗留"3 项中：
+
+| 遗留项 | 归属 | 说明 |
+|---|---|---|
+| `NotificationScheduleService` + `InventoryWarningServiceImpl` raw SQL `current_stock` | **S9a**（S8 漏项） | post-DDL 列名不存在，需改 `quantity` |
+| `StoreInventoryLogServiceImpl.createLog()` 写路径 BaseMapper insert | **S9a**（S8 漏项） | 表已更名，写路径需收编至统一 movement service |
+| 2 个 integration test fixture 直插 store_inventory | **S9b** | re-anchor 至 unified inventory |
+
+### S9 拆分（Owner 指令）
+
+| 步 | 内容 | 停点 |
+|---|---|---|
+| **S9a** | S8 漏项补完：预警 raw SQL 改列名 + 日志写路径收编 | 编译 + 验证绿 |
+| **S9b** | integration test re-anchor（MaterialDeductionAudit* 2 fixture） | 测试绿 |
+| **S9c** | 前端 / E2E 活体验证 | 全链路通 |
+
+### Git 状态确认
+
+`local master = origin/master = 3d0de97`，无分叉。
