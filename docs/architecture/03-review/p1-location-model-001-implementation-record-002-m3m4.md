@@ -199,3 +199,22 @@
 3. **StockForecastMapper 改键**：getActualConsumed 从 `store_inventory_log.type='out'` → `inventory_movement.change_qty<0`（负值=出）；getAvailableStock/getSafetyStock 从 `store_inventory` → unified `inventory` by location。
 
 **S7b 待做**：死代码清理（transient 字段引用、已删除方法的残留 import 等）。
+
+## 11. S7b 执行结果（2026-09-28）
+
+**改动面**（commit `e472a48`，2 files，+5/-269）：
+
+| 文件 | 改动 |
+|---|---|
+| `entity/StoreInventory.java` | **删除**（零引用，S6a 已收编至 Inventory） |
+| `InventoryTransferServiceImpl.java` | 删除死方法 `updateInventory()`（使用 warehouse_id + current_stock 列，post-DDL 不存在；syncStoreInventory 已通过统一 service 完成 location 维度增减）；移除未用 InventoryMapper 注入 + import |
+
+**测试**：compile + test-compile 绿；定向 6 类全绿（同 S6b 范围）。
+
+**已知遗留（非 S7 范围，S8/S9 处理）**：
+- `NotificationScheduleService:78,81` raw SQL `i.current_stock` → post-DDL 需改 `i.quantity`
+- `InventoryWarningServiceImpl:155,161` `.apply("current_stock < min_safe_qty")` → 同上
+- `StoreInventoryLogServiceImpl.createLog()` 仍用 BaseMapper insert → post-DDL 表已更名，写路径需收编至统一 movement service
+- 2 个 integration test（MaterialDeductionAudit*）fixture 直插 store_inventory → S8 re-anchor
+
+**下一步**：S8（编译测试重锚 + DDL 真应用停窗）。
