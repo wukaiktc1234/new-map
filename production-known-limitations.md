@@ -107,6 +107,7 @@
 | KL-083 | **多门店数据隔离未生效（Owner 已决策多门店模式，P1 必修）**：SecurityUser（JWT 主体）无 storeId 字段 → getCurrentUserStoreId() 恒 null → DataPermissionAspect 对所有 JWT 用户（含普通角色）不过滤门店；role_stores/role_departments 无 migration 且本地不存在（BC-026/KL-082）；users.store_id 全空且无维护端点 | `docs/quality/role-store-binding-audit-001.md`（2026-09-26 排查）+ Owner 决策 | **高（安全，多门店必需）** | 否（本地单租户运行不受影响；多门店上线前必修） | 修复卡：**P0-ROLE-STORE-SCHEMA-001**（表/端点/回填）→ **P1-ROLE-STORE-ISOLATION-001**（JWT/Aspect 隔离）；admin 例外维持全量（设计内）；KDS token 隔离已生效不动 |
 | ENV-4 | commit `cb8ee06`（S4c-2 卡）`git add .` 违反 PG-001 v2，误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ force-push 已执行，remote master = `bf4f6b2`（API 验证 tree e209be07）；519 残留留盘不删除、`.gitignore` 加 ENV-4 专用段逐条排除 | P1-LOCATION-MODEL-001 M3-M4（实施记录 -002 §6） | **中** | 否（已替代并验证；cb8ee06 对象 SHA 可取回至 GC） | **已收口（2026-09-28：push 前三项验证 A/B 全 PASS + Owner 批准 force-push + .gitignore 576 条目专用段）；Owner 裁决：PG-001 首次违规，登记 ENV-4，不冻结** |
 | ENV-5 | **S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录）**：selectConsumptionStats 无参全局场景丢失 IN 行（口径漂移）；commit ad13e80 消息与实施记录 §10 均无裁定 | P1-LOCATION-MODEL-001 M3-M4 S7a → S9a-2（实施记录 -002 §15） | **中** | 否（仅读路径，无数据影响） | **已销项（2026-09-29，S9a-2：移除硬编码 WHERE + 恢复全动态 `<if>` + 重锚 6/6 绿）** |
+| ENV-7 | **OrderManagementIntegrationTest 9 测试因 401/403 失败（无 `@WithMockUser`/登录 setup，既有设计缺口）**：V999 幂等化后 Flyway 阻塞已解除，上下文可启动，但 9 测试全部因缺少认证 setup 返回 401/403；与 M3-M4 无关 | S9a-2-B 验证暴露（实施记录 -002 §15.3） | **低** | 否（既有缺口，非本次引入） | **排除 M3-M4 收口条件，归 M5 或独立卡（Owner 裁决 2026-09-29）** |
 
 > 状态字典：`待产品` / `待财务` / `待产品决策` / `待后端排期` / `待后端组` / `待联调` / `待渗透` / `待治理` / `观察` / `已拆卡` / `已解除` / `已建卡` / `家族专项统一治理中` / `待数据扫描验证` / `待第二步卡排期`
 
@@ -1001,8 +1002,37 @@ ENV-5 — S7a 硬编码 OUT 过滤静默违反 24.3f 已验证行为（S9a-2 移
   - 实施记录 -002 §15（S9a-2）
 ---
 
+ENV-7 — OrderManagementIntegrationTest 9 测试因 401/403 失败（既有认证 setup 缺口）
+
+日期：2026-09-29
+类型：ENVIRONMENT_DEBT
+严重度：低（既有设计缺口，非 M3-M4 引入；V999 幂等化前该测试因 Flyway 阻塞无法启动，现暴露真实认证问题）
+
+描述：
+  OrderManagementIntegrationTest（纯 @SpringBootTest + @AutoConfigureMockMvc，Flyway ON）
+  9 个测试全部调用受保护端点（/v1/orders、/v1/order/{id} 等），但无
+  @WithMockUser / 登录 setup / SecurityContext 注入 → 401（未认证）或
+  403（无权限）。V999 幂等化前，该测试因 Flyway V999 非幂等 user-999 insert
+  失败而无法启动上下文，认证问题被掩盖。
+
+后果：
+  - 9 测试全部 FAIL（AssertionError: expected 200 but was 401/403）；
+  - 不影响 M3-M4 收口（该测试不触碰 inventory/movement 域）；
+  - 不影响生产运行（仅测试环境问题）。
+
+处置：
+  - **Owner 裁决（2026-09-29）：排除 M3-M4 收口条件，归 M5 或独立卡**；
+  - 修复路径：补 @WithMockUser 或 SecurityContext setup（标准 Spring Security 测试模式）。
+
+关联：
+  - S9a-2-B V999 幂等化（实施记录 -002 §15.3）
+  - ENV-5（同批登记，S9a-2）
+---
+
 *追加：2026-09-28 登记 ENV-4（来源：S4c-2 卡 commit 过程 + Owner 裁决「按 PG-001 首次违规处理，登记 ENV-4，不冻结」）：主表新增 **ENV-4** 一行——commit `cb8ee06`（S4c-2，`git add .` 违反 PG-001 v2）误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ push 前三项验证（A/B）全 PASS + Owner 批准 force-push 已执行，remote master = `bf4f6b2`（GitHub API 验证，tree `e209be07`）。519 残留留盘不删除，`.gitignore` 新增 ENV-4 专用段 576 条逐文件条目（含 `test/` 目录）；5 个 WIP docs 维持 tracked WIP 不 ignore；`.gitignore` 变更在既有 462 个已修改 tracked 文件中随下一提交入库。主表 86 → 87 行。ENV 序列独立编号，不占 KL。cb8ee06 对象 SHA 可取回至 GC。planner 仅登记，未改代码、未再动 git 历史（Owner 批准的 force-push 除外）；历史条目零修改。*
 
 *追加：2026-09-28 **ENV-3 关联登记**（来源：P1-LOCATION-MODEL-001 M3-M4 S5 测试执行 + Owner 指令「JDK 环境记入 ENV-3 关联，同源环境债」）：本会话 JAVA_HOME 再次失效（与 ENV-3 同因：`H:\fuwu\jdk-17.0.17+10` 不存在），仅 JDK 25 可用（pom target 21）。**新发现**：bytebuddy 1.14.x（Spring Boot 3.2.0 管理版本）不识别 JVM 25 class file 69，Mockito inline mock 对 MyBatis-Plus wrapper 类报 Error → 跑单测须附加 `-DargLine=-Dnet.bytebuddy.experimental=true`（与 combo 卡 L-03 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md` 同族，该条另需 `-XX:+EnableDynamicAgentLoading`）。S5 定向 4 类 31/31 绿在此 flag 下取得；**S8 测试重锚定同样适用**。非代码问题，不新增 ENV 编号（ENV-3 关联）。同批修复：`.gitignore` ENV-4 专用段 `test/` 条目未根锚定、会吞 backend/src/test 下 untracked 文件 → 改 `/test/`（根 scratch 目录验证仍被忽略），已随 commit `d96b94f` 入库。planner 仅登记 + .gitignore 修复，未改业务代码。*
 
 *追加：2026-09-29 登记 ENV-5（来源：P1-LOCATION-MODEL-001 M3-M4 S9a-2 调查 + Owner 裁决"没理由 → 移除 + 登记 ENV"）：主表新增 **ENV-5** 一行——S7a 在 InventoryLogMapper.selectConsumptionStats 硬编码 `WHERE movement_type='OUT'`（替换全动态 `<if>`），commit ad13e80 消息与实施记录 §10 均无裁定/理由记录，静默违反 24.3f 已验证行为（P1-INVENTORY-CONSUMPTION-STATS-001：无参 = 全类型全局和含 IN 行）；S9a-2 已移除并恢复全动态 `<if>`，InventoryLogConsumptionStatsIntegrationTest 重锚 6/6 绿（含"真实数据共存" delta 场景）。仅读路径、无数据影响。ENV-5 为独立 ENV 编号序列，不占 KL 编号。同批 S9a-2-B：test resources V999 幂等化（ON CONFLICT DO NOTHING + 活体 schema 对齐：users PK user_id / user_roles create_time / 移除不存在的 sys_role_permissions 语句）——Flyway 上下文启动阻塞已解除；OrderManagementIntegrationTest 9 测试现因 401/403（无 @WithMockUser/登录 setup，既有设计缺口，与 M3-M4 无关，S9a-2 范围外）失败。planner 仅登记；代码修复见实施记录 -002 §15。*
+
+*追加：2026-09-29 登记 ENV-7（来源：S9a-2-B V999 幂等化验证暴露 + Owner 裁决"排除 M3-M4 收口条件，归 M5 或独立卡"）：主表新增 **ENV-7** 一行——OrderManagementIntegrationTest 9 测试因无 @WithMockUser/登录 setup 全部 401/403 失败（既有设计缺口，V999 幂等化前被 Flyway 阻塞掩盖）；与 M3-M4 无关，不触碰 inventory/movement 域。ENV-7 为独立 ENV 编号序列，不占 KL 编号。planner 仅登记，未改测试代码。*

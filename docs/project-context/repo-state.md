@@ -51,6 +51,7 @@
 | ENV-3 | mvn 默认 JAVA_HOME 指向不存在的 `H:\fuwu\jdk-17.0.17+10`，编译须显式覆盖（实测 Temurin 25 可用）。**关联（2026-09-28 S5）**：JDK 25 下 bytebuddy 1.14.x 不识别 class file 69，跑单测须 `-DargLine=-Dnet.bytebuddy.experimental=true`（S8 同适用） | `production-known-limitations.md` 主表 ENV-3 行 + 文末追加块（2026-09-25 登记 / 2026-09-28 关联） |
 | ENV-4 | commit `cb8ee06`（S4c-2）`git add .` 误吞 519 工作区残留文件；clean redo `bf4f6b2` + force-push 已销项（remote master = `bf4f6b2`）；残留留盘 + `.gitignore` 专用段 576 条目；PG-001 首次违规，Owner 裁决不冻结 | `production-known-limitations.md` 主表 ENV-4 行 + 文末块 + 实施记录 -002 §6 |
 | ENV-5 | S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录，无参全局场景丢失 IN 行）；S9a-2 已移除 + 恢复全动态 `<if>` + 重锚 6/6 绿（已销项；仅读路径无数据影响） | `production-known-limitations.md` 主表 ENV-5 行 + 文末块 + 实施记录 -002 §15 |
+| ENV-7 | OrderManagementIntegrationTest 9 测试因无 @WithMockUser/登录 setup 全部 401/403 失败（既有设计缺口，V999 幂等化前被 Flyway 阻塞掩盖）；**排除 M3-M4 收口条件，归 M5 或独立卡**（Owner 裁决 2026-09-29） | `production-known-limitations.md` 主表 ENV-7 行 + 文末块 + 实施记录 -002 §15.3 |
 
 ## 待处理项
 

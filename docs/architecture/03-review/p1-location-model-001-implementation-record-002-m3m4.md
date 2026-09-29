@@ -399,7 +399,7 @@
 | 项 | 状态 |
 |---|---|
 | **S9c**：前端 / E2E 活体验证 | 下一步（S9a 停点达成） |
-| OrderManagementIntegrationTest 401/403 | 既有设计缺口（无认证 setup），独立处置/Owner 裁决 |
+| OrderManagementIntegrationTest 401/403 | **ENV-7 已登记（2026-09-29）**：排除 M3-M4 收口条件，归 M5 或独立卡（Owner 裁决） |
 | Q1–Q4 未批准项 | 保持原样（writeLog catch-all / transfer-in 成本归零 / 失败不对称 / MaterialTraceCode 假 T3 流程） |
 | 禁区 6（InventoryLogMapper.xml）解锁 | **已追认（2026-09-29，Owner）**——S7a 改动正式认可，无需回滚；§10 flag 闭环 |
 | 观察期 | 持续（14 天 legacy 窗口至 2026-10-13；predump 不动） |
