@@ -335,3 +335,70 @@
 ### Git 状态确认
 
 `local master = origin/master = 3d0de97`，无分叉。
+
+## 15. S9a 执行结果（2026-09-29）
+
+**Owner 放行**："放行 S9a。S9a-1 补漏项 → S9a-2 测试重锚 → 然后 S9c 前端 E2E。开工。"
+本节撰写时点：`local master = origin/master = c11d0ae`（本批次未提交）。
+
+### 15.1 S9a-1：S8 漏项补完（3 项）
+
+| # | 漏项 | 修改 | 验证 |
+|---|---|---|---|
+| 1 | `NotificationScheduleService` 每小时预警任务 raw SQL | 列名对齐 post-DDL：`current_stock`→`quantity`、`product_name`→`material_name`、仓名 join `inventory_log`→`locations` | 编译绿；活体 SELECT 可执行（SELECT-only，0 行） |
+| 2 | `InventoryWarningServiceImpl` raw SQL | `.apply("current_stock < ...")` → `quantity < min_safe_qty` | 编译绿 |
+| 3 | `StoreInventoryLogServiceImpl.createLog()` | BaseMapper insert（目标表已更名）→ 映射 `InventoryMovementService.recordMovement`：locationId←`resolveByStoreId`/门店编码、materialId←productId、changeQty←`getChangeQuantity()`、remark/sourceType 映射；不可解析时严格拒绝（无兜底） | 编译绿；movement/location/stockin 定向测试绿 |
+
+定向验证（S9a-1 后）：`InventoryMovementServiceImplTest` 9/9、`InventoryServiceImplLocationStockTest` 9/9、`PurchaseStockinServiceImplTest` 8/8 全绿。
+
+**Owner 新规则（本会话确立）**："以后验证 raw SQL 只在沙箱或 EXPLAIN，不在活体写。"（本会话所有活体验证均为 SELECT-only。）
+
+### 15.2 S9a-2：4 fixture 测试重锚（不含 OrderManagementIntegrationTest）
+
+**Owner 裁决要点**：
+- A（硬编码 OUT）：调查确认无裁定/理由记录（commit ad13e80 消息 + §10 均静默）→ "没理由"分支成立 → **移除 + ENV-5 登记**（S7a 静默违反 24.3f 已验证行为）
+- B（Stats 全局场景）：**保留全局场景，改包含断言**（assertTrue(anyMatch) + total >= N），不删全局场景；**补"真实数据共存"场景**
+- C（Stats deleted 行）：**直接去掉**（期望值不变）；Filter 软删除基线场景**删掉**，**补"追加型账本 baseline"**（insert 后读得到 + 无 update/delete）
+- V999：test resources → 改幂等（ON CONFLICT DO NOTHING），纳入 S9a-2
+
+**重锚关键事实**：
+- `inventory_movement` 追加型账本：**无 deleted 列**（软删除场景不成立，宪法 §III.7 流水禁 update/delete）
+- `change_qty` 符号约定：**正入负出**（-001 §1.4；迁移 4b"legacy 已带正入负出符号，原值直拷"；活体 15 行全 IN 正数量佐证）
+- 读语义（S7a）：productId→material_id、warehouseId→location_id、operationType→movement_type（IN/OUT/CHECK → in/out/check 映射）；返回 remark = source_ref 别名
+
+| 测试类 | 重锚内容 | 结果 |
+|---|---|---|
+| `InventoryLogConsumptionStatsIntegrationTest` | fixture→movement（990001/991001，source_type='IT_FIXTURE'，source_ref 'IT-CS-%'）；deleted 行去掉；验收 1/3→包含断言（anyMatch + total ≥ fixture 贡献下界）；验收 2/4/5 保持精确值（按符号约定 30→-30、20→-20、端点 -30；前提：活体账本无 fixture 之外 OUT 行）；新增验收 6：真实数据共存 delta（JdbcTemplate 非 fixture 基线 SUM → mapper total = baseline − 25 精确） | **6/6 绿**（19.73 s） |
+| `InventoryLogFilterIntegrationTest` | fixture→movement（88xxxx ID 空间，'IT-%'）；全局场景→total >= 4 + anyMatch 4 fixture 行（ORDER BY create_time DESC，fixture 最新居前）；场景 1/3 保持精确值；软删基线删除 → **追加型账本 baseline**（insert 后分页可读 + `InventoryMovementService` 接口无 update/delete API 断言） | **4/4 绿**（12.90 s） |
+| `MaterialDeductionAuditIntegrationTest` | store_inventory fixture→locations（STORE 型 'IT-LOC-9901'）+ location_id_map 桥（stores_new 9901）+ inventory（quantity）；stock() 读 `inventory.quantity`；扣料路径 `deductMaterialsForServe`→`resolveLocationIdByStoreId`→`decreaseStockAtLocation`（缺行 NOT_FOUND / 不足 INVENTORY_INSUFFICIENT / 成功 quantity 更新 + OUT 流水） | **4/4 绿** |
+| `MaterialDeductionAuditSelfFailureIntegrationTest` | 同上（门店 9902，'IT-LOC-9902'，原料 990011/990012） | **1/1 绿**（12.06 s） |
+
+### 15.3 S9a-2-B：V999 幂等化（Owner 裁决"test resources → ON CONFLICT DO NOTHING"）
+
+**定位**：V999 位于 **test resources**（`backend/src/test/resources/db/migration/V999__create_test_admin_user.sql`）→ 改幂等；main resources 无 V999（不动，不新增 V1000）。
+
+**活体 schema 核查**（SELECT-only）：
+- `users`：PK **user_id**（NOT NULL 仅 user_id/username/password）；`id`/`created_at`/`updated_at` 列**不存在**（原版不可执行）
+- `user_roles`：`create_time`（原版 `created_at` 不存在）；UQ(user_id, role_id)；user_id 为 varchar
+- `sys_role_permissions`：**活体库不存在**（schema 漂移）
+
+**修改**：① users INSERT → 活体 schema 对齐 + `ON CONFLICT DO NOTHING`；② user_roles INSERT → `create_time` + `ON CONFLICT DO NOTHING`；③ sys_role_permissions 语句**移除**（表不存在，既不可执行也无法幂等化；授权职责归应用初始化逻辑）；④ SELECT 验证语句保留。
+
+**验证**：`OrderManagementIntegrationTest`（纯 `@SpringBootTest`，Flyway ON）上下文启动**不再被 Flyway 阻断**；其 9 测试现因 **401/403** 失败——无 `@WithMockUser`/登录 setup，**既有设计缺口，与 M3-M4 无关，S9a-2 范围外**（待独立处置或 Owner 裁决）。
+
+### 15.4 ENV-5 登记
+
+- `production-known-limitations.md`：主表 ENV-5 行 + 文末块 + 追加行
+- `docs/project-context/repo-state.md`：ENV 序列表 ENV-5 行
+- 内容：S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录）；S9a-2 已移除 + 恢复全动态 `<if>` + 重锚 6/6 绿；仅读路径无数据影响；已销项
+
+### 15.5 未决项与下一步
+
+| 项 | 状态 |
+|---|---|
+| **S9c**：前端 / E2E 活体验证 | 下一步（S9a 停点达成） |
+| OrderManagementIntegrationTest 401/403 | 既有设计缺口（无认证 setup），独立处置/Owner 裁决 |
+| Q1–Q4 未批准项 | 保持原样（writeLog catch-all / transfer-in 成本归零 / 失败不对称 / MaterialTraceCode 假 T3 流程） |
+| 禁区 6（InventoryLogMapper.xml）解锁 | 待 Owner 追认（§10 已 flag） |
+| 观察期 | 持续（14 天 legacy 窗口至 2026-10-13；predump 不动） |
+| DS-bridge 插件 | 待 Owner 3 项输入 |

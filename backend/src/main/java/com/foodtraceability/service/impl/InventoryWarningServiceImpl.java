@@ -152,13 +152,12 @@ public class InventoryWarningServiceImpl extends ServiceImpl<InventoryWarningMap
                 .toList();
         
         if (unhandledWarnings.isEmpty()) {
-            // 使用实际数据库列名 current_stock（Java字段名为quantity，通过@TableField映射）
-            // 注意：.apply() 是原始SQL，不会经过MyBatis-Plus的字段名转换，必须使用数据库列名
+            // M3-M4 S9a：post-DDL 统一账——.apply() 原始 SQL 必须用真实列名 quantity（原 current_stock 已不存在）
             List<Inventory> lowStockInventories = inventoryMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Inventory>()
                     .isNotNull(Inventory::getQuantity)
                     .isNotNull(Inventory::getMinSafeQty)
-                    .apply("current_stock < min_safe_qty")
+                    .apply("quantity < min_safe_qty")
             );
 
             return lowStockInventories.stream().map(inv -> {

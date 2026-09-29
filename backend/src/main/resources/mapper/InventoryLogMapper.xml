@@ -40,10 +40,12 @@
         </if>
         ORDER BY m.create_time DESC
     </select>
+    <!-- M3-M4 S9a-2：移除 S7a 误加的硬编码 WHERE movement_type='OUT'（无裁定记录，静默违反 24.3f
+         已验证行为：无参=全类型全局和）；恢复全动态 <if>。movement 无 deleted 列（追加型账本）。 -->
     <select id="selectConsumptionStats" resultType="java.util.Map">
         SELECT COALESCE(SUM(m.change_qty), 0) AS total
         FROM inventory_movement m
-        WHERE m.movement_type = 'OUT'
+        WHERE 1=1
         <if test="operationType != null and operationType != ''">
             AND CASE m.movement_type WHEN 'IN' THEN 'in' WHEN 'OUT' THEN 'out' ELSE 'check' END = #{operationType}
         </if>

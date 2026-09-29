@@ -72,14 +72,14 @@ public class NotificationScheduleService {
     public void checkInventoryWarning() {
         logger.info("开始检查库存预警...");
         try {
-            // 使用 inventory 表实际字段：safety_stock 为安全库存阈值（而非 warning_threshold）
-            // 物料名称优先使用 material_name（新字段），回退到 product_name（旧字段）
-            String sql = "SELECT i.inventory_id, COALESCE(i.material_name, i.product_name) AS product_name, " +
-                    "i.current_stock, i.unit, w.warehouse_name, i.safety_stock " +
+            // M3-M4 S9a：post-DDL 统一账读路径——inventory 无 current_stock/warehouse_id 列，
+            // 改为 quantity + locations JOIN（location_name 替代 warehouse_name）；阈值口径保留 safety_stock
+            String sql = "SELECT i.inventory_id, i.material_name AS product_name, " +
+                    "i.quantity AS current_stock, i.unit, l.location_name AS warehouse_name, i.safety_stock " +
                     "FROM inventory i " +
-                    "LEFT JOIN warehouses w ON i.warehouse_id = w.warehouse_id " +
-                    "WHERE i.deleted = 0 AND i.current_stock <= i.safety_stock " +
-                    "AND i.safety_stock > 0 " +
+                    "LEFT JOIN locations l ON i.location_id = l.location_id " +
+                    "WHERE i.deleted = 0 AND i.quantity <= i.safety_stock " +
+                    "AND i.safety_stock IS NOT NULL AND i.safety_stock > 0 " +
                     "AND NOT EXISTS (" +
                     "  SELECT 1 FROM notification n " +
                     "  WHERE n.deleted = 0 AND n.type = 'INVENTORY_WARNING' " +

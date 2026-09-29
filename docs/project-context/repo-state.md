@@ -2,17 +2,17 @@
 
 > **性质声明**：本文档为**视图层快照，非权威来源**。与 git 实际状态不一致时，**以 git 为准**。
 > 同步责任：PG-002（见同目录 `process-guards.md`）——每次卡片收口或 push 后由 developer 更新本文件。
-> 快照时点：2026-09-25（push 批次 2026-09-25 销项后、P1-COMBO-LEGACY-CLEANUP-001 启动前）
+> 快照时点：2026-09-28（S4c-2 clean commit `bf4f6b2` force-push 销项 + ENV-4 登记后）
 
 ## 当前状态
 
 | 项 | 值 |
 |----|------|
 | 分支 | `master`（单分支工作流） |
-| HEAD（快照时点） | `7a802ca` docs(governance): register pending push batch 2026-09-25 |
+| HEAD（快照时点） | `bf4f6b2` feat(location): M3-M4 S4c-2 absorb bypass writers (Q5=B executed) |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git |
-| 远程同步 | **同步（ahead=0）**：push 批次 2026-09-25（5 commit：`1a59f93`→`7a802ca`）已推送成功，`c3cbd3a..7a802ca master -> master` |
-| 工作区 | **存在大量既有未提交 WIP（~1196 个已修改条目，canonical 迁移等，属 ENV-1/ENV-2 同源遗留债）**——P1-COMBO-LEGACY-CLEANUP-001 启动须先过 PG-001 门禁 |
+| 远程同步 | **同步（ahead=0）**：S4c-2 clean commit `bf4f6b2` force-push 已推送（替代误吞 519 残留文件的 `cb8ee06`；push 前三项验证 A/B 全 PASS + Owner 批准，见 ENV-4） |
+| 工作区 | **462 个已修改 tracked WIP**（canonical 迁移等，ENV-1/ENV-2 同源遗留债）+ 258 个 untracked（其中 576 个 ENV-4 残留项已由 `.gitignore` 专用段逐条排除，留盘不删除） |
 
 ## 已完成卡片
 
@@ -34,6 +34,7 @@
 | P1-FOODS-STOCK-SEMANTICS-001 | 阶段 1 完成，待 Owner 审（2026-09-26） | foods.stock 语义诊断：报告 `docs/quality/foods-stock-semantics-diagnosis-001.md`（commit `22ccbdd`）；结论 = 当前人工计数器（Count Down），反推引擎已实现但孤立（StockForecast）；审过 → 阶段 2 |
 | P1-POS-MENU-UNIFICATION-001 | 阶段 2 完成，待 Owner 审 + 4 项拍板（2026-09-26） | POS 菜单统一到 foods/food_categories：设计 `docs/design/pos-menu-unification-design-001.md`（commit `f3eeda4`）；拍板后 → 阶段 3（3a 切换/3b 观察/3c 下线/3d 废弃） |
 | P1-INVENTORY-CONSUMPTION-STATS-001 | PENDING（2026-09-26 建卡，任务板 §24.3f） | selectConsumptionStats 列名错位（change_quantity vs change_amount）+ 三参数未落 WHERE；来源 = LOG-FILTER 残留 1 + Owner 活体截图 500 |
+| P1-LOCATION-MODEL-001（M3-M4） | **进行中（2026-09-28，S4c-2 收口）** | 实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-002-m3m4.md`；S1-S4c-2 ✅（S4c-2 = 5 旁路收编 Q5=B，commit `bf4f6b2` force-push 已销项）；S5 流水统一 + inventory_log 后门关闭进行中；ENV-4 登记（PG-001 首次违规，不冻结） |
 
 ## PurchaseOrderServiceImpl 双版本状态（2026-09-25 登记）
 
@@ -47,6 +48,9 @@
 |------|------|------|
 | ENV-1 | `PosOrderCreateServiceImpl` 工作区 WIP（+681 行）导致 FOODID 卡 diff 不可隔离 | `p1-pos-foodid-map-001-implementation-record-001.md` §V9 |
 | ENV-2 | commit `aec5c45` 内容混合（combo 卡 + P0 编译修复 + canonical WIP），已推送远程，diff 不可隔离 | `production-known-limitations.md` 主表 ENV-2 行 + 文末块 |
+| ENV-3 | mvn 默认 JAVA_HOME 指向不存在的 `H:\fuwu\jdk-17.0.17+10`，编译须显式覆盖（实测 Temurin 25 可用）。**关联（2026-09-28 S5）**：JDK 25 下 bytebuddy 1.14.x 不识别 class file 69，跑单测须 `-DargLine=-Dnet.bytebuddy.experimental=true`（S8 同适用） | `production-known-limitations.md` 主表 ENV-3 行 + 文末追加块（2026-09-25 登记 / 2026-09-28 关联） |
+| ENV-4 | commit `cb8ee06`（S4c-2）`git add .` 误吞 519 工作区残留文件；clean redo `bf4f6b2` + force-push 已销项（remote master = `bf4f6b2`）；残留留盘 + `.gitignore` 专用段 576 条目；PG-001 首次违规，Owner 裁决不冻结 | `production-known-limitations.md` 主表 ENV-4 行 + 文末块 + 实施记录 -002 §6 |
+| ENV-5 | S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录，无参全局场景丢失 IN 行）；S9a-2 已移除 + 恢复全动态 `<if>` + 重锚 6/6 绿（已销项；仅读路径无数据影响） | `production-known-limitations.md` 主表 ENV-5 行 + 文末块 + 实施记录 -002 §15 |
 
 ## 待处理项
 
@@ -56,16 +60,16 @@
 
 | Hash | 消息 |
 |------|------|
-| 7a802ca | docs(governance): register pending push batch 2026-09-25 |
-| 0a7d963 | docs(governance): register PG-002 (repo state sync) |
-| 040be94 | docs(project-context): add repo state snapshot |
-| bbd52b0 | docs(governance): register ENV-2 and PG-001 |
-| 1a59f93 | docs(governance): close out P1-COMBO-ORDER-001 (PWL) |
-| c3cbd3a | docs(env): replace example JWT secret with placeholder |
-| c182e63 | chore(security): remove tracked test keystore |
-| 0274549 | chore(security): remove remaining nested e2e auth token |
-| e7cbf22 | P1-COMBO-ORDER-001: regression REG-ORDER-008~011, task board §23, KL-078~080, roadmap |
-| 24a1f60 | P1-COMBO-ORDER-001: QA PASS_WITH_LIMITATION report + status writeback |
+| bf4f6b2 | feat(location): M3-M4 S4c-2 absorb bypass writers (Q5=B executed) |
+| 9e8aa29 | docs(location): S4c-1 unmapped-warehouse impact verification + test re-anchor nature |
+| f30a515 | feat(location): M3-M4 S3/S4 core layer + rule-4 impersonation rewrite |
+| 0c3126e | docs(quality): M3-M4 preflight pack + board status sync |
+| 23aa2e1 | docs(index): add INDEX.md as docs entry map (independent commit per Owner) |
+| 14b9639 | chore(ws): remove dead maxReconnectAttempts config (Q3) |
+| c975a8f | fix(ws): app-level supervised reconnect for long outages |
+| a956cd4 | feat(location): add locations model core layer (M1-M2) |
+| abda72b | fix(ws): add Authorization frame header to STOMP CONNECT |
+| b30dc3d | feat(pos): unify Order/CustomerOrder menu source |
 
 ## 已知遗留（不阻塞，独立决策）
 

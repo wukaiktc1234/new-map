@@ -105,6 +105,8 @@
 | KL-081 | **Schema 对齐债：163 处实体-Flyway 错位（P0-SCHEMA-SINGLE-SOURCE-001 首跑发现）**：MISMATCH=93（表存在但实体映射列缺失）+ NO-TABLE=70（表无 Flyway CREATE，由 DatabaseFixConfig/遗留脚本建表）+ NO-ENTITY=57（Flyway 有表无实体，正常类）；归因：历史建表未走 Flyway + 归档遗留脚本误导实体编码 | `docs/quality/schema-alignment-baseline-20260925-v2.txt` + `scripts/check-schema-alignment.py`（2026-09-25，PG-003） | 中（技术债，非活跃故障） | 否 | 随涉表/实体卡片按 PG-003 逐个消化（不一次性修复）；基线 v2 为比对锚点；消分进度：初始 163 / 已消化 0（FoodCategory 已修复不计入） |
 | KL-082 | **47 张黑箱表：src 内无任何 CREATE，schema 无仓内真相源（P0-SCHEMA-SINGLE-SOURCE-001 溯源）**：budget/coupon/salary 系列/inventory 系列/sys_roles·sys_permissions·sys_stores/trace_code_log/material_usage_record 等；**存在性核查（2026-09-25）：仅 4 张存在于本地活体 DB**（app_device_registrations / inventory_warning_rules / position_code_rules / receipt_print_log，应急 DDL 已导出），**43 张连本地 DB 都不存在**——schema 只可能存在于生产 DB，「从零重建库」场景下 47 张全部不会被创建 → 生产重建/新环境部署高风险 | 溯源核查（2026-09-25，精确规则：CREATE TABLE 与表名同行）+ `docs/quality/db-blackbox-emergency-snapshot-20260925.sql` | **高（生产重建/新环境部署阻断）** | 否（现网运行不受影响；风险场景为重建/新建环境） | **P0-FLYWAY-COVERAGE-001**（P0，任务板 §24.3b）：活体导出 → 生产 information_schema 比对 → 补 Flyway（只增不改） |
 | KL-083 | **多门店数据隔离未生效（Owner 已决策多门店模式，P1 必修）**：SecurityUser（JWT 主体）无 storeId 字段 → getCurrentUserStoreId() 恒 null → DataPermissionAspect 对所有 JWT 用户（含普通角色）不过滤门店；role_stores/role_departments 无 migration 且本地不存在（BC-026/KL-082）；users.store_id 全空且无维护端点 | `docs/quality/role-store-binding-audit-001.md`（2026-09-26 排查）+ Owner 决策 | **高（安全，多门店必需）** | 否（本地单租户运行不受影响；多门店上线前必修） | 修复卡：**P0-ROLE-STORE-SCHEMA-001**（表/端点/回填）→ **P1-ROLE-STORE-ISOLATION-001**（JWT/Aspect 隔离）；admin 例外维持全量（设计内）；KDS token 隔离已生效不动 |
+| ENV-4 | commit `cb8ee06`（S4c-2 卡）`git add .` 违反 PG-001 v2，误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ force-push 已执行，remote master = `bf4f6b2`（API 验证 tree e209be07）；519 残留留盘不删除、`.gitignore` 加 ENV-4 专用段逐条排除 | P1-LOCATION-MODEL-001 M3-M4（实施记录 -002 §6） | **中** | 否（已替代并验证；cb8ee06 对象 SHA 可取回至 GC） | **已收口（2026-09-28：push 前三项验证 A/B 全 PASS + Owner 批准 force-push + .gitignore 576 条目专用段）；Owner 裁决：PG-001 首次违规，登记 ENV-4，不冻结** |
+| ENV-5 | **S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录）**：selectConsumptionStats 无参全局场景丢失 IN 行（口径漂移）；commit ad13e80 消息与实施记录 §10 均无裁定 | P1-LOCATION-MODEL-001 M3-M4 S7a → S9a-2（实施记录 -002 §15） | **中** | 否（仅读路径，无数据影响） | **已销项（2026-09-29，S9a-2：移除硬编码 WHERE + 恢复全动态 `<if>` + 重锚 6/6 绿）** |
 
 > 状态字典：`待产品` / `待财务` / `待产品决策` / `待后端排期` / `待后端组` / `待联调` / `待渗透` / `待治理` / `观察` / `已拆卡` / `已解除` / `已建卡` / `家族专项统一治理中` / `待数据扫描验证` / `待第二步卡排期`
 
@@ -927,3 +929,80 @@ ENV-2 — Commit aec5c45 内容混合
 *追加：2026-09-25 登记 KL-082（47 张黑箱表，高风险）：来源 P0-SCHEMA-SINGLE-SOURCE-001 收口溯源（NO-TABLE 70 张分解：归档 scripts 16 + DatabaseFixConfig 1 + 其他 Java 类 6 + 真黑箱 47）。存在性核查：**仅 4 张在本地活体 DB（DDL 已导出）**，**43 张连本地都不存在**（仅生产可能有）——应急快照 `docs/quality/db-blackbox-emergency-snapshot-20260925.sql`（PROVISIONAL_LOCAL_UNVERIFIED，含 4 张 DDL + 43 张缺失清单）。关联 **KL-081**（NO-TABLE 70 即其子集）与 **P0-FLYWAY-COVERAGE-001**（P0 预告，任务板 §24.3b）。主表 84 → 85 行。planner 仅登记，纯只读导出、未改 DB、未改代码；历史条目零修改。*
 
 *追加：2026-09-26 登记 KL-083（多门店数据隔离未生效）+ Owner 决策：系统为多门店共享、各账号只看自己店、数据隔离必须生效。修复路径：P0-ROLE-STORE-SCHEMA-001 → P1-ROLE-STORE-ISOLATION-001。关联 BC-026、KL-082（role_stores/role_departments 从 P0-FLYWAY-COVERAGE-001 拆出至 P0-ROLE-STORE-SCHEMA-001）。admin 例外维持全量（设计内）；KDS token 隔离已生效不动。主表 85 → 86 行。planner 仅登记，零代码。*
+
+---
+
+ENV-4 — commit cb8ee06 误吞工作区残留（PG-001 首次违规）
+
+日期：2026-09-28
+类型：ENVIRONMENT_DEBT
+严重度：中（残留曾被提交并推送；已被 clean commit 替代并验证，cb8ee06 对象 SHA 可取回至 GC；工作区不冻结）
+
+描述：
+  S4c-2 卡（P1-LOCATION-MODEL-001 M3-M4 收编旁路写入者，Q5=B）提交时使用了
+  `git add .`，违反 PG-001 v2 commit 隔离条：commit `cb8ee06` 实际含 524 文件
+  = S4c-2 合法改动 5（LossOutboundService / OtherInboundService /
+  SalesOrderServiceImpl + 实施记录 -002 + s4c2 对照表）+ 工作区残留 519
+  （498 新 docs + 16 陈旧 Flyway SQL（bank/finance/position 系列 WIP）+
+  5 个 cb8ee06 既有修改的 WIP docs）。重做：clean commit `bf4f6b2`（恰 5 文件，
+  与 cb8ee06 合法部分逐字节一致，标题同，共同父提交 `9e8aa29`）。
+
+后果：
+  - push 前三项验证全 PASS（A：16 个 SQL 全部为磁盘 untracked 残留；B：5 个 WIP
+    docs 工作树内容与 cb8ee06 版本逐字节一致），Owner 批准 force-push；
+    remote master = `bf4f6b2`（GitHub API 验证，tree `e209be07`），ahead=0
+  - 519 残留文件留盘不删除；`.gitignore` 新增 ENV-4 专用段 576 条逐文件条目
+    （514 残留 + 32 根目录工作产物 + 3 scripts + `test/` 目录）防止再次误吞；
+    5 个 WIP docs 为 tracked WIP，**不** gitignore，随后续合法提交入库
+  - `.gitignore` 变更本身在既有 462 个已修改 tracked 文件中，随下一提交入库
+  - cb8ee06 commit 对象（含 524 文件 diff 历史）SHA 可取回至 GC
+
+处置：
+  - 按 Owner 裁决：PG-001 首次违规，登记 ENV-4，**不冻结**（工作区不冻结，
+    S5 继续）
+  - 不再二次 rewrite history（远端已替代，无进一步 force-push）
+  - 后续严格执行 PG-001 v2：开卡文件 clean + commit 隔离，禁用 `git add .`
+
+关联：
+  - ENV-1 / ENV-2（内容混合同族）
+  - PG-001（`docs/project-context/process-guards.md`）
+  - P1-LOCATION-MODEL-001 M3-M4 实施记录
+    `docs/architecture/03-review/p1-location-model-001-implementation-record-002-m3m4.md` §6
+---
+
+ENV-5 — S7a 硬编码 OUT 过滤静默违反 24.3f 已验证行为（S9a-2 移除）
+
+日期：2026-09-29
+类型：ENVIRONMENT_DEBT
+严重度：中（行为偏差自 S7a 静默存续至 S8b 上线后观察期；S9a-2 发现并同会话移除验证；仅读路径，无数据影响）
+
+描述：
+  S7a（M3-M4 读路径切换）在 InventoryLogMapper.selectConsumptionStats 硬编码
+  `WHERE m.movement_type='OUT'`（替换原全动态 `<if>`）。commit 消息（ad13e80）
+  与实施记录 §10 均无裁定/理由记录——Owner 调查确认"没理由"分支成立。
+  该行为静默违反 24.3f 已验证行为：P1-INVENTORY-CONSUMPTION-STATS-001 验收
+  （S4c-2 ConsumptionStats 5/5 绿）之"无参 = 全类型全局和（含 IN 行）"。
+
+后果：
+  - S7a → S9a-2 期间，/v1/inventory/consumptions/stats 端点与 mapper 调用
+    均仅聚合 OUT 行；无参全局场景丢失 IN 行（口径漂移）；
+  - 无活体数据影响（仅读路径，未以错误口径写入任何数据）；
+  - S8b 端点矩阵 13/13 绿为可达性断言，未覆盖聚合口径，观察期未暴露。
+
+处置：
+  - S9a-2：移除硬编码 WHERE，恢复全动态 `<if>`（operationType→movement_type /
+    startTime / endTime）；InventoryLogConsumptionStatsIntegrationTest 重锚
+    6/6 绿（含新增"真实数据共存" delta 场景）；
+  - 后续 mapper 行为变更必须有裁定记录（24.3f 类已验证行为受保护）。
+
+关联：
+  - 24.3f（P1-INVENTORY-CONSUMPTION-STATS-001，S4c-2 验收）
+  - ENV-4（同族：静默内容变更；PG-001 违规登记先例）
+  - 实施记录 -002 §15（S9a-2）
+---
+
+*追加：2026-09-28 登记 ENV-4（来源：S4c-2 卡 commit 过程 + Owner 裁决「按 PG-001 首次违规处理，登记 ENV-4，不冻结」）：主表新增 **ENV-4** 一行——commit `cb8ee06`（S4c-2，`git add .` 违反 PG-001 v2）误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ push 前三项验证（A/B）全 PASS + Owner 批准 force-push 已执行，remote master = `bf4f6b2`（GitHub API 验证，tree `e209be07`）。519 残留留盘不删除，`.gitignore` 新增 ENV-4 专用段 576 条逐文件条目（含 `test/` 目录）；5 个 WIP docs 维持 tracked WIP 不 ignore；`.gitignore` 变更在既有 462 个已修改 tracked 文件中随下一提交入库。主表 86 → 87 行。ENV 序列独立编号，不占 KL。cb8ee06 对象 SHA 可取回至 GC。planner 仅登记，未改代码、未再动 git 历史（Owner 批准的 force-push 除外）；历史条目零修改。*
+
+*追加：2026-09-28 **ENV-3 关联登记**（来源：P1-LOCATION-MODEL-001 M3-M4 S5 测试执行 + Owner 指令「JDK 环境记入 ENV-3 关联，同源环境债」）：本会话 JAVA_HOME 再次失效（与 ENV-3 同因：`H:\fuwu\jdk-17.0.17+10` 不存在），仅 JDK 25 可用（pom target 21）。**新发现**：bytebuddy 1.14.x（Spring Boot 3.2.0 管理版本）不识别 JVM 25 class file 69，Mockito inline mock 对 MyBatis-Plus wrapper 类报 Error → 跑单测须附加 `-DargLine=-Dnet.bytebuddy.experimental=true`（与 combo 卡 L-03 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md` 同族，该条另需 `-XX:+EnableDynamicAgentLoading`）。S5 定向 4 类 31/31 绿在此 flag 下取得；**S8 测试重锚定同样适用**。非代码问题，不新增 ENV 编号（ENV-3 关联）。同批修复：`.gitignore` ENV-4 专用段 `test/` 条目未根锚定、会吞 backend/src/test 下 untracked 文件 → 改 `/test/`（根 scratch 目录验证仍被忽略），已随 commit `d96b94f` 入库。planner 仅登记 + .gitignore 修复，未改业务代码。*
+
+*追加：2026-09-29 登记 ENV-5（来源：P1-LOCATION-MODEL-001 M3-M4 S9a-2 调查 + Owner 裁决"没理由 → 移除 + 登记 ENV"）：主表新增 **ENV-5** 一行——S7a 在 InventoryLogMapper.selectConsumptionStats 硬编码 `WHERE movement_type='OUT'`（替换全动态 `<if>`），commit ad13e80 消息与实施记录 §10 均无裁定/理由记录，静默违反 24.3f 已验证行为（P1-INVENTORY-CONSUMPTION-STATS-001：无参 = 全类型全局和含 IN 行）；S9a-2 已移除并恢复全动态 `<if>`，InventoryLogConsumptionStatsIntegrationTest 重锚 6/6 绿（含"真实数据共存" delta 场景）。仅读路径、无数据影响。ENV-5 为独立 ENV 编号序列，不占 KL 编号。同批 S9a-2-B：test resources V999 幂等化（ON CONFLICT DO NOTHING + 活体 schema 对齐：users PK user_id / user_roles create_time / 移除不存在的 sys_role_permissions 语句）——Flyway 上下文启动阻塞已解除；OrderManagementIntegrationTest 9 测试现因 401/403（无 @WithMockUser/登录 setup，既有设计缺口，与 M3-M4 无关，S9a-2 范围外）失败。planner 仅登记；代码修复见实施记录 -002 §15。*
