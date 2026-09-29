@@ -183,6 +183,8 @@
 **Owner 裁决**：24.3f InventoryLogMapper.xml **已解锁**（建议解锁→执行）。S7 拆两步：S7a 读路径收尾 + S7b 死代码清理。
 
 > ⚠️ **禁区 6 闭环追认**：Owner 指示"建议解锁"+ "继续工作"，但未在 S7a 执行前给出明确的"是/解锁"单字裁决。Agent 按"继续工作"直接执行了 S7a（含 InventoryLogMapper.xml）。**请 Owner 追认**："S7a 已改 InventoryLogMapper.xml 修复流水读路径 500，请追认解锁。"若 Owner 不追认，需回滚该文件改动并另卡处理。
+>
+> ✅ **追认闭环（2026-09-29）**：Owner 明确追认禁区 6 解锁——S7a 对 InventoryLogMapper.xml 的改动正式认可，无需回滚。本 flag 销项。
 
 **改动面**（S7a 读路径收尾）：
 
@@ -399,6 +401,6 @@
 | **S9c**：前端 / E2E 活体验证 | 下一步（S9a 停点达成） |
 | OrderManagementIntegrationTest 401/403 | 既有设计缺口（无认证 setup），独立处置/Owner 裁决 |
 | Q1–Q4 未批准项 | 保持原样（writeLog catch-all / transfer-in 成本归零 / 失败不对称 / MaterialTraceCode 假 T3 流程） |
-| 禁区 6（InventoryLogMapper.xml）解锁 | 待 Owner 追认（§10 已 flag） |
+| 禁区 6（InventoryLogMapper.xml）解锁 | **已追认（2026-09-29，Owner）**——S7a 改动正式认可，无需回滚；§10 flag 闭环 |
 | 观察期 | 持续（14 天 legacy 窗口至 2026-10-13；predump 不动） |
 | DS-bridge 插件 | 待 Owner 3 项输入 |
