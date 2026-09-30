@@ -8060,11 +8060,12 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 现象 | `POST /v1/pos/orders/order` 携带 `contactPhone` → **500 `对于可变字符类型来说，值太长了(20)`**；E2E 以"不传联系电话"绕过（去掉电话后下单/支付/托盘/出餐/日结全链正常） |
 | 根因 | `PosOrderCreateServiceImpl:332` `orderNew.setCustomerPhone(sensitiveDataService.encryptPhone(command.getContactPhone()))` → **加密密文**写入 `orders.customer_phone`（**varchar(20)**，非加密列长度） |
 | 影响面 | POS 下单主路径：任何携带联系电话的下单（收银端/扫码点餐/桌台单）均失败；联系方式为可选字段，故线上表现为"填电话就 500" |
-| 修复方向（已核实唯一） | ① **加密后存储**：`orders.customer_phone` 扩长至与本仓其它加密列一致的口径（先盘点 `contact_phone`/`customer_phone` 及同类加密列的长度基准）；或 ② **掩码/后四位 + 密文另存**（若产品要求列表展示明文掩码）。两案均不改调用契约 |
+| 修复方向（**Owner 2026-09-30 已定 A**） | **A 改加密策略：密文不落 `customer_phone`**（该列 varchar(20) 放不下密文）——改**专用字段**（密文另存于加长列）或**脱敏存储**（`customer_phone` 存掩码/后四位，密文入专用列）；**原"扩长 `customer_phone` 存密文"方案（①）被否**；子选项（专用字段 vs 脱敏存储）待实现时定。两案均不改调用契约 |
 | PG-005.1 豁免申请 | **修复方向唯一 / 无产品决策 / 无架构变更 → 申请跳过设计阶段**（列长口径对齐属实现缺陷修复）。**如 Owner 认为"改列长"构成 schema 变更需走设计阶段，则本豁免不成立**，改走常规阶段 1/2 |
 | 验收基准 | ① 带 `contactPhone` 下单 **200** 且订单落库；② 电话号码读取侧（详情/打印/权限范围内展示）可正常解密或按方案展示；③ **不带电话的既有路径不回归**；④ POS 下单相关定向单测绿；⑤ S9c E2E 的 3a/3b 环节恢复携带电话后仍全绿 |
 | 估算 | 0.5 人天 |
 | 启动条件 | **Owner 批准 PG-005.1 豁免 + 明确开工指令后** |
+| 收口门控 | **M3-M4 收口门控 P1-D**（Owner 2026-09-30）：等 P1-D 处理完再一起收 M3-M4 口；本卡（P1-D）完成前 M3-M4 维持未完全收口 |
 
 ## 24.3h P1-USER-LOCATION-001（2026-09-27 Owner 拍板后登记，未启动）
 

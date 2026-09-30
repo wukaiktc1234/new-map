@@ -109,6 +109,7 @@
 | ENV-5 | **S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录）**：selectConsumptionStats 无参全局场景丢失 IN 行（口径漂移）；commit ad13e80 消息与实施记录 §10 均无裁定 | P1-LOCATION-MODEL-001 M3-M4 S7a → S9a-2（实施记录 -002 §15） | **中** | 否（仅读路径，无数据影响） | **已销项（2026-09-29，S9a-2：移除硬编码 WHERE + 恢复全动态 `<if>` + 重锚 6/6 绿）** |
 | ENV-7 | **OrderManagementIntegrationTest 9 测试因 401/403 失败（无 `@WithMockUser`/登录 setup，既有设计缺口）**：V999 幂等化后 Flyway 阻塞已解除，上下文可启动，但 9 测试全部因缺少认证 setup 返回 401/403；与 M3-M4 无关 | S9a-2-B 验证暴露（实施记录 -002 §15.3） | **低** | 否（既有缺口，非本次引入） | **排除 M3-M4 收口条件，归 M5 或独立卡（Owner 裁决 2026-09-29）** |
 | KL-084 | **门店日结确认后异步凭证生成失败（科目 5001 不存在 + 事件载荷门店=null）**：`StoreDailySettlementEventListener`（@Async）处理日结完成事件时调用 `AutoVoucherServiceImpl.generateStoreSettlementVoucher` → `loadSubjectIdFromDb` 抛 `BusinessException: 科目编码不存在：5001`；失败仅落 ERROR 日志，不回滚、不回传调用方（接口已返回成功）；同时事件载荷 `store=null`（`daily_settlement.store_id='1'` 有值但事件未传递）；日结 status=approved 但凭证缺失——"假成功"形态 | M3-M4 S9c E2E 运行日志 02:32:20（`pwsh-34` 后台服务日志）；`AutoVoucherServiceImpl:555/377`、`StoreDailySettlementEventListener:63`（2026-09-29） | 中（财务域数据一致性；日结已确认而凭证缺失，调用方无感） | 否（不影响 M3-M4 收口；E2E 第 4 环节断言"日结落库金额/单数 = orders 表实收"已通过，凭证生成在断言之外） | 观察（归属财务域，随 P1-FIN-* 批次裁决；需定性：初始化数据缺口（accounting_subjects 缺 5001）vs 代码引用未种子创建的科目；事件载荷 store=null 为独立缺陷） |
+| ENV-8 | **post-commit hook 静默 auto-push（每次 commit 自动 `git push origin master`，先于本次会话存在）**：`.git/hooks/post-commit`（加入 **2026-09-10 19:20:51**）在每次 commit 后静默执行 `git push origin master`，未经 Owner 逐次指令即推送远程；**自动 push 范围（实测）**：hook 加入后 9/11–9/22 无 commit，首个 post-hook commit `7f40ab7`（9/23）至 `b2cad36`（9/30）共 **97 个 commit** 均被自动推送至 origin；`4ccf353`（9/30，删 hook 后提交）未推（本地独有） | 本次会话实测：`git log origin/master` vs 本地 log + `.git/hooks/post-commit` LastWriteTime 2026-09-10 19:20:51 + hook 内容（2026-09-30） | 中（治理/流程：commit 与 push 未分离，违背"push 需 Owner 显式指令"） | 否（非功能故障；已删 hook 消除风险） | **已收口（2026-09-30：Owner 批准删除 post-commit hook，审计确认无其它 auto-push 机制）+ 预防规则见 PG-001（禁静默 auto-push 类 hook）** |
 
 > 状态字典：`待产品` / `待财务` / `待产品决策` / `待后端排期` / `待后端组` / `待联调` / `待渗透` / `待治理` / `观察` / `已拆卡` / `已解除` / `已建卡` / `家族专项统一治理中` / `待数据扫描验证` / `待第二步卡排期`
 
@@ -1064,6 +1065,30 @@ ENV-7 — OrderManagementIntegrationTest 9 测试因 401/403 失败（既有认�
   - ENV-5（同批登记，S9a-2）
 ---
 
+ENV-8 — post-commit hook 静默 auto-push（每次 commit 自动 `git push origin master`）
+
+事件：
+  - 仓库 `.git/hooks/post-commit`（LastWriteTime **2026-09-10 19:20:51**，先于本次会话 2026-09-30）
+    在每次 `git commit` 后静默执行 `git push origin master 2>&1`，未经 Owner 逐次指令即推送远程；
+  - hook 内容：`#!/bin/sh` + `echo "Auto-pushing to origin master..."` + `git push origin master 2>&1`；
+  - 发现于本次会话 M3-M4 收口 commit 后（commit `b2cad36` 被自动推送至 origin）。
+
+自动 push 范围（实测，2026-09-30）：
+  - hook 加入（2026-09-10 19:20:51）后 **9/11–9/22 无 commit**；
+  - 首个 post-hook commit `7f40ab7`（2026-09-23 16:43:59）至 `b2cad36`（2026-09-30 17:16:01）共 **97 个 commit** 均被自动推送至 origin master；
+  - `4ccf353`（2026-09-30 17:25:39，删 hook 后提交）**未推送**（本地独有）；
+  - 实测方法：`git log origin/master` vs `git log`；origin=`b2cad36`，本地独有仅 `4ccf353`。
+
+处置（2026-09-30，Owner 批准）：
+  - 删除 `.git/hooks/post-commit`（消除自动 push）；
+  - 审计 `.git/hooks/`（其余全为 `.sample` 未激活）+ `core.hooksPath`（空）+ 无 git alias + `push.auto`/`branch.master.pushRemote`/`remote.origin.push`（均空）→ 确认 post-commit 为唯一 auto-push 机制；
+  - 预防规则：**PG-001 新增"禁静默 auto-push 类 hook"**（commit 与 push 分离，push 需 Owner 显式指令）。
+
+关联：
+  - PG-001（`docs/project-context/process-guards.md`，新增规则 6）
+  - 本次会话 M3-M4 收口（commit `b2cad36` 被自动推送）
+---
+
 *追加：2026-09-28 登记 ENV-4（来源：S4c-2 卡 commit 过程 + Owner 裁决「按 PG-001 首次违规处理，登记 ENV-4，不冻结」）：主表新增 **ENV-4** 一行——commit `cb8ee06`（S4c-2，`git add .` 违反 PG-001 v2）误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ push 前三项验证（A/B）全 PASS + Owner 批准 force-push 已执行，remote master = `bf4f6b2`（GitHub API 验证，tree `e209be07`）。519 残留留盘不删除，`.gitignore` 新增 ENV-4 专用段 576 条逐文件条目（含 `test/` 目录）；5 个 WIP docs 维持 tracked WIP 不 ignore；`.gitignore` 变更在既有 462 个已修改 tracked 文件中随下一提交入库。主表 86 → 87 行。ENV 序列独立编号，不占 KL。cb8ee06 对象 SHA 可取回至 GC。planner 仅登记，未改代码、未再动 git 历史（Owner 批准的 force-push 除外）；历史条目零修改。*
 
 *追加：2026-09-28 **ENV-3 关联登记**（来源：P1-LOCATION-MODEL-001 M3-M4 S5 测试执行 + Owner 指令「JDK 环境记入 ENV-3 关联，同源环境债」）：本会话 JAVA_HOME 再次失效（与 ENV-3 同因：`H:\fuwu\jdk-17.0.17+10` 不存在），仅 JDK 25 可用（pom target 21）。**新发现**：bytebuddy 1.14.x（Spring Boot 3.2.0 管理版本）不识别 JVM 25 class file 69，Mockito inline mock 对 MyBatis-Plus wrapper 类报 Error → 跑单测须附加 `-DargLine=-Dnet.bytebuddy.experimental=true`（与 combo 卡 L-03 `docs/architecture/03-review/p1-combo-legacy-cleanup-001-implementation-record-001.md` 同族，该条另需 `-XX:+EnableDynamicAgentLoading`）。S5 定向 4 类 31/31 绿在此 flag 下取得；**S8 测试重锚定同样适用**。非代码问题，不新增 ENV 编号（ENV-3 关联）。同批修复：`.gitignore` ENV-4 专用段 `test/` 条目未根锚定、会吞 backend/src/test 下 untracked 文件 → 改 `/test/`（根 scratch 目录验证仍被忽略），已随 commit `d96b94f` 入库。planner 仅登记 + .gitignore 修复，未改业务代码。*
@@ -1073,3 +1098,5 @@ ENV-7 — OrderManagementIntegrationTest 9 测试因 401/403 失败（既有认�
 *追加：2026-09-29 登记 ENV-7（来源：S9a-2-B V999 幂等化验证暴露 + Owner 裁决"排除 M3-M4 收口条件，归 M5 或独立卡"）：主表新增 **ENV-7** 一行——OrderManagementIntegrationTest 9 测试因无 @WithMockUser/登录 setup 全部 401/403 失败（既有设计缺口，V999 幂等化前被 Flyway 阻塞掩盖）；与 M3-M4 无关，不触碰 inventory/movement 域。ENV-7 为独立 ENV 编号序列，不占 KL 编号。planner 仅登记，未改测试代码。*
 
 *追加：2026-09-29 登记 **KL-084**（来源：M3-M4 S9c E2E 运行日志观察 + Owner 点头登记）：主表新增 **KL-084** 一行 + 独立详情块——门店日结确认（status=approved）后异步凭证生成失败：`StoreDailySettlementEventListener`（@Async）→ `AutoVoucherServiceImpl:555/377` 抛 `BusinessException: 科目编码不存在：5001`；失败仅落 ERROR 日志、不回滚、不回传调用方（接口已返回成功，"假成功"形态）；同时事件载荷 `门店=null`（`daily_settlement.store_id='1'` 有值，事件未传递门店上下文）。定性三问待 Owner/财务域裁决：① accounting_subjects 缺 5001 = 初始化数据缺口 or ② 代码引用未种子科目 = 代码缺陷，or ③ 事件载荷组装缺陷（store=null 独立缺陷）。归属财务域，随 P1-FIN-* 批次裁决；不新开修复卡、不动代码；不影响 M3-M4 收口（E2E 第 4 环节断言"日结落库金额/单数 = orders 表实收"已通过，凭证生成在断言之外）。证据：pwsh-34 运行日志 02:32:20。planner 仅登记，未改代码。*
+
+*追加：2026-09-30 登记 **ENV-8**（来源：本次会话 M3-M4 收口 commit 后自动 push 暴露 + Owner 指令"补 ENV-8 + 注明 hook 加入时间先于本次会话 + 实测 9/10 后自动 push 范围"）：主表新增 **ENV-8** 一行 + 独立详情块——`.git/hooks/post-commit`（加入 **2026-09-10 19:20:51，先于本次会话**）在每次 commit 后静默执行 `git push origin master`，未经 Owner 逐次指令即推送远程；**自动 push 范围（实测）**：hook 加入后 9/11–9/22 无 commit，首个 post-hook commit `7f40ab7`（9/23）至 `b2cad36`（9/30）共 **97 个 commit** 均被自动推送至 origin；`4ccf353`（删 hook 后提交）未推（本地独有）。ENV-8 为独立 ENV 编号序列，不占 KL 编号。处置（Owner 批准 2026-09-30）：删除 post-commit hook + 审计确认无其它 auto-push 机制 + **PG-001 新增"禁静默 auto-push 类 hook"规则**。planner 仅登记 + 删 hook + 改 PG-001，未改业务代码、未改 git 历史（删 hook 为 Owner 批准）。*

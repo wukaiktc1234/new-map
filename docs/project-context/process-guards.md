@@ -11,6 +11,8 @@
 4. commit 前必须 `git diff --cached` 检查 staged 内容，确认仅含本卡文件
 5. 若发现本卡目标文件与其他批次 WIP **真实内容重叠** → 仍是 BLOCKED
    （仅行尾幻影重叠不算；真实重叠须 Owner 裁决，不得带重叠开工）
+6. **禁静默 auto-push 类 hook**：仓库不得存在 commit 后自动 `git push` 的 hook（如 `.git/hooks/post-commit`）；
+   commit 与 push 必须分离，push 仅由 Owner 显式指令触发（关联 ENV-8）
 
 **v1 → v2 修订理由**（ENV-1 / ENV-2 / LEGACY-CLEANUP 三次实战暴露）：
 - v1 的"全工作区 clean"在 467 真实改动 + 458 未跟踪环境下不可行
@@ -22,7 +24,7 @@
   - 连续两次：冻结新卡启动
 
 **生效日期**：2026-09-25（v1：2026-09-24）
-**关联**：ENV-1 / ENV-2 / ENV-3
+**关联**：ENV-1 / ENV-2 / ENV-3 / ENV-8
 
 ## PG-002 — Repo 状态快照同步
 
