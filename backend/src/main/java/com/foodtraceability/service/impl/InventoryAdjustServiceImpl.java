@@ -346,6 +346,8 @@ public class InventoryAdjustServiceImpl extends ServiceImpl<InventoryAdjustMappe
                 increaseDTO.setReferenceNo(adjust.getAdjustCode());
                 increaseDTO.setReferenceType("inventory_adjust");
                 increaseDTO.setRemark(item.getReason());
+                // P0-A：统一流水 source_type（词表 -001 §1.4；库存调整单=盘盈/盘亏）
+                increaseDTO.setSourceType("ADJUST");
                 inventoryService.increaseInventory(increaseDTO);
             } else {
                 // 调整数量为负：减少库存（盘亏出库）
@@ -357,6 +359,8 @@ public class InventoryAdjustServiceImpl extends ServiceImpl<InventoryAdjustMappe
                 decreaseDTO.setReferenceNo(adjust.getAdjustCode());
                 decreaseDTO.setReferenceType("inventory_adjust");
                 decreaseDTO.setRemark(item.getReason());
+                // P0-A：统一流水 source_type（词表 -001 §1.4；库存调整单=盘盈/盘亏）
+                decreaseDTO.setSourceType("ADJUST");
                 inventoryService.decreaseInventory(decreaseDTO);
             }
         }

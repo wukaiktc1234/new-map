@@ -7970,7 +7970,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-LOCATION-MODEL-001** |
-| 状态 | **实施中**——M1-M2 ✅ 完成（commit `a956cd4`：locations + location_id_map 建表迁移 + 只读核心层，回滚演练通过，实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-001.md`）；**M3-M4 实施中（2026-09-27 Owner 授权，一张卡做透不拆分）**：范围=合并 T1+T2 键(location_id,material_id) / 合并 T3+T4a+T4b 流水 / 污染全清 / 5 个绕过直写文件收编 / 4 处 String.valueOf(warehouseId) 经 map 改写 / 死代码删除 / InventorySummaryMapper UNION ALL 重写 / inventory_log 后门关闭；纪律依据 `docs/quality/m3m4-preflight/implementation-constitution-001.md`（含 4 项未批复行为敏感点按现状迁移）；回归基线 `docs/quality/m3m4-preflight/inventory-chain-snapshot-20260927-001.json` |
+| 状态 | **实施中**——M1-M2 ✅ 完成（commit `a956cd4`：locations + location_id_map 建表迁移 + 只读核心层，回滚演练通过，实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-001.md`）；**M3-M4 实施中（2026-09-27 Owner 授权，一张卡做透不拆分）**：范围=合并 T1+T2 键(location_id,material_id) / 合并 T3+T4a+T4b 流水 / 污染全清 / 5 个绕过直写文件收编 / 4 处 String.valueOf(warehouseId) 经 map 改写 / 死代码删除 / InventorySummaryMapper UNION ALL 重写 / inventory_log 后门关闭；纪律依据 `docs/quality/m3m4-preflight/implementation-constitution-001.md`（含 4 项未批复行为敏感点按现状迁移）；回归基线 `docs/quality/m3m4-preflight/inventory-chain-snapshot-20260927-001.json`。**S9c 库存全链 E2E 已完成（2026-09-30，纯 E2E 零代码）→ 见 `p1-location-model-001-implementation-record-002-m3m4.md` §16 + 收口对照小节**：迁移与 DDL 侧（S1-S9b）✅，活体 E2E 暴露 **3 项 P0 阻断**（采购入库主链 500 / 调拨未映射静默跳过造假账 / 仓→店无通路）+ 1 项既有 P1（POS 带电话 500） |
 | 优先级 | P1 |
 | 性质 | 架构级重构（Location 模型一期：locations 统一 stores_new+warehouses / 库存单表 / 流水合并 / 单据单落点） |
 | 前置 | D-1~D-7 已拍板（✅ 2026-09-27 完成，含 3 处务实简化） |
@@ -7980,6 +7980,91 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 9~12 人天（Owner 全清生效取 10 人天上限口径） |
 | 验收基准 | 迁移演练 ×2 通过；库存全链 E2E（采购→入库→调拨（含仓→店）→销售→出餐扣料→日结）；store_inventory/inventory 合并后行数与映射表对账一致；3 个高危混用点用例通过；回滚演练（M1-M6 DOWN + 快照恢复）成功 |
 | 启动条件 | **Owner 明确指令后** |
+
+### 24.3g-M3M4 收口对照（2026-09-30，S9c 纯 E2E 后）
+
+**收口结论：条件收口。** 迁移/DDL/代码侧（S1–S9b）达成；活体全链 E2E 暴露 3 项 P0 阻断，②④ 两项基准部分达成 → **在 P0-A/P0-B/P0-C 处置前，不建议宣布"库存全链可用"，也不建议启动 S10 调拨页前端适配**。
+
+| # | 验收基准 | 结论 | 证据 / 缺口 |
+|---|---|---|---|
+| ① | 迁移演练 ×2 通过 | ✅ | 沙箱（-002 §12 S8b-prep）+ 活体（§13），两轮 13 端点快照重放均 13/13 PASS |
+| ② | 库存全链 E2E（采购→入库→调拨（含仓→店）→销售→出餐扣料→日结） | ⚠️ 部分（P0-A/P0-B 修复后复验 **32/32 全绿**） | 通过：**采购→入库（确认入库 200、loc5 恰好 +5 非 +10、统一流水恰好 1 条、数量增量=流水增量）**、调拨（仓→仓双侧与流水双向对账；未映射源/目标仓已显式拒绝且零副作用）、POS 下单→出餐扣料（含缺货异常整体回滚 + REQUIRES_NEW 审计）、日结（151200 分 = 订单实收）；**唯一缺口**：仓→店（产品层无通路，按 Owner 裁决不开卡） |
+| ③ | store_inventory/inventory 合并后行数与映射表对账一致 | ✅ | `location_id_map` 5 ↔ `locations` 5；E2E 前 `inventory` 13 行全在 loc4/5、孤儿 0、`location_id IS NULL` 0；冻结 legacy 表齐备 |
+| ④ | 3 个高危混用点用例通过 | ⚠️ 部分 | 活体覆盖 2/3（采购申请创建、调拨库存同步——后者**即暴露 P0-B**）+ 1/3 隐式（DataPermissionAspect 由全部鉴权请求覆盖）；`backend/src/test` **无专用用例** → 建议随修复卡补 3 例 |
+| ⑤ | 回滚演练（M1-M6 DOWN + 快照恢复）成功 | ✅（M1-M4） | M1-M2 见 `implementation-record-001`；M3-M4 见 -002 §13 步骤 1（沙箱 DOWN + legacy 恢复 → pre-DDL 完整恢复 → 重新 DDL）；DOWN 脚本 + `m3m4-predump-20260929.dump` 保留；M5-M6 未实施，落地后需复演 |
+
+> **修复与复验（2026-09-30）**：P0-A（§24.3j）、P0-B（§24.3k）已开卡并**实施完成 + 活体复验**（-002 §17：定向单测 33/33、E2E 复验 32/32；入库恰好 +5、未映射调拨显式拒绝且零副作用）；**P0-C 按 Owner 裁决不开卡**（保留为已知缺口）；P1-D 未开卡。② 项据此由"两处阻断"收敛为"仓→店单一缺口"。
+
+**P0/P1 修复卡建议（待 Owner 裁决是否开卡与拆分）**：
+
+| 编号 | 缺陷 | 位置 | 后果 |
+|---|---|---|---|
+| P0-A | 采购入库写路径未收编（表已更名 `inventory_transactions_legacy`） | `InventoryServiceImpl.recordTransaction`（L412-433，`transactionMapper.insert`） | 确认入库 500；波及采购入库作废/到货/收货确认/库存增·减·扣接口 |
+| P0-B | 调拨未映射仓**静默跳过**（违反宪法 §三.4，与同族 6 处显式拒绝不一致） | `InventoryTransferServiceImpl.syncStoreInventory`（L249-277） | 未映射源仓 → 调入仓凭空 +3；未映射目标仓 → 调出仓蒸发 −2；单据均置"已完成" |
+| P0-C | "仓→店"调拨无通路 | 前端 `InventoryTransfer.vue`（两侧仅仓库）+ 后端两侧仅 `resolveByWarehouseId('warehouses')` | 24.3g 基准词条"调拨（含仓→店）"不可执行；门店账（D-4 全清后）无任何补货通路 |
+| P1-D | POS 下单携带联系电话 500（既有缺陷，非 M3-M4 引入） | `PosOrderCreateServiceImpl:332` → `orders.customer_phone` varchar(20) | 销售链首环失败（E2E 去掉电话后全链正常） |
+
+**Owner 裁决登记（2026-09-30）**：**开 2 张卡**（§24.3j P0-A 采购入库写路径收编 / §24.3k P0-B 调拨未映射显式拒绝）；**P0-C 不开卡**——"仓→店"环节按已知缺口保留（不设修复卡，归属随 M5-M6 或后续产品决策）；P1-D 本次不开卡。收口路径：P0-A/P0-B 完成后重跑 S9c E2E → ② 除"仓→店"外转达成。
+
+## 24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（2026-09-30 Owner 开卡；来源 S9c E2E P0-A）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-INVENTORY-LEGACY-WRITEPATH-001** |
+| 状态 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-30 Owner 收口）**——3 个 legacy 方法收编至统一账 location 维度（未映射显式拒绝）+ **删除 4 处双写**（PurchaseStockin 入库/作废、PurchaseArrival、PurchaseReturn）+ 11 个调用点赋 `sourceType` + 批次号重载 + `recordTransaction` 退役；定向单测 **42/42 绿**、活体 E2E 复验 **32/32 全绿**（确认入库 200、loc5 恰好 +5 非 +10、统一流水恰好 1 条、数量增量=流水增量）。证据：`p1-location-model-001-implementation-record-002-m3m4.md` §17 |
+| 优先级 | **P0** |
+| 来源 | S9c 库存全链 E2E（`p1-location-model-001-implementation-record-002-m3m4.md` §16.3 P0-A），活体实证 |
+| 性质 | 迁移遗留写路径收编（DDL 表名变更后 legacy 库存写路径仍写旧表 → 采购入库确认 500） |
+| 现象 | `PUT /v1/purchase/stockins/{id}/confirm` → **500 `关系 "inventory_transactions" 不存在`**；同事务回滚，库存与流水均未变（无半写） |
+| 根因 | DDL `V20260927_002` §15 `inventory_transactions → inventory_transactions_legacy`；而 `InventoryServiceImpl.recordTransaction`（L412-433，`transactionMapper.insert`）仍写旧表名——S5 裁定日志第 4 条"recordTransaction 保留……S9 再更名"在 S6/S7/S9a **均未收编** |
+| 影响面 | **15 个调用点 / 11 个文件 / 4 个端点**（卡开工时复核，较初稿修正）：`increaseInventory` 8 处（PurchaseStockin:740、PurchaseArrival:391、StockinScan:414、SelfPurchase:111、TraceCode:189、ReceiptConfirmation:727、InventoryAdjust:349、InventoryController:155）；`decreaseInventory` 6 处（PurchaseStockin 作废:796、PurchaseReturn:462、InventoryLoss:155、InventoryOutbound:299、TraceCode:150、InventoryAdjust:360）；`deductInventory` 1 处（InventoryController:140）。`lock/unlock` 不写流水，不受影响 |
+| ⚠ **关键修正（Agent 复核，必须遵守）** | **不得只把 `recordTransaction` 改指向 `inventory_movement`**：**实测 4 处双写**（`PurchaseStockin` 入库:740 + 作废:796、`PurchaseArrival`:391、`PurchaseReturn`:462）——同一业务事件已同时调用 legacy 写 + 统一账写。只改流水表会把"入库 5 斤"写成**账 +10 / 流水 2 条**（活体未暴露是因 500 在两次写之后回滚；`PurchaseArrival` 更隐蔽：legacy 异常被 `catch{}` 吞掉仅告警，**修好表名即立刻变双写**）。本卡必须"**收编 + 删双写**"同时完成 |
+| 实施要点 | ① 统一账为唯一写路径：`increase/decrease/deduct` 改为 warehouse→location 解析（未映射显式拒绝）→ 委派 `increaseStockAtLocation`/`decreaseStockAtLocation`；`recordTransaction` 删除，`inventory_transactions` 退化为只读观察表 ② **删除 4 处双写**（见上行）③ 3 个 DTO 增 `sourceType`（词表取 -001 §1.4），剩余 **11 个调用点**按 S5 口径赋值：PURCHASE_STOCKIN / QUICK_STOCKIN / REFUND_RESTOCK / SALE_DEDUCT / ADJUST / LOSS / RECEIPT_CONFIRM / OTHER（手动端点与出库单）④ **口径裁定日志**（宪法 §四.2 本地约定）：成本公式（legacy 全量重估 `unitCost×qty` vs 统一账累加）、**批次号**（legacy 写 `batch_no`；统一账方法无该参数 → 已加重载保留）、**状态重算**（legacy `updateInventoryStatus`；统一账无 → 收编垫片内保留）|
+| 验收基准 | ① 确认入库 200，且 location 恰好 +实际入库量（**非 2 倍**）② 该事件统一流水**恰好 1 条**（`source_type=PURCHASE_STOCKIN`）③ S9c E2E 环节1 断言由 FAIL 转 PASS（含"数量增量=流水增量"）④ 13 调用点编译绿 + 定向单测绿 ⑤ `grep` 确认无新增写 `inventory_transactions` 的路径 |
+| 估算 | 1.5~2 人天 |
+| 启动条件 | Owner 已下达（2026-09-30） |
+
+## 24.3k P1-TRANSFER-UNMAPPED-REJECT-001（2026-09-30 Owner 开卡；来源 S9c E2E P0-B）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-TRANSFER-UNMAPPED-REJECT-001** |
+| 状态 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-30 Owner 收口）**——`syncStoreInventory` 改"先解析双侧、后写账"：未映射源/目标仓显式拒绝（文案含侧别 + warehouseId + 宪法 §三.4），拒绝时零写账零流水且单据保持 `2（已审批）`；顺带修 `source_ref` 含调拨单号。定向单测 **4/4 绿**（新增类）；活体 E2E 复验 2b/2c 由 FAIL 转 PASS（凭空 +3 / 蒸发 −2 均已消除）。证据：-002 §17 |
+| 优先级 | **P0** |
+| 来源 | S9c 库存全链 E2E（-002 §16.3 P0-B），活体实证 |
+| 性质 | 宪法 **§三.4**（禁止默认兜底/必须显式拒绝）违规修复——静默跳过导致造假账/蒸发账 |
+| 现象 | 2b 未映射源仓 `WH_6`→`WH_B`：**调拨单状态=3 已完成，loc4 凭空 +3**（源侧零扣减）；2c `WH_A`→未映射目标（`warehouseId=3`）：**状态=3，loc5 蒸发 −2**（目标侧零增加） |
+| 根因 | `InventoryTransferServiceImpl.syncStoreInventory`（L249-277）对 `null` location **仅跳过不抛异常**；`executeInventoryTransfer` 随后**无条件**置 `COMPLETED(3)`。同族 6 处（PurchaseStockin:721 / PurchaseArrival:368 / PurchaseReturn:444 / OtherInbound:110 / ReceiptConfirmation:703 / OrderNew:911）**均为显式拒绝**，本处为唯一例外 |
+| 实施要点 | ① 执行前双侧解析，任一 `null` → `BusinessException` 显式拒绝（文案含 warehouseId + 侧别），**先拒绝、后写账**，保证零副作用 ② 单据状态保持 `2（已审批）`，**不得置 3** ③ 与同族 6 处文案对齐 ④ 裁定日志：是否在创建/审批时前置校验（暂定**仅执行时拒绝**，避免"仓暂未映射→草稿也不可建"的副作用）⑤ 顺带：流水 `source_ref` 补调拨单号（与 §16.3 P2-1 观测项合并） |
+| 验收基准 | ① 2b/2c 用例：单据**未完成**、库存**零变化**、**零新增流水** ② E2E 断言 2b/2c 由 FAIL 转 PASS ③ **2a 仓→仓回归不受影响**（双侧仍双向对账一致）④ 定向单测绿 |
+| 估算 | 0.5 人天 |
+| 启动条件 | Owner 已下达（2026-09-30） |
+
+### §24.3j / §24.3k 收口登记：遗留 3 项（Owner 裁决 2026-09-30）
+
+| # | 遗留项 | 处置 | 去向 |
+|---|---|---|---|
+| 1 | **P0-C 仓→店无通路**（前端两侧仅列仓库 + 后端两侧仅 `resolveByWarehouseId('warehouses')`；门店在 warehouses 维表下零映射） | 不开卡，作为已知缺口保留 | **移交 M5**（随 M5-M6 或后续产品决策处理；24.3g 基准 ② 的该词条维持"未达成"） |
+| 2 | **统一账方法不重算 `inventory.status`**（legacy 垫片保留状态重算，两条路径语义不一致） | 不在 j/k 范围内扩大改动 | **移交 M5** |
+| 3 | **词表外 `source_type='STORE_INVENTORY_LOG'`**（S9a-1 自造，不在 -001 §1.4） | **本批已修**：`StoreInventoryLogServiceImpl` 改用词表内 `OTHER` + remark 标注来源（不取"补词表"方案——补词需改 Owner 拍板的 -001，项目惯例 -001 不动、补充设计只落 -002）；修后 inventory movement 域 `source_type` **100% 落在 -001 §1.4 词表内**；相关单测 42/42 绿 | 已闭环 |
+
+## 24.3l P1-POS-CUSTOMER-PHONE-500-001（2026-09-30 Owner 开卡；POS 域独立卡，编号续排）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-POS-CUSTOMER-PHONE-500-001** |
+| 状态 | **PENDING（Owner 2026-09-30 开卡）**；**PG-005.1 豁免已申请，待 Owner 批准** |
+| 优先级 | P1 |
+| 来源 | S9c 库存全链 E2E（-002 §16.3 P1-D），活体实证 |
+| 性质 | 既有缺陷修复（实体-表列长与加密策略不匹配；**非 M3-M4 引入**） |
+| 现象 | `POST /v1/pos/orders/order` 携带 `contactPhone` → **500 `对于可变字符类型来说，值太长了(20)`**；E2E 以"不传联系电话"绕过（去掉电话后下单/支付/托盘/出餐/日结全链正常） |
+| 根因 | `PosOrderCreateServiceImpl:332` `orderNew.setCustomerPhone(sensitiveDataService.encryptPhone(command.getContactPhone()))` → **加密密文**写入 `orders.customer_phone`（**varchar(20)**，非加密列长度） |
+| 影响面 | POS 下单主路径：任何携带联系电话的下单（收银端/扫码点餐/桌台单）均失败；联系方式为可选字段，故线上表现为"填电话就 500" |
+| 修复方向（已核实唯一） | ① **加密后存储**：`orders.customer_phone` 扩长至与本仓其它加密列一致的口径（先盘点 `contact_phone`/`customer_phone` 及同类加密列的长度基准）；或 ② **掩码/后四位 + 密文另存**（若产品要求列表展示明文掩码）。两案均不改调用契约 |
+| PG-005.1 豁免申请 | **修复方向唯一 / 无产品决策 / 无架构变更 → 申请跳过设计阶段**（列长口径对齐属实现缺陷修复）。**如 Owner 认为"改列长"构成 schema 变更需走设计阶段，则本豁免不成立**，改走常规阶段 1/2 |
+| 验收基准 | ① 带 `contactPhone` 下单 **200** 且订单落库；② 电话号码读取侧（详情/打印/权限范围内展示）可正常解密或按方案展示；③ **不带电话的既有路径不回归**；④ POS 下单相关定向单测绿；⑤ S9c E2E 的 3a/3b 环节恢复携带电话后仍全绿 |
+| 估算 | 0.5 人天 |
+| 启动条件 | **Owner 批准 PG-005.1 豁免 + 明确开工指令后** |
 
 ## 24.3h P1-USER-LOCATION-001（2026-09-27 Owner 拍板后登记，未启动）
 

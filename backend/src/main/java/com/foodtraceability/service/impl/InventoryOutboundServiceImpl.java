@@ -296,6 +296,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundM
                     decreaseDTO.setReferenceNo(outbound.getOutboundCode());
                     decreaseDTO.setReferenceType("inventory_outbound");
                     decreaseDTO.setRemark(item.getRemark());
+                    // P0-A：统一流水 source_type（词表 -001 §1.4；出库单无专词，取 OTHER）
+                    decreaseDTO.setSourceType("OTHER");
                     inventoryService.decreaseInventory(decreaseDTO);
                 }
             }

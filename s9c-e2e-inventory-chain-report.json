@@ -1,0 +1,607 @@
+﻿{
+    "generatedAt":  "2026-09-30 02:32:20",
+    "baseUrl":  "http://localhost:8081/api",
+    "materialId":  3,
+    "materialName":  "生菜",
+    "baseline":  {
+                     "inventory":  "4:1=30.0000\n5:1=70.0000\n5:3=170.0000\n5:6=2.0000\n5:10=40.0000\n5:11=30.0000\n5:21=0.0000\n5:22=150.0000\n5:26=100.0000\n5:35=0.0000\n5:36=0.0000\n5:37=10.0000\n5:38=0.0000",
+                     "movementCount":  "15",
+                     "ordersToday":  "6",
+                     "ordersAmountToday":  "113400",
+                     "settlementsToday":  "0",
+                     "failedAudit":  "5",
+                     "transfers":  "5"
+                 },
+    "final":  {
+                  "inventory":  "1:3=4.6000\n4:1=30.0000\n4:3=10.0000\n5:1=70.0000\n5:3=165.0000\n5:6=2.0000\n5:10=40.0000\n5:11=30.0000\n5:21=0.0000\n5:22=150.0000\n5:26=100.0000\n5:35=0.0000\n5:36=0.0000\n5:37=10.0000\n5:38=0.0000",
+                  "movementCount":  "19"
+              },
+    "checks":  [
+                   {
+                       "check":  "环节1-确认入库接口成功",
+                       "expected":  "SUCCESS",
+                       "actual":  "SUCCESS",
+                       "result":  "PASS",
+                       "note":  "P0-A 修复后：不再因 inventory_transactions 缺失而 500"
+                   },
+                   {
+                       "check":  "环节1-入库后 location5/material3 数量",
+                       "expected":  "175.0000",
+                       "actual":  "175.0000",
+                       "result":  "PASS",
+                       "note":  "入库5斤；期望恰好+5"
+                   },
+                   {
+                       "check":  "环节1-入库流水条数(location5,IN)",
+                       "expected":  "4",
+                       "actual":  "4",
+                       "result":  "PASS",
+                       "note":  "PURCHASE_STOCKIN 应写1条统一流水"
+                   },
+                   {
+                       "check":  "环节1-数量增量 vs 统一流水增量(loc5)",
+                       "expected":  "5.0000",
+                       "actual":  "5.0000",
+                       "result":  "PASS",
+                       "note":  "库存数量变化必须与统一流水一致（对账）"
+                   },
+                   {
+                       "check":  "2a-调出仓 loc5 数量",
+                       "expected":  "165.0000",
+                       "actual":  "165.0000",
+                       "result":  "PASS",
+                       "note":  "仓→仓应扣减10"
+                   },
+                   {
+                       "check":  "2a-调入仓 loc4 数量",
+                       "expected":  "10",
+                       "actual":  "10.0000",
+                       "result":  "PASS",
+                       "note":  "仓→仓应增加10"
+                   },
+                   {
+                       "check":  "2a-流水新增条数",
+                       "expected":  "18",
+                       "actual":  "18",
+                       "result":  "PASS",
+                       "note":  "TRANSFER_OUT + TRANSFER_IN"
+                   },
+                   {
+                       "check":  "2a-调出仓数量增量 vs 流水增量",
+                       "expected":  "-10.0000",
+                       "actual":  "-10.0000",
+                       "result":  "PASS",
+                       "note":  "对账"
+                   },
+                   {
+                       "check":  "2a-调入仓数量增量 vs 流水增量",
+                       "expected":  "10.0000",
+                       "actual":  "10.0000",
+                       "result":  "PASS",
+                       "note":  "对账"
+                   },
+                   {
+                       "check":  "2b-执行接口被显式拒绝",
+                       "expected":  "FAILED",
+                       "actual":  "FAILED",
+                       "result":  "PASS",
+                       "note":  "宪法§三.4：未映射必须显式拒绝"
+                   },
+                   {
+                       "check":  "2b-调入仓 loc4 零变化（不得凭空增加）",
+                       "expected":  "10.0000",
+                       "actual":  "10.0000",
+                       "result":  "PASS",
+                       "note":  "先拒绝后写账"
+                   },
+                   {
+                       "check":  "2b-统一流水零新增",
+                       "expected":  "18",
+                       "actual":  "18",
+                       "result":  "PASS",
+                       "note":  "拒绝即零副作用"
+                   },
+                   {
+                       "check":  "2b-单据状态保持已审批(2)",
+                       "expected":  "2",
+                       "actual":  "2",
+                       "result":  "PASS",
+                       "note":  "不得置已完成"
+                   },
+                   {
+                       "check":  "2c-执行接口被显式拒绝",
+                       "expected":  "FAILED",
+                       "actual":  "FAILED",
+                       "result":  "PASS",
+                       "note":  "未映射目标必须显式拒绝"
+                   },
+                   {
+                       "check":  "2c-调出仓 loc5 零变化（不得蒸发）",
+                       "expected":  "165.0000",
+                       "actual":  "165.0000",
+                       "result":  "PASS",
+                       "note":  "先拒绝后写账：调出侧也不得扣减"
+                   },
+                   {
+                       "check":  "2c-统一流水零新增",
+                       "expected":  "18",
+                       "actual":  "18",
+                       "result":  "PASS",
+                       "note":  "拒绝即零副作用"
+                   },
+                   {
+                       "check":  "2c-单据状态保持已审批(2)",
+                       "expected":  "2",
+                       "actual":  "2",
+                       "result":  "PASS",
+                       "note":  "不得置已完成"
+                   },
+                   {
+                       "check":  "2c-是否存在\u0027warehouse3/store3\u0027位置映射",
+                       "expected":  "0",
+                       "actual":  "0",
+                       "result":  "PASS",
+                       "note":  "门店在 warehouses 维表下无映射，仓→店无解析路径"
+                   },
+                   {
+                       "check":  "3-播种后门店库存",
+                       "expected":  "5",
+                       "actual":  "5.0000",
+                       "result":  "PASS",
+                       "note":  "测试数据准备"
+                   },
+                   {
+                       "check":  "3a-门店库存扣减后",
+                       "expected":  "4.6000",
+                       "actual":  "4.6000",
+                       "result":  "PASS",
+                       "note":  "BOM 生菜 0.4斤/份"
+                   },
+                   {
+                       "check":  "3a-门店扣料流水(OUT)新增",
+                       "expected":  "1",
+                       "actual":  "1",
+                       "result":  "PASS",
+                       "note":  "SALE_DEDUCT 1条"
+                   },
+                   {
+                       "check":  "3a-后厨单 material_consumed",
+                       "expected":  "1",
+                       "actual":  "1",
+                       "result":  "PASS",
+                       "note":  "扣料成功置1"
+                   },
+                   {
+                       "check":  "3a-后厨单状态",
+                       "expected":  "served",
+                       "actual":  "served",
+                       "result":  "PASS",
+                       "note":  "出餐完成"
+                   },
+                   {
+                       "check":  "3a-托盘释放回 idle",
+                       "expected":  "idle",
+                       "actual":  "idle",
+                       "result":  "PASS",
+                       "note":  "served→idle"
+                   },
+                   {
+                       "check":  "3b-缺货扣料后门店库存不变(回滚)",
+                       "expected":  "4.6000",
+                       "actual":  "4.6000",
+                       "result":  "PASS",
+                       "note":  "整体失败必须回滚"
+                   },
+                   {
+                       "check":  "3b-门店流水未新增",
+                       "expected":  "1",
+                       "actual":  "1",
+                       "result":  "PASS",
+                       "note":  "失败不写流水"
+                   },
+                   {
+                       "check":  "3b-后厨单 material_consumed 恢复0",
+                       "expected":  "0",
+                       "actual":  "0",
+                       "result":  "PASS",
+                       "note":  "占位回滚"
+                   },
+                   {
+                       "check":  "3b-失败审计行新增",
+                       "expected":  "6",
+                       "actual":  "6",
+                       "result":  "PASS",
+                       "note":  "REQUIRES_NEW 审计"
+                   },
+                   {
+                       "check":  "3b-托盘状态回滚为 ready",
+                       "expected":  "ready",
+                       "actual":  "ready",
+                       "result":  "PASS",
+                       "note":  "事务整体回滚"
+                   },
+                   {
+                       "check":  "4-日结营收(分)与订单实收一致",
+                       "expected":  "151200",
+                       "actual":  "151200",
+                       "result":  "PASS",
+                       "note":  "元→分换算"
+                   },
+                   {
+                       "check":  "4-日结订单数一致",
+                       "expected":  "8",
+                       "actual":  "8",
+                       "result":  "PASS",
+                       "note":  "与 orders 表一致"
+                   },
+                   {
+                       "check":  "4-日结状态(确认接口语义=approved)",
+                       "expected":  "approved",
+                       "actual":  "approved",
+                       "result":  "PASS",
+                       "note":  "DailySettlementServiceImpl.confirmSettlement 置 approved（已核源码）"
+                   }
+               ],
+    "steps":  [
+                  {
+                      "step":  "查询商品档案(生菜)",
+                      "path":  "/v1/purchase/archives?page=1\u0026size=200\u0026keyword=%E7%94%9F%E8%8F%9C",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "查询成功"
+                  },
+                  {
+                      "step":  "创建测试部门",
+                      "path":  "/v1/departments",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "查询物料分类",
+                      "path":  "/v1/material-categories",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "查询成功"
+                  },
+                  {
+                      "step":  "创建采购申请",
+                      "path":  "/v1/purchase/requests",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "提交采购申请",
+                      "path":  "/v1/purchase/requests/28fca9b7897c4d8380a88828cf563362/submit",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "审批采购申请",
+                      "path":  "/v1/purchase/requests/28fca9b7897c4d8380a88828cf563362/approve",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "生成采购订单",
+                      "path":  "/v1/purchase/requests/28fca9b7897c4d8380a88828cf563362/generate-order",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "查询采购订单",
+                      "path":  "/v1/purchase/orders?size=100",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "采购订单详情",
+                      "path":  "/v1/purchase/orders/79",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "提交采购订单",
+                      "path":  "/v1/purchase/orders/79/submit",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "审批采购订单",
+                      "path":  "/v1/purchase/orders/79/approve",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "创建入库单",
+                      "path":  "/v1/purchase/stockins",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "确认采购订单",
+                      "path":  "/v1/purchase/orders/79/confirm",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "入库质检",
+                      "path":  "/v1/purchase/stockins/25/quality-check",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "确认入库(触发库存增加)",
+                      "path":  "/v1/purchase/stockins/25/confirm",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "创建调拨单(S9c-2a 仓→仓)",
+                      "path":  "/v1/inventory/transfers",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "创建调拨单成功"
+                  },
+                  {
+                      "step":  "审批调拨单(S9c-2a 仓→仓)",
+                      "path":  "/v1/inventory/transfers/21/approve",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "审批调拨单成功"
+                  },
+                  {
+                      "step":  "执行调拨(S9c-2a 仓→仓)",
+                      "path":  "/v1/inventory/transfers/21/execute",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "执行调拨成功"
+                  },
+                  {
+                      "step":  "创建调拨单(S9c-2b 未映射源仓)",
+                      "path":  "/v1/inventory/transfers",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "创建调拨单成功"
+                  },
+                  {
+                      "step":  "审批调拨单(S9c-2b 未映射源仓)",
+                      "path":  "/v1/inventory/transfers/22/approve",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "审批调拨单成功"
+                  },
+                  {
+                      "step":  "执行调拨(S9c-2b 未映射源仓)",
+                      "path":  "/v1/inventory/transfers/22/execute",
+                      "method":  "POST",
+                      "status":  "FAILED",
+                      "httpStatus":  200,
+                      "code":  500,
+                      "message":  "执行调拨失败：调拨单调出仓未映射到位置，禁止调拨（warehouseId=6；宪法 §三.4 未映射显式拒绝，禁止默认兜底）"
+                  },
+                  {
+                      "step":  "创建调拨单(S9c-2c 目标未映射(仓→店语义))",
+                      "path":  "/v1/inventory/transfers",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "创建调拨单成功"
+                  },
+                  {
+                      "step":  "审批调拨单(S9c-2c 目标未映射(仓→店语义))",
+                      "path":  "/v1/inventory/transfers/23/approve",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "审批调拨单成功"
+                  },
+                  {
+                      "step":  "执行调拨(S9c-2c 目标未映射(仓→店语义))",
+                      "path":  "/v1/inventory/transfers/23/execute",
+                      "method":  "POST",
+                      "status":  "FAILED",
+                      "httpStatus":  200,
+                      "code":  500,
+                      "message":  "执行调拨失败：调拨单调入仓未映射到位置，禁止调拨（warehouseId=3；宪法 §三.4 未映射显式拒绝，禁止默认兜底）"
+                  },
+                  {
+                      "step":  "POS下单(3a x1)",
+                      "path":  "/v1/pos/orders/order",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "POS支付(3a)",
+                      "path":  "/v1/pos/orders/order/pay",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "取空闲托盘",
+                      "path":  "/v1/tray/idle?limit=20",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "托盘绑定订单(3a)",
+                      "path":  "/v1/tray/bind-order",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "后厨一次扫码(3a)",
+                      "path":  "/v1/tray/scan-kitchen-in?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "后厨二次扫码(3a)",
+                      "path":  "/v1/tray/scan-kitchen-out?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "取餐出餐确认(3a)",
+                      "path":  "/v1/tray/scan-serve?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "POS下单(3b x20)",
+                      "path":  "/v1/pos/orders/order",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "POS支付(3b)",
+                      "path":  "/v1/pos/orders/order/pay",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "取空闲托盘",
+                      "path":  "/v1/tray/idle?limit=20",
+                      "method":  "GET",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "托盘绑定订单(3b)",
+                      "path":  "/v1/tray/bind-order",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "后厨一次扫码(3b)",
+                      "path":  "/v1/tray/scan-kitchen-in?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "后厨二次扫码(3b)",
+                      "path":  "/v1/tray/scan-kitchen-out?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "取餐出餐确认(3b)",
+                      "path":  "/v1/tray/scan-serve?trayCode=KDS-TEST-001",
+                      "method":  "POST",
+                      "status":  "FAILED",
+                      "httpStatus":  200,
+                      "code":  500,
+                      "message":  "系统繁忙，请稍后重试（追踪ID：df8a312ea5f4，请联系运维排查）"
+                  },
+                  {
+                      "step":  "创建日结单",
+                      "path":  "/v1/store-management/settlements",
+                      "method":  "POST",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  },
+                  {
+                      "step":  "确认日结单",
+                      "path":  "/v1/store-management/settlements/2105002752871796737/confirm",
+                      "method":  "PUT",
+                      "status":  "SUCCESS",
+                      "httpStatus":  200,
+                      "code":  0,
+                      "message":  "操作成功"
+                  }
+              ]
+}

@@ -15,10 +15,8 @@ import com.foodtraceability.dto.InventoryQueryDTO;
 import com.foodtraceability.entity.Inventory;
 import com.foodtraceability.entity.InventoryMovement;
 import com.foodtraceability.service.LocationService;
-import com.foodtraceability.entity.InventoryTransaction;
 import com.foodtraceability.mapper.InventoryMapper;
 import com.foodtraceability.service.InventoryMovementService;
-import com.foodtraceability.mapper.InventoryTransactionMapper;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.utils.SecurityUtils;
 import org.slf4j.Logger;
@@ -62,16 +60,13 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     private static final long OPTIMISTIC_LOCK_RETRY_DELAY_MS = 50L;
 
     private final InventoryMapper inventoryMapper;
-    private final InventoryTransactionMapper transactionMapper;
     private final InventoryMovementService inventoryMovementService;
     private final LocationService locationService;
 
     public InventoryServiceImpl(InventoryMapper inventoryMapper,
-                               InventoryTransactionMapper transactionMapper,
                                InventoryMovementService inventoryMovementService,
                                LocationService locationService) {
         this.inventoryMapper = inventoryMapper;
-        this.transactionMapper = transactionMapper;
         this.inventoryMovementService = inventoryMovementService;
         this.locationService = locationService;
     }
@@ -154,176 +149,91 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
         throw lastException;
     }
 
+    /**
+     * 扣减库存（按 inventoryId 定位；P0-A 收编：统一账为唯一写路径）。
+     * <p>收编前写 legacy `inventory_transactions`（表已更名 → 500）；现改为 location 维度委派
+     * {@link #decreaseStockAtLocation}，并保留 legacy 语义：可用量 = 数量 − 锁定数量（现状迁移裁定日志）。</p>
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deductInventory(InventoryDeductDTO deductDTO) {
-        BusinessException lastException = null;
-        for (int attempt = 0; attempt < OPTIMISTIC_LOCK_MAX_RETRY; attempt++) {
-            // 每次重试都重新读取最新数据
-            Inventory inventory = this.getById(deductDTO.getInventoryId());
-            if (inventory == null) {
-                throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
-                        "库存记录不存在：" + deductDTO.getInventoryId());
-            }
+        requireSourceType(deductDTO.getSourceType(), "扣减库存");
+        String sourceRef = buildSourceRef(deductDTO.getSourceType(), deductDTO.getReferenceType(),
+                deductDTO.getReferenceNo(), "扣减库存");
 
-            // 检查可用数量是否足够
-            BigDecimal availableQty = inventory.getQuantity().subtract(inventory.getLockedQuantity());
-            if (availableQty.compareTo(deductDTO.getQuantity()) < 0) {
-                throw new BusinessException(ErrorCode.INVENTORY_INSUFFICIENT,
-                        "可扣减库存不足，当前可用：" + availableQty + "，需要：" + deductDTO.getQuantity());
-            }
-
-            // 记录变动前数量
-            BigDecimal beforeQty = inventory.getQuantity();
-
-            // 扣减库存
-            inventory.setQuantity(inventory.getQuantity().subtract(deductDTO.getQuantity()));
-            inventory.setTotalCost(calculateTotalCost(inventory));
-            inventory.setUpdateTime(LocalDateTime.now());
-
-            // 检查是否低于安全库存并更新状态
-            updateInventoryStatus(inventory);
-
-            // 乐观锁更新：@Version 自动添加 WHERE version = ? 条件
-            int rows = inventoryMapper.updateById(inventory);
-            if (rows > 0) {
-                // 更新成功，记录库存变动（仅成功后记录，避免重试时重复插入）
-                recordTransaction(inventory, deductDTO.getTransactionType() != null ? deductDTO.getTransactionType() : 2,
-                        deductDTO.getQuantity().negate(), beforeQty, inventory.getQuantity(),
-                        deductDTO.getReferenceNo(), deductDTO.getReferenceType());
-                return;
-            }
-
-            // 版本冲突，准备重试
-            lastException = new BusinessException(ErrorCode.INVENTORY_CONFLICT,
-                    "库存扣减并发冲突，已重试 " + (attempt + 1) + " 次");
-            sleepForRetry(attempt);
+        Inventory inventory = this.getById(deductDTO.getInventoryId());
+        if (inventory == null) {
+            throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
+                    "库存记录不存在：" + deductDTO.getInventoryId());
         }
-        throw lastException;
+        if (inventory.getLocationId() == null) {
+            throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
+                    "库存记录缺少 location_id，无法按统一账扣减：" + deductDTO.getInventoryId());
+        }
+
+        // 现状迁移：可用量 = 数量 − 锁定数量（legacy deductInventory 口径，保留）
+        BigDecimal lockedQty = inventory.getLockedQuantity() != null ? inventory.getLockedQuantity() : BigDecimal.ZERO;
+        BigDecimal availableQty = inventory.getQuantity().subtract(lockedQty);
+        if (availableQty.compareTo(deductDTO.getQuantity()) < 0) {
+            throw new BusinessException(ErrorCode.INVENTORY_INSUFFICIENT,
+                    "可扣减库存不足，当前可用：" + availableQty + "，需要：" + deductDTO.getQuantity());
+        }
+
+        decreaseStockAtLocation(inventory.getLocationId(), inventory.getMaterialId(),
+                deductDTO.getQuantity(), deductDTO.getSourceType(), sourceRef);
+        refreshStatusAfterLegacyWrite(inventory.getLocationId(), inventory.getMaterialId());
     }
 
+    /**
+     * 增加库存（仓库维度入口；P0-A 收编：统一账 location 维度为唯一写路径）。
+     * <p>收编前写 legacy `inventory_transactions`（表已更名 → 500）；现改为
+     * warehouseId → locationId 经 map 解析（未映射显式拒绝，宪法 §三.4）→ 委派
+     * {@link #increaseStockAtLocation}（带批次号重载，保留 legacy 批次号语义）。</p>
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void increaseInventory(InventoryIncreaseDTO increaseDTO) {
-        // 查询或创建库存记录
-        Inventory inventory = getByMaterialAndWarehouse(increaseDTO.getMaterialId(), increaseDTO.getWarehouseId());
+        requireSourceType(increaseDTO.getSourceType(), "增加库存");
+        String sourceRef = buildSourceRef(increaseDTO.getSourceType(), increaseDTO.getReferenceType(),
+                increaseDTO.getReferenceNo(), "增加库存");
 
-        BigDecimal beforeQty;
-        if (inventory == null) {
-            // 创建新的库存记录：无需乐观锁（INSERT）
-            inventory = new Inventory();
-            inventory.setMaterialId(increaseDTO.getMaterialId());
-            inventory.setWarehouseId(increaseDTO.getWarehouseId());
-            inventory.setLocationId(increaseDTO.getLocationId());
-            inventory.setQuantity(BigDecimal.ZERO);
-            inventory.setLockedQuantity(BigDecimal.ZERO);
-            inventory.setStatus(1);
-            inventory.setCreateTime(LocalDateTime.now());
-            beforeQty = BigDecimal.ZERO;
-
-            // 更新库存信息
-            inventory.setBatchNo(increaseDTO.getBatchNo());
-            if (increaseDTO.getUnitCost() != null) {
-                inventory.setUnitCost(increaseDTO.getUnitCost());
-            }
-            inventory.setQuantity(inventory.getQuantity().add(increaseDTO.getQuantity()));
-            inventory.setTotalCost(calculateTotalCost(inventory));
-            inventory.setUpdateTime(LocalDateTime.now());
-            updateInventoryStatus(inventory);
-
-            // INSERT：无需乐观锁
-            this.saveOrUpdate(inventory);
-
-            // 记录库存变动
-            recordTransaction(inventory, increaseDTO.getTransactionType(),
-                    increaseDTO.getQuantity(), beforeQty, inventory.getQuantity(),
-                    increaseDTO.getReferenceNo(), increaseDTO.getReferenceType());
-            return;
-        }
-
-        // 已有记录：使用乐观锁 + 重试
-        BusinessException lastException = null;
-        for (int attempt = 0; attempt < OPTIMISTIC_LOCK_MAX_RETRY; attempt++) {
-            // 每次重试都重新读取最新数据
-            Inventory current = getByMaterialAndWarehouse(increaseDTO.getMaterialId(), increaseDTO.getWarehouseId());
-            if (current == null) {
-                // 极端情况：并发期间记录被删除，按新建处理
-                throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
-                        "库存记录在更新期间消失：materialId=" + increaseDTO.getMaterialId()
-                                + ", warehouseId=" + increaseDTO.getWarehouseId());
-            }
-
-            beforeQty = current.getQuantity();
-
-            // 更新库存信息
-            current.setBatchNo(increaseDTO.getBatchNo());
-            if (increaseDTO.getUnitCost() != null) {
-                current.setUnitCost(increaseDTO.getUnitCost());
-            }
-            current.setQuantity(current.getQuantity().add(increaseDTO.getQuantity()));
-            current.setTotalCost(calculateTotalCost(current));
-            current.setUpdateTime(LocalDateTime.now());
-            updateInventoryStatus(current);
-
-            // 乐观锁更新
-            int rows = inventoryMapper.updateById(current);
-            if (rows > 0) {
-                recordTransaction(current, increaseDTO.getTransactionType(),
-                        increaseDTO.getQuantity(), beforeQty, current.getQuantity(),
-                        increaseDTO.getReferenceNo(), increaseDTO.getReferenceType());
-                return;
-            }
-
-            lastException = new BusinessException(ErrorCode.INVENTORY_CONFLICT,
-                    "库存增加并发冲突，已重试 " + (attempt + 1) + " 次");
-            sleepForRetry(attempt);
-        }
-        throw lastException;
+        Long locationId = resolveLocationIdForLegacyWrite(increaseDTO.getWarehouseId(), "增加库存");
+        increaseStockAtLocation(locationId, increaseDTO.getMaterialId(), null, increaseDTO.getQuantity(),
+                null, increaseDTO.getUnitCost(), increaseDTO.getBatchNo(),
+                increaseDTO.getSourceType(), sourceRef);
+        refreshStatusAfterLegacyWrite(locationId, increaseDTO.getMaterialId());
     }
 
+    /**
+     * 减少库存（仓库维度入口；P0-A 收编：统一账 location 维度为唯一写路径）。
+     * <p>保留 legacy 语义：可用量 = 数量 − 锁定数量（现状迁移裁定日志）。</p>
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void decreaseInventory(InventoryDecreaseDTO decreaseDTO) {
-        BusinessException lastException = null;
-        for (int attempt = 0; attempt < OPTIMISTIC_LOCK_MAX_RETRY; attempt++) {
-            // 根据物料ID和仓库ID查询库存记录（每次重试都重新读取）
-            Inventory inventory = getByMaterialAndWarehouse(decreaseDTO.getMaterialId(), decreaseDTO.getWarehouseId());
-            if (inventory == null) {
-                throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
-                        "库存记录不存在：materialId=" + decreaseDTO.getMaterialId()
-                                + ", warehouseId=" + decreaseDTO.getWarehouseId());
-            }
+        requireSourceType(decreaseDTO.getSourceType(), "减少库存");
+        String sourceRef = buildSourceRef(decreaseDTO.getSourceType(), decreaseDTO.getReferenceType(),
+                decreaseDTO.getReferenceNo(), "减少库存");
 
-            // 检查可用数量是否足够
-            BigDecimal availableQty = inventory.getQuantity().subtract(inventory.getLockedQuantity());
-            if (availableQty.compareTo(decreaseDTO.getQuantity()) < 0) {
-                throw new BusinessException(ErrorCode.INVENTORY_INSUFFICIENT,
-                        "可扣减库存不足，当前可用：" + availableQty + "，需要：" + decreaseDTO.getQuantity());
-            }
-
-            // 记录变动前数量
-            BigDecimal beforeQty = inventory.getQuantity();
-
-            // 扣减库存
-            inventory.setQuantity(inventory.getQuantity().subtract(decreaseDTO.getQuantity()));
-            inventory.setTotalCost(calculateTotalCost(inventory));
-            inventory.setUpdateTime(LocalDateTime.now());
-            updateInventoryStatus(inventory);
-
-            // 乐观锁更新
-            int rows = inventoryMapper.updateById(inventory);
-            if (rows > 0) {
-                recordTransaction(inventory, decreaseDTO.getTransactionType() != null ? decreaseDTO.getTransactionType() : 1,
-                        decreaseDTO.getQuantity().negate(), beforeQty, inventory.getQuantity(),
-                        decreaseDTO.getReferenceNo(), decreaseDTO.getReferenceType());
-                return;
-            }
-
-            lastException = new BusinessException(ErrorCode.INVENTORY_CONFLICT,
-                    "库存减少并发冲突，已重试 " + (attempt + 1) + " 次");
-            sleepForRetry(attempt);
+        Long locationId = resolveLocationIdForLegacyWrite(decreaseDTO.getWarehouseId(), "减少库存");
+        Inventory inventory = getByLocationAndMaterial(locationId, decreaseDTO.getMaterialId());
+        if (inventory == null) {
+            throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
+                    "库存记录不存在：materialId=" + decreaseDTO.getMaterialId()
+                            + ", warehouseId=" + decreaseDTO.getWarehouseId());
         }
-        throw lastException;
+
+        // 现状迁移：可用量 = 数量 − 锁定数量（legacy decreaseInventory 口径，保留）
+        BigDecimal lockedQty = inventory.getLockedQuantity() != null ? inventory.getLockedQuantity() : BigDecimal.ZERO;
+        BigDecimal availableQty = inventory.getQuantity().subtract(lockedQty);
+        if (availableQty.compareTo(decreaseDTO.getQuantity()) < 0) {
+            throw new BusinessException(ErrorCode.INVENTORY_INSUFFICIENT,
+                    "可扣减库存不足，当前可用：" + availableQty + "，需要：" + decreaseDTO.getQuantity());
+        }
+
+        decreaseStockAtLocation(locationId, decreaseDTO.getMaterialId(), decreaseDTO.getQuantity(),
+                decreaseDTO.getSourceType(), sourceRef);
+        refreshStatusAfterLegacyWrite(locationId, decreaseDTO.getMaterialId());
     }
 
     @Override
@@ -379,7 +289,8 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     }
 
     /**
-     * 计算总成本
+     * 计算总成本（P0-A：legacy 全量重估公式的调用方 recordTransaction 已删除，
+     * 本方法暂留供后续口径对齐；当前无调用方）
      */
     private Long calculateTotalCost(Inventory inventory) {
         if (inventory.getUnitCost() == null || inventory.getQuantity() == null) {
@@ -407,42 +318,58 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     }
 
     /**
-     * 记录库存变动
+     * P0-A 收编辅助：统一流水 source_type 必填校验。
+     * 缺省即显式拒绝——禁止默认兜底（宪法 §III.4）、禁止无来源流水（宪法 §IV.4）。
      */
-    private void recordTransaction(Inventory inventory, Integer transactionType,
-                                   BigDecimal quantityChange, BigDecimal beforeQty,
-                                   BigDecimal afterQty, String referenceNo, String referenceType) {
-        InventoryTransaction transaction = new InventoryTransaction();
-        transaction.setTransactionType(transactionType);
-        transaction.setInventoryId(inventory.getInventoryId());
-        transaction.setMaterialId(inventory.getMaterialId());
-        transaction.setWarehouseId(inventory.getWarehouseId());
-        transaction.setQuantityChange(quantityChange);
-        transaction.setBeforeQty(beforeQty);
-        transaction.setAfterQty(afterQty);
-        transaction.setUnitCost(inventory.getUnitCost());
-        transaction.setTotalCost(inventory.getTotalCost());
-        transaction.setReferenceNo(referenceNo);
-        transaction.setReferenceType(referenceType);
-        transaction.setCreateTime(LocalDateTime.now());
-
-        transactionMapper.insert(transaction);
-
-        // 发送库存变动通知消息（仓储→采购等其他系统）
-        publishStockChangedEvent(inventory, transactionType, quantityChange, referenceNo, referenceType);
+    private void requireSourceType(String sourceType, String method) {
+        if (sourceType == null || sourceType.trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    method + " 缺少业务来源 sourceType（统一流水禁无来源记录，宪法 §IV.4）");
+        }
     }
 
     /**
-     * 发布库存变动事件
-     * 重构说明：已移除 RabbitMQ，改为日志记录。其他系统可通过数据库查询获取库存变动信息。
+     * P0-A 收编辅助：统一流水 source_ref 组装（`referenceType:referenceNo`）。
+     * 关联单号缺失即显式拒绝——不伪造、不兜底（宪法 §III.4 / §IV.4）。
      */
-    private void publishStockChangedEvent(Inventory inventory, Integer transactionType,
-                                          BigDecimal quantityChange, String referenceNo,
-                                          String referenceType) {
-        log.info("库存变动：inventoryId={}, materialId={}, warehouseId={}, transactionType={}, quantityChange={}, currentQuantity={}, status={}, referenceNo={}, referenceType={}",
-                inventory.getInventoryId(), inventory.getMaterialId(), inventory.getWarehouseId(),
-                transactionType, quantityChange, inventory.getQuantity(), inventory.getStatus(),
-                referenceNo, referenceType);
+    private String buildSourceRef(String sourceType, String referenceType, String referenceNo, String method) {
+        if (referenceNo == null || referenceNo.trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    method + " 缺少关联单据号 referenceNo，无法形成可追溯流水（宪法 §IV.4）");
+        }
+        String prefix = (referenceType != null && !referenceType.trim().isEmpty())
+                ? referenceType.trim() : sourceType;
+        return prefix + ":" + referenceNo.trim();
+    }
+
+    /**
+     * P0-A 收编辅助：legacy 仓库维度入口 → location_id 解析（规则 4 唯一入口）。
+     * 未映射仓库显式拒绝，与同族 6 处文案口径一致（宪法 §三.4）。
+     */
+    private Long resolveLocationIdForLegacyWrite(Long warehouseId, String method) {
+        if (warehouseId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, method + " 缺少仓库ID，无法解析入账位置");
+        }
+        com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    method + " 仓库未映射到位置，禁止入账：warehouseId=" + warehouseId);
+        }
+        return location.getLocationId();
+    }
+
+    /**
+     * P0-A 收编辅助：legacy 写路径的"库存状态重算"现状语义保留（1正常/2预警/4冻结）。
+     * 仅刷新状态元数据，不改数量与流水。
+     */
+    private void refreshStatusAfterLegacyWrite(Long locationId, Long materialId) {
+        Inventory row = getByLocationAndMaterial(locationId, materialId);
+        if (row == null) {
+            return;
+        }
+        updateInventoryStatus(row);
+        row.setUpdateTime(LocalDateTime.now());
+        inventoryMapper.updateById(row);
     }
 
     /**
@@ -476,11 +403,21 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
         return inventoryMapper.selectByMaterialAndLocation(locationId, materialId);
     }
 
+    /** 8 参重载（无批次号）：委派 9 参重载，既有调用方零改动。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
                                         BigDecimal quantity, String unit, Long unitCost,
                                         String sourceType, String sourceRef) {
+        increaseStockAtLocation(locationId, materialId, materialName, quantity, unit, unitCost,
+                null, sourceType, sourceRef);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
+                                        BigDecimal quantity, String unit, Long unitCost,
+                                        String batchNo, String sourceType, String sourceRef) {
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "增加数量必须大于0");
         }
@@ -499,6 +436,10 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             inv.setQuantity(quantity);
             inv.setUnitCost(incomingUnitCost);
             inv.setTotalCost(incomingTotalCost);
+            // P0-A：批次号现状语义保留（原 legacy increaseInventory 会写入 batch_no）
+            if (batchNo != null && !batchNo.isEmpty()) {
+                inv.setBatchNo(batchNo);
+            }
             inv.setCreateTime(LocalDateTime.now());
             inv.setUpdateTime(LocalDateTime.now());
             inventoryMapper.insert(inv);
@@ -532,6 +473,10 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             }
             if (unit != null && !unit.isEmpty()) {
                 fresh.setUnit(unit);
+            }
+            // P0-A：批次号现状语义保留（legacy increaseInventory 覆盖批次号）
+            if (batchNo != null && !batchNo.isEmpty()) {
+                fresh.setBatchNo(batchNo);
             }
             fresh.setUpdateTime(LocalDateTime.now());
 

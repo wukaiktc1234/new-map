@@ -724,6 +724,8 @@ UserMapper userMapper,
             increaseDTO.setReferenceNo(confirmationCode);
             increaseDTO.setReferenceType("receipt_confirmation");
             increaseDTO.setRemark("采购收货确认入库");
+            // P0-A：统一流水 source_type（词表 -001 §1.4）
+            increaseDTO.setSourceType("RECEIPT_CONFIRM");
             inventoryService.increaseInventory(increaseDTO);
         }
     }

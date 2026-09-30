@@ -108,6 +108,8 @@ public class SelfPurchaseServiceImpl extends ServiceImpl<SelfPurchaseMapper, Sel
             increaseDTO.setTransactionType(1); // 采购入库
             increaseDTO.setReferenceType("self_purchase");
             increaseDTO.setReferenceNo(selfPurchaseId);
+            // P0-A：统一流水 source_type（词表 -001 §1.4；自采走快速入库）
+            increaseDTO.setSourceType("QUICK_STOCKIN");
             inventoryService.increaseInventory(increaseDTO);
             
             // 更新自采商品明细状态

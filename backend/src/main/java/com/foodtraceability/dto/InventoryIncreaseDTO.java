@@ -45,6 +45,14 @@ public class InventoryIncreaseDTO implements Serializable {
     /** 备注 */
     private String remark;
 
+    /**
+     * 业务来源（统一流水 source_type，P0-A 卡收编）。
+     * 取值限 -001 §1.4 词表：PURCHASE_STOCKIN / PURCHASE_ARRIVAL / RECEIPT_CONFIRM / SALE_DEDUCT /
+     * KDS_DEDUCT / REFUND_RESTOCK / TRANSFER_OUT / TRANSFER_IN / ADJUST / LOSS / CHECK /
+     * QUICK_STOCKIN / OTHER。**必填**：缺省即显式拒绝（宪法 §III.4 禁止默认兜底、§IV.4 流水禁无来源）。
+     */
+    private String sourceType;
+
     public Long getMaterialId() {
         return materialId;
     }
@@ -123,5 +131,13 @@ public class InventoryIncreaseDTO implements Serializable {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(String sourceType) {
+        this.sourceType = sourceType;
     }
 }

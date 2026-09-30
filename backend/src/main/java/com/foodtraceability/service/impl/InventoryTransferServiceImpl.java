@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.InventoryTransfer;
 import com.foodtraceability.entity.Product;
 import com.foodtraceability.entity.Warehouse;
@@ -229,12 +231,12 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
     }
 
     /**
-     * 同步门店库存（store_inventory 表）
-     * <p>调拨执行时同时更新 store_inventory 表，保持中央仓 inventory 与门店 store_inventory 数据一致。
-     * 在主事务内同步执行，任何一张表更新失败都将导致整个调拨事务回滚（强一致性）。</p>
-     *
-     * <p>注意：门店库存同步遵循项目既有约定，使用 warehouseId 作为 storeId
-     * （与 PurchaseStockinServiceImpl.increaseInventoryForStockin 一致）。</p>
+     * 调拨库存同步（统一账 location 维度）。
+     * <p><b>P0-B 卡（P1-TRANSFER-UNMAPPED-REJECT-001）</b>：双侧位置<b>先解析、后写账</b>；
+     * 任一侧未映射到位置即显式拒绝（宪法 §三.4 禁止默认兜底/静默跳过），文案与同族 6 处
+     * （PurchaseStockin / PurchaseArrival / PurchaseReturn / OtherInbound / ReceiptConfirmation /
+     * OrderNew）对齐。收编前此处对 null location 仅"跳过"，导致未映射源仓时调入仓凭空增加、
+     * 未映射目标仓时调出仓蒸发，而单据仍被置为"已完成"。</p>
      *
      * @param transfer 调拨单
      * @param quantity 调拨数量
@@ -242,39 +244,57 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferM
     private void syncStoreInventory(InventoryTransfer transfer, BigDecimal quantity) {
         Long productId = transfer.getProductId();
         if (productId == null) {
-            log.warn("调拨单 productId 为空，跳过 store_inventory 同步：transferId={}", transfer.getTransferId());
-            return;
+            // P0-B 同族：缺物料时"静默跳过 + 单据置已完成"属假成功，禁止（宪法 §III.4）
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "调拨单缺少物料ID（productId），禁止静默跳过：transferId=" + transfer.getTransferId());
         }
 
-        com.foodtraceability.entity.Location fromLocation = locationService.resolveByWarehouseId(transfer.getFromWarehouseId());
-        com.foodtraceability.entity.Location toLocation = locationService.resolveByWarehouseId(transfer.getToWarehouseId());
-        Long fromLocationId = fromLocation == null ? null : fromLocation.getLocationId();
-        Long toLocationId = toLocation == null ? null : toLocation.getLocationId();
+        // 先解析双侧位置（未映射即拒绝，此时尚未写任何账）
+        Long fromLocationId = requireLocationId(transfer.getFromWarehouseId(), "调出仓");
+        Long toLocationId = requireLocationId(transfer.getToWarehouseId(), "调入仓");
 
-        // 从调出门店扣减库存（库存不足会抛 BusinessException，触发主事务回滚）
-        if (fromLocationId != null) {
-            inventoryService.decreaseStockAtLocation(fromLocationId, productId, quantity, "TRANSFER_OUT", "库存调拨出库");
-            log.debug("调出位置库存扣减成功: locationId={}, productId={}, quantity={}",
-                    fromLocationId, productId, quantity);
-        }
+        // 流水 source_ref 携带调拨单号，支持按单追溯（原为常量字符串，无法按单对账）
+        String ref = "调拨单:" + (transfer.getTransferCode() != null
+                ? transfer.getTransferCode() : String.valueOf(transfer.getTransferId()));
 
-        // 向调入门店增加库存（unitCost 传 null，目标门店库存以 0 成本初始化，
-        // 与采购入库同步门店库存时使用 item.getUnitPrice() 的行为一致；
-        // 调拨场景下成本追踪由 inventory 表承担，store_inventory 仅做数量同步）
-        if (toLocationId != null) {
-            inventoryService.increaseStockAtLocation(
-                    toLocationId,
-                    productId,
-                    transfer.getProductName(),
-                    quantity,
-                    null, // 单位：调拨单未携带，由库存行记录已有的单位保持不变
-                    null, // 单位成本：调拨场景不传成本（§6-6 现状迁移，Q3 批复前不改）
-                    "TRANSFER_IN",
-                    "库存调拨入库"
-            );
-            log.debug("调入位置库存增加成功: locationId={}, productId={}, quantity={}",
-                    toLocationId, productId, quantity);
-        }
+        // 从调出位置扣减库存（库存不足/行不存在会抛 BusinessException，触发主事务回滚）
+        inventoryService.decreaseStockAtLocation(fromLocationId, productId, quantity,
+                "TRANSFER_OUT", "库存调拨出库 - " + ref);
+        log.debug("调出位置库存扣减成功: locationId={}, productId={}, quantity={}",
+                fromLocationId, productId, quantity);
+
+        // 向调入位置增加库存（unitCost 传 null：调拨场景不传成本，§6-6 现状迁移，Q3 批复前不改）
+        inventoryService.increaseStockAtLocation(
+                toLocationId,
+                productId,
+                transfer.getProductName(),
+                quantity,
+                null, // 单位：调拨单未携带，由库存行记录已有的单位保持不变
+                null, // 单位成本：§6-6 现状迁移
+                "TRANSFER_IN",
+                "库存调拨入库 - " + ref
+        );
+        log.debug("调入位置库存增加成功: locationId={}, productId={}, quantity={}",
+                toLocationId, productId, quantity);
     }
-    
+
+    /**
+     * P0-B：warehouseId → locationId 解析；未映射即显式拒绝（宪法 §三.4）。
+     *
+     * @param side 侧别文案（调出仓/调入仓），用于定位失败原因
+     */
+    private Long requireLocationId(Long warehouseId, String side) {
+        if (warehouseId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "调拨单" + side + "为空，无法解析库存位置");
+        }
+        com.foodtraceability.entity.Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "调拨单" + side + "未映射到位置，禁止调拨（warehouseId=" + warehouseId
+                            + "；宪法 §三.4 未映射显式拒绝，禁止默认兜底）");
+        }
+        return location.getLocationId();
+    }
+
 }

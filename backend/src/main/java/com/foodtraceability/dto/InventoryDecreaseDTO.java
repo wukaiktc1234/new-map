@@ -91,4 +91,18 @@ public class InventoryDecreaseDTO implements Serializable {
     public void setRemark(String remark) {
         this.remark = remark;
     }
+
+    /**
+     * 业务来源（统一流水 source_type，P0-A 卡收编）。
+     * 取值限 -001 §1.4 词表；**必填**：缺省即显式拒绝（宪法 §III.4 / §IV.4）。
+     */
+    private String sourceType;
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(String sourceType) {
+        this.sourceType = sourceType;
+    }
 }

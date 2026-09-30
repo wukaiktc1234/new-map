@@ -355,7 +355,8 @@ class PurchaseStockinServiceImplTest {
         assertEquals("测试作废", result.getVoidRemark());
         assertEquals(1001L, result.getVoidBy());
         verify(payableService, times(1)).voidPayableByStockinId(stockinId);
-        verify(inventoryService, times(1)).decreaseInventory(any(InventoryDecreaseDTO.class));
+        // P0-A 卡：legacy decreaseInventory 已删除（双写点）→ 必须"从未调用"，只保留统一账扣减
+        verify(inventoryService, never()).decreaseInventory(any(InventoryDecreaseDTO.class));
         // S4c-1 重锚：门店账同步改走统一账（warehouseId=1001 经 map 解析为 locationId）
         verify(inventoryService, times(1)).decreaseStockAtLocation(
                 eq(1001L), eq(9001L), eq(new BigDecimal("5.000")), eq("PURCHASE_STOCKIN"), anyString());

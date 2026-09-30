@@ -41,6 +41,17 @@ public interface InventoryService extends IService<Inventory> {
                                  String sourceType, String sourceRef);
 
     /**
+     * 按位置增加库存（带批次号重载，P0-A 卡新增）。
+     * <p>legacy `increaseInventory` 现状行为含"写入批次号"（`current.setBatchNo(...)`），
+     * 收编至统一账后需保留该元数据语义；无批次号的调用方走 8 参重载（batchNo=null）。</p>
+     *
+     * @param batchNo 批次号（可空；非空时覆盖库存行批次号，不参与数量计算）
+     */
+    void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
+                                 java.math.BigDecimal quantity, String unit, Long unitCost,
+                                 String batchNo, String sourceType, String sourceRef);
+
+    /**
      * 按位置扣减库存（"出"侧：不存在或不足抛 BusinessException）
      *
      * @param sourceType 来源业务类型（S5 必填，词表见 -001 §1.4；宪法 §IV.4 强制非空）

@@ -164,7 +164,9 @@ class PurchaseReturnServiceImplTest {
 
         PurchaseReturnVO vo = service.approvePurchaseReturn(1L, dto);
 
-        verify(inventoryService, times(1)).decreaseInventory(any());
+        // P0-A 卡（P1-INVENTORY-LEGACY-WRITEPATH-001）：legacy decreaseInventory 已删除（原写
+        // inventory_transactions，且与统一账构成同一事件双写）→ 现在必须"从未调用"，只保留统一账写入。
+        verify(inventoryService, never()).decreaseInventory(any());
         // S4c-1 重锚：门店账同步改走统一账
 verify(inventoryService, times(1)).decreaseStockAtLocation(any(), any(), any(), any(), any());
         verify(payableService, times(1)).createRedPayableForReturn(

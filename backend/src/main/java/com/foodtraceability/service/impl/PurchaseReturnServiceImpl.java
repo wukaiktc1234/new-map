@@ -450,18 +450,9 @@ public class PurchaseReturnServiceImpl extends ServiceImpl<PurchaseReturnMapper,
 
         for (PurchaseReturnItem item : items) {
             try {
-                InventoryDecreaseDTO decreaseDTO = new InventoryDecreaseDTO();
-                decreaseDTO.setMaterialId(item.getMaterialId());
-                decreaseDTO.setWarehouseId(purchaseReturn.getWarehouseId());
-                decreaseDTO.setQuantity(item.getQuantity());
-                decreaseDTO.setTransactionType(7); // 采购退货出库
-                decreaseDTO.setReferenceNo(purchaseReturn.getReturnNo());
-                decreaseDTO.setReferenceType("purchase_return");
-                decreaseDTO.setRemark("采购退货扣减库存");
-
-                inventoryService.decreaseInventory(decreaseDTO);
-                log.debug("退货库存扣减成功：物料ID={}，数量={}", item.getMaterialId(), item.getQuantity());
-
+                // P0-A 收编：删除 legacy inventoryService.decreaseInventory()（原写
+                // inventory_transactions —— 表已更名 → 采购退货 500；且与下方统一账扣减
+                // 构成同一事件双写）。统一账 location 维度为唯一写路径。
                 if (item.getQuantity() != null) {
                     try {
                         inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getQuantity(),

@@ -152,6 +152,8 @@ public class InventoryLossServiceImpl extends ServiceImpl<InventoryLossMapper, I
             decreaseDTO.setReferenceNo(lossCode);
             decreaseDTO.setReferenceType("inventory_loss");
             decreaseDTO.setRemark(detail.getReason());
+            // P0-A：统一流水 source_type（词表 -001 §1.4）
+            decreaseDTO.setSourceType("LOSS");
             inventoryService.decreaseInventory(decreaseDTO);
         }
 

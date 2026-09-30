@@ -28,6 +28,12 @@ import java.time.LocalDateTime;
 @Service
 public class StoreInventoryLogServiceImpl extends ServiceImpl<StoreInventoryLogMapper, StoreInventoryLog> implements StoreInventoryLogService {
 
+    /**
+     * 门店库存日志写路径的来源标注（收口遗留 3）：替代词表外 source_type，
+     * 随 remark 写入统一流水，保证"来源可辨"且不新增词表外枚举值。
+     */
+    private static final String SOURCE_ORIGIN_NOTE = "门店库存日志写路径（原 source_type=STORE_INVENTORY_LOG，现按词表取 OTHER）";
+
     public StoreInventoryLogServiceImpl(StoreInventoryLogMapper storeInventoryLogMapper,
                                         LocationService locationService,
                                         InventoryMovementService inventoryMovementService) {
@@ -62,11 +68,16 @@ public class StoreInventoryLogServiceImpl extends ServiceImpl<StoreInventoryLogM
         movement.setBalanceAfter(log.getAfterStock());
         movement.setOperatorId(log.getOperatorId());
         movement.setMovementType(toMovementType(log.getType()));
-        movement.setSourceType("STORE_INVENTORY_LOG");
-        movement.setSourceRef(log.getRemark() != null && !log.getRemark().trim().isEmpty()
-                ? log.getRemark().trim()
-                : "store-log-" + System.currentTimeMillis());
-        movement.setRemark(log.getRemark());
+        // 收口遗留 3（§24.3j/§24.3k）：S9a-1 自造的 source_type='STORE_INVENTORY_LOG' 不在
+        // -001 §1.4 词表内。改用词表内 OTHER，来源语义由 remark 标注承载——不取"补词表"方案，
+        // 因补词需改动 Owner 拍板的 -001 设计（项目惯例：补充设计只落 -002，-001 不动）。
+        movement.setSourceType("OTHER");
+        String userRemark = log.getRemark() != null ? log.getRemark().trim() : "";
+        String mergedRemark = userRemark.isEmpty()
+                ? SOURCE_ORIGIN_NOTE
+                : SOURCE_ORIGIN_NOTE + " - " + userRemark;
+        movement.setRemark(mergedRemark.length() > 500 ? mergedRemark.substring(0, 500) : mergedRemark);
+        movement.setSourceRef(userRemark.isEmpty() ? "store-log-" + System.currentTimeMillis() : userRemark);
         movement.setCreateTime(log.getCreatedAt() != null ? log.getCreatedAt() : LocalDateTime.now());
         inventoryMovementService.recordMovement(movement);
         return log;

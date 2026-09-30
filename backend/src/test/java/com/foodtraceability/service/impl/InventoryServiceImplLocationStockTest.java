@@ -69,7 +69,7 @@ class InventoryServiceImplLocationStockTest {
 
     @BeforeEach
     void setUp() {
-        service = new InventoryServiceImpl(inventoryMapper, null, inventoryMovementService, locationService);
+        service = new InventoryServiceImpl(inventoryMapper, inventoryMovementService, locationService);
     }
 
     private Inventory row(Long inventoryId, String qty, Long unitCost, Long totalCost) {

@@ -398,9 +398,207 @@
 
 | 项 | 状态 |
 |---|---|
-| **S9c**：前端 / E2E 活体验证 | 下一步（S9a 停点达成） |
+| **S9c**：前端 / E2E 活体验证 | **✅ 已完成（2026-09-30，纯 E2E、零代码改动）→ 见 §16**；环节结果 22/28 断言通过，暴露 **3 项 P0 阻塞（P0-A 采购入库主链 / P0-B 调拨未映射静默跳过 / P0-C 仓→店无路径）** 待开修复卡 |
 | OrderManagementIntegrationTest 401/403 | **ENV-7 已登记（2026-09-29）**：排除 M3-M4 收口条件，归 M5 或独立卡（Owner 裁决） |
 | Q1–Q4 未批准项 | 保持原样（writeLog catch-all / transfer-in 成本归零 / 失败不对称 / MaterialTraceCode 假 T3 流程） |
 | 禁区 6（InventoryLogMapper.xml）解锁 | **已追认（2026-09-29，Owner）**——S7a 改动正式认可，无需回滚；§10 flag 闭环 |
 | 观察期 | 持续（14 天 legacy 窗口至 2026-10-13；predump 不动） |
 | DS-bridge 插件 | 待 Owner 3 项输入 |
+
+---
+
+## 16. S9c 执行结果：库存全链 E2E 活体验证（2026-09-30）
+
+**Owner 放行**："S9c 放行——纯 E2E，无代码实施。" 本节为**纯活体验证记录：零代码改动、零 DDL、零 schema 变更**；所有结论均来自活体接口调用 + 活体库 SELECT 证据。
+
+**执行物**：
+
+| 项 | 值 |
+|---|---|
+| 脚本 | `temp-e2e-inventory-chain-s9c.ps1`（可重跑，幂等播种） |
+| 报告 | `s9c-e2e-inventory-chain-report.json`（断言明细 + 接口步骤 + 首末快照） |
+| 环境 | 活体 `food_traceability`（PG 18.3）+ 后端 8081（profile `pg`）+ `admin/Admin@123` |
+| 口径 | 每环节前后各取一次库存/流水快照，**逐环节断言"数量增量 = 统一流水增量"** |
+
+### 16.1 环境基线（E2E 执行前）
+
+| 项 | 值 |
+|---|---|
+| `inventory` | 13 行，全部位于 loc4（DEPOT）/ loc5（CENTRAL）；**STORE 型 location 0 行**（D-4 门店账全清后的持续状态） |
+| `inventory_movement` | 15 行（全部为迁移行 `MIGRATED_WAREHOUSE_LEGACY`） |
+| `inventory_transfers` | 5 张 |
+| 门店1 当日订单 / 日结 | 0 / 0 |
+| `material_consumption` FAILED | 2 行（历史） |
+
+**测试数据准备（非代码改动，报告内已标注）**：为使"出餐扣料"主路径可执行，用直接 SQL 在门店 location 1 写入 `material_id=3 数量 5`（脚本以 `ON CONFLICT DO UPDATE` 幂等播种）。前置结论见 §16.3-P0-C：**活体不存在任何可给门店补货的 API 通路**。
+
+### 16.2 逐环节结果（对账表）
+
+| 环节 | 操作 | 期望 | 实际 | 结论 |
+|---|---|---|---|---|
+| **1 采购入库** | 申请→订单→到货→入库单→质检→**确认入库**（WH_A，5 斤） | loc5 +5，流水 +1 | 确认入库 **500**；loc5 170→170（**未变**），流水 +0 | **P0-A 阻塞**（见 16.3） |
+| 1b 替代入账 | `/v1/store-inventory/adjust?type=1`（+5） | loc5 +5，流水 +1，二者相等 | 170→**175**；流水 mv59 `+5 IN OTHER`；增量=流水=5 ✔ | **通过** |
+| **2a 调拨 仓→仓** | WH_A(1/loc5) → WH_B(2/loc4)，10 斤（建单→审批→执行） | loc5 −10；loc4 +10；流水 +2 | loc5 175→**165**；loc4 0→**10**；流水 mv60(−10 OUT)/mv61(+10 IN)；双侧增量=流水 ✔ | **通过** |
+| **2b 调拨 未映射源仓** | WH_6（默认主仓库，无映射）→ WH_B(2)，3 斤 | 显式拒绝（宪法 §三.4） | 调拨单 `TR20260930002` **状态=3 已完成**；loc4 **10→13 凭空 +3**（mv62），源侧零扣减 | **P0-B 违规** |
+| **2c 调拨 未映射目标（store3 同 ID）** | WH_A(1) → `warehouseId=3`，2 斤 | 显式拒绝 | 调拨单 `TR20260930003` **状态=3 已完成**；loc5 **165→163 蒸发 −2**（mv63），目标侧零增加 | **P0-B 违规** |
+| **3a POS 下单→出餐扣料** | 菜品 FD260925001 ×1（BOM=生菜 0.4 斤）→ 托盘 bind→in→out→**serve** | 门店 −0.4；流水 +1；`material_consumed=1` | 门店 5→**4.6**；mv64 `−0.4 OUT SALE_DEDUCT`；`material_consumed=1`、后厨单 `served`、托盘回 `idle` ✔ | **通过** |
+| **3b 异常：扣料缺货** | 同菜品 ×20（需 8 斤 > 4.6）→ serve | 整体失败 + 回滚 + 审计 | 接口 500；门店仍 **4.6**、零新增流水、`material_consumed=0`、托盘回 `ready`；审计行 `MCF17907052956607238 / FAILED / STOCK_INSUFFICIENT / failed_material=3 / inventory_deducted=0` ✔ | **通过** |
+| **4 日结** | 按当日门店1 实收建日结单→确认 | 营收/单数与 orders 一致 | 建单：`378.00 元 / 2 单`；落库 `total_revenue=37800 分`、`order_count=2`、`status=approved`；与 `orders` 实收 1800+36000=**37800 分**一致 ✔ | **通过** |
+| 5 终态 | 快照 | — | movement 15→**21**（+6）；门店账 loc1/material3=4.6 | 见 16.6 |
+
+**断言总计 22/28 PASS**；6 项 FAIL 中：**2 项属 P0-A、3 项属 P0-B（真实缺陷拦截）**，1 项为**本人预期值写错**（日结确认接口语义即 `approved`，见 16.4-④备注）。
+
+### 16.3 阻塞发现（P0，均为活体实证）
+
+**P0-A 采购入库主链不可用（M3-M4 迁移遗留写路径未收编）**
+- 现象：`PUT /v1/purchase/stockins/{id}/confirm` → `500 库存增加失败：物料… ### 关系 "inventory_transactions" 不存在`。
+- 根因链：DDL 已 `ALTER TABLE inventory_transactions RENAME TO inventory_transactions_legacy`（`docs/quality/m3m4-preflight/V20260927_002__m3m4_unified_inventory.DRAFT.sql:15`），但 legacy 写路径 **`InventoryServiceImpl.recordTransaction`（L412-433，`transactionMapper.insert`）仍写旧表名**。S5 裁定日志第 4 条曾明确"recordTransaction 保留……S9 更名为 legacy"——**该收编在 S6/S7/S9a 均未发生**，形成 DDL 与写路径的错配。
+- 影响面（同一 `recordTransaction` 家族，全部继承此 500）：`increaseInventory` / `decreaseInventory` / `deductInventory` 的全部调用方 —— 采购入库确认与作废、`PurchaseArrivalServiceImpl`、`ReceiptConfirmationServiceImpl`、`InventoryController` 的增/减/扣库存接口。**即"采购→入库"这一 M3-M4 验收基准链的第 1 环在活体不可用。**
+- 事务正确性：确认入库失败后 **loc5 数量与流水均未变**（无半写），回滚语义正确。
+
+**P0-B 调拨未映射静默跳过（违反宪法 §三.4）**
+- 代码事实：`InventoryTransferServiceImpl.syncStoreInventory`（L249-277）仅以 `fromLocation/toLocation == null` 判断"跳过"，**不抛异常、不中止单据**，随后 `executeInventoryTransfer` 无条件将状态置 3（已完成）。
+- 与同族的 6 个调用点（`PurchaseStockinServiceImpl:721`、`PurchaseArrivalServiceImpl:368`、`PurchaseReturnServiceImpl:444`、`OtherInboundService:110`、`ReceiptConfirmationServiceImpl`、`OrderNewServiceImpl:911`）**均显式拒绝**形成鲜明反差，宪法 §三.4 原文即"任何'默认门店/仓库 1'式兜底——一律拒绝或显式报错"。
+- 实证后果（互逆两种）：**2b 未映射源仓 → 调入仓凭空 +3**（无来源增量，直接造假账）；**2c 未映射目标仓 → 调出仓蒸发 −2**（有出无入，账实不符）。两种情形调拨单**均显示"已完成"**，业务侧无法感知异常。
+
+**P0-C "仓→店"调拨在产品层无通路（24.3g 验收基准词条无法达成）**
+- 前端：`frontend/src/views/warehouse/InventoryTransfer.vue` 调出/调入两侧下拉**均绑定 `warehouseOptions`（L368/L373）← `warehouseApi.getActiveList()`**，UI 不提供门店选项。
+- 后端：`InventoryTransferServiceImpl.syncStoreInventory` 两侧**均** `locationService.resolveByWarehouseId`（=`selectBySource("warehouses", id)`）。
+- 数据：`location_id_map` 仅 5 行 —— `stores_new 1/2/3 → loc 1/2/3`、`warehouses 2/1 → loc 4/5`；**门店在 `warehouses` 维表下无任何映射**。
+- 结论：即便绕过 UI 直调接口，"传门店 ID"的语义也被 ID 空间吞掉 —— 门店 1/2 的 ID 命中**真实仓库** WH_A/WH_B（变成仓→仓调拨或撞 DF-021 同仓校验），门店 3 的 ID 命中**未映射仓库** WH-E2E-001（即 §16.2 的 2c 蒸发场景）。**"调拨（含仓→店）"在活体不可执行**，且因门店账已全清（D-4）叠加 P0-B，**门店账在活体无任何补货通路**（这也是 §16.1 必须用 SQL 播种的原因）。
+
+**P1-D POS 下单携带联系电话即 500（非 M3-M4 引入，但阻断销售链）**
+- 现象：`POST /v1/pos/orders/order`（含 `contactPhone`）→ `500 … 对于可变字符类型来说，值太长了(20)`。
+- 根因：`PosOrderCreateServiceImpl:332` 将 **AES 加密后的手机号**写入 `orders.customer_phone`（**varchar(20)**）。
+- 处置：E2E 去掉 `contactPhone` 后，下单/支付/托盘/出餐/日结**全链正常**。属既有缺陷（W1-EC-01 引入），与 M3-M4 无关，登记为独立缺陷。
+
+**P2 观测项（非阻塞，建议随修复卡一并处理）**
+1. 调拨流水 `source_ref` 为常量"库存调拨出库/入库"，**不含调拨单号**，对账只能靠时间/数量（mv60-63 实证）。
+2. `kitchen_order.store_id/store_name` 为空（`createKitchenOrder` 未落门店字段）→ 失败审计行 `store_id` 为空，削弱可追溯性。
+3. 门店账无补货通路时，扣料失败类型为 `STOCK_INSUFFICIENT`（因播种行存在）；若门店无任何账行则退化为 `NOT_FOUND`——两者都正确，但**前者掩盖了"门店根本没有账"的结构问题**。
+
+### 16.4 对照 24.3g 五项验收基准（收口结论）
+
+| # | 基准原文 | 结论 | 证据 |
+|---|---|---|---|
+| ① | 迁移演练 ×2 通过 | **✅ 满足** | 沙箱演练（§12 S8b-prep：predump 恢复 + DDL + 13 端点重放 13/13）+ 活体演练（§13：5 RENAME + 2 CREATE + INSERT 13+15，13/13 PASS） |
+| ② | 库存全链 E2E（采购→入库→调拨（含仓→店）→销售→出餐扣料→日结） | **⚠️ 部分达成（3 项 P0 阻断）** | 通过：替代入账→调拨（仓→仓）→POS→出餐扣料（含缺货异常）→日结；**未达成**：采购→入库（P0-A 500）、仓→店（P0-C 无通路）、未映射调拨（P0-B 违规） |
+| ③ | store_inventory/inventory 合并后行数与映射表对账一致 | **✅ 满足（含 E2E 增量说明）** | `location_id_map` 5 行 ↔ `locations` 5 行；E2E 前 `inventory` **13 行**（§16.1，全在 loc4/5）；孤儿行 0、`location_id IS NULL` 0；legacy 冻结表齐备（`inventory_legacy` 15 / `store_inventory_legacy` 18 / `inventory_transactions_legacy` 31 / `inventory_log_legacy` 0）。E2E 后 15 行 = 13 + 2 行 E2E 测试账（loc1/loc4，均指向已映射 location） |
+| ④ | 3 个高危混用点用例通过 | **⚠️ 部分满足（活体覆盖，无专用自动化用例）** | 3 点定位（卡片 L7979）：`PurchaseRequestServiceImpl:325-338`（活体已覆盖：采购申请创建成功）、`DataPermissionAspect:113-164`（由全部鉴权请求隐式覆盖）、`InventoryTransferServiceImpl:226-245`（活体已覆盖且**暴露 P0-B**）。`backend/src/test` 中**无这 3 点的专用用例**（grep 0 命中）→ 建议随修复卡补 3 例 |
+| ⑤ | 回滚演练（M1-M6 DOWN + 快照恢复）成功 | **✅ M1-M4 满足；M5-M6 待实施后复演** | M1-M2：`implementation-record-001` 回滚演练通过；M3-M4：§13 步骤 1"沙箱 DOWN + legacy 恢复验证 → pre-DDL 状态完整恢复 → 重新 DDL"✅；DOWN 脚本 + `backups/m3m4-predump-20260929.dump`（2.12 MB）观察期内保留 |
+
+### 16.5 结论与建议
+
+1. **M3-M4 技术收口条件**：①③⑤ 成立，②④ 部分成立 —— **但 ② 的缺口不是"验证没做"，而是活体把 3 个真缺陷照出来了**，因此**不建议在 P0-A/P0-B/P0-C 未处置前宣布"库存全链可用"**。
+2. **建议开修复卡（优先级排序）**：P0-A（采购入库，直接卡死主链）＞ P0-B（未映射静默跳过，造假账/蒸发账，宪法红线）＞ P0-C（仓→店通路缺失，需 Owner 决定是"补通路"还是"改验收基准措辞"）。P1-D 独立开卡（既有缺陷）。
+3. **不建议**在修复前执行 S10 前端适配的"调拨页"部分（P0-C 会连带改前端交互语义）。
+4. **观察期**内 DOWN 脚本 + predump 继续保留（本 E2E 未触碰 legacy 表）。
+5. 本 E2E 的 3 项 P0 与 §5（S4c-1 未映射拒绝影响面）**同族**：当时只核到"无真实业务路径受影响"（因为历史调拨都是 1→2 已映射仓），本次活体构造出未映射场景后缺陷即现——**登记为 S4c-1 影响面核实的边界修正**。
+
+### 16.6 环境现状与复原（README）
+
+**E2E 后活体增量**（除下列项外，其余库存/单据未受影响）：
+
+| 对象 | 变化 |
+|---|---|
+| `inventory` | +2 行：loc1/material3=4.6（测试播种，3a 已扣减）、loc4/material3=13；loc5/material3 170→163 |
+| `inventory_movement` | +6 行（mv59-64）：1b OTHER(+5)、2a OUT(−10)/IN(+10)、2b IN(+3)、2c OUT(−2)、3a SALE_DEDUCT(−0.4) |
+| `inventory_transfers` | +3 张：`TR20260930001`(1→2 已完成)、`TR20260930002`(6→2 已完成，**P0-B 凭空 +3**)、`TR20260930003`(1→3 已完成，**P0-B 蒸发 −2**) |
+| `orders` / `kitchen_order` | +2 单（T20260930001 已出餐、T20260930002 扣料失败）；后厨单 `material_consumed` 分别 1 / 0 |
+| `material_consumption` | +1 行 FAILED 审计（`MCF17907052956607238`） |
+| `daily_settlements` | +1 行（`2104996698188492802`，store1/2026-09-30，37800 分，approved） |
+| 采购单据 | 申请 `PR20260930002` / 订单 `PO20260930002` / 入库单 `SI202609300002`（**未确认入库**，即 P0-A 的失败现场） |
+
+**已知不一致（P0-B 造成，留作修复验证输入，未擅自回改）**：loc4/material3 存在 +3 无源增量；loc5/material3 存在 −2 无去向减量。
+
+**复原脚本（如需回滚本 E2E 数据，未执行）**：
+
+```sql
+-- S9c E2E 环境复原（可选；保留单据/审计作证据时可只回改库存与流水）
+DELETE FROM inventory WHERE location_id = 1 AND material_id = 3;            -- 测试播种行
+DELETE FROM inventory WHERE location_id = 4 AND material_id = 3;            -- 2a 建行 + 2b 凭空行
+UPDATE inventory SET quantity = 170 WHERE location_id = 5 AND material_id = 3;  -- 回退 1b/2a/2c
+DELETE FROM inventory_movement WHERE movement_id > 15 AND material_id = 3 AND location_id IN (1,4,5);
+DELETE FROM inventory_transfers WHERE transfer_id IN (12,13,14);
+-- orders/kitchen_order/material_consumption/daily_settlements 建议保留为业务留痕
+```
+
+> **⚠ 本节为修复前状态记录。S9c 暴露的 P0-A / P0-B 已于同日修复并活体复验（32/32 断言全绿），见 §17。**
+
+---
+
+## 17. P0-A / P0-B 修复实施与活体复验（2026-09-30，Owner 开两卡）
+
+**Owner 指令**：开两张卡（§24.3j / §24.3k），**P0-C 不开卡**；P0-A 方向"改 recordTransaction 写新表 inventory_movement，与 S5 流水统一目标一致；工作量 = 11 个 legacy 方法收编，属未完成工作"；构建/测试按"接受每次弹批准"在完全权限下执行。
+
+### 17.1 ⚠ 对 Owner 方向的关键修正（实施前复核，已写入卡片）
+
+**只把 `recordTransaction` 改指向 `inventory_movement` 会造成数据损坏**：活体+代码复核确认 **4 处"同一业务事件双写"**——`PurchaseStockin` 入库(L740)/作废(L796)、`PurchaseArrival`(L391)、`PurchaseReturn`(L462) 同时调用 legacy 写与统一账写。若只换流水表名，同一笔"入库 5 斤"会变成**账 +10 / 流水 2 条**（活体此前未暴露，是因 500 在两次写之后回滚；`PurchaseArrival` 更隐蔽：其 legacy 异常被 `catch{}` 吞掉仅告警，**表名一修好立刻变双写**）。故本卡按"**收编 + 删双写**"一并实施。
+
+### 17.2 P0-A（§24.3j P1-INVENTORY-LEGACY-WRITEPATH-001）实施明细
+
+| # | 改动 | 文件 |
+|---|---|---|
+| 1 | 3 个 legacy 方法收编：`increaseInventory`/`decreaseInventory`/`deductInventory` → warehouse→location 解析（未映射显式拒绝）→ 委派统一账 `increase/decreaseStockAtLocation`；`recordTransaction` 与 `publishStockChangedEvent` 删除，`InventoryTransactionMapper` 依赖摘除（构造器 4→3 参） | `InventoryServiceImpl` |
+| 2 | **删除 4 处双写**（统一账为唯一写路径） | `PurchaseStockinServiceImpl`（入库/作废）、`PurchaseArrivalServiceImpl`、`PurchaseReturnServiceImpl` |
+| 3 | 3 个 DTO 增 `sourceType`（必填，词表 -001 §1.4）；**剩余 11 个调用点**按 S5 口径赋值：PURCHASE_STOCKIN / QUICK_STOCKIN（自采）/ REFUND_RESTOCK（追溯码退回）/ SALE_DEDUCT（追溯码核销）/ ADJUST（库存调整单）/ LOSS / RECEIPT_CONFIRM / OTHER（手动端点与出库单） | 见卡片影响面表 |
+| 4 | 统一账方法增**批次号重载**（9 参），8 参重载委派之（legacy `batch_no` 语义保留）；两个重载均保留 `@Transactional` | `InventoryService` / `InventoryServiceImpl` |
+| 5 | `source_ref` 组装 `referenceType:referenceNo`；`referenceNo` 缺失即显式拒绝（§IV.4 流水禁无来源） | `InventoryServiceImpl` |
+| 6 | 保留 legacy"可用量 = 数量 − 锁定数量"校验（`decreaseInventory`/`deductInventory` 前置检查）与"库存状态重算"（收编垫片内，仅状态元数据） | `InventoryServiceImpl` |
+
+**裁定日志（宪法 §四.2 本地约定，非新拍板）**：
+1. **成本公式**：legacy 全量重估（`unitCost×新数量`）随 `recordTransaction` 退役；统一账沿用 S4b 已批准口径（单位成本取最新入库价、总成本累加）。
+2. **状态重算**只在收编垫片内保留（保持 legacy 调用方行为）；统一账方法不重算 `status` → 两条路径 `status` 语义仍不完全一致（登记为后续卡观测项，不在本卡扩大范围）。
+3. **手动端点**（`InventoryController` `/increase` `/deduct`）统一置 `sourceType=OTHER`（与 S5 §8 裁定 2 同口径）；`referenceNo` 改由调用方必填，缺失返回 400（原为 500，非功能回退）。
+4. `InventoryIncreaseDTO.locationId` **不再参与入账定位**（统一由 `warehouseId` 经 `location_id_map` 解析；该字段保留仅兼容）——原 legacy 新建分支会把它当 `location_id` 直插（新表该列为 NOT NULL，新物料必失败）。
+5. `sourceType`/`referenceNo` 缺失一律拒绝，**不做兜底填充**（宪法 §III.4 / §IV.4）。
+
+### 17.3 P0-B（§24.3k P1-TRANSFER-UNMAPPED-REJECT-001）实施明细
+
+- `syncStoreInventory` 改为**先解析双侧、后写账**：任一侧 `null` → `BusinessException`（文案含侧别 + warehouseId + "宪法 §三.4 未映射显式拒绝"），**执行时零副作用**；`executeInventoryTransfer` 仅在写入成功后置 `COMPLETED(3)`，拒绝时单据保持 `2（已审批）`。
+- 同族补齐：`productId` 缺失原为"静默跳过 + 单据置已完成"（假成功），一并改为显式拒绝。
+- 顺带修 §16.3 P2-1：调拨流水 `source_ref` 由常量改为携带调拨单号（`库存调拨出库 - 调拨单:TR…`）。
+- 裁定日志：**仅执行时拒绝**（创建/审批不做前置校验，避免"仓暂未映射→草稿也不可建"的副作用）。
+
+### 17.4 测试证据
+
+| 项 | 结果 |
+|---|---|
+| 编译 | `mvn compile` **BUILD SUCCESS**（完全权限下执行） |
+| 新增单测 | `InventoryServiceImplLegacyBridgeTest` **7/7**（未映射拒绝/sourceType·referenceNo 必填/委派入账含批次号与 source_ref/锁定数量语义/deduct 定位与 NOT_FOUND） |
+| 新增单测 | `InventoryTransferServiceImplTest` **4/4**（双侧映射正常回归/源未映射拒绝/目标未映射拒绝/缺物料拒绝，均断言"零写账零流水且不置完成"） |
+| 回归单测 | `InventoryServiceImplLocationStockTest` 9/9、`PurchaseStockinServiceImplTest` 8/8、`PurchaseReturnServiceImplTest` 5/5（后两者由 `verify(increase/decreaseInventory)` 重锚为 `never()`） |
+| 定向合计 | **33/33 绿**；收口追加（词表外 `source_type` 修复后）重编译 + 6 类相关单测 **42/42 绿**（含 `InventoryMovementServiceImplTest` 9/9） |
+
+### 17.5 活体 E2E 复验（32/32 断言全绿）
+
+复验方式：重置库存/流水/调拨到 §16.1 基线 → 重启后端（完全权限）→ 重跑 `temp-e2e-inventory-chain-s9c.ps1` → 报告 `s9c-e2e-inventory-chain-report.json`。
+
+| 环节 | 修复前（§16） | 修复后（本次） |
+|---|---|---|
+| 1 采购入库 5 斤 | 确认入库 **500**，库存不变 | **200**；loc5 170→**175（恰好 +5，非 +10）**；统一流水**恰好 +1**（mv73 `PURCHASE_STOCKIN / 采购入库 - 入库单:SI202609300005`）；**数量增量=流水增量=5** |
+| 1b 替代入账 | 因阻塞而启用 | **自动跳过**（采购入库已通，脚本按 `$purchaseInboundOk` 条件执行） |
+| 2a 仓→仓 10 斤 | 通过 | 通过（loc5 175→165、loc4 0→10、流水 +2、双向对账一致；`source_ref` 现含调拨单号） |
+| 2b 未映射源仓 | **凭空 +3 / 单据已完成** | **显式拒绝**（`调拨单调出仓未映射到位置…warehouseId=6`）；loc4 零变化、流水零新增、单据状态保持 **2** |
+| 2c 未映射目标（store3 同 ID） | **蒸发 −2 / 单据已完成** | **显式拒绝**（`…调入仓未映射到位置…warehouseId=3`）；loc5 零变化、流水零新增、状态 **2** |
+| 3a 出餐扣料 | 通过 | 通过（门店 5→4.6、SALE_DEDUCT −0.4、`material_consumed=1`、托盘回 idle） |
+| 3b 缺货异常 | 通过 | 通过（整体回滚 + FAILED 审计 `STOCK_INSUFFICIENT`） |
+| 4 日结 | 营收/单数一致 | 通过（`151200 分 / 8 单` = orders 表实收；确认后状态 `approved`——该接口语义即 approved，脚本预期值已同步修正） |
+
+### 17.6 附带结论：工作区根目录"低完整性标签"根因追查（Owner 追问）
+
+- **结论：可追溯，来源是 DSH 沙箱自身的供给（provisioning），非 Docker/构建工具污染。**
+- 证据链：①受限进程运行于 **Low 完整性**（`whoami /groups` → `S-1-16-4096`）；②工作区根带 `Mandatory Label\Low Mandatory Level`，而 `docs`/`backend`/`target` 等**既有子目录均无**（`icacls`），**新建**子目录则继承 → 可写；③技能脚本自身文档明示该标签由 DSH 写入：*"it carries WRITE_DAC for the DACL and **WRITE_OWNER for the mandatory label DSH writes in the same call**"*（归档于 `test/acl-reports/acl-backup-a2d9fdca…txt.ps1:50`）；④2026-09-29 13:29/13:31 的两份修复报告（`test/acl-reports/acl-report-c6f7bde7….jsonl`、`acl-report-99f80098….jsonl`）中 `lowLabel` 字段**为空**，说明当时工作区根**尚无**该标签 → 标签是在 **2026-09-29 13:31 之后**的某次沙箱会话供给时写到根目录的。
+- 因此：ACL 脚本对本症状**无效**（它只写 DACL，`SetNamedSecurityInfoW` 的 SACL 传 `IntPtr.Zero`，从不写标签），未运行、未提权修复 ACL；按 Owner 选择以"**每次构建/测试在完全权限下执行（每次弹批准）**"继续。
+
+### 17.7 遗留与后续
+
+| 项 | 状态 |
+|---|---|
+| P0-C（仓→店无通路） | **不开卡（Owner 裁决）→ 移交 M5**；`§16.3 P0-C` 结论不变（"调拨（含仓→店）"仍是 24.3g 基准中的未达成词条） |
+| P1-D（POS 带电话 500） | **已开卡 `§24.3l P1-POS-CUSTOMER-PHONE-500-001`**（附 PG-005.1 豁免申请：修复方向唯一 / 无产品决策 / 无架构变更 → 申请跳过设计阶段；待 Owner 批准后开工） |
+| 统一账方法不重算 `inventory.status` | **移交 M5**（legacy 垫片保留状态重算，双路径语义不一致；不在本批扩大范围） |
+| `StoreInventoryLogServiceImpl` 词表外 `source_type` | **本批已修**：改用词表内 `OTHER` + remark 标注来源语义（**不取"补词表"方案**——补词需改 Owner 拍板的 -001，项目惯例 -001 不动、补充设计只落 -002）；修后 inventory movement 域 `source_type` **100% 落在 -001 §1.4 词表内**；重编译 + 相关单测 **42/42 绿** |
+| §24.3j / §24.3k 卡片状态 | **CLOSED_WITH_REGISTERED_LIMITATION**（Owner 2026-09-30 收口；遗留 3 项已按上文登记） |
+| 代码提交 | 待 Owner 审 diff → 按 **PG-001 显式文件清单**（26 个）提交；`temp-*.ps1` 不入库、E2E 报告 JSON 入库 |
+

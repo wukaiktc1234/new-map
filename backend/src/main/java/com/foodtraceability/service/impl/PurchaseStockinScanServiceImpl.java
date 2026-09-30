@@ -410,6 +410,8 @@ public class PurchaseStockinScanServiceImpl implements PurchaseStockinScanServic
             increaseDTO.setBatchNo(code.getBatchNumber());
             increaseDTO.setReferenceNo(stockin.getStockinCode());
             increaseDTO.setReferenceType("purchase_stockin");
+            // P0-A：统一流水 source_type（词表 -001 §1.4）
+            increaseDTO.setSourceType("PURCHASE_STOCKIN");
 
             inventoryService.increaseInventory(increaseDTO);
             log.info("库存更新成功: materialId={}, quantity={}, warehouseId={}",

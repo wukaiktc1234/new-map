@@ -5,8 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
-import com.foodtraceability.dto.InventoryDecreaseDTO;
-import com.foodtraceability.dto.InventoryIncreaseDTO;
 import com.foodtraceability.dto.PurchaseQualityCheckDTO;
 import com.foodtraceability.dto.PurchaseStockinCreateDTO;
 import com.foodtraceability.dto.PurchaseStockinItemDTO;
@@ -726,21 +724,10 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
 
         for (PurchaseStockinItem item : items) {
             try {
-                InventoryIncreaseDTO increaseDTO = new InventoryIncreaseDTO();
-                increaseDTO.setMaterialId(item.getMaterialId());
-                increaseDTO.setWarehouseId(stockin.getWarehouseId());
-                increaseDTO.setLocationId(item.getLocationId());
-                increaseDTO.setQuantity(item.getActualQuantity());
-                increaseDTO.setUnitCost(item.getUnitPrice());
-                increaseDTO.setTransactionType(1); // 采购入库
-                increaseDTO.setBatchNo(item.getBatchNo());
-                increaseDTO.setReferenceNo(stockin.getStockinCode());
-                increaseDTO.setReferenceType("purchase_stockin");
-
-                inventoryService.increaseInventory(increaseDTO);
-                log.debug("入库明细库存增加成功：物料ID={}，数量={}", item.getMaterialId(), item.getActualQuantity());
-
-                // 同步门店库存（独立门店库存维度）
+                // P0-A 收编（卡 P1-INVENTORY-LEGACY-WRITEPATH-001）：此处原有 legacy
+                // inventoryService.increaseInventory()（写 inventory_transactions —— 该表已被
+                // M3-M4 DDL 更名为 _legacy → 确认入库 500；且与下方统一账写入构成同一事件"双写"，
+                // 一旦 legacy 表名修好即变成"账 +2 倍"）。统一账 location 维度为唯一写路径。
                 if (item.getActualQuantity() != null) {
                     try {
                         inventoryService.increaseStockAtLocation(
@@ -784,18 +771,9 @@ public class PurchaseStockinServiceImpl extends ServiceImpl<PurchaseStockinMappe
 
         for (PurchaseStockinItem item : stockin.getItems()) {
             try {
-                InventoryDecreaseDTO decreaseDTO = new InventoryDecreaseDTO();
-                decreaseDTO.setMaterialId(item.getMaterialId());
-                decreaseDTO.setWarehouseId(stockin.getWarehouseId());
-                decreaseDTO.setQuantity(item.getActualQuantity());
-                decreaseDTO.setTransactionType(6); // 其他出库：入库作废
-                decreaseDTO.setReferenceNo(stockin.getStockinCode());
-                decreaseDTO.setReferenceType("purchase_stockin_void");
-                decreaseDTO.setRemark("入库单作废回滚库存");
-
-                inventoryService.decreaseInventory(decreaseDTO);
-                log.debug("入库作废库存扣减成功：物料ID={}，数量={}", item.getMaterialId(), item.getActualQuantity());
-
+                // P0-A 收编：删除 legacy inventoryService.decreaseInventory()（原写
+                // inventory_transactions，并与下方统一账扣减构成同一事件双写）。
+                // 统一账 location 维度为唯一写路径。
                 if (item.getActualQuantity() != null) {
                     try {
                         inventoryService.decreaseStockAtLocation(locationIdForSync, item.getMaterialId(), item.getActualQuantity(),

@@ -147,6 +147,8 @@ public class TraceCodeServiceImpl extends ServiceImpl<TraceCodeMapper, TraceCode
             decreaseDTO.setTransactionType(1); // 销售出库
             decreaseDTO.setReferenceType("trace_code");
             decreaseDTO.setReferenceNo(code);
+            // P0-A：统一流水 source_type（词表 -001 §1.4）
+            decreaseDTO.setSourceType("SALE_DEDUCT");
             inventoryService.decreaseInventory(decreaseDTO);
             return traceCode;
         }
@@ -186,6 +188,8 @@ public class TraceCodeServiceImpl extends ServiceImpl<TraceCodeMapper, TraceCode
             increaseDTO.setTransactionType(4); // 退货入库
             increaseDTO.setReferenceType("trace_code");
             increaseDTO.setReferenceNo(code);
+            // P0-A：统一流水 source_type（词表 -001 §1.4；未开封追溯码退回=库存回补）
+            increaseDTO.setSourceType("REFUND_RESTOCK");
             inventoryService.increaseInventory(increaseDTO);
         }
         

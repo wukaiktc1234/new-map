@@ -69,6 +69,7 @@ public class InventoryController {
      */
     @GetMapping("/{inventoryId}")
     @Operation(summary = "获取库存详情")
+    @PreAuthorize("hasAuthority('inventory:query')")
     public Result<Inventory> getInventory(
             @Parameter(description = "库存ID") @PathVariable Long inventoryId) {
         try {
@@ -87,6 +88,7 @@ public class InventoryController {
      */
     @GetMapping("/{inventoryId}/available")
     @Operation(summary = "查询可用库存数量")
+    @PreAuthorize("hasAuthority('inventory:query')")
     public Result<BigDecimal> getAvailableQuantity(
             @Parameter(description = "库存ID") @PathVariable Long inventoryId) {
         try {
@@ -102,6 +104,7 @@ public class InventoryController {
      */
     @PostMapping("/lock")
     @Operation(summary = "锁定库存")
+    @PreAuthorize("hasAuthority('inventory:lock')")
     public Result<Void> lockInventory(@RequestBody InventoryLockDTO lockDTO) {
         try {
             inventoryService.lockInventory(lockDTO);
@@ -136,6 +139,8 @@ public class InventoryController {
     @PreAuthorize("hasAuthority('inventory:deduct')")
     public Result<Void> deductInventory(@RequestBody InventoryDeductDTO deductDTO) {
         try {
+            // P0-A：手动操作统一取 source_type=OTHER（口径同 /increase）；referenceNo 必填
+            deductDTO.setSourceType("OTHER");
             inventoryService.deductInventory(deductDTO);
             return Result.success(null, "库存扣减成功");
         } catch (Exception e) {
@@ -148,8 +153,13 @@ public class InventoryController {
      */
     @PostMapping("/increase")
     @Operation(summary = "增加库存")
+    @PreAuthorize("hasAuthority('inventory:create')")
     public Result<Void> increaseInventory(@RequestBody InventoryIncreaseDTO increaseDTO) {
         try {
+            // P0-A：手动操作统一取 source_type=OTHER（与 S5 §8 裁定 2 同口径：
+            // 手动调整无专属词表项，取 OTHER）。referenceNo 由调用方提供，
+            // 缺失时由统一账入口显式拒绝（宪法 §IV.4 流水禁无来源）。
+            increaseDTO.setSourceType("OTHER");
             inventoryService.increaseInventory(increaseDTO);
             return Result.success(null, "库存增加成功");
         } catch (Exception e) {

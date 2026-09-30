@@ -379,19 +379,9 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
             if (actualQty == null || actualQty.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-            try {
-                InventoryIncreaseDTO increaseDTO = new InventoryIncreaseDTO();
-                increaseDTO.setMaterialId(item.getMaterialId());
-                increaseDTO.setWarehouseId(arrival.getWarehouseId());
-                increaseDTO.setQuantity(actualQty);
-                increaseDTO.setUnitCost(item.getUnitPrice());
-                increaseDTO.setTransactionType(1); // 采购入库
-                increaseDTO.setReferenceNo(arrival.getArrivalCode());
-                increaseDTO.setReferenceType("purchase_arrival");
-                inventoryService.increaseInventory(increaseDTO);
-            } catch (Exception e) {
-                log.warn("仓库库存增加失败（继续门店同步）: materialId={}, err={}", item.getMaterialId(), e.getMessage());
-            }
+            // P0-A 收编：删除 legacy inventoryService.increaseInventory()（原写
+            // inventory_transactions；此处异常曾被 catch 吞掉仅告警，故收编后不会 500，
+            // 但会与下方统一账写入构成"双写"→ 同一到货事件账 +2 倍）。统一账为唯一写路径。
             {
                 try {
                     inventoryService.increaseStockAtLocation(
