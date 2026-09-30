@@ -8072,7 +8072,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-001** |
-| 状态 | **PENDING（未启动）** |
+| 状态 | **进行中（阶段3 实施；判档 = 重档）**——2026-09-30 Owner 开卡 + 判档（PG-006 回"重"）；依赖 P1-LOCATION-MODEL-001 一期核心层**已收口**（`b2e1313`）；阶段1 诊断（`user-store-assignment-chain-audit-001.md`）+ 阶段2 设计（`-001` 主体 / `-002` 修订，19 项拍板）已就位；实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md` |
 | 优先级 | P1 |
 | 性质 | 身份层重构 + 用户归属（JWT 携带 locationId / SecurityUtils / 13 处兜底消除 / 分配入口 / 入职链路 / users.location_id 改名） |
 | 前置 | U-1~U-7 已拍板（✅ 2026-09-27 完成，含附加 2/3/4） |
