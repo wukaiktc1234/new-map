@@ -178,4 +178,43 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §8 验收证据 + 限制项登记）**
+## §8 S2a 完成与验证（2026-09-30）
+
+### 8.1 交付物（commit `e2a83e7`，22 文件 +321/−62）
+
+| 层 | 内容 |
+|---|---|
+| DB（S1） | `V20260930_002__user_location_001_rename_store_id_to_location_id.sql`：`employees.user_id` 新增 + 按 `employee_code` 回填；`users.store_id→location_id`、`employees.store_id→location_id`（经 `location_id_map` 由 `stores_new.store_id` **重映射**）；FK/索引切换；**完整性守卫**（"旧列非空、新列仍空"即 `RAISE EXCEPTION` 中止）；兼容视图 `v_users_store_compat` |
+| 桥（规则 3/4） | 新增 `LocationIdBridge`（`toStoreId` / `toLocationId` / `toWarehouseId` + **静态入口** `storeIdOf` / `locationIdOfStore`，供静态工具）；`LocationIdMapMapper` 新增 `selectSrcIdByLocationId` / `selectLocationIdBySrcId` |
+| 实体 | `User.storeId→locationId`（`@TableField("location_id")`）；`Employee.storeId→locationId` + 新增 `Employee.userId`（`@TableField("user_id")`） |
+| 身份层（S3 前置） | `SecurityUtils.getCurrentUserLocationId()`（新主方法，null = 显式拒绝）；`getCurrentUserStoreId()` **保留为反查兼容方法**（经桥）→ **15 个存量调用点零改** |
+| 消费点 | 14 文件：store_id 空间消费点经桥**反查**（`DataPermissionServiceImpl` / `DailySettlementServiceImpl` / `PurchaseRequestServiceImpl` / `UserPermissionCacheServiceImpl` / `DataScopeAspect` / `UserDataServiceImpl` / `UserServiceImpl` / `AuthServiceImpl` / `WorkLocationFilterHelper` / `Employee*ServiceImpl` …）；写入经 `locationIdOfStore` **正查** |
+| 原生 SQL | `UserMapper`：`unassignStore` 改 `location_id`；`findUserIdsByStoreIdAndRoleCode` 改为 **SQL 内 `JOIN location_id_map`**（保持 store_id 入参语义 → **调用方零改**）；`DataFixController` 运行时补列改 `location_id` |
+
+### 8.2 验证证据
+- **编译器闭环**：实体改名后 `mvn -o clean compile` 报 **45 错 / 15 文件**（消费点全枚举）→ 逐点改造后 **BUILD SUCCESS（EXIT=0）**。
+- **PG-001 隔离**：3 个碰撞文件（`UserController`（+19 WIP）/ `DataFixController` / `DailySettlementServiceImpl`）按「HEAD + 本卡改动」精确入索引；**提交后工作树残留 diff = 原 WIP 尺寸（`UserController` 恰为 +19）** → 隔离精确、WIP 零混入。
+- **可疑行扫描**：cached diff 中不含 storeId/location 关键字的行全部落在新文件与新注释上，**无 WIP 泄漏**。
+
+### 8.3 ⚠ 重大既有发现：**已提交树无法独立编译（100 错，非本卡引入）**
+在临时 worktree 编译**纯提交树**（补入本地 `backend/lib/*.jar` 以解 system-scope 依赖后）：
+
+| 被测提交 | 结果 |
+|---|---|
+| `e2a83e7`（本卡 S2a） | **BUILD FAILURE** |
+| `e2a83e7^`（本卡提交前） | **BUILD FAILURE，100 errors，同一文件集** |
+
+失败文件：`ReceiptConfirmationServiceImpl`（import `ReceiptEvidence` / `ReceiptSignature` / `ReceiptVerifyVO` / `ReceiptPrintLog` / `ReceiptSignatureDTO` 等**未跟踪**类）、`PosOrderCreateServiceImpl`（引用 `MaterialDeductionContext` / `MaterialDeductionFailureException` / `CanonicalOrderCommand` 等**未跟踪**类）。
+
+**结论**：**committed 代码引用了未跟踪的 WIP 类** → "仓库已提交状态"长期不可独立构建；本卡提交**未引入也未加剧**该问题。
+**影响**：任何 commit 的"可编译性"只能在**含 WIP 的工作树**上判定；纯提交树构建验证须补入本地 `backend/lib` 且仍会失败 → 所有构建/测试结论必须注明"含 WIP 工作树"。
+**登记**：KL 主表 **ENV-10**（归 P0-WORKSPACE-WIP-CONSOLIDATION-001）。
+
+### 8.4 S2a 遗留（下一步）
+- **S2b**：DTO/API 字段名 `storeId → locationId`（`UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` / `UpdateUserRequest` / `EmployeeCreateDTO` / `EmployeeUpdateDTO`）+ 前端接线（并入 S5）；
+- **观察期兼容方法退场**：`SecurityUtils.getCurrentUserStoreId()` 待 15 个调用点迁至 `getCurrentUserLocationId()` 后废弃；
+- **S3 身份层**：`SecurityUser.locationId` + JWT claim `locationId`（5 生成点）+ `SecurityUtils` 的 `SecurityUser` 分支（KDS 分支冻结 → LIM-1）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §9 验收证据 + 限制项登记）**
