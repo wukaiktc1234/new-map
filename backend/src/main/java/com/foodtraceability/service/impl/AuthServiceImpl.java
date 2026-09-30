@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.dto.*;
 import com.foodtraceability.entity.InvitationSendRecord;
@@ -259,7 +260,7 @@ public class AuthServiceImpl implements AuthService {
 
         if (archive != null) {
             user.setDepartmentId(archive.getDepartmentId() != null ? Long.valueOf(archive.getDepartmentId()) : null);
-            user.setStoreId(null);
+            user.setLocationId(LocationIdBridge.locationIdOfStore(null));
             user.setRoles(archive.getRoleId() != null ? "[\"" + archive.getRoleId() + "\"]" : "[]");
             user.setEmployeeCode(archive.getEmployeeCode());
         }
@@ -316,7 +317,7 @@ public class AuthServiceImpl implements AuthService {
             response.setAvatar(user.getAvatar());
             response.setDepartmentId(user.getDepartmentId());
             response.setDepartment(user.getDepartment());
-            response.setStoreId(user.getStoreId());
+            response.setStoreId(LocationIdBridge.storeIdOf(user.getLocationId()));
             response.setStoreName(user.getStoreName());
             response.setCreatedAt(user.getCreatedTime());
             response.setUpdatedAt(user.getUpdatedTime());
@@ -584,7 +585,7 @@ public class AuthServiceImpl implements AuthService {
             user.setAvatar(updateUserRequest.getAvatar());
         }
         if (updateUserRequest.getStoreId() != null) {
-            user.setStoreId(Long.valueOf(updateUserRequest.getStoreId()));
+            user.setLocationId(LocationIdBridge.locationIdOfStore(Long.valueOf(updateUserRequest.getStoreId())));
         }
         if (updateUserRequest.getStoreName() != null) {
             user.setStoreName(updateUserRequest.getStoreName());

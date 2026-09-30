@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.dto.StoreBasicInfo;
@@ -55,8 +56,8 @@ public class UserDataServiceImpl implements UserDataService {
 
         // 批量查询门店信息
         List<String> storeIds = users.stream()
-            .filter(u -> u.getStoreId() != null)
-            .map(u -> String.valueOf(u.getStoreId()))
+            .filter(u -> LocationIdBridge.storeIdOf(u.getLocationId()) != null)
+            .map(u -> String.valueOf(LocationIdBridge.storeIdOf(u.getLocationId())))
             .distinct()
             .collect(Collectors.toList());
 
@@ -121,8 +122,8 @@ public class UserDataServiceImpl implements UserDataService {
 
     private UserBasicInfo convertToBasicInfo(User user, Map<String, StoreBasicInfo> storeInfoMap) {
         String storeName = null;
-        if (user.getStoreId() != null) {
-            String storeIdStr = String.valueOf(user.getStoreId());
+        if (LocationIdBridge.storeIdOf(user.getLocationId()) != null) {
+            String storeIdStr = String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId()));
             if (storeInfoMap != null && storeInfoMap.containsKey(storeIdStr)) {
                 StoreBasicInfo storeInfo = storeInfoMap.get(storeIdStr);
                 if (storeInfo != null) {
@@ -130,12 +131,12 @@ public class UserDataServiceImpl implements UserDataService {
                 }
             } else {
                 try {
-                    StoreBasicInfo storeInfo = storeDataService.getStoreBasicInfo(String.valueOf(user.getStoreId()));
+                    StoreBasicInfo storeInfo = storeDataService.getStoreBasicInfo(String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())));
                     if (storeInfo != null) {
                         storeName = storeInfo.getStoreName();
                     }
                 } catch (Exception e) {
-                    log.warn("获取门店名称失败, storeId: {}", user.getStoreId(), e);
+                    log.warn("获取门店名称失败, storeId: {}", LocationIdBridge.storeIdOf(user.getLocationId()), e);
                 }
             }
         }
@@ -149,7 +150,7 @@ public class UserDataServiceImpl implements UserDataService {
             .status(user.getStatus())
             .departmentId(user.getDepartmentId())
             .departmentName(user.getDepartment())
-            .storeId(user.getStoreId())
+            .storeId(LocationIdBridge.storeIdOf(user.getLocationId()))
             .storeName(storeName)
             .avatar(user.getAvatar())
             .version(user.getVersion() != null ? user.getVersion().longValue() : 0L)

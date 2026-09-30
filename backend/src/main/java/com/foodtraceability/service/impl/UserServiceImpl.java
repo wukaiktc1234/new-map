@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -158,7 +159,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return false;
         }
-        user.setStoreId(storeId);
+        user.setLocationId(LocationIdBridge.locationIdOfStore(storeId));
         user.setUpdatedTime(LocalDateTime.now());
         boolean result = updateById(user);
         // 清除用户缓存
@@ -191,11 +192,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return null;
         }
         Map<String, Object> storeInfo = new HashMap<>();
-        storeInfo.put("storeId", user.getStoreId());
+        storeInfo.put("storeId", LocationIdBridge.storeIdOf(user.getLocationId()));
         
-        if (user.getStoreId() != null) {
+        if (LocationIdBridge.storeIdOf(user.getLocationId()) != null) {
             try {
-                StoreBasicInfo storeBasicInfo = storeDataService.getStoreBasicInfo(String.valueOf(user.getStoreId()));
+                StoreBasicInfo storeBasicInfo = storeDataService.getStoreBasicInfo(String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())));
                 if (storeBasicInfo != null) {
                     storeInfo.put("storeName", storeBasicInfo.getStoreName());
                 } else {

@@ -1,4 +1,5 @@
 package com.foodtraceability.security.aspect;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.foodtraceability.entity.Role;
@@ -194,7 +195,7 @@ public class DataScopeAspect {
     private String getUserStoreId(SecurityUser user) {
         try {
             User dbUser = userService.getById(Long.parseLong(user.getUserId()));
-            return dbUser != null && dbUser.getStoreId() != null ? String.valueOf(dbUser.getStoreId()) : null;
+            return dbUser != null && LocationIdBridge.storeIdOf(dbUser.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(dbUser.getLocationId())) : null;
         } catch (Exception e) {
             return null;
         }

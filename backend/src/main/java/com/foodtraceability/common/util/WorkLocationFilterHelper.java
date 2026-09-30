@@ -1,4 +1,5 @@
 package com.foodtraceability.common.util;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.dto.PurchaseArrivalQueryDTO;
 import com.foodtraceability.dto.ReceiptConfirmationQueryDTO;
@@ -63,7 +64,7 @@ public class WorkLocationFilterHelper {
         String locationType = employee.getWorkLocationType();
         if (LOCATION_STORE.equals(locationType)) {
             queryDTO.setReceiverType("STORE");
-            queryDTO.setStoreId(employee.getStoreId() != null ? String.valueOf(employee.getStoreId()) : null);
+            queryDTO.setStoreId(LocationIdBridge.storeIdOf(employee.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(employee.getLocationId())) : null);
             queryDTO.setWarehouseId(null);
         } else if (LOCATION_WAREHOUSE.equals(locationType)) {
             queryDTO.setReceiverType("WAREHOUSE");
@@ -92,7 +93,7 @@ public class WorkLocationFilterHelper {
         String locationType = employee.getWorkLocationType();
         if (LOCATION_STORE.equals(locationType)) {
             queryDTO.setReceiverType("STORE");
-            queryDTO.setStoreId(employee.getStoreId() != null ? String.valueOf(employee.getStoreId()) : null);
+            queryDTO.setStoreId(LocationIdBridge.storeIdOf(employee.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(employee.getLocationId())) : null);
             queryDTO.setWarehouseId(null);
         } else if (LOCATION_WAREHOUSE.equals(locationType)) {
             queryDTO.setReceiverType("WAREHOUSE");
@@ -123,7 +124,7 @@ public class WorkLocationFilterHelper {
      */
     public String getCurrentStoreId() {
         Employee employee = getCurrentEmployee();
-        return employee != null && employee.getStoreId() != null ? String.valueOf(employee.getStoreId()) : null;
+        return employee != null && LocationIdBridge.storeIdOf(employee.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(employee.getLocationId())) : null;
     }
 
     /**

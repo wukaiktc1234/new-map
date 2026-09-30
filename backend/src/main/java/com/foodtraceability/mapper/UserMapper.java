@@ -141,9 +141,9 @@ public interface UserMapper extends BaseMapper<User> {
     boolean existsByPhone(@Param("phone") String phone);
 
     /**
-     * 取消用户门店分配（设置store_id为null）
+     * 取消用户归属分配（设置 location_id 为 null）
      */
-    @Update("UPDATE users SET store_id = NULL, updated_at = NOW() WHERE user_id = #{userId}")
+    @Update("UPDATE users SET location_id = NULL, updated_at = NOW() WHERE user_id = #{userId}")
     int unassignStore(@Param("userId") Long userId);
 
     /**
@@ -152,14 +152,15 @@ public interface UserMapper extends BaseMapper<User> {
      * <p>JOIN user_roles + roles 表，按 r.role_code 过滤，按 u.store_id 过滤。
      * 仅返回启用状态的用户 ID。</p>
      *
-     * @param storeId  门店 ID（users.store_id 为 VARCHAR，参数传入字符串形式）
+     * @param storeId  门店 ID（stores_new.store_id；SQL 内经 location_id_map 换算为 location_id）
      * @param roleCode 角色编码（大写，如 STORE_MANAGER）
      * @return 用户 ID 列表
      */
     @Select("SELECT u.user_id FROM users u " +
             "INNER JOIN user_roles ur ON u.user_id = ur.user_id::bigint " +
             "INNER JOIN roles r ON ur.role_id::bigint = r.role_id " +
-            "WHERE u.store_id = #{storeId} " +
+            "INNER JOIN location_id_map m ON m.location_id = u.location_id AND m.src_table = 'stores_new' " +
+            "WHERE m.src_id = #{storeId} " +
             "  AND r.role_code = #{roleCode} " +
             "  AND u.deleted = 0 " +
             "  AND r.deleted = 0")

@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.entity.Department;
 import com.foodtraceability.entity.Role;
@@ -288,7 +289,7 @@ public class DataPermissionServiceImpl implements DataPermissionService {
 
                 case "store":
                     // 本门店数据权限
-                    String storeId = user.getStoreId() != null ? String.valueOf(user.getStoreId()) : null;
+                    String storeId = LocationIdBridge.storeIdOf(user.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())) : null;
                     if (storeId != null) {
                         condition.setSingleValue(storeId);
                         condition.setType("STORE");
@@ -383,7 +384,7 @@ public class DataPermissionServiceImpl implements DataPermissionService {
 
                 case "store":
                     // 本门店权限
-                    String storeId = user.getStoreId() != null ? String.valueOf(user.getStoreId()) : null;
+                    String storeId = LocationIdBridge.storeIdOf(user.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())) : null;
                     return storeId != null ? Collections.singletonList(storeId) : Collections.emptyList();
 
                 case "stores":
@@ -573,7 +574,7 @@ public class DataPermissionServiceImpl implements DataPermissionService {
     private String getUserRegion(String userId) {
         try {
             User user = userMapper.selectById(Long.parseLong(userId));
-            if (user == null || user.getStoreId() == null) {
+            if (user == null || LocationIdBridge.storeIdOf(user.getLocationId()) == null) {
                 return null;
             }
 

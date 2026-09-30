@@ -1,5 +1,6 @@
 package com.foodtraceability.utils;
 
+import com.foodtraceability.common.util.LocationIdBridge;
 import com.foodtraceability.entity.User;
 import com.foodtraceability.security.model.SecurityUser;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -84,21 +85,46 @@ public class SecurityUtils {
     }
 
     /**
-     * 获取当前登录用户的门店ID
-     * @return 当前登录用户的门店ID，如果未登录或用户未分配门店则返回null
+     * 获取当前登录用户的**归属位置ID**（location_id）—— P1-USER-LOCATION-001 新主方法。
+     *
+     * <p>取值链：legacy {@code User} principal 的 locationId → null。
+     * （{@code SecurityUser} / {@code KdsPrincipal} 分支由 S3 身份层落地时补齐。）
+     *
+     * <p>null 语义 = **显式拒绝**：调用方按业务决定 403/400；data_scope=all 的读侧走 all 分支。
+     * 禁止数值兜底。
+     *
+     * @return location_id；未登录或未分配归属时返回 null
      */
-    public static String getCurrentUserStoreId() {
+    public static Long getCurrentUserLocationId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null) {
             return null;
         }
         Object principal = authentication.getPrincipal();
-        // SecurityUser 没有 storeId 字段，返回 null（如需门店隔离可后续扩展）
         if (principal instanceof User) {
-            Long storeId = ((User) principal).getStoreId();
-            return storeId != null ? String.valueOf(storeId) : null;
+            return ((User) principal).getLocationId();
         }
+        // S3：SecurityUser（JWT claim locationId）/ KdsPrincipal（经 location_id_map）分支
         return null;
+    }
+
+    /**
+     * 获取当前登录用户的门店ID（stores_new.store_id 别名）—— **观察期兼容方法**。
+     *
+     * <p>P1-USER-LOCATION-001 §5.2：用户归属列已由 store_id 改名为 location_id，
+     * 本方法保留原有 store_id 语义，内部经 {@link LocationIdBridge} **反查**（规则 3/4：
+     * 跨 ID 空间换算必须经 location_id_map，严禁假设数值相等），供存量调用点平滑过渡；
+     * 观察期后废弃，新代码一律用 {@link #getCurrentUserLocationId()}。
+     *
+     * @return store_id（字符串）；未登录、未分配归属或无法反查时返回 null
+     */
+    public static String getCurrentUserStoreId() {
+        Long locationId = getCurrentUserLocationId();
+        if (locationId == null) {
+            return null;
+        }
+        Long storeId = LocationIdBridge.storeIdOf(locationId);
+        return storeId != null ? String.valueOf(storeId) : null;
     }
 
     /**

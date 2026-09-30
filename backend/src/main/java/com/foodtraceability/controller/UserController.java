@@ -1,4 +1,5 @@
 package com.foodtraceability.controller;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -66,7 +67,7 @@ public class UserController {
         user.setPhone(userDTO.getPhone());
         user.setStatus(userDTO.getStatus());
         user.setDepartmentId(userDTO.getDepartmentId());
-        user.setStoreId(userDTO.getStoreId());
+        user.setLocationId(LocationIdBridge.locationIdOfStore(userDTO.getStoreId()));
         user.setEmployeeCode(userDTO.getEmployeeCode());
         user.setAvatar(userDTO.getAvatar());
         User createdUser = userService.createUser(user);
@@ -131,7 +132,7 @@ public class UserController {
             user.setDepartmentId(userDTO.getDepartmentId());
         }
         if (userDTO.getStoreId() != null) {
-            user.setStoreId(userDTO.getStoreId());
+            user.setLocationId(LocationIdBridge.locationIdOfStore(userDTO.getStoreId()));
         }
         if (userDTO.getEmployeeCode() != null) {
             user.setEmployeeCode(userDTO.getEmployeeCode());

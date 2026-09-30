@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.foodtraceability.dto.EmployeeBasicInfo;
@@ -118,7 +119,7 @@ public class EmployeeDataServiceImpl implements EmployeeDataService {
                 .employeeCode(employee.getEmployeeCode())
                 .departmentId(employee.getDepartmentId())
                 .positionId(employee.getPositionId())
-                .storeId(employee.getStoreId())
+                .storeId(LocationIdBridge.storeIdOf(employee.getLocationId()))
                 .status(employee.getStatus())
                 .phone(employee.getPhone())
                 .version(System.currentTimeMillis())

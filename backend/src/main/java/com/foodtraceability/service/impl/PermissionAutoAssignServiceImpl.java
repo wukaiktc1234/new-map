@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -183,7 +184,7 @@ public class PermissionAutoAssignServiceImpl implements PermissionAutoAssignServ
                 PermissionAssignmentDTO dto = new PermissionAssignmentDTO();
                 dto.setEmployeeId(String.valueOf(employee.getId()));
                 dto.setPositionId(positionId.toString());
-                dto.setStoreId(employee.getStoreId() != null ? employee.getStoreId().toString() : null);
+                dto.setStoreId(LocationIdBridge.storeIdOf(employee.getLocationId()) != null ? LocationIdBridge.storeIdOf(employee.getLocationId()).toString() : null);
                 dto.setDepartmentId(employee.getDepartmentId() != null ? String.valueOf(employee.getDepartmentId()) : null);
                 dto.setOperationType("position_change");
                 dto.setRemark("职位-角色映射变更，重新计算权限");

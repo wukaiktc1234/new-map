@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -339,8 +340,8 @@ public class DailySettlementServiceImpl implements DailySettlementService {
 
         // 区域经理和店长只能查看自己辖区的数据
         String role = getUserRole(currentUser);
-        if (!ROLE_FINANCE_DIRECTOR.equals(role) && currentUser.getStoreId() != null) {
-            wrapper.eq(DailySettlement::getStoreId, currentUser.getStoreId());
+        if (!ROLE_FINANCE_DIRECTOR.equals(role) && LocationIdBridge.storeIdOf(currentUser.getLocationId()) != null) {
+            wrapper.eq(DailySettlement::getStoreId, LocationIdBridge.storeIdOf(currentUser.getLocationId()));
         }
 
         // 日期范围筛选

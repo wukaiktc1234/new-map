@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.dto.EmployeeBasicInfo;
 import com.foodtraceability.entity.Employee;
@@ -104,7 +105,7 @@ public class EmployeeBasicDataServiceImpl implements EmployeeBasicDataService {
                 .departmentName(employee.getDepartmentName())
                 .positionId(employee.getPositionId())
                 .positionName(employee.getPositionName())
-                .storeId(employee.getStoreId())
+                .storeId(LocationIdBridge.storeIdOf(employee.getLocationId()))
                 .status(employee.getStatus())
                 .phone(employee.getPhone())
                 .updateTime(employee.getUpdatedTime())

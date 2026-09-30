@@ -349,7 +349,7 @@ public class DataFixController {
         log.info("开始修复users表字段...");
         Map<String, Object> result = new HashMap<>();
         int fixCount = 0;
-        String[] columnsToAdd = {"employee_code VARCHAR(50) DEFAULT NULL", "store_id BIGINT DEFAULT NULL", "role VARCHAR(50) DEFAULT NULL", "role_names VARCHAR(255) DEFAULT NULL", "tags VARCHAR(500) DEFAULT NULL", "ext_data TEXT DEFAULT NULL", "version INT DEFAULT 1"};
+        String[] columnsToAdd = {"employee_code VARCHAR(50) DEFAULT NULL", "location_id BIGINT DEFAULT NULL", "role VARCHAR(50) DEFAULT NULL", "role_names VARCHAR(255) DEFAULT NULL", "tags VARCHAR(500) DEFAULT NULL", "ext_data TEXT DEFAULT NULL", "version INT DEFAULT 1"};
         for (String columnDef : columnsToAdd) {
             String columnName = columnDef.split(" ")[0];
             try {

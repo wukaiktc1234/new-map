@@ -1,4 +1,5 @@
 package com.foodtraceability.security.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.User;
@@ -170,7 +171,7 @@ public class UserPermissionCacheServiceImpl implements UserPermissionCacheServic
                 .username(user.getUsername())
                 .roles(roleNames)
                 .permissions(new ArrayList<>())
-                .storeId(user.getStoreId() != null ? String.valueOf(user.getStoreId()) : null)
+                .storeId(LocationIdBridge.storeIdOf(user.getLocationId()) != null ? String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())) : null)
                 .departmentId(user.getDepartmentId() != null ? String.valueOf(user.getDepartmentId()) : null)
                 .isAdmin(isAdmin)
                 .cacheTime(System.currentTimeMillis())

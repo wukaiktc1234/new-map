@@ -102,12 +102,19 @@ public class Employee {
     private Integer status;
 
     /**
-     * 所属门店ID
+     * 所属位置ID（P1-USER-LOCATION-001：employees.store_id → employees.location_id）
      */
-    @TableField("store_id")
-    @Schema(description = "所属门店ID", example = "1234567890")
+    @TableField("location_id")
+    @Schema(description = "所属位置ID", example = "1234567890")
     @JsonSerialize(using = ToStringSerializer.class)
-    private Long storeId;
+    private Long locationId;
+
+    /**
+     * 关联用户账号ID（P1-USER-LOCATION-001 §1.4：employees.user_id）
+     */
+    @TableField("user_id")
+    @Schema(description = "关联用户账号ID", example = "1234567890")
+    private Long userId;
 
     /**
      * 工作归属类型
@@ -339,12 +346,20 @@ public class Employee {
         this.status = status;
     }
 
-    public Long getStoreId() {
-        return storeId;
+    public Long getLocationId() {
+        return locationId;
     }
 
-    public void setStoreId(Long storeId) {
-        this.storeId = storeId;
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public String getWorkLocationType() {

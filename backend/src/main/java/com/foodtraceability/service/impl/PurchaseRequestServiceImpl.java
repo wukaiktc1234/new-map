@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -136,8 +137,8 @@ public class PurchaseRequestServiceImpl extends ServiceImpl<PurchaseRequestMappe
                         request.setDepartmentName(dept.getDepartmentName());
                     }
                 }
-                if (user.getStoreId() != null) {
-                    request.setStoreId(resolveValidStoreId(String.valueOf(user.getStoreId())));
+                if (LocationIdBridge.storeIdOf(user.getLocationId()) != null) {
+                    request.setStoreId(resolveValidStoreId(String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId()))));
                 }
             }
         }
@@ -559,8 +560,8 @@ public class PurchaseRequestServiceImpl extends ServiceImpl<PurchaseRequestMappe
                 }
                 break;
             case "store":
-                if (user.getStoreId() != null) {
-                    wrapper.eq(PurchaseRequest::getStoreId, String.valueOf(user.getStoreId()));
+                if (LocationIdBridge.storeIdOf(user.getLocationId()) != null) {
+                    wrapper.eq(PurchaseRequest::getStoreId, String.valueOf(LocationIdBridge.storeIdOf(user.getLocationId())));
                 } else {
                     wrapper.apply("1 = 0");
                 }

@@ -1,4 +1,5 @@
 package com.foodtraceability.service.impl;
+import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -307,7 +308,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
         employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setStoreId(dto.getStoreId());
+        employee.setLocationId(LocationIdBridge.locationIdOfStore(dto.getStoreId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus());
@@ -349,7 +350,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
         employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setStoreId(dto.getStoreId());
+        employee.setLocationId(LocationIdBridge.locationIdOfStore(dto.getStoreId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus() != null ? dto.getStatus() : oldEmployee.getStatus());

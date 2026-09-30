@@ -95,11 +95,11 @@ public class User {
     private Long departmentId;
 
     /**
-     * 所属门店ID
+     * 所属位置ID（P1-USER-LOCATION-001：users.store_id → users.location_id，ID 空间经 location_id_map 映射）
      */
-    @Schema(description = "所属门店ID", example = "1234567890")
-    @TableField("store_id")
-    private Long storeId;
+    @Schema(description = "所属位置ID", example = "1234567890")
+    @TableField("location_id")
+    private Long locationId;
 
     /**
      * 所属门店名称
@@ -324,12 +324,12 @@ public class User {
         this.departmentId = departmentId;
     }
 
-    public Long getStoreId() {
-        return storeId;
+    public Long getLocationId() {
+        return locationId;
     }
 
-    public void setStoreId(Long storeId) {
-        this.storeId = storeId;
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
     }
 
     public String getStoreName() {
