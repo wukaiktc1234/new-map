@@ -90,4 +90,47 @@
 | S6 入职链路 | ⏳ 待办 | — | |
 | S7 回填/联调/收口 | ⏳ 待办 | — | |
 
-**（本记录随各片完成增量更新；收口时补 §6 验收证据 + 限制项登记）**
+## §6 WIP 隔离裁决（Owner 2026-09-30）
+
+**背景**：开卡后勘定发现 PG-001 按文件隔离受阻——**11 个必碰文件带无关 WIP**（~130 行），且 `KdsPrincipal` 定义在**未跟踪**的 `security/filter/KdsTokenFilter.java` 内。Owner 裁决路径：先判"security/KDS 这 5 个 WIP 文件**是否自洽、可独立入库**"→ 自洽走 B（先固化该批次）；**不自洽走 A 变体**（只冻 KDS hunk，其余全片推进）；明确**不选 C**（WIP 固化不该被本卡裹挟）、**不选 D**（骨架不解决问题）。
+
+### 6.1 判定结论：**不自洽（不可独立入库）**
+
+| 文件 | 状态 | 依赖 | 自洽性 |
+|---|---|---|---|
+| `security/config/KdsAuthProperties.java` | 未跟踪（新，57 行） | 仅 Spring（`@ConfigurationProperties("app.kds")`） | ✅ 自身自洽 |
+| `security/filter/KdsTokenFilter.java` | 未跟踪（新，115 行） | 仅 `KdsAuthProperties`（内嵌 `KdsPrincipal` L99-114） | ✅ KDS 对内自洽 |
+| `security/filter/JwtAuthenticationFilter.java` | M（+6） | 仅 `kds_` 前缀字面量（无类依赖） | ✅ 自身自洽 |
+| `security/config/SecurityConfig.java` | M（+17） | 装配 `DeviceWhitelistFilter`+`KdsTokenFilter`；`permitAll` 指向 `/v1/device-registrations/status\|activate`（→ **未跟踪** `AppDeviceRegistrationController`）与 `/v1/receipt-confirmations/verify/**`（→ **5+ 文件 WIP**：`ReceiptConfirmationController` +51 / `Service` +35 / `CreateDTO` +108 / 实体 +84 / 另 3 个未跟踪 VO） | ❌ 拖入"APK 设备注册"与"防伪码查验"两个未落地特性 |
+| `security/filter/DeviceWhitelistFilter.java` | 未跟踪（新，76 行） | **`AppDeviceRegistrationService`（未跟踪）** → `AppDeviceRegistration` 实体 / Mapper / Impl / Controller（均未跟踪，5 文件） | ❌ 依赖整条未入库特性 |
+
+**结论**：KDS 三个新文件自身自洽，但 `SecurityConfig(+17)` 与 `DeviceWhitelistFilter` 把 **APK 设备注册特性（5 个未跟踪文件 + 表迁移缺失疑点）** 与 **防伪码查验特性（5+ 文件 WIP）** 一并拖入 → 该"5 文件批次"**不是自洽单元，无法独立入库** → 按 Owner 规则**降级 A 变体**。
+
+### 6.2 执行方式：A 变体
+
+**冻结（不触碰）**：
+1. `security/config/SecurityConfig.java`（KDS/设备装配 hunk）与 `security/filter/JwtAuthenticationFilter.java`（KDS 跳过 hunk）——本卡 S3 **不需要**改这两个文件；
+2. design-002 §5.2 的 **KDS 识别部分**（`SecurityUtils` 内的 `KdsPrincipal` 分支）→ 登记为**冻结限制项**，待 APK 设备注册 / KDS 批次入库后补；
+3. 未跟踪的 `KdsTokenFilter` / `KdsAuthProperties` / `DeviceWhitelistFilter`。
+
+**其余全片推进**（S1→S2→S6→S3 非 KDS 部分→S4→S5），对带 WIP 的目标文件用 **hunk 级隔离**：先取 WIP-only patch 存档 → "目标版本 = HEAD + 本卡改动" → `git add` 该文件 → 还原 WIP；每片 `git diff --cached` 逐 hunk 核对（PG-001）。
+隔离清单：`UserController(+19)` / `GlobalExceptionHandler(+12)` / `DiningTableManagementController(+8)` / `CallNumberQueueManagementController(+3)` / `OperationsDashboardDataServiceImpl(+18−14)` / `HardwareConfigVersionMapper.xml` / `PosOrderCreateService.java` / `UserManagementTab.vue`。
+
+**补充事实**：`AuthenticationServiceImpl(+8)` 与 `TokenServiceImpl(+8)` 的 WIP 经查是 **"P1-A 账户主数据"权限码批次**（`finance:bank:view/manage`、`balance:view/manage`、`product:cost:export`），**与 KDS 无关**，且改动区域（`ALL_PERMISSIONS` 常量数组）与本卡 S3 改动区域（`createSecurityUser` / `generateToken`）**不重叠** → 可安全 hunk 隔离，**不冻结**。
+
+### 6.3 S1 迁移的待决点（登记）
+
+-002 字面要求 `users.store_id` **"改名/迁移为 location_id"**，"旧列保留一个观察期为兼容视图"。实施二选一：
+
+- **I（-002 字面）**：ADD `location_id` + 经 `location_id_map` 重映射 + FK/索引 → **DROP `store_id`** + 建 `v_users_store_compat`（旧 FK `fk_users_store_id` / 索引 `idx_users_store_id` 随列退役）；
+- **II（保守两步）**：S1 只 ADD + 回填 + 建视图，`store_id` **暂留并标注 deprecated**，S7 收口再 DROP。
+
+**本机无 DB**（迁移不可活体验证）→ S1 采用 **I + 内建数据完整性守卫**（"`store_id` 非空而 `location_id` 仍空"即 `RAISE EXCEPTION` 中止，防静默丢归属）；若 Owner 取 II，删去 DROP 段即可。
+
+### 6.4 冻结限制项（待收口登记 KL/ENV）
+
+**LIM-1**：KDS 托盘绑定链路的 `locationId` 识别（design-002 §5.2 的 `KdsPrincipal` 映射）**未实施** —— 冻结原因 = `KdsPrincipal` 位于未跟踪 WIP 文件、单独提交会导致已提交树编译不过；开卡条件 = APK 设备注册 / KDS 批次入库后。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §7 验收证据 + 限制项登记）**
