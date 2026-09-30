@@ -2,16 +2,16 @@
 
 > **性质声明**：本文档为**视图层快照，非权威来源**。与 git 实际状态不一致时，**以 git 为准**。
 > 同步责任：PG-002（见同目录 `process-guards.md`）——每次卡片收口或 push 后由 developer 更新本文件。
-> 快照时点：2026-09-30（M3-M4 S5–S9c 收口 `b2cad36` → KL-084 `4ccf353` → ENV-8 + PG-001 规则6 `d86f0be` → PG-006 `1b3d7e3` → **P1-D 实现 `916c0b6`** → **M3-M4 正式收口 CLOSED_WITH_REGISTERED_LIMITATION（本 commit）**；local = 本收口 commit，**ahead=3 / behind=0，未 push**）
+> 快照时点：2026-09-30（M3-M4 S5–S9c 收口 `b2cad36` → KL-084 `4ccf353` → ENV-8 + PG-001 规则6 `d86f0be` → PG-006 `1b3d7e3` → **P1-D 实现 `916c0b6`** → **M3-M4 正式收口 `CLOSED_WITH_REGISTERED_LIMITATION` `b2e1313` + 已 push**；local = origin = `b2e1313`，**ahead=0 / behind=0**）
 
 ## 当前状态
 
 | 项 | 值 |
 |----|------|
 | 分支 | `master`（单分支工作流） |
-| HEAD（快照时点） | `916c0b6` **P1-D（P1-POS-CUSTOMER-PHONE-500-001）实现**：POS 电话 500 修复，`customer_phone`=脱敏 + `customer_phone_encrypted`=密文（Option A，读路径零改） |
+| HEAD（快照时点） | `b2e1313` **M3-M4 正式收口（`CLOSED_WITH_REGISTERED_LIMITATION`）**：任务板 §24.3g + roadmap 顶部 + KL 主表（ENV-9）+ 收口记录 -002 §18 + 本文件 PG-002 同步；含 P1-D `916c0b6`（POS 电话 500 修复，`customer_phone`=脱敏 + `customer_phone_encrypted`=密文，Option A，读路径零改） |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git |
-| 远程同步 | **local ahead=2 / behind=0**：local = `916c0b6`，origin/master = `d4c459f`（**未 push**，PG-001 规则6 禁静默 auto-push；`git rev-list --count origin/master..HEAD` 实测 2） |
+| 远程同步 | **local = origin = `b2e1313`（ahead=0 / behind=0，已 push）**：origin/master 由 `d4c459f` 推进至 `b2e1313`（`d4c459f..b2e1313`，含 P1-D `916c0b6` + 收口 `b2e1313`；本次 push = Owner 显式指令；PG-001 规则6 禁静默 auto-push；`git rev-list --count origin/master..HEAD` 实测 0） |
 | 工作区 | **545 个变更（status --short）/ 86 untracked**（WIP 留盘，未纳入提交；遵守 PG-001 精确清单，不 `git add .`；ENV-4 残留由 `.gitignore` 专用段逐条排除） |
 
 ## 已完成卡片
