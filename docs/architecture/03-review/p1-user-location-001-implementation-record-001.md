@@ -81,14 +81,14 @@
 
 | 片 | 状态 | commit | 备注 |
 |---|---|---|---|
-| 开卡（判档/记录） | ✅ 2026-09-30 | 待提交 | 任务板 §24.3h 状态 → 进行中；本记录落盘 |
-| S1 DB 迁移 | ⏳ 待办 | — | 已并行勘定迁移规范与受影响面 |
-| S2 代码改名 | ⏳ 待办 | — | |
-| S3 身份层 | ⏳ 待办 | — | |
-| S4 兜底消除 | ⏳ 待办 | — | |
-| S5 分配入口 | ⏳ 待办 | — | |
-| S6 入职链路 | ⏳ 待办 | — | |
-| S7 回填/联调/收口 | ⏳ 待办 | — | |
+| 开卡（判档/记录） | ✅ 2026-09-30 | `b153613` | 任务板 §24.3h 状态 → 进行中；本记录落盘 |
+| S1 DB 迁移 | ✅ 2026-09-30 | `e2a83e7` | `V20260930_002` 迁移（重映射 + 守卫 + 兼容视图）；与 S2a 同片提交 |
+| S2 代码改名 | ✅ **S2a** 完成（S2b 待办） | `e2a83e7` | 实体 + 持久列 + ID 空间桥接（见 §7/§8）；S2b = DTO/API 字段名 |
+| S3 身份层 | ✅ 2026-09-30 | `6fb7a6e` | `SecurityUser.locationId` + JWT claim + 5 生成点 + `SecurityUtils` 主方法（见 §9）；KDS 冻结 = LIM-1 |
+| S4 兜底消除 | ⏳ 待办 | — | 13 处 + `NoLocationAssignedException` / `NoLocationContext` + `LocationGuard` |
+| S5 分配入口 | ⏳ 待办 | — | 前端控件 + 双写 + 批量 + 审计 + 越权面 |
+| S6 入职链路 | ⏳ 待办 | — | `OnboardingArchive.locationId` + 注册回填 + `completeOnboarding` 透传 |
+| S7 回填/联调/收口 | ⏳ 待办 | — | 15 NULL 用户核对 + 回填脚本 + E2E + INDEX/roadmap/KL |
 
 ## §6 WIP 隔离裁决（Owner 2026-09-30）
 
@@ -217,4 +217,34 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §9 验收证据 + 限制项登记）**
+## §9 S3 身份层完成（2026-09-30，commit `6fb7a6e`）
+
+### 9.1 交付（7 文件 +42/−1）
+| 项 | 内容 |
+|---|---|
+| `SecurityUser` | 新增 `locationId` 字段（**单字段走天下**：门店员工 → STORE 型 location、仓库员工 → CENTRAL/DEPOT 型；design-002 §5.2 不再区分 storeId/warehouseId）+ getter/setter |
+| `JwtUtils.generateToken` | 写 claim `locationId`（**null 不写**）；旧 token 无该 claim → 解析为 null，与现状一致 → **存量 token 平滑过渡、不做强制全员重登** |
+| `JwtUtils.getUserFromToken` | 读 claim `locationId`（`Number` 判定后 `longValue`） |
+| `SecurityUtils.getCurrentUserLocationId()` | 补 `SecurityUser`（JWT）分支 → **新主方法**；null = 显式拒绝 |
+| `SecurityUtils.getCurrentUserStoreId()` | 保持**反查兼容方法**（经 `location_id_map`）→ **15 个存量调用点零改** |
+| 生成点 ×5 | `AuthenticationServiceImpl.createSecurityUser` / `AuthServiceImpl.buildSecurityUser` / `PosAuthServiceImpl.buildSecurityUser`（claim 写入由 `JwtUtils` 统一）+ `TokenServiceImpl.refreshToken`（**从 `dbUser` 补，不受旧 refresh token 无 claim 影响**，design-002 §5.2） |
+| KDS | 识别**冻结 = LIM-1**（`KdsPrincipal` 在未跟踪 WIP 文件内；单独提交会导致已提交树编译不过） |
+
+### 9.2 验证
+- `mvn -o clean compile` = **BUILD SUCCESS**（含 WIP 工作树；纯提交树另见 ENV-10）。
+- **PG-001 隔离**：`AuthenticationServiceImpl`（WIP +6/−2「P1-A 权限码」批次）与 `TokenServiceImpl`（WIP +6/−2）按「HEAD + 本卡改动」入索引；**提交后残留 diff 尺寸与原 WIP 精确一致**。
+- 过程中修正一次**隔离顺序错误**（插入置于锚点之后，而工作树为锚点之前）→ 重做后残留 diff 复原为原 WIP 尺寸。**方法学结论**：隔离须使「工作树 = 索引 + 原 WIP」**逐字成立**，否则会留下伪 diff 污染后续隔离。
+
+### 9.3 验收基准对照（任务板 §24.3h）
+| # | 基准 | 状态 |
+|---|---|---|
+| 1 | JWT claim 含 `locationId` 且 5 个生成点一致 | ✅ **S3 达成**（写入 `JwtUtils.generateToken` 统一；5 生成点均带取值源） |
+| 2 | 15 个 NULL 用户按处置表逐人核对 | ⏳ S7 |
+| 3 | 13 处兜底逐项消除（403/400 文案正确） | ⏳ S4 |
+| 4 | 仓库员工（emp-l/n）边界 | ⏳ S4/S6 |
+| 5 | admin 写侧位置上下文解析链三级生效 | ⏳ S4 |
+| 6 | assign-store 分配有审计留痕 | ⏳ S5 |
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §10 验收证据 + 限制项登记）**
