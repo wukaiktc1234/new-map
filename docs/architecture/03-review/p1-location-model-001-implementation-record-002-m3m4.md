@@ -602,3 +602,36 @@ DELETE FROM inventory_transfers WHERE transfer_id IN (12,13,14);
 | §24.3j / §24.3k 卡片状态 | **CLOSED_WITH_REGISTERED_LIMITATION**（Owner 2026-09-30 收口；遗留 3 项已按上文登记） |
 | 代码提交 | 待 Owner 审 diff → 按 **PG-001 显式文件清单**（26 个）提交；`temp-*.ps1` 不入库、E2E 报告 JSON 入库 |
 
+---
+
+## 18. M3-M4 正式收口（2026-09-30，Owner 指令）
+
+**收口结论：`CLOSED_WITH_REGISTERED_LIMITATION`**（Owner 2026-09-30 显式指令）。M1–M4 验收基准 ①③⑤ 全达成、②④ 部分达成（P0-A/P0-B 已修复复验 32/32；P0-C 仓→店 保留为已知缺口 → M5）；收口门控 P1-D 已实现（`916c0b6`，Option A 脱敏+密文双列，39/39 单测绿）。
+
+### 18.1 收口门控放行
+| 项 | 状态 |
+|---|---|
+| P1-D（POS 带电话 500，原 M3-M4 收口前置门控） | **已实现**：`916c0b6`（6 文件 +48/−7），Option A（脱敏 `customer_phone` + 密文 `customer_phone_encrypted`，读路径零改，回拨另立卡）；39/39 单测绿；**本 turn push**（Owner 指令） |
+
+### 18.2 收口时点的 2 点环境事实（登记，非本卡回归）
+| # | 环境事实 | 定性 | 处置 |
+|---|---|---|---|
+| ① | **WIP 工作区致 ~10 无关单测类失败**（CostRecord / InvoiceReimbursement / Payable / Payment / SysDict / SysSetting / FoodCodeGenerator / PositionSorting / PositionCodeGenerator 等），42/42 基线在当前 WIP 树上不可复现 | **非 P1-D 回归**（P1-D 的 4 受影响类 39/39 全绿）；根因 = 工作区 ~546 个 WIP M 文件（off-limits）改了这些 subject 类，属 **P0-WORKSPACE-WIP-CONSOLIDATION-001** 范畴 | 登记 **ENV-9**；WIP 固化后重锚 42/42 基线 |
+| ② | **本机无 DB → 8 个 `@SpringBootTest` + 32 条 E2E 不可运行**（仅 42 单测 + 定向 mockito 可跑） | 环境限制（非代码缺陷）；活体 E2E 已在此前活体环境跑通（32/32，§17.5） | 收口时点以"活体 E2E 已验证 + 42 单测绿"为基线；无 DB 环境的集成/E2E 复跑待有 DB 环境补 |
+
+### 18.3 挂起项（M5，不现在开）
+| 项 | 状态 | 开卡条件 |
+|---|---|---|
+| P0-C（仓→店补货通路） | 移交 M5，**不现在开** | **待产品定"仓→店补货链路"（PD 队列）** |
+| 统一账 `status` 不重算 | 移交 M5 | 随 M5 |
+| `OrderManagementIntegrationTest` 401/403（ENV-7） | 移交 M5 或独立卡 | 随 M5 |
+
+### 18.4 收口登记清单
+- 任务板 §24.3g 状态 → **`CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30）**
+- roadmap 顶部「当前进度总览」→ M3-M4 = `CLOSED_WITH_REGISTERED_LIMITATION`
+- KL 主表 → 新增 **ENV-9**（WIP 测试回归）+ M5 挂起（P0-C 仓→店 → M5）
+- 判档规则 **PG-006**（process-guards.md L124-134）+ INDEX.md L17 已就位（重档/轻档定义 + 开工前一句问）
+- 下一卡：**P1-USER-LOCATION-001（重档，待判档确认后开工）**
+
+> **Owner 指令（本 turn，按序执行）**：① push `916c0b6`；② M3-M4 正式收口（本 §18 + 任务板 §24.3g + roadmap 顶部 + KL 主表 → `CLOSED_WITH_REGISTERED_LIMITATION`）；③ 判档规则（已就位 PG-006 + INDEX）；④ 三处一起提交、一次 push；⑤ 开 P1-USER-LOCATION-001（重档，开工前问判档）；⑥ M5 挂起（不现在开）。
+

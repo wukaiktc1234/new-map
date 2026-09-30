@@ -7970,7 +7970,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-LOCATION-MODEL-001** |
-| 状态 | **实施中**——M1-M2 ✅ 完成（commit `a956cd4`：locations + location_id_map 建表迁移 + 只读核心层，回滚演练通过，实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-001.md`）；**M3-M4 实施中（2026-09-27 Owner 授权，一张卡做透不拆分）**：范围=合并 T1+T2 键(location_id,material_id) / 合并 T3+T4a+T4b 流水 / 污染全清 / 5 个绕过直写文件收编 / 4 处 String.valueOf(warehouseId) 经 map 改写 / 死代码删除 / InventorySummaryMapper UNION ALL 重写 / inventory_log 后门关闭；纪律依据 `docs/quality/m3m4-preflight/implementation-constitution-001.md`（含 4 项未批复行为敏感点按现状迁移）；回归基线 `docs/quality/m3m4-preflight/inventory-chain-snapshot-20260927-001.json`。**S9c 库存全链 E2E 已完成（2026-09-30，纯 E2E 零代码）→ 见 `p1-location-model-001-implementation-record-002-m3m4.md` §16 + 收口对照小节**：迁移与 DDL 侧（S1-S9b）✅，活体 E2E 暴露 **3 项 P0 阻断**（采购入库主链 500 / 调拨未映射静默跳过造假账 / 仓→店无通路）+ 1 项既有 P1（POS 带电话 500） |
+| 状态 | **`CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30 正式收口）**——M1-M2 ✅ 完成（commit `a956cd4`：locations + location_id_map 建表迁移 + 只读核心层，回滚演练通过，实施记录 `docs/architecture/03-review/p1-location-model-001-implementation-record-001.md`）；**M3-M4 已收口 `CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30；2026-09-27 Owner 授权启动，一张卡做透不拆分）**：范围=合并 T1+T2 键(location_id,material_id) / 合并 T3+T4a+T4b 流水 / 污染全清 / 5 个绕过直写文件收编 / 4 处 String.valueOf(warehouseId) 经 map 改写 / 死代码删除 / InventorySummaryMapper UNION ALL 重写 / inventory_log 后门关闭；纪律依据 `docs/quality/m3m4-preflight/implementation-constitution-001.md`（含 4 项未批复行为敏感点按现状迁移）；回归基线 `docs/quality/m3m4-preflight/inventory-chain-snapshot-20260927-001.json`。**S9c 库存全链 E2E 已完成（2026-09-30，纯 E2E 零代码）→ 见 `p1-location-model-001-implementation-record-002-m3m4.md` §16 + 收口对照小节**：迁移与 DDL 侧（S1-S9b）✅，活体 E2E 暴露 **3 项 P0 阻断**（采购入库主链 500 / 调拨未映射静默跳过造假账 / 仓→店无通路）+ 1 项既有 P1（POS 带电话 500） |
 | 优先级 | P1 |
 | 性质 | 架构级重构（Location 模型一期：locations 统一 stores_new+warehouses / 库存单表 / 流水合并 / 单据单落点） |
 | 前置 | D-1~D-7 已拍板（✅ 2026-09-27 完成，含 3 处务实简化） |
@@ -7993,7 +7993,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | ④ | 3 个高危混用点用例通过 | ⚠️ 部分 | 活体覆盖 2/3（采购申请创建、调拨库存同步——后者**即暴露 P0-B**）+ 1/3 隐式（DataPermissionAspect 由全部鉴权请求覆盖）；`backend/src/test` **无专用用例** → 建议随修复卡补 3 例 |
 | ⑤ | 回滚演练（M1-M6 DOWN + 快照恢复）成功 | ✅（M1-M4） | M1-M2 见 `implementation-record-001`；M3-M4 见 -002 §13 步骤 1（沙箱 DOWN + legacy 恢复 → pre-DDL 完整恢复 → 重新 DDL）；DOWN 脚本 + `m3m4-predump-20260929.dump` 保留；M5-M6 未实施，落地后需复演 |
 
-> **修复与复验（2026-09-30）**：P0-A（§24.3j）、P0-B（§24.3k）已开卡并**实施完成 + 活体复验**（-002 §17：定向单测 33/33、E2E 复验 32/32；入库恰好 +5、未映射调拨显式拒绝且零副作用）；**P0-C 按 Owner 裁决不开卡**（保留为已知缺口）；P1-D 未开卡。② 项据此由"两处阻断"收敛为"仓→店单一缺口"。
+> **修复与复验（2026-09-30）**：P0-A（§24.3j）、P0-B（§24.3k）已开卡并**实施完成 + 活体复验**（-002 §17：定向单测 33/33、E2E 复验 32/32；入库恰好 +5、未映射调拨显式拒绝且零副作用）；**P0-C 按 Owner 裁决不开卡**（保留为已知缺口 → **移交 M5**）；**P1-D 已开卡 §24.3l + 已实施完成 + commit `916c0b6`**（Option A 脱敏+密文双列，39/39 单测绿，本 turn push）。② 项据此由"两处阻断"收敛为"仓→店单一缺口（P0-C → M5）"。**M3-M4 正式收口 = `CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30，Owner 指令；详见 -002 实施记录 §18）**。**M5 挂起（不现在开，Owner 2026-09-30 明确）**：含 P0-C 仓→店补货通路 + 统一账 `status` 不重算 + `OrderManagementIntegrationTest` 401/403（ENV-7）；**开卡条件 = 待产品定"仓→店补货链路"（PD 队列）**。
 
 **P0/P1 修复卡建议（待 Owner 裁决是否开卡与拆分）**：
 

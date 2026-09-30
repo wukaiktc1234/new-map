@@ -13,14 +13,14 @@
 
 | 项 | 值 |
 |---|---|
-| **当前 HEAD** | `d86f0be`（local = origin/master，`ahead/behind = 0/0` 实测完全同步） |
-| **活跃主线** | **P1-LOCATION-MODEL-001（M3-M4 库存统一账）**：实现 S1–S9c 收口（`b2cad36`），42/42 单测 + 32/32 E2E 全绿；**收口门控 = P1-D（密文方向 A 已注册，子选项 TBD，Owner 待决，未开工）** |
-| **最近收口** | `b2cad36` M3-M4 S5–S9c → `4ccf353` KL-084 登记 → `d86f0be` ENV-8 + PG-001 规则6 + P1-D 门控登记 |
-| **挂起项（集中登记）** | ① **P0-C → M5**；② **status 不重算 → M5**；③ **P1-D（密文方向）门控 M3-M4 收口** |
+| **当前 HEAD** | `916c0b6`（P1-D 已 commit）→ **M3-M4 正式收口 commit（本 commit，SHA 见 `git log -1`）**；`ahead=3 / behind=0`（待 push；push 后 local = origin/master） |
+| **活跃主线** | **P1-LOCATION-MODEL-001（M3-M4 库存统一账）= `CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30 正式收口）**：S1–S9c 收口（`b2cad36`），42/42 单测 + 32/32 E2E 全绿；收口门控 P1-D 已实现（`916c0b6`）；M5 挂起待产品定仓→店补货链路；**下一卡 = P1-USER-LOCATION-001（重档，待判档确认）** |
+| **最近收口** | `916c0b6` P1-D 密文双列（Option A，39/39 单测绿）→ **M3-M4 正式收口 commit（`CLOSED_WITH_REGISTERED_LIMITATION` + 收口记录 §18 + 任务板/roadmap/KL 三处更新 + M5 挂起）** |
+| **挂起项（集中登记）** | ① **P0-C 仓→店补货 → M5**；② **status 不重算 → M5**；③ **M5 整体挂起（不现在开）**；**开卡条件 = 待产品定"仓→店补货链路"（PD 队列）**；④ **P1-D 已实现（`916c0b6`）**——原门控已放行；**P1-USER-LOCATION-001（重档，待判档确认后开工）** |
 | **新增已知限制 / ENV** | KL-084（门店日结凭证"假成功"，观察）、ENV-8（post-commit auto-push，已收口）、KL-083（多门店隔离未生效，高） |
 | **工作区** | 545 变更 / 86 未跟踪（WIP 留盘，未纳入提交；遵守 PG-001 精确清单，不 `git add .`） |
 
-> **挂起项说明**：P0-C、status 不重算均裁决归 **M5**（M3-M4 不处理）；P1-D 为 M3-M4 收口的前置门控——方向 A（密文不落 `customer_phone`，走专用字段或脱敏存储）已注册，子选项待 Owner 裁决，**未开工**，决策到达后 M3-M4 方可放行。
+> **收口说明（2026-09-30）**：M3-M4 **正式收口 = `CLOSED_WITH_REGISTERED_LIMITATION`**（Owner 指令）。P1-D 门控已实现（`916c0b6`，Option A 脱敏+密文双列，39/39 单测绿）。**挂起项**：P0-C 仓→店补货 + status 不重算 + `OrderManagementIntegrationTest` 401/403（ENV-7）均归 **M5**；**M5 挂起不现在开**——开卡条件 = 待产品定"仓→店补货链路"（PD 队列）。**收口时点 2 点环境事实**（非本卡回归）：① WIP 工作区致 ~10 无关单测类失败（ENV-9，42/42 基线在 WIP 树上不可复现，WIP 固化后重锚）；② 本机无 DB（8 `@SpringBootTest` + 32 E2E 不可运行，活体 E2E 已在前序环境 32/32 验证）。**下一卡 = P1-USER-LOCATION-001（重档）**，开工前按 **PG-006** 判档（Owner 已预告"重档"）。
 
 ## 一、当前状态总览
 
