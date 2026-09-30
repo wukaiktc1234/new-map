@@ -8100,3 +8100,5 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 ---
 
 *追加：2026-09-27 Owner 拍板批次（19 项 + 3 处务实简化）执行登记：① 两份补充设计落盘（`location-organization-separation-design-002.md` / `user-store-assignment-design-002.md`，-001 均未改动）② 新建三卡：§24.3g P1-LOCATION-MODEL-001（PENDING）、§24.3h P1-USER-LOCATION-001（PENDING，依赖 24.3g）、§24.3i P1-STOMP-RECONNECT-001（PENDING，可独立）。历史条目未改动；本批零业务代码、零 DB 变更。下一轮：Owner 审两份补充设计 → 确认 → 启动 P1-LOCATION-MODEL-001。*
+
+*追加：2026-09-29 登记 **[观测·财务域] KL-084**（来源：M3-M4 S9c E2E 运行日志，pwsh-34 02:32:20；Owner 点头登记，不新开修复卡、不动代码）：门店日结确认后异步凭证生成失败——`StoreDailySettlementEventListener`（@Async）→ `AutoVoucherServiceImpl:555/377` 抛 `BusinessException: 科目编码不存在：5001`；日结已 approved 而凭证缺失，失败仅落 ERROR 日志不回传调用方（"假成功"形态）；事件载荷 `门店=null`（`daily_settlement.store_id='1'` 有值）。定性三问待裁决：① 初始化数据缺口（accounting_subjects 缺 5001）② 代码引用未种子科目 ③ 事件载荷组装缺陷（store=null，独立缺陷）。归属财务域，随 P1-FIN-* 批次裁决；不影响 M3-M4 收口（E2E 第 4 环节断言已通过，凭证生成在断言之外）。详见 `production-known-limitations.md` KL-084。*

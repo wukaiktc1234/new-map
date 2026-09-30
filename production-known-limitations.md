@@ -108,6 +108,7 @@
 | ENV-4 | commit `cb8ee06`（S4c-2 卡）`git add .` 违反 PG-001 v2，误吞 519 个工作区残留文件（498 新 docs + 16 陈旧 Flyway SQL + 5 个既有修改 WIP docs，共 524 文件）；clean redo `bf4f6b2`（5 文件）+ force-push 已执行，remote master = `bf4f6b2`（API 验证 tree e209be07）；519 残留留盘不删除、`.gitignore` 加 ENV-4 专用段逐条排除 | P1-LOCATION-MODEL-001 M3-M4（实施记录 -002 §6） | **中** | 否（已替代并验证；cb8ee06 对象 SHA 可取回至 GC） | **已收口（2026-09-28：push 前三项验证 A/B 全 PASS + Owner 批准 force-push + .gitignore 576 条目专用段）；Owner 裁决：PG-001 首次违规，登记 ENV-4，不冻结** |
 | ENV-5 | **S7a 硬编码 `WHERE movement_type='OUT'` 静默违反 24.3f 已验证行为（无裁定/理由记录）**：selectConsumptionStats 无参全局场景丢失 IN 行（口径漂移）；commit ad13e80 消息与实施记录 §10 均无裁定 | P1-LOCATION-MODEL-001 M3-M4 S7a → S9a-2（实施记录 -002 §15） | **中** | 否（仅读路径，无数据影响） | **已销项（2026-09-29，S9a-2：移除硬编码 WHERE + 恢复全动态 `<if>` + 重锚 6/6 绿）** |
 | ENV-7 | **OrderManagementIntegrationTest 9 测试因 401/403 失败（无 `@WithMockUser`/登录 setup，既有设计缺口）**：V999 幂等化后 Flyway 阻塞已解除，上下文可启动，但 9 测试全部因缺少认证 setup 返回 401/403；与 M3-M4 无关 | S9a-2-B 验证暴露（实施记录 -002 §15.3） | **低** | 否（既有缺口，非本次引入） | **排除 M3-M4 收口条件，归 M5 或独立卡（Owner 裁决 2026-09-29）** |
+| KL-084 | **门店日结确认后异步凭证生成失败（科目 5001 不存在 + 事件载荷门店=null）**：`StoreDailySettlementEventListener`（@Async）处理日结完成事件时调用 `AutoVoucherServiceImpl.generateStoreSettlementVoucher` → `loadSubjectIdFromDb` 抛 `BusinessException: 科目编码不存在：5001`；失败仅落 ERROR 日志，不回滚、不回传调用方（接口已返回成功）；同时事件载荷 `store=null`（`daily_settlement.store_id='1'` 有值但事件未传递）；日结 status=approved 但凭证缺失——"假成功"形态 | M3-M4 S9c E2E 运行日志 02:32:20（`pwsh-34` 后台服务日志）；`AutoVoucherServiceImpl:555/377`、`StoreDailySettlementEventListener:63`（2026-09-29） | 中（财务域数据一致性；日结已确认而凭证缺失，调用方无感） | 否（不影响 M3-M4 收口；E2E 第 4 环节断言"日结落库金额/单数 = orders 表实收"已通过，凭证生成在断言之外） | 观察（归属财务域，随 P1-FIN-* 批次裁决；需定性：初始化数据缺口（accounting_subjects 缺 5001）vs 代码引用未种子创建的科目；事件载荷 store=null 为独立缺陷） |
 
 > 状态字典：`待产品` / `待财务` / `待产品决策` / `待后端排期` / `待后端组` / `待联调` / `待渗透` / `待治理` / `观察` / `已拆卡` / `已解除` / `已建卡` / `家族专项统一治理中` / `待数据扫描验证` / `待第二步卡排期`
 
@@ -1002,6 +1003,40 @@ ENV-5 — S7a 硬编码 OUT 过滤静默违反 24.3f 已验证行为（S9a-2 移
   - 实施记录 -002 §15（S9a-2）
 ---
 
+KL-084 — 门店日结确认后异步凭证生成失败（科目 5001 不存在 + 事件载荷门店=null）
+
+日期：2026-09-29
+类型：OBSERVATION（财务域）
+严重度：中（日结已 approved 而凭证缺失；失败仅落 ERROR 日志不回传，属"假成功"形态）
+
+描述：
+  M3-M4 S9c E2E 运行中，日结确认成功返回后，@Async 监听器
+  StoreDailySettlementEventListener 处理门店日结完成事件：
+  - 日结单 ID=2105002752871796737，门店=null，收入=151200，支出=0
+  - 调用 AutoVoucherServiceImpl.generateStoreSettlementVoucher（:377）
+    → loadSubjectIdFromDb（:555）抛 BusinessException: 科目编码不存在：5001
+  - 失败仅 log.error，不回滚、不回传调用方；接口已返回成功
+  - 事件载荷 store=null（daily_settlement.store_id='1' 有值，事件未传递门店上下文）
+
+后果：
+  - 日结 status=approved 但凭证未生成（数据不一致）；
+  - 调用方无感知（接口 200 + 无错误提示）——"假成功"形态；
+  - 事件载荷门店丢失为独立缺陷（凭证/审计无法关联到具体门店）。
+
+处置：
+  - 归属财务域，随 P1-FIN-* 批次裁决（需 Owner 定性：
+    ① accounting_subjects 缺 5001 → 初始化数据缺口（种子/DDL 补科目）
+    ② 代码引用了未被种子创建的科目 → 代码缺陷
+    ③ 事件载荷 store=null → StoreDailySettlementEventListener 载荷组装缺陷
+  - 本次 M3-M4 收口不修（E2E 第 4 环节断言"日结落库金额/单数 = orders 表实收"已通过，凭证生成在断言之外）。
+
+关联：
+  - AutoVoucherServiceImpl:555/377
+  - StoreDailySettlementEventListener:63
+  - P1-FIN-* 批次（财务域后续治理）
+  - 证据：pwsh-34 运行日志 02:32:20
+---
+
 ENV-7 — OrderManagementIntegrationTest 9 测试因 401/403 失败（既有认证 setup 缺口）
 
 日期：2026-09-29
@@ -1036,3 +1071,5 @@ ENV-7 — OrderManagementIntegrationTest 9 测试因 401/403 失败（既有认�
 *追加：2026-09-29 登记 ENV-5（来源：P1-LOCATION-MODEL-001 M3-M4 S9a-2 调查 + Owner 裁决"没理由 → 移除 + 登记 ENV"）：主表新增 **ENV-5** 一行——S7a 在 InventoryLogMapper.selectConsumptionStats 硬编码 `WHERE movement_type='OUT'`（替换全动态 `<if>`），commit ad13e80 消息与实施记录 §10 均无裁定/理由记录，静默违反 24.3f 已验证行为（P1-INVENTORY-CONSUMPTION-STATS-001：无参 = 全类型全局和含 IN 行）；S9a-2 已移除并恢复全动态 `<if>`，InventoryLogConsumptionStatsIntegrationTest 重锚 6/6 绿（含"真实数据共存" delta 场景）。仅读路径、无数据影响。ENV-5 为独立 ENV 编号序列，不占 KL 编号。同批 S9a-2-B：test resources V999 幂等化（ON CONFLICT DO NOTHING + 活体 schema 对齐：users PK user_id / user_roles create_time / 移除不存在的 sys_role_permissions 语句）——Flyway 上下文启动阻塞已解除；OrderManagementIntegrationTest 9 测试现因 401/403（无 @WithMockUser/登录 setup，既有设计缺口，与 M3-M4 无关，S9a-2 范围外）失败。planner 仅登记；代码修复见实施记录 -002 §15。*
 
 *追加：2026-09-29 登记 ENV-7（来源：S9a-2-B V999 幂等化验证暴露 + Owner 裁决"排除 M3-M4 收口条件，归 M5 或独立卡"）：主表新增 **ENV-7** 一行——OrderManagementIntegrationTest 9 测试因无 @WithMockUser/登录 setup 全部 401/403 失败（既有设计缺口，V999 幂等化前被 Flyway 阻塞掩盖）；与 M3-M4 无关，不触碰 inventory/movement 域。ENV-7 为独立 ENV 编号序列，不占 KL 编号。planner 仅登记，未改测试代码。*
+
+*追加：2026-09-29 登记 **KL-084**（来源：M3-M4 S9c E2E 运行日志观察 + Owner 点头登记）：主表新增 **KL-084** 一行 + 独立详情块——门店日结确认（status=approved）后异步凭证生成失败：`StoreDailySettlementEventListener`（@Async）→ `AutoVoucherServiceImpl:555/377` 抛 `BusinessException: 科目编码不存在：5001`；失败仅落 ERROR 日志、不回滚、不回传调用方（接口已返回成功，"假成功"形态）；同时事件载荷 `门店=null`（`daily_settlement.store_id='1'` 有值，事件未传递门店上下文）。定性三问待 Owner/财务域裁决：① accounting_subjects 缺 5001 = 初始化数据缺口 or ② 代码引用未种子科目 = 代码缺陷，or ③ 事件载荷组装缺陷（store=null 独立缺陷）。归属财务域，随 P1-FIN-* 批次裁决；不新开修复卡、不动代码；不影响 M3-M4 收口（E2E 第 4 环节断言"日结落库金额/单数 = orders 表实收"已通过，凭证生成在断言之外）。证据：pwsh-34 运行日志 02:32:20。planner 仅登记，未改代码。*
