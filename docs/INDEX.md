@@ -14,6 +14,8 @@
 5. **需要 git / 仓库状态** → [project-context/repo-state.md](project-context/repo-state.md)；**需要流程规矩** → [project-context/process-guards.md](project-context/process-guards.md)（PG-001/002…）
 6. **进度总览** → [../remediation-roadmap.md](../remediation-roadmap.md) 顶部"当前进度总览（2026-09-30）"
 
+> 🎚️ **开卡前先判档（PG-006）**：GPT 一句问"这是重档还是轻档？"，Owner 回一个字。**重档**=完整流程（PG-005 三阶段 + 实施记录 + 更新 INDEX/roadmap）；**轻档**=诊断→改→测→提交（一句 commit message 说清证据，不写实施记录、不更 INDEX/roadmap）。
+>
 > ⚠️ 旧交接摘要（如 [GPT总结/CURRENT.md](GPT总结/CURRENT.md)）已标注 `SUPERSEDED_BY_INDEX.md`，仅作历史，**勿据此开工**。
 
 ## 当前主线（多门店隔离地基）
