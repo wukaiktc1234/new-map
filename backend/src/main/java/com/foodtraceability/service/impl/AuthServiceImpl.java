@@ -678,6 +678,8 @@ public class AuthServiceImpl implements AuthService {
         securityUser.setEmail(user.getEmail());
         securityUser.setPhone(user.getPhone());
         securityUser.setStatus(user.getStatus());
+        // P1-USER-LOCATION-001：JWT claim locationId 的取值源（users.location_id）
+        securityUser.setLocationId(user.getLocationId());
 
         List<String> roles;
         boolean isAdmin = "admin".equals(user.getUsername());

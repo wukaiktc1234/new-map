@@ -139,6 +139,9 @@ public class TokenServiceImpl implements TokenService {
                     roles.add(dbUser.getRoles());
                 }
             }
+            // P1-USER-LOCATION-001（design-002 §5.2）：refresh 路径不受"旧 refresh token 无 claim"影响，
+            // 归属从 DB 实体补全（users.location_id）
+            user.setLocationId(dbUser.getLocationId());
             user.setRoles(roles);
 
             // 构建完整的权限列表

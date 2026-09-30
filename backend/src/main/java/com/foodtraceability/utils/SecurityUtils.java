@@ -101,10 +101,13 @@ public class SecurityUtils {
             return null;
         }
         Object principal = authentication.getPrincipal();
+        if (principal instanceof SecurityUser) {
+            return ((SecurityUser) principal).getLocationId();
+        }
         if (principal instanceof User) {
             return ((User) principal).getLocationId();
         }
-        // S3：SecurityUser（JWT claim locationId）/ KdsPrincipal（经 location_id_map）分支
+        // KDS 分支冻结（LIM-1：KdsPrincipal 位于未跟踪 WIP 文件，待该批次入库后补）
         return null;
     }
 

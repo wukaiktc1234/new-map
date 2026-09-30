@@ -156,6 +156,12 @@ public class JwtUtils {
             claims.put("userId", user.getUserId());
             claims.put("username", user.getUsername());
 
+            // P1-USER-LOCATION-001（design-002 §5.2）：归属位置单字段 claim；未分配归属则不写
+            // （旧 token 无此 claim → 解析为 null，与现状一致，存量 token 平滑过渡）
+            if (user.getLocationId() != null) {
+                claims.put("locationId", user.getLocationId());
+            }
+
             // 统一将角色转换为小写，确保与Spring Security的hasAnyRole方法兼容
             List<String> rawRoles = user.getRoles();
             List<String> normalizedRoles;
@@ -365,6 +371,13 @@ public class JwtUtils {
             Boolean mfaEnabledClaim = claims.get("mfaEnabled", Boolean.class);
             user.setMfaEnabled(mfaEnabledClaim != null && mfaEnabledClaim);
             user.setMfaVerified(Boolean.TRUE.equals(claims.get("mfaVerified", Boolean.class)));
+
+            // P1-USER-LOCATION-001（design-002 §5.2）：locationId claim。
+            // 旧 token 无此 claim → 保持 null，行为与现状一致（不做强制全员重登）。
+            Object locationIdClaim = claims.get("locationId");
+            if (locationIdClaim instanceof Number locationIdNumber) {
+                user.setLocationId(locationIdNumber.longValue());
+            }
 
             if (claims.get("roles") != null) {
                 @SuppressWarnings("unchecked")

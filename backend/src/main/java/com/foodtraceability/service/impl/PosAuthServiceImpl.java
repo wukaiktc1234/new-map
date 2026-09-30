@@ -288,6 +288,8 @@ public class PosAuthServiceImpl implements PosAuthService {
         securityUser.setEmail(user.getEmail());
         securityUser.setPhone(user.getPhone());
         securityUser.setStatus(user.getStatus());
+        // P1-USER-LOCATION-001：POS 班次 token 同样携带归属位置（POS 无 refresh，到期重登）
+        securityUser.setLocationId(user.getLocationId());
         securityUser.setMfaEnabled(false);
         securityUser.setMfaVerified(true);
 

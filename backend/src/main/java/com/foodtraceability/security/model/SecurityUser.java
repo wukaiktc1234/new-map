@@ -27,6 +27,14 @@ public class SecurityUser implements UserDetails {
     private List<String> roles;
     private List<String> permissions;
 
+    /**
+     * P1-USER-LOCATION-001：用户归属位置ID（JWT claim {@code locationId}）。
+     * 单字段走天下——门店员工指向 STORE 型 location，仓库员工指向 CENTRAL/DEPOT 型
+     * （design-002 §5.2：不再区分 storeId / warehouseId）。
+     * null = 未分配归属 → 调用方按**显式拒绝**处理（禁止数值兜底）。
+     */
+    private Long locationId;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         List<GrantedAuthority> authorities = new ArrayList<>();
@@ -216,5 +224,13 @@ public class SecurityUser implements UserDetails {
 
     public void setPermissions(List<String> permissions) {
         this.permissions = permissions;
+    }
+
+    public Long getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
     }
 }

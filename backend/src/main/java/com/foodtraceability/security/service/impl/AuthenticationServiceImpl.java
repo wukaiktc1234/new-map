@@ -113,6 +113,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         securityUser.setEmail(user.getEmail());
         securityUser.setPhone(user.getPhone());
         securityUser.setStatus(user.getStatus());
+        // P1-USER-LOCATION-001：JWT claim locationId 的取值源（users.location_id）
+        securityUser.setLocationId(user.getLocationId());
         securityUser.setMfaEnabled(mfaService.isMfaEnabled(String.valueOf(user.getId())));
 
         Long userId = user.getId();
