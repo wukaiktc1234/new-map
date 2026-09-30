@@ -73,6 +73,7 @@ public class OrderNewServiceImpl implements OrderNewService {
     private final com.foodtraceability.service.finance.BankAccountService bankAccountService;
     /** 扣料失败审计服务（P0：独立 bean + REQUIRES_NEW，禁止 this 自调用） */
     private final MaterialConsumptionAuditService materialConsumptionAuditService;
+    private final com.foodtraceability.service.SensitiveDataService sensitiveDataService;
 
     public OrderNewServiceImpl(
             OrderNewMapper orderNewMapper,
@@ -90,7 +91,8 @@ public class OrderNewServiceImpl implements OrderNewService {
             CostRecordService costRecordService,
             com.foodtraceability.service.finance.FundFlowService fundFlowService,
             com.foodtraceability.service.finance.BankAccountService bankAccountService,
-            MaterialConsumptionAuditService materialConsumptionAuditService) {
+            MaterialConsumptionAuditService materialConsumptionAuditService,
+            com.foodtraceability.service.SensitiveDataService sensitiveDataService) {
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
@@ -107,6 +109,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         this.fundFlowService = fundFlowService;
         this.bankAccountService = bankAccountService;
         this.materialConsumptionAuditService = materialConsumptionAuditService;
+        this.sensitiveDataService = sensitiveDataService;
     }
 
     // ==================== 订单创建 ====================
@@ -1857,7 +1860,10 @@ public class OrderNewServiceImpl implements OrderNewService {
         order.setStoreId(createDTO.getStoreId());
         order.setCustomerId(createDTO.getCustomerId());
         order.setCustomerName(createDTO.getCustomerName());
-        order.setCustomerPhone(createDTO.getCustomerPhone());
+        if (createDTO.getCustomerPhone() != null) {
+            order.setCustomerPhone(sensitiveDataService.maskPhone(createDTO.getCustomerPhone()));
+            order.setCustomerPhoneEncrypted(sensitiveDataService.encryptPhone(createDTO.getCustomerPhone()));
+        }
         order.setTableId(createDTO.getTableId());
         order.setDiningPeopleCount(createDTO.getDiningPeopleCount());
         order.setOrderStatus(0); // 待确认

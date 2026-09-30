@@ -329,7 +329,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             orderNew.setStoreId(storeIdLong);
             orderNew.setCustomerName(command.getContactName());
             if (command.getContactPhone() != null) {
-                orderNew.setCustomerPhone(sensitiveDataService.encryptPhone(command.getContactPhone()));
+                // customer_phone 存脱敏值（varchar(20) 放得下，修复 POS 下单带电话 500）；
+                // customer_phone_encrypted 存可还原密文（供授权回拨/隐私分级）
+                orderNew.setCustomerPhone(sensitiveDataService.maskPhone(command.getContactPhone()));
+                orderNew.setCustomerPhoneEncrypted(sensitiveDataService.encryptPhone(command.getContactPhone()));
             }
             if (command.getDeliveryAddress() != null) {
                 orderNew.setDeliveryAddress(sensitiveDataService.encryptAddress(command.getDeliveryAddress()));

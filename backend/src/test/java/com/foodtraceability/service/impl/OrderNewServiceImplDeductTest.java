@@ -21,6 +21,7 @@ import com.foodtraceability.mapper.OrderNewMapper;
 import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.mapper.OrderRefundRecordNewMapper;
 import com.foodtraceability.service.MaterialConsumptionAuditService;
+import com.foodtraceability.service.SensitiveDataService;
 import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.finance.BankAccountService;
 import com.foodtraceability.service.finance.CostRecordService;
@@ -95,6 +96,7 @@ class OrderNewServiceImplDeductTest {
     @Mock private FundFlowService fundFlowService;
     @Mock private BankAccountService bankAccountService;
     @Mock private MaterialConsumptionAuditService materialConsumptionAuditService;
+    @Mock private SensitiveDataService sensitiveDataService;
 
     private OrderNewServiceImpl service;
 
@@ -117,7 +119,7 @@ class OrderNewServiceImplDeductTest {
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
                 comboIngredientNewMapper, kitchenOrderMapper, inventoryService,
                 applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
-                materialConsumptionAuditService);
+                materialConsumptionAuditService, sensitiveDataService);
     }
 
     // ==================== 测试数据构造 ====================

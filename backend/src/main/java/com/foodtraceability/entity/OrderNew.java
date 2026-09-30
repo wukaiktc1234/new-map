@@ -28,6 +28,11 @@ public class OrderNew {
     @Schema(description = "订单编号", example = "ORD20260425001")
     private String orderCode;
 
+    /** 订单号（POS终端生成） */
+    @TableField("order_number")
+    @Schema(description = "订单号", example = "T20260909001")
+    private String orderNumber;
+
     /** 订单类型：1堂食 2外卖 3自提 4打包 */
     @TableField("order_type")
     @Schema(description = "订单类型: 1堂食 2外卖 3自提 4打包", example = "1")
@@ -53,10 +58,15 @@ public class OrderNew {
     @Schema(description = "顾客姓名", example = "张三")
     private String customerName;
 
-    /** 顾客电话 */
+    /** 顾客电话（脱敏值，如 138****8000） */
     @TableField("customer_phone")
-    @Schema(description = "顾客电话", example = "13800138000")
+    @Schema(description = "顾客电话（脱敏值）", example = "138****8000")
     private String customerPhone;
+
+    /** 顾客电话密文（可还原，ENC_PHONE:<base64>，供授权回拨/隐私分级） */
+    @TableField("customer_phone_encrypted")
+    @Schema(description = "顾客电话密文（可还原）")
+    private String customerPhoneEncrypted;
 
     /** 桌台ID（堂食必填） */
     @TableField("table_id")
@@ -198,12 +208,14 @@ public class OrderNew {
     // Getter方法
     public String getOrderId() { return orderId; }
     public String getOrderCode() { return orderCode; }
+    public String getOrderNumber() { return orderNumber; }
     public Integer getOrderType() { return orderType; }
     public Integer getOrderSource() { return orderSource; }
     public Long getStoreId() { return storeId; }
     public Long getCustomerId() { return customerId; }
     public String getCustomerName() { return customerName; }
     public String getCustomerPhone() { return customerPhone; }
+    public String getCustomerPhoneEncrypted() { return customerPhoneEncrypted; }
     public Long getTableId() { return tableId; }
     public String getTableName() { return tableName; }
     public Integer getDiningPeopleCount() { return diningPeopleCount; }
@@ -233,12 +245,14 @@ public class OrderNew {
     // Setter方法
     public void setOrderId(String orderId) { this.orderId = orderId; }
     public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
+    public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
     public void setOrderType(Integer orderType) { this.orderType = orderType; }
     public void setOrderSource(Integer orderSource) { this.orderSource = orderSource; }
     public void setStoreId(Long storeId) { this.storeId = storeId; }
     public void setCustomerId(Long customerId) { this.customerId = customerId; }
     public void setCustomerName(String customerName) { this.customerName = customerName; }
     public void setCustomerPhone(String customerPhone) { this.customerPhone = customerPhone; }
+    public void setCustomerPhoneEncrypted(String customerPhoneEncrypted) { this.customerPhoneEncrypted = customerPhoneEncrypted; }
     public void setTableId(Long tableId) { this.tableId = tableId; }
     public void setTableName(String tableName) { this.tableName = tableName; }
     public void setDiningPeopleCount(Integer diningPeopleCount) { this.diningPeopleCount = diningPeopleCount; }
