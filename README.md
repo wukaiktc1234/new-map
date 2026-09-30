@@ -49,7 +49,7 @@ cd frontend && npm install && npm run dev
 
 ## 当前状态
 
-> 📌 **详细进度、模块清单、技术债务 → 见 [PROJECT_STATUS.md](./PROJECT_STATUS.md)**
+> 📌 **详细进度、模块清单、技术债务 → 见 [docs/INDEX.md](./docs/INDEX.md)（当前事实源索引）**
 
 ### 已完成阶段
 
@@ -57,7 +57,7 @@ cd frontend && npm install && npm run dev
 |------|------|------|
 | Phase 0 | 基础设施(RabbitMQ 11队列 + 通用组件 + 统一类型) | ✅ |
 | Phase 1 | 业务深化(通知SMTP发送 + 调度@Scheduled引擎 + 备份pg_dump) | ✅ |
-| Phase 2 | 核心业务(溯源主链路 + 库存预警 + 召回 + 成本核算) | 🔴 待开始 |
+| Phase 2 | 核心业务(溯源主链路 + 库存预警 + 召回 + 成本核算) | ✅ 已实现，进度以 [INDEX](./docs/INDEX.md) 为准 |
 
 ### 已完成模块 (16个)
 

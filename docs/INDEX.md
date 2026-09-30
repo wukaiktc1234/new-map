@@ -17,6 +17,7 @@
 > ⚠️ 旧交接摘要（如 [GPT总结/CURRENT.md](GPT总结/CURRENT.md)）已标注 `SUPERSEDED_BY_INDEX.md`，仅作历史，**勿据此开工**。
 
 ## 当前主线（多门店隔离地基）
+> 主线现状（S9c 收口 / P0-A·P0-B 修复 / P1-D 门控 / KL-084 / ENV-8）→ **单一事实源** [../remediation-roadmap.md](../remediation-roadmap.md) 顶部「当前进度总览（2026-09-30）」；INDEX 只列治理文档、不复述状态。
 - 设计依据：[design/location-organization-separation-design-002.md](design/location-organization-separation-design-002.md)
 - 用户归属：[design/user-store-assignment-design-002.md](design/user-store-assignment-design-002.md)
 - 实施纪律：[quality/m3m4-preflight/implementation-constitution-001.md](quality/m3m4-preflight/implementation-constitution-001.md)
@@ -43,9 +44,11 @@
 - 审计 `*-audit-*.md`（主要在 quality/ 与 audit/）
 
 ## Owner 决策与确认单（等批复/已批复）
+> 批复现状 → **单一事实源** [../remediation-roadmap.md](../remediation-roadmap.md)「当前进度总览」；INDEX 只列文件、不复述状态。
 - 一页三问（重连策略 / M3-M4 授权 / 死配置）：[quality/owner-decision-confirm-20260927-001.md](quality/owner-decision-confirm-20260927-001.md)（Q3 已执行 = commit `14b9639`）
-- 四问是非题（流水失败语义 / 假流水 / 调拨成本 / 事务边界）：[quality/owner-decision-confirm-20260927-002.md](quality/owner-decision-confirm-20260927-002.md)（待批复，批复前按宪法 §四.6 现状迁移）
+- 四问是非题（流水失败语义 / 假流水 / 调拨成本 / 事务边界）：[quality/owner-decision-confirm-20260927-002.md](quality/owner-decision-confirm-20260927-002.md)（**执行中：四问按宪法 §四.6 现状迁移**；批复现状见 roadmap「当前进度总览」）
 
 ## 实施记录（Location 模型卡，详见任务池 §24.3g/h/i）
 - M1-M2：[architecture/03-review/p1-location-model-001-implementation-record-001.md](architecture/03-review/p1-location-model-001-implementation-record-001.md)
+- M3-M4：[architecture/03-review/p1-location-model-001-implementation-record-002-m3m4.md](architecture/03-review/p1-location-model-001-implementation-record-002-m3m4.md)
 - STOMP 重连：[architecture/03-review/p1-stomp-reconnect-001-implementation-record-001.md](architecture/03-review/p1-stomp-reconnect-001-implementation-record-001.md)
