@@ -133,4 +133,49 @@
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §7 验收证据 + 限制项登记）**
+## §7 S2 改名勘定（2026-09-30，S1 落盘后）
+
+### 7.1 S1 已落盘（**未提交**，与 S2 同片原子提交）
+`backend/src/main/resources/db/migration/V20260930_002__user_location_001_rename_store_id_to_location_id.sql`：
+- `employees.user_id` 新增 + 按 `employee_code` 回填（-001 §1.4 前置）；
+- `users.store_id → location_id`、`employees.store_id → location_id`（值经 `location_id_map` 由 `stores_new.store_id` **重映射**）+ FK/索引切换 + **数据完整性守卫**（"旧列非空、新列仍空"即 `RAISE EXCEPTION` 中止）；
+- 兼容视图 `v_users_store_compat`。
+
+**为何不单独提交**：迁移一旦落地而代码仍读旧列，运行期即断；提交边界须为 S1+S2 一片。
+
+### 7.2 **S2 不是机械改名 —— ID 空间桥接才是核心工作量**
+
+`users.store_id → location_id` **改变了 ID 空间**（`stores_new.store_id` → `locations.location_id`）。按 `location-organization-separation-design-002 §7`「一切跨 ID 空间的换算必须经 `location_id_map`」，凡"把用户归属当 `store_id` 用"的消费点都必须**反查映射**，否则退化为跨空间比较（静默错数据）。
+
+**安全（零改）**：`SecurityUtils.getCurrentUserStoreId()` 的 **15 个调用点** —— -002 §5.2 已裁定该方法**保留为反查兼容方法**（`locationId` 经 map 反查 STORE 别名），故 15 处语义不变、无需改动。
+
+**必须新增反查桥接的直接消费点**（编译器已定位 file:line）：
+
+| 消费点 | 语义 | 处置 |
+|---|---|---|
+| `DataPermissionServiceImpl:291,386` | `condition.setSingleValue(storeId)` → 查询按 `store_id` 过滤 | 反查后传入 |
+| `DataPermissionServiceImpl:576` | 仅 null 判定 | 改 `getLocationId()` 即可 |
+| `DailySettlementServiceImpl:346-347` | `wrapper.eq(DailySettlement::getStoreId, …)`（store_id 空间） | 反查后传入 |
+| `PurchaseRequestServiceImpl:139-140,562-563` | `request.setStoreId(resolveValidStoreId(...))` / `wrapper.eq(PurchaseRequest::getStoreId, …)` | 反查后传入 |
+| `UserPermissionCacheServiceImpl:173` | `.storeId(user.getStoreId())` → 被 `DataPermissionAspect:140` `eq("store_id", …)` 消费 | 反查后存入 |
+| `security/aspect/DataScopeAspect:197` | `dbUser.getStoreId()` 用于 STORE 型 SQL 拼接 | 反查后返回 |
+| `UserDataServiceImpl:57-66,124-138,152` | 门店名查询 `batchGetStoreBasicInfo` / `getStoreBasicInfo`（store_id 空间） | 反查后再查门店名 |
+| `UserServiceImpl:194-198` | 响应 `storeId` + `getStoreBasicInfo`（store_id 空间） | 反查后再查门店名 |
+| `AuthServiceImpl:319` | 注册/登录响应 `setStoreId` | 反查后返回（保 API 兼容） |
+
+**纯机械（直接改访问器）**：`UserController:70,138`、`EmployeeServiceImpl:310,352`、`EmployeeDataServiceImpl:121`、`EmployeeBasicDataServiceImpl:107`、`PermissionAutoAssignServiceImpl:186`、`WorkLocationFilterHelper:66,95,126`、`AuthServiceImpl:262,587`、`SecurityUtils:98`。
+
+**编译器完整清单：45 个错误 / 15 个文件** —— `PurchaseRequestServiceImpl`、`DataPermissionServiceImpl`、`EmployeeServiceImpl`、`DailySettlementServiceImpl`、`UserServiceImpl`、`PermissionAutoAssignServiceImpl`、`EmployeeBasicDataServiceImpl`、`UserDataServiceImpl`、`EmployeeDataServiceImpl`、`security/aspect/DataScopeAspect`、`controller/UserController`、`AuthServiceImpl`、`utils/SecurityUtils`、`WorkLocationFilterHelper`、`UserPermissionCacheServiceImpl`。
+
+**非编译错误但必须改**：`mapper/UserMapper.java` 原生 SQL —— `UPDATE users SET store_id = NULL`（:146）、`WHERE u.store_id = #{storeId}`（:162）+ `@Param("storeId")`；`DataFixController:381` 运行时补列 `"store_id BIGINT DEFAULT NULL"`。
+
+### 7.3 S2a / S2b 解耦（降风险）
+- **S2a** = 实体字段 + 持久列 + 访问器/桥接改造（`User.storeId→locationId`、`Employee.storeId→locationId`、`Employee.userId` 新增）→ 目标**绿构建 + API 契约不变**（DTO 字段名暂留 `storeId`，映射点写 `user.setLocationId(dto.getStoreId())`）→ 前端零影响；
+- **S2b** = `UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` / `UpdateUserRequest` / `EmployeeCreateDTO` / `EmployeeUpdateDTO` 的 `storeId→locationId`（API 字段名）+ 前端接线（并入 S5）。
+
+### 7.4 本轮执行结论
+S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与访问器，再跑 `mvn -o clean compile` 让编译器枚举全部消费点（**45 错 / 15 文件**，含上述桥接清单），随后**回退实体改动**以保持工作树可编译 —— 回退原因：ID 空间桥接是本片核心（需新增 `location_id_map` 反查方法并逐点改造），不宜在未完成桥接时留下编译断裂。原始文件无 WIP，回退无损（`git checkout HEAD --` 两文件）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §8 验收证据 + 限制项登记）**
