@@ -606,6 +606,13 @@ SELECT * FROM v_users_store_compat LIMIT 20;
 - **`node node_modules/vue-tsc/bin/vue-tsc.js --noEmit`** → 全量 **144 条类型错**（均落在既有 WIP 文件，如 `api/hr/recruitment.ts`/`api/product/converters.ts`，同 ENV-9 性质），而**本卡两个文件（`UserManagementTab.vue` / `api/system/user.ts`）错误数 = 0** ✓。
 → **前端改动已验证**（构建 + 类型检查），无需留待他人。
 
+**R19 复验（前端环境恢复后，产物级证据）**：
+- `node node_modules/vite/bin/vite.js build` → **EXIT=0**（`✓ 3236 modules transformed` / `✓ built in 3.06s`）；
+- **产物内容证明改动确实进包**：`dist/assets/*.js` 中命中 `分配位置`（1 个文件）与 `assign-store`（1 个文件）→ UI 按钮与接口调用均已编入产物；
+- `vue-tsc --noEmit` → 全量 **144** 条 `error TS`（均既有 WIP 文件），**本卡两文件 = 0**；
+- `git status`：`api/system/user.ts` 干净（已提交）；`UserManagementTab.vue` 仍显示 `M` = **开卡前既有的无关 WIP**（本卡改动经 hunk 隔离已入 HEAD，残留 diff 中无本卡新增行，R18 已核对）。
+- **工具链说明**：`pnpm build` / `pnpm typecheck` 在本沙箱不可用（pnpm 的"运行前依赖校验"会调 `pnpm install` 且装不上，离线/registry 不可达）；`build` 脚本本体即 `vite build`，故以直接调用 `node_modules` 下的 vite / vue-tsc 作为等价验证路径。
+
 ### 22.4 LIM-3 解除
 LIM-3（前端分配入口）：**已接线（`331b79b`）+ 已构建/类型验证（R19）** → **解除**。KL 主表 KL-087 行同步为「已解除」。
 
