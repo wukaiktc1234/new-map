@@ -85,7 +85,7 @@
 | S1 DB 迁移 | ✅ 2026-09-30 | `e2a83e7` | `V20260930_002` 迁移（重映射 + 守卫 + 兼容视图）；与 S2a 同片提交 |
 | S2 代码改名 | ✅ **S2a** 完成（S2b 待办） | `e2a83e7` | 实体 + 持久列 + ID 空间桥接（见 §7/§8）；S2b = DTO/API 字段名 |
 | S3 身份层 | ✅ 2026-09-30 | `6fb7a6e` | `SecurityUser.locationId` + JWT claim + 5 生成点 + `SecurityUtils` 主方法（见 §9）；KDS 冻结 = LIM-1 |
-| S4 兜底消除 | 🔶 **S4a 完成**（S4b 待办） | `7e59f52` | S4a = 两异常 + `LocationGuard`（见 §10）；S4b = 13 处接入（设备域冻结 LIM-2） |
+| S4 兜底消除 | ✅ **非设备域完成（7/13）**；设备域冻结 LIM-2 | `6bb4edb` | S4a = 两异常 + `LocationGuard`（§10）；S4b = 7 处接入（§11/§12）；设备域 #3~#8 = LIM-2 |
 | S5 分配入口 | ⏳ 待办 | — | 前端控件 + 双写 + 批量 + 审计 + 越权面 |
 | S6 入职链路 | ⏳ 待办 | — | `OnboardingArchive.locationId` + 注册回填 + `completeOnboarding` 透传 |
 | S7 回填/联调/收口 | ⏳ 待办 | — | 15 NULL 用户核对 + 回填脚本 + E2E + INDEX/roadmap/KL |
@@ -306,4 +306,38 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §12 验收证据 + 限制项登记）**
+## §12 S4b 完成（非设备域 7/13，2026-09-30，commit `6bb4edb`）
+
+### 12.1 part2 交付（3 处，均需 hunk 隔离）
+| # | 站点 | 原兜底 | 改为 |
+|---|---|---|---|
+| **#1** | `DiningTableManagementController.getCurrentStoreId` | 未取到门店ID → **`return 1L`** | 归属缺失 → **403 `NoLocationAssignedException`**；门店ID格式异常 → **400 `NoLocationContextException`** |
+| **#2** | `CallNumberQueueManagementController.getCurrentStoreId` | 与 #1 **逐字相同**的 `return 1L` | 同上（两处一并消除） |
+| **#13** | `OperationsDashboardDataServiceImpl` | 误导性注释"单店模式默认门店1聚合" | 删除注释；读侧明确走 **data_scope 聚合**（`storeIds` 空 = 总部/admin 不限制；店长限制本人门店） |
+
+### 12.2 PG-001 隔离（A 变体）
+3 文件均带无关 WIP，按「HEAD + 本卡改动」精确入索引；**提交后残留 diff 尺寸与原 WIP 精确一致**：
+
+| 文件 | 原 WIP | 残留 diff | WIP 内容 |
+|---|---|---|---|
+| `DiningTableManagementController` | +8 | `8 ++++++++` ✓ | 7 处 `@PreAuthorize` + 1 import（权限注解批次） |
+| `CallNumberQueueManagementController` | +3 | `3 +++` ✓ | 权限注解批次 |
+| `OperationsDashboardDataServiceImpl` | +18−14 | `18 ++++--------------` ✓ | `posOrderMapper` / `OrderMapper` 移除 + 两方法改单表聚合（W1-EC-04B-3） |
+
+**方法学补充（本轮踩坑）**：隔离脚本内的文本必须与 `edit` 工具写入的文本**逐字一致** —— 本轮注释里的**弯引号 `“”` 与直引号 `""`** 不一致，造成 2 处伪 diff（`DiningTable` 10 vs 8、`OperationsDashboard` 20 vs 18），改用一致引号重做后精确复原。**规则**：残留 diff 必须逐字等于原 WIP，否则隔离不算通过。
+
+### 12.3 S4b 汇总（13 处）
+| 组 | 数量 | 状态 |
+|---|---|---|
+| 非设备域（#1 / #2 / #9 / #10 / #11 / #12 / #13） | 7 | ✅ **已消除** |
+| 设备域（#3~#8，含 #7 心跳） | 6 | **冻结 = LIM-2**（缺 `devices.location_id` 迁移 + 设备注册链整条未跟踪 WIP） |
+
+**基准 3（13 处兜底）**：非设备域 **7/7 达成**（403/400 文案正确）；设备域 6 处受限（LIM-2）。
+
+### 12.4 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（`JAVA_HOME=P:\my-new-project\JDK21`）。
+提交：`7357433`（part1，4 处）+ `6bb4edb`（part2，3 处）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §13 验收证据 + 限制项登记）**
