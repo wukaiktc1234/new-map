@@ -475,4 +475,20 @@ Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §18 验收证据 + 限制项登记）**
+## §18 S5b-part2b 删除 UpdateUserRequest.storeId（2026-09-30，commit `3bea354`）
+
+### 18.1 交付（1 文件）
+`dto/UpdateUserRequest.java`：**字段 + `getStoreId`/`setStoreId` + delombok 生成的 `equals`/`hashCode`/`toString` 引用共 5 处一并删除**（删除后文件内 `storeId` 引用 = 0）。
+
+与 **S5a**（删除 `AuthServiceImpl.updateUserInfo` 中的归属写入）合起来完成 **-001 §2.3「移除 storeId 字段」** 的字面要求。
+
+### 18.2 设计范围核对（重要，避免范围外改动）
+-002 的 DTO 改名范围**仅列** `UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` 三个；**`EmployeeCreateDTO` / `EmployeeUpdateDTO` 不在范围内** —— -002 员工侧只要求**列/实体**改名为 `employees.location_id`（已在 S1/S2a 完成）→ 故**不做**员工 DTO 改名（PG-005 阶段3「不得私自扩大范围」）。
+**残留命名**（登记，非缺陷）：`UserBasicInfo.storeId` / `EmployeeBasicInfo.storeId` 等**展示型 DTO** 仍名 `storeId`，其值已是换算后的 `store_id`（S2a 已确保），语义一致；待后续统一改名。
+
+### 18.3 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）；文件无 WIP → 常规精确 add（cached diff 已逐行审阅：纯删除 + 1 处 toString 修正）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §19 验收证据 + 限制项登记）**
