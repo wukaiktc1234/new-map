@@ -21,8 +21,6 @@ public class UpdateUserRequest {
     private String phone;
     @Schema(description = "头像URL", example = "https://example.com/avatar.jpg")
     private String avatar;
-    @Schema(description = "门店ID", example = "1234567890")
-    private String storeId;
     @Schema(description = "门店名称", example = "中心店")
     private String storeName;
     @Schema(description = "部门ID", example = "1234567890")
@@ -47,10 +45,6 @@ public class UpdateUserRequest {
 
     public String getAvatar() {
         return this.avatar;
-    }
-
-    public String getStoreId() {
-        return this.storeId;
     }
 
     public String getStoreName() {
@@ -79,10 +73,6 @@ public class UpdateUserRequest {
 
     public void setAvatar(final String avatar) {
         this.avatar = avatar;
-    }
-
-    public void setStoreId(final String storeId) {
-        this.storeId = storeId;
     }
 
     public void setStoreName(final String storeName) {
@@ -115,9 +105,6 @@ public class UpdateUserRequest {
         final java.lang.Object this$avatar = this.getAvatar();
         final java.lang.Object other$avatar = other.getAvatar();
         if (this$avatar == null ? other$avatar != null : !this$avatar.equals(other$avatar)) return false;
-        final java.lang.Object this$storeId = this.getStoreId();
-        final java.lang.Object other$storeId = other.getStoreId();
-        if (this$storeId == null ? other$storeId != null : !this$storeId.equals(other$storeId)) return false;
         final java.lang.Object this$storeName = this.getStoreName();
         final java.lang.Object other$storeName = other.getStoreName();
         if (this$storeName == null ? other$storeName != null : !this$storeName.equals(other$storeName)) return false;
@@ -146,8 +133,6 @@ public class UpdateUserRequest {
         result = result * PRIME + ($phone == null ? 43 : $phone.hashCode());
         final java.lang.Object $avatar = this.getAvatar();
         result = result * PRIME + ($avatar == null ? 43 : $avatar.hashCode());
-        final java.lang.Object $storeId = this.getStoreId();
-        result = result * PRIME + ($storeId == null ? 43 : $storeId.hashCode());
         final java.lang.Object $storeName = this.getStoreName();
         result = result * PRIME + ($storeName == null ? 43 : $storeName.hashCode());
         final java.lang.Object $departmentId = this.getDepartmentId();
@@ -159,6 +144,6 @@ public class UpdateUserRequest {
 
     @java.lang.Override
     public java.lang.String toString() {
-        return "UpdateUserRequest(name=" + this.getName() + ", email=" + this.getEmail() + ", phone=" + this.getPhone() + ", avatar=" + this.getAvatar() + ", storeId=" + this.getStoreId() + ", storeName=" + this.getStoreName() + ", departmentId=" + this.getDepartmentId() + ", department=" + this.getDepartment() + ")";
+        return "UpdateUserRequest(name=" + this.getName() + ", email=" + this.getEmail() + ", phone=" + this.getPhone() + ", avatar=" + this.getAvatar() + ", storeName=" + this.getStoreName() + ", departmentId=" + this.getDepartmentId() + ", department=" + this.getDepartment() + ")";
     }
 }
