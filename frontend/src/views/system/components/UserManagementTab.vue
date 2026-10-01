@@ -443,6 +443,33 @@ async function handleResetPasswordSubmit() {
 /**
  * 切换用户启用/禁用状态
  */
+/**
+ * 分配/变更用户归属位置（P1-USER-LOCATION-001）
+ *
+ * 后端 `PUT /v1/users/{id}/assign-store`，body `{ locationId }`（design-002 §5 修订一：值 = locations.location_id）；
+ * 后端在事务内双写 users.location_id + employees.location_id 并落审计（USER_STORE_ASSIGN）。
+ *
+ * 注：位置下拉选择待前端补齐 locations 选项接口后替换；当前以 locationId 输入承接"人工分配入口"。
+ */
+async function handleAssignLocation(row: UserItem) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `为用户「${row.fullName || row.username}」分配位置（请输入 locationId）`,
+      '分配位置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPattern: /^\d+$/,
+        inputErrorMessage: '请输入数字位置ID',
+      },
+    )
+    await userApi.assignStore(row.id, value)
+    ElMessage.success('位置分配成功，请刷新列表查看')
+  } catch {
+    // 用户取消或校验失败：不处理
+  }
+}
+
 async function handleToggleStatus(row: UserItem) {
   const action = row.status === 1 ? '禁用' : '启用'
   try {
@@ -672,6 +699,7 @@ onMounted(() => {
           <el-button link type="primary" size="small" @click="handleView(row)">详情</el-button>
           <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
           <el-button link type="warning" size="small" @click="handleResetPassword(row)">重置密码</el-button>
+          <el-button link type="primary" size="small" @click="handleAssignLocation(row)">分配位置</el-button>
           <el-button link type="warning" size="small" @click="handleToggleStatus(row)">
             {{ row.status === 1 ? '禁用' : '启用' }}
           </el-button>

@@ -191,11 +191,12 @@ export const userApi = {
   },
 
   /**
-   * 分配门店给用户
+   * 分配位置给用户（P1-USER-LOCATION-001）
    * 对应 PUT /v1/users/{id}/assign-store
+   * Body 字段名与取值空间按 design-002 §5 修订一：{@code locationId} = locations.location_id
    */
-  async assignStore(id: number, storeId: string): Promise<void> {
-    await put<void>(`/v1/users/${id}/assign-store`, { storeId })
+  async assignStore(id: number, locationId: string): Promise<void> {
+    await put<void>(`/v1/users/${id}/assign-store`, { locationId })
   },
 
   /**
