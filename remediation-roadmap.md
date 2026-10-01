@@ -13,14 +13,14 @@
 
 | 项 | 值 |
 |---|---|
-| **当前 HEAD** | `916c0b6`（P1-D 已 commit）→ **M3-M4 正式收口 commit（本 commit，SHA 见 `git log -1`）**；`ahead=3 / behind=0`（待 push；push 后 local = origin/master） |
-| **活跃主线** | **P1-LOCATION-MODEL-001（M3-M4 库存统一账）= `CLOSED_WITH_REGISTERED_LIMITATION`（2026-09-30 正式收口）**：S1–S9c 收口（`b2cad36`），42/42 单测 + 32/32 E2E 全绿；收口门控 P1-D 已实现（`916c0b6`）；M5 挂起待产品定仓→店补货链路；**下一卡 = P1-USER-LOCATION-001（重档，待判档确认）** |
-| **最近收口** | `916c0b6` P1-D 密文双列（Option A，39/39 单测绿）→ **M3-M4 正式收口 commit（`CLOSED_WITH_REGISTERED_LIMITATION` + 收口记录 §18 + 任务板/roadmap/KL 三处更新 + M5 挂起）** |
-| **挂起项（集中登记）** | ① **P0-C 仓→店补货 → M5**；② **status 不重算 → M5**；③ **M5 整体挂起（不现在开）**；**开卡条件 = 待产品定"仓→店补货链路"（PD 队列）**；④ **P1-D 已实现（`916c0b6`）**——原门控已放行；**P1-USER-LOCATION-001（重档，待判档确认后开工）** |
-| **新增已知限制 / ENV** | KL-084（门店日结凭证"假成功"，观察）、ENV-8（post-commit auto-push，已收口）、KL-083（多门店隔离未生效，高） |
-| **工作区** | 545 变更 / 86 未跟踪（WIP 留盘，未纳入提交；遵守 PG-001 精确清单，不 `git add .`） |
+| **当前 HEAD** | 见 `git log -1`；本轮（P1-USER-LOCATION-001 阶段3 实施）本地 **ahead=28**，origin/master 仍为 `b2e1313`（M3-M4 收口），**未 push**（push 需 Owner 显式指令） |
+| **活跃主线** | **P1-USER-LOCATION-001（重档 · 阶段3 实施中）**：S1 迁移 / S2a 列+实体改名+ID 空间桥 / S2b DTO 改名（-002 范围全完成）/ S3 身份层（JWT claim `locationId` + 5 生成点）/ S4a 守卫与拒绝异常 / S4b 非设备域 7 处兜底 / S5a 分配入口后端（双写+审计）/ S5b-part1 批量接口 / S5b-part2 契约对齐（裁定 A：`locationId` 值 = location_id）/ S6 入职链路 —— **均已提交且 `mvn -o clean compile` 通过**；**剩：前端接线 + S7 收口** |
+| **最近提交** | `ce8c436` 记录 §19 → `011a75c` S2b 尾（DTO 改名全范围完成）→ `3bea354` 删除 `UpdateUserRequest.storeId` → `87c9151` 契约对齐（裁定 A）→ `6bf16b5` S5a 分配入口 → `7d6db6d` S6 入职链路 |
+| **挂起项（集中登记）** | ① P0-C 仓→店补货 → M5；② status 不重算 → M5；③ **M5 整体挂起**（开卡条件 = 待产品定"仓→店补货链路"）；④ **P1-USER-LOCATION-001 冻结项 LIM-1（KDS 链路识别）/ LIM-2（设备域 5 处兜底）** |
+| **新增已知限制 / ENV** | **ENV-10（已提交树不可独立编译：100 错，非本卡引入）**、**ENV-3 更新（构建 JDK 迁至 `P:\my-new-project\JDK21`）**、ENV-9（WIP 致 ~10 单测类失败）、KL-084、KL-083 |
+| **工作区** | ~545 变更（WIP 留盘；PG-001 精确清单；本卡对 11 个带 WIP 的目标文件采用 **hunk 级隔离**，残留 diff 逐字等于原 WIP） |
 
-> **收口说明（2026-09-30）**：M3-M4 **正式收口 = `CLOSED_WITH_REGISTERED_LIMITATION`**（Owner 指令）。P1-D 门控已实现（`916c0b6`，Option A 脱敏+密文双列，39/39 单测绿）。**挂起项**：P0-C 仓→店补货 + status 不重算 + `OrderManagementIntegrationTest` 401/403（ENV-7）均归 **M5**；**M5 挂起不现在开**——开卡条件 = 待产品定"仓→店补货链路"（PD 队列）。**收口时点 2 点环境事实**（非本卡回归）：① WIP 工作区致 ~10 无关单测类失败（ENV-9，42/42 基线在 WIP 树上不可复现，WIP 固化后重锚）；② 本机无 DB（8 `@SpringBootTest` + 32 E2E 不可运行，活体 E2E 已在前序环境 32/32 验证）。**下一卡 = P1-USER-LOCATION-001（重档）**，开工前按 **PG-006** 判档（Owner 已预告"重档"）。
+> **P1-USER-LOCATION-001（重档 · 阶段3）进度**：判档 = 重档（PG-006）；阶段1 诊断 + 阶段2 设计（19 项拍板）就位。**已完成** S1→S2a→S2b→S3→S4a→S4b(非设备域 7/7)→S5a→S5b-part1→S5b-part2→S6，全部 `mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。**剩余**：前端接线（`UserManagementTab.vue` + `api/system/user.ts`）+ S7 收口（回填/快照与 E2E 交接待补）。**限制**：LIM-1（KDS 冻结）/ LIM-2（设备域冻结）/ ENV-10（纯提交树不可编译）。**待 Owner**：emp-l/n 仓库归属方式、finqa×3 停用/删除。实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§19）。
 
 ## 一、当前状态总览
 
