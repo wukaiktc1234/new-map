@@ -589,4 +589,23 @@ SELECT * FROM v_users_store_compat LIMIT 20;
 
 ---
 
+## §22 S5b-前端：分配位置入口接线（2026-09-30，commit `331b79b`）
+
+### 22.1 交付（2 文件 / cached +32−3）
+| 项 | 内容 |
+|---|---|
+| `frontend/src/api/system/user.ts` | `assignStore(id, locationId)` 改送 **`{ locationId }`**（裁定 A：值 = `locations.location_id`；此前该函数是**死代码**，0 调用） |
+| `frontend/src/views/system/components/UserManagementTab.vue` | 用户列表行新增 **「分配位置」** 操作 → `ElMessageBox.prompt` 输入 locationId → `userApi.assignStore` → 成功提示（位置**下拉**待补 locations 选项接口后替换） |
+
+### 22.2 PG-001 隔离
+`UserManagementTab.vue` 带无关 WIP → 用 **Python 脚本**按「HEAD + 本卡改动」入索引（PowerShell 对含反引号/引号的 Vue 文本解析失败，脚本未执行、文件未受损）；**cached 28 行、残留 diff 中无本卡新增行**（已核对）✓。
+
+### 22.3 ⚠ 未构建验证（登记）
+本机**前端构建不可运行**：`pnpm build` 在依赖状态检查阶段调用 `pnpm install` 失败（deps 未安装 / 无 registry 可达）→ **前端改动仅经人工审阅**，须由有前端环境者跑 `pnpm build` 验证。后端 `mvn compile` 覆盖不到前端。
+
+### 22.4 LIM-3 状态更新
+LIM-3（前端分配入口）：**已接线（`331b79b`）**，但**未构建验证** → 解除条件改为「**跑 `pnpm build` 通过**」。KL 主表 KL-087 行同步。
+
+---
+
 **（本记录随各片完成增量更新）**
