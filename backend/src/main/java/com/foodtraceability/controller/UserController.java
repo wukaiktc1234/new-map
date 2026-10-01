@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.dto.UserAssignStoreBatchDTO;
+
 import com.foodtraceability.security.annotation.OperationLog;
 import com.foodtraceability.common.util.LocationIdBridge;
 
@@ -196,6 +198,16 @@ public class UserController {
             return Result.error(404, "用户不存在");
         }
         return Result.success(null, "取消门店分配成功");
+    }
+
+    @PutMapping("/assign-store-batch")
+    @Operation(summary = "批量分配门店给用户")
+    @RequiresPermission(value = "system:user:assign-store", action = "assign-store")
+    @PreAuthorize("hasAuthority('system:user:assign-store') or hasAuthority('*')")
+    @OperationLog(module = "USER_STORE_ASSIGN", type = OperationLog.OperationType.UPDATE, desc = "批量分配门店归属（P1-USER-LOCATION-001 审计留痕）")
+    public Result<Integer> assignStoreBatch(@Valid @RequestBody UserAssignStoreBatchDTO request) {
+        int success = userService.assignStoreBatch(request.getUserIds(), request.getStoreId());
+        return Result.success(success, "批量分配完成，成功 " + success + " 个");
     }
 
     @GetMapping("/{id}/store-info")

@@ -99,6 +99,19 @@ public interface UserService extends IService<User> {
     boolean assignStore(Long userId, Long storeId);
 
     /**
+     * 批量分配门店给用户（P1-USER-LOCATION-001 / U-7 拍板：门店开业一次性配人）
+     *
+     * <p>与单点分配同语义：{@code storeId} 为 stores_new.store_id，内部经 location_id_map 换算为
+     * location_id；逐用户双写 users.location_id + employees.location_id（并补齐 employees.user_id）。
+     * 不存在的用户跳过并告警；整体一个事务。
+     *
+     * @param userIds 目标用户ID列表
+     * @param storeId 门店ID
+     * @return 成功分配的用户数
+     */
+    int assignStoreBatch(List<Long> userIds, Long storeId);
+
+    /**
      * 取消用户的门店分配
      * @param userId 用户ID
      * @return 是否取消成功

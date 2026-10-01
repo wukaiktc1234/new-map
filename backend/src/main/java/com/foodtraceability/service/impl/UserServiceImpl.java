@@ -185,6 +185,38 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public int assignStoreBatch(List<Long> userIds, Long storeId) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new NoLocationContextException("批量分配缺少目标用户");
+        }
+        Long locationId = LocationIdBridge.locationIdOfStore(storeId);
+        if (locationId == null) {
+            throw new NoLocationContextException("门店无效或不存在：" + storeId);
+        }
+        int success = 0;
+        for (Long userId : userIds) {
+            if (userId == null) {
+                continue;
+            }
+            User user = getById(userId);
+            if (user == null) {
+                logger.warn("批量分配跳过不存在的用户: userId={}", userId);
+                continue;
+            }
+            user.setLocationId(locationId);
+            user.setUpdatedTime(LocalDateTime.now());
+            if (updateById(user)) {
+                // §1.4 双写（与单点分配同一私有方法，保证语义一致）
+                syncEmployeeAssignment(user, locationId);
+                userDataService.clearUserCache(userId.toString());
+                success++;
+            }
+        }
+        return success;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean unassignStore(Long userId) {
         User user = getById(userId);
         if (user == null) {
