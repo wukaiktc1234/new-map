@@ -85,7 +85,7 @@
 | S1 DB 迁移 | ✅ 2026-09-30 | `e2a83e7` | `V20260930_002` 迁移（重映射 + 守卫 + 兼容视图）；与 S2a 同片提交 |
 | S2 代码改名 | ✅ **S2a** 完成（S2b 待办） | `e2a83e7` | 实体 + 持久列 + ID 空间桥接（见 §7/§8）；S2b = DTO/API 字段名 |
 | S3 身份层 | ✅ 2026-09-30 | `6fb7a6e` | `SecurityUser.locationId` + JWT claim + 5 生成点 + `SecurityUtils` 主方法（见 §9）；KDS 冻结 = LIM-1 |
-| S4 兜底消除 | ⏳ 待办 | — | 13 处 + `NoLocationAssignedException` / `NoLocationContext` + `LocationGuard` |
+| S4 兜底消除 | 🔶 **S4a 完成**（S4b 待办） | `7e59f52` | S4a = 两异常 + `LocationGuard`（见 §10）；S4b = 13 处接入（设备域冻结 LIM-2） |
 | S5 分配入口 | ⏳ 待办 | — | 前端控件 + 双写 + 批量 + 审计 + 越权面 |
 | S6 入职链路 | ⏳ 待办 | — | `OnboardingArchive.locationId` + 注册回填 + `completeOnboarding` 透传 |
 | S7 回填/联调/收口 | ⏳ 待办 | — | 15 NULL 用户核对 + 回填脚本 + E2E + INDEX/roadmap/KL |
@@ -247,4 +247,34 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §10 验收证据 + 限制项登记）**
+## §10 S4a 位置上下文守卫（2026-09-30，commit `7e59f52`）
+
+### 10.1 交付（3 个新文件，+208）
+| 文件 | 内容 |
+|---|---|
+| `common/exception/NoLocationAssignedException` | **-001 §6 的 `NoStoreAssignedException` 按 -002 §5 修订二更名**；语义从"未分配门店"扩为"未分配位置（门店/仓库）"；码 **403**；默认文案"当前用户未分配位置，请联系管理员在用户管理中分配" |
+| `common/exception/NoLocationContextException` | **操作对象**缺位置上下文；码 **400**；文案"无法确定操作的位置上下文" |
+| `common/util/LocationGuard` | 统一守卫：`requireCurrentLocationId()`（403）/ `requireStoreContext()`（归属须 STORE 型 → 返回 `store_id`；**仓库员工访问门店单据 → 403**，-002 §7）/ `requireWarehouseContext()`（须 CENTRAL/DEPOT → 返回 `warehouse_id`）/ `assertStoreContext(targetLocationId)`（解析链 ①② + 一致性断言） |
+
+### 10.2 关键实现决策
+- **不新增/不改全局异常处理器**：-002 §5 修订二明确"**全局异常处理器注册不变**"，故两异常继承 `BusinessException`，由既有 `handleBusinessException` 处理（`Result.error(code, message)`，403/400 透传）→ **零处理器改动**，并**避开** `GlobalExceptionHandler.java` 的无关 WIP（+12）碰撞 ✓。
+- **拒绝统一、禁止数值兜底**：`LocationGuard` 是 design-001 §6「13 处散写判定」的收敛点，也是 -002 §7「仓库员工允许/拒绝清单」的落点。
+- **仓库"允许清单"不进守卫**：按 -002 §7.1，仓库操作（入库/出库/损耗/调整/调拨/盘点）靠**功能权限**（warehouse_manager 角色），不靠 location 推导；守卫只提供 `requireWarehouseContext()` 供显式校验。
+
+### 10.3 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（含 WIP 工作树）。
+
+### 10.4 S4b 待办（13 处接入守卫）
+| 组 | 站点 | 状态 |
+|---|---|---|
+| 可干净落地 | **#9** `PurchasePlanServiceImpl:435`、**#10** `PurchaseRequestServiceImpl:329-343`、**#11** `PosOrderCreateServiceImpl:309-313`、**#12** `ReceiptConfirmationServiceImpl:569,581` | ⏳ 四文件无 WIP |
+| 需 hunk 隔离 | **#1** `DiningTableManagementController`（WIP +8）、**#2** `CallNumberQueueManagementController`（WIP +3）、**#13** `OperationsDashboardDataServiceImpl`（WIP +18−14） | ⏳ |
+| **冻结 = LIM-2** | **#3~#8 设备域**：-002 §5.3 要求"设备注册必绑 `location_id` + 心跳自带设备归属"，但 `devices.location_id` **尚无迁移**、且设备注册链（`DeviceWhitelistFilter` / `AppDeviceRegistration*`）整条为**未跟踪 WIP** | 待该批次入库后实施 |
+
+### 10.5 冻结限制项（累计）
+- **LIM-1**（§6.4）：KDS 托盘绑定链路的 `locationId` 识别（`SecurityUtils` 的 `KdsPrincipal` 分支）—— `KdsPrincipal` 在未跟踪 WIP 文件内。
+- **LIM-2**（本节）：设备域 5 处 `DEFAULT_STORE_ID=1L` 兜底 → 设备归属 `location_id`（-002 §5.3）—— 缺 `devices.location_id` 迁移 + 设备注册链整条未跟踪 WIP。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §11 验收证据 + 限制项登记）**
