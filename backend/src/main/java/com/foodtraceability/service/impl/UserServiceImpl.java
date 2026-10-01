@@ -1,4 +1,8 @@
 package com.foodtraceability.service.impl;
+
+import com.foodtraceability.common.exception.NoLocationContextException;
+import com.foodtraceability.service.EmployeeService;
+import com.foodtraceability.entity.Employee;
 import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -47,14 +51,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private final RoleService roleService;
     private final UserDataService userDataService;
     private final StoreDataService storeDataService;
+    private final EmployeeService employeeService;
     private final ObjectMapper objectMapper;
 
     public UserServiceImpl(PasswordEncoder passwordEncoder, RoleService roleService, 
-                          UserDataService userDataService, StoreDataService storeDataService) {
+                          UserDataService userDataService, StoreDataService storeDataService,
+                          EmployeeService employeeService) {
         this.passwordEncoder = passwordEncoder;
         this.roleService = roleService;
         this.userDataService = userDataService;
         this.storeDataService = storeDataService;
+        this.employeeService = employeeService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -159,11 +166,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return false;
         }
-        user.setLocationId(LocationIdBridge.locationIdOfStore(storeId));
+        // P1-USER-LOCATION-001 §5 修订一：入参为 store_id（stores_new 空间），经 location_id_map
+        // 换算为 location_id 落库；门店无效即拒绝（不落 NULL 兜底）
+        Long locationId = LocationIdBridge.locationIdOfStore(storeId);
+        if (locationId == null) {
+            throw new NoLocationContextException("门店无效或不存在：" + storeId);
+        }
+        user.setLocationId(locationId);
         user.setUpdatedTime(LocalDateTime.now());
         boolean result = updateById(user);
-        // 清除用户缓存
         if (result) {
+            // §1.4 双写：用户归属 ↔ 员工档案（并补齐 employees.user_id 强关联）
+            syncEmployeeAssignment(user, locationId);
             userDataService.clearUserCache(userId.toString());
         }
         return result;
@@ -176,13 +190,42 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (user == null) {
             return false;
         }
-        
+
         int result = baseMapper.unassignStore(userId);
         if (result > 0) {
+            // §1.4 双写：员工档案归属同步清空
+            syncEmployeeAssignment(user, null);
             userDataService.clearUserCache(userId.toString());
             return true;
         }
         return false;
+    }
+
+    /**
+     * P1-USER-LOCATION-001 §1.4：用户归属 ↔ 员工档案**双写**（关联键 = {@code employee_code}），
+     * 同时补齐 {@code employees.user_id} 强关联（此前只有 employee_code 弱关联）。
+     *
+     * <p>找不到员工档案（admin / 总部 / 测试账号）时静默跳过；归属值一律取用户侧已换算的
+     * {@code location_id}，不做任何猜测或数值兜底。
+     *
+     * @param user       目标用户（须已有 employeeCode）
+     * @param locationId 新归属位置ID；{@code null} 表示解绑
+     */
+    private void syncEmployeeAssignment(User user, Long locationId) {
+        if (user.getEmployeeCode() == null || user.getEmployeeCode().isBlank()) {
+            return;
+        }
+        Employee employee = employeeService.getEmployeeByCode(user.getEmployeeCode());
+        if (employee == null) {
+            logger.debug("用户无对应员工档案，跳过归属双写: userId={}, employeeCode={}",
+                    user.getId(), user.getEmployeeCode());
+            return;
+        }
+        employee.setLocationId(locationId);
+        if (employee.getUserId() == null) {
+            employee.setUserId(user.getId());
+        }
+        employeeService.updateById(employee);
     }
 
     @Override

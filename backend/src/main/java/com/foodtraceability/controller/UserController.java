@@ -1,4 +1,6 @@
 package com.foodtraceability.controller;
+
+import com.foodtraceability.security.annotation.OperationLog;
 import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -173,6 +175,7 @@ public class UserController {
     @PutMapping("/{id}/assign-store")
     @Operation(summary = "分配门店给用户")
     @RequiresPermission(value = "system:user:assign-store", action = "assign-store")
+    @OperationLog(module = "USER_STORE_ASSIGN", type = OperationLog.OperationType.UPDATE, desc = "分配门店归属（P1-USER-LOCATION-001 审计留痕）")
     public Result<Void> assignStore(@Parameter(description = "用户ID") @PathVariable Long id,
                                      @Valid @RequestBody UserAssignStoreDTO request) {
         Long storeId = request.getStoreId();
@@ -186,6 +189,7 @@ public class UserController {
     @DeleteMapping("/{id}/assign-store")
     @Operation(summary = "取消用户的门店分配")
     @RequiresPermission(value = "system:user:unassign-store", action = "unassign-store")
+    @OperationLog(module = "USER_STORE_ASSIGN", type = OperationLog.OperationType.DELETE, desc = "取消门店归属（P1-USER-LOCATION-001 审计留痕）")
     public Result<Void> unassignStore(@Parameter(description = "用户ID") @PathVariable Long id) {
         boolean success = userService.unassignStore(id);
         if (!success) {

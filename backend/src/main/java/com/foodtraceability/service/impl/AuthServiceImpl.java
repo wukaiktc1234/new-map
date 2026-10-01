@@ -586,9 +586,8 @@ public class AuthServiceImpl implements AuthService {
         if (updateUserRequest.getAvatar() != null) {
             user.setAvatar(updateUserRequest.getAvatar());
         }
-        if (updateUserRequest.getStoreId() != null) {
-            user.setLocationId(LocationIdBridge.locationIdOfStore(Long.valueOf(updateUserRequest.getStoreId())));
-        }
+        // P1-USER-LOCATION-001 §2.3 越权面修复：自助更新**不得**修改本人归属
+        // （归属只能经 system:user:assign-store 权限的分配入口变更，且须审计留痕）
         if (updateUserRequest.getStoreName() != null) {
             user.setStoreName(updateUserRequest.getStoreName());
         }
