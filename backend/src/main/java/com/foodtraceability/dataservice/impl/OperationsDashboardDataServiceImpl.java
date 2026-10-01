@@ -106,8 +106,8 @@ public class OperationsDashboardDataServiceImpl implements OperationsDashboardDa
             // userStoreFilter == null 表示管理角色（多门店权限），不限制
         }
 
-        // 单店模式下 storeIds 暂时统一使用默认门店1聚合（跨店支持预留）
-        // 当前系统只有一家门店 ID=1，多店场景待门店账号体系完善后启用
+        // P1-USER-LOCATION-001 #13：读侧走 data_scope 聚合——总部用户（storeIds 空）不限制，
+        // 店长/无权限用户限制到本人门店（见上）。原"单店模式默认门店1"注释已删除（design-001 §6 #13）
         Long storeIdFilter = resolveStoreIdFilter(storeIds);
 
         // 1. 活跃门店数（status=1 营业中）

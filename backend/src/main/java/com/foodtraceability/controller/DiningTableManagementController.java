@@ -1,5 +1,8 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.exception.NoLocationContextException;
+import com.foodtraceability.common.exception.NoLocationAssignedException;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -195,15 +198,16 @@ public class DiningTableManagementController {
      * @return 当前门店ID
      */
     private Long getCurrentStoreId() {
+        // P1-USER-LOCATION-001 #1：桌台是门店强绑定写操作——未分配归属即**显式拒绝**
+        // （design-001 §6 #1：删除"未获取到门店ID时返回 1L"的数值兜底）
         String storeIdStr = SecurityUtils.getCurrentUserStoreId();
-        if (storeIdStr != null && !storeIdStr.isEmpty()) {
-            try {
-                return Long.parseLong(storeIdStr);
-            } catch (NumberFormatException e) {
-                // storeId格式异常，回退到默认值
-            }
+        if (storeIdStr == null || storeIdStr.isEmpty()) {
+            throw new NoLocationAssignedException();
         }
-        // TODO: 认证系统完善后移除此默认值，未获取到门店ID时应抛出权限异常
-        return 1L;
+        try {
+            return Long.parseLong(storeIdStr);
+        } catch (NumberFormatException e) {
+            throw new NoLocationContextException("门店ID格式异常，无法确定操作的位置上下文：" + storeIdStr);
+        }
     }
 }
