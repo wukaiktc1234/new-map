@@ -340,4 +340,29 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §13 验收证据 + 限制项登记）**
+## §13 S6 入职链路完成（2026-09-30，commit `7d6db6d`）
+
+### 13.1 交付（5 文件，+70/−2）
+| 项 | 内容 |
+|---|---|
+| 迁移 `V20260930_003` | `onboarding_archive` 新增 **`location_id`**（+列注释）；存量按 `employee_code` 对齐已注册用户归属做**尽力回填**，无匹配/未分配保持 NULL（不猜门店） |
+| `OnboardingArchive` / `OnboardingArchiveDTO` | 新增 `locationId` → DTO 经 `BeanUtils.copyProperties` **自动贯通** archive 创建/编辑链 |
+| `AuthServiceImpl` | **删除硬编码置空归属**（`locationIdOfStore(null)`）→ **`user.setLocationId(archive.getLocationId())`**（-001 §1.2 根因断点修复） |
+| `OnboardingRecordServiceImpl.createEmployeeProfile` | **修复"入职完成不落门店"断点**：`record.storeId` 经 `location_id_map` 换算为 `location_id` 落 `employee.location_id`；缺值/无法换算**留空**（不猜门店） |
+
+### 13.2 与设计对照
+- §1.1「OnboardingArchive 加 storeId」→ 按 **-002 §5 修订一**落地为 **`locationId`**（ID 空间 = `locations.location_id`）✓
+- §1.1「completeOnboarding 把 record.storeId 传给 createEmployeeProfile」✓
+- §1.2「AuthServiceImpl:262 硬编码修复」→ 落地为 `setLocationId(archive.getLocationId())` ✓
+- 兼容旧数据：存量 archive 无 `locationId` → 注册后用户归属为 NULL → 落入"未分配"集合，由 **S5 人工分配入口**补配（**不自动猜测**，符合 Owner 裁定）✓
+
+### 13.3 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。5 文件均**无 WIP** → PG-001 常规精确 add（cached diff 逐行审阅）。
+
+### 13.4 遗留
+- **`employees.user_id` 的注册时关联**（-001 §1.4「同步规则（后续）」）→ 并入 **S5**（与 assign-store 双写同片）；
+- 存量 14 个 emp-* 的 `user_id` 回填已在 **S1 迁移**完成 ✓。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §14 验收证据 + 限制项登记）**
