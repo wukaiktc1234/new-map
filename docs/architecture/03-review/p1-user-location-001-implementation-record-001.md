@@ -513,4 +513,40 @@ Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §20 验收证据 + 限制项登记）**
+## §20 S7 收口（part2）：回填/快照与 E2E 交接（2026-09-30）
+
+### 20.1 回填与快照
+| 迁移 | 作用 | 回滚 |
+|---|---|---|
+| `V20260930_002__user_location_001_rename_store_id_to_location_id.sql` | `employees.user_id` 新增 + 按 `employee_code` 回填；`users.store_id→location_id`、`employees.store_id→location_id`（经 `location_id_map` 重映射）+ FK/索引切换 + **完整性守卫** + 兼容视图 `v_users_store_compat` | 见文件头注释（DROP VIEW → ADD COLUMN store_id → 反查回填 → 恢复 FK/索引 → DROP location_id） |
+| `V20260930_003__onboarding_archive_add_location_id.sql` | `onboarding_archive.location_id` 新增 + 按 `employee_code` 对齐已注册用户归属的尽力回填 | `ALTER TABLE onboarding_archive DROP COLUMN location_id;` |
+
+**前后快照策略**：迁移内置**数据完整性守卫**（"旧列非空、新列仍空"即 `RAISE EXCEPTION` 中止）替代人工前后比对；**活体前后快照导出**须在有 DB 环境执行（本机无 DB）→ 交接 QA 的核对 SQL：
+
+```sql
+-- 1) NULL 归属人数：期望 = admin+9 总部(10) + finqa x3 + emp-l/n(2) = 15
+SELECT COUNT(*) FROM users WHERE location_id IS NULL AND deleted = 0;
+-- 2) 重映射覆盖：期望 = 迁移前 store_id 非空且 deleted=0 的行数
+SELECT COUNT(*) FROM users u JOIN location_id_map m ON m.location_id = u.location_id AND m.src_table='stores_new' WHERE u.deleted = 0;
+-- 3) 员工-账号关联：期望 >= 14（存量 emp-* 对齐）
+SELECT COUNT(*) FROM employees WHERE user_id IS NOT NULL AND deleted = 0;
+-- 4) 兼容视图可用
+SELECT * FROM v_users_store_compat LIMIT 20;
+```
+
+### 20.2 E2E 交接（本机不可运行）
+本机**无 DB / 无 server**（§4 #1）→ 8 个 `@SpringBootTest` + 32 条 E2E（`temp-*.ps1`）**不可本地运行**。交接 QA 在**有 DB 环境**执行的链路清单：
+1. 登录 → 解 JWT 得 **`locationId` claim**（S3，5 生成点一致）；
+2. 分配归属 `PUT /v1/users/{id}/assign-store`，body `{"locationId": N}` → 断言 `users.location_id` 与 `employees.location_id` **双写一致** + `employees.user_id` 补齐（S5a）；
+3. 批量分配 `PUT /v1/users/assign-store-batch` → 断言返回成功计数 + **审计落 `sys_operation_logs`（模块 `USER_STORE_ASSIGN`）**（S5b-part1）；
+4. 未分配归属用户访问门店强绑定接口（桌台/叫号）→ 断言 **403 `NoLocationAssignedException`**（S4b #1/#2）；
+5. 仓库员工（emp-n）访问门店单据 → 拒绝；仓库操作 → 允许（-002 §7）；
+6. 采购计划生成未分配归属 → 403；收货缺门店 → 400（S4b #9/#12）；
+7. 入职完成 → 注册 → 断言用户归属来自 archive（S6）。
+
+### 20.3 本卡唯一剩余代码项
+**前端接线**：`UserManagementTab.vue` 位置控件 + `api/system/user.ts` 的 `assignStore`/`unassignStore` 接线（Owner 核心诉求"入口"）。**后端 API 已完备**（单点 / 批量 / 权限 / 审计），仅缺 UI 调用；该 vue 带 WIP → 需 hunk 隔离 + **前端构建验证**（后端 compile 覆盖不到）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §21 验收证据 + 限制项登记）**
