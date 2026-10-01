@@ -50,6 +50,8 @@ public class OnboardingArchiveDTO {
     private BigDecimal finalSalary;
     @Schema(description = "预计入职日期")
     private LocalDate onboardDate;
+    @Schema(description = "归属位置ID（P1-USER-LOCATION-001：注册回填 users.location_id 的依据）")
+    private Long locationId;
 
     public OnboardingArchiveDTO() {
     }
@@ -164,6 +166,14 @@ public class OnboardingArchiveDTO {
 
     public void setOnboardDate(final LocalDate onboardDate) {
         this.onboardDate = onboardDate;
+    }
+
+    public Long getLocationId() {
+        return this.locationId;
+    }
+
+    public void setLocationId(final Long locationId) {
+        this.locationId = locationId;
     }
 
     @java.lang.Override

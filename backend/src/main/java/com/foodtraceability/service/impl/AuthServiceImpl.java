@@ -260,7 +260,9 @@ public class AuthServiceImpl implements AuthService {
 
         if (archive != null) {
             user.setDepartmentId(archive.getDepartmentId() != null ? Long.valueOf(archive.getDepartmentId()) : null);
-            user.setLocationId(LocationIdBridge.locationIdOfStore(null));
+            // P1-USER-LOCATION-001 §1.2：删除"硬编码置空归属"——归属来自入职档案
+            // （archive.locationId 由 OnboardingRecord.storeId 经 location_id_map 换算写入；S6）
+            user.setLocationId(archive.getLocationId());
             user.setRoles(archive.getRoleId() != null ? "[\"" + archive.getRoleId() + "\"]" : "[]");
             user.setEmployeeCode(archive.getEmployeeCode());
         }

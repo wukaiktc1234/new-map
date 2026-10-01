@@ -66,6 +66,13 @@ public class OnboardingArchive {
     private Long contractId;
     @Schema(description = "关联用户ID（注册后填充）")
     private Long userId;
+    /**
+     * P1-USER-LOCATION-001：归属位置ID。
+     * 来源 = 入职记录 {@code OnboardingRecord.storeId}（stores_new.store_id 空间）经
+     * {@code location_id_map} 换算；注册时由 AuthServiceImpl 回填 {@code users.location_id}。
+     */
+    @Schema(description = "归属位置ID（P1-USER-LOCATION-001）")
+    private Long locationId;
     @Schema(description = "状态：CREATED-已创建, PENDING_HR-待HR审查, PENDING_SUBSTANTIVE-待实质审查, APPROVED-已通过, CONTRACT_PENDING-待签合同, CONTRACT_SIGNED-合同已签, REGISTERED-已注册, REJECTED-已拒绝")
     private String status;
     @Schema(description = "创建人（HR）")
@@ -284,6 +291,14 @@ public class OnboardingArchive {
 
     public void setUserId(final Long userId) {
         this.userId = userId;
+    }
+
+    public Long getLocationId() {
+        return this.locationId;
+    }
+
+    public void setLocationId(final Long locationId) {
+        this.locationId = locationId;
     }
 
     public void setStatus(final String status) {

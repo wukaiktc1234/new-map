@@ -1,5 +1,7 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.common.util.LocationIdBridge;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -154,7 +156,21 @@ public class OnboardingRecordServiceImpl extends ServiceImpl<OnboardingRecordMap
         }
         employee.setPositionName(onboardingRecord.getPositionName());
         employee.setStatus(1); // 1: 在职（Employee.status 为 Integer）
-        
+
+        // P1-USER-LOCATION-001 §1.1：修复"入职完成不落门店"断点——把 record.storeId（store_id 空间）
+        // 经 location_id_map 换算为 location_id 落到员工档案；缺值/无法换算则留空（不猜门店）
+        Long recordStoreId = null;
+        if (onboardingRecord.getStoreId() != null && !onboardingRecord.getStoreId().isBlank()) {
+            try {
+                recordStoreId = Long.valueOf(onboardingRecord.getStoreId().trim());
+            } catch (NumberFormatException e) {
+                recordStoreId = null;
+            }
+        }
+        if (recordStoreId != null) {
+            employee.setLocationId(LocationIdBridge.locationIdOfStore(recordStoreId));
+        }
+
         employeeService.save(employee);
         
         onboardingRecord.setEmployeeId(employee.getId().toString());
