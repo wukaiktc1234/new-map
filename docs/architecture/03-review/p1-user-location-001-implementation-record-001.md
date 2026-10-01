@@ -491,4 +491,26 @@ Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §19 验收证据 + 限制项登记）**
+## §19 S2b 收尾：UserCreateDTO / UserUpdateDTO 改名（2026-09-30，commit `011a75c`）
+
+### 19.1 交付（3 文件 / cached +15−16）
+| 项 | 内容 |
+|---|---|
+| `UserCreateDTO` / `UserUpdateDTO` | 字段 + 访问器 + `@Schema` 文案全链改名 `storeId → locationId`（每文件 6 处；**剩余 `storeId` 引用 0**）。注：这两个 DTO **无 delombok 生成的 equals/hashCode/toString**，故改名面仅字段/访问器/文案 |
+| `UserController` | create/update 两处调用点 → `user.setLocationId(userDTO.getLocationId())`（**值即 location_id**，不再经 `location_id_map` 换算，与裁定 A 一致）；移除已无用的 `LocationIdBridge` import |
+
+### 19.2 -002 §5 修订一的 DTO 改名范围**全部完成**
+`UserCreateDTO` ✅ / `UserUpdateDTO` ✅ / `UserAssignStoreDTO` ✅（+ 本卡新增 `UserAssignStoreBatchDTO` ✅）；`UpdateUserRequest.storeId` ✅ 已删除（§18）。
+
+### 19.3 PG-001 隔离与验证
+`UserController` 带 WIP(+19) → cached **7 行**、残留 **19 行逐字一致** ✓。
+> **方法学再补**：同一段改动的**不同缩进版本**会让字面锚点部分失配（本轮 12 空格锚点 MISS）→ 改用**空白弹性正则 `(?m)^(\s*)…`** 一次通过。记入 §12.2。
+`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。
+
+### 19.4 剩余
+- **前端接线**（Owner 核心诉求"入口"）：`UserManagementTab.vue` + `api/system/user.ts`（送 `locationId`；该 vue 带 WIP → 隔离）；
+- **S7 收口**：INDEX/roadmap + KL/ENV（含 ENV-3 JDK）+ 回填/快照 + E2E 交接 + LIM-1/LIM-2/ENV-10 登记 + PG-001 收口提交。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §20 验收证据 + 限制项登记）**
