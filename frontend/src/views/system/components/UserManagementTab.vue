@@ -14,6 +14,7 @@ import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue
 import StatusTag from '@/components/core/StatusTag.vue'
 import { useDepartmentOptions } from '@/composables/useDepartmentOptions'
 import { useStoreOptions } from '@/composables/useStoreOptions'
+import { useLocationOptions } from '@/composables/useLocationOptions'
 import { userApi, type UserItem, type UserQueryParams } from '@/api/system/user'
 import { roleApi, type RoleVO } from '@/api/system/role'
 
@@ -449,24 +450,38 @@ async function handleResetPasswordSubmit() {
  * 后端 `PUT /v1/users/{id}/assign-store`，body `{ locationId }`（design-002 §5 修订一：值 = locations.location_id）；
  * 后端在事务内双写 users.location_id + employees.location_id 并落审计（USER_STORE_ASSIGN）。
  *
- * 注：位置下拉选择待前端补齐 locations 选项接口后替换；当前以 locationId 输入承接"人工分配入口"。
+ * 交互形态：design-001 §2.1「门店下拉」→ 落地为**位置下拉**（locations 表：STORE / CENTRAL / DEPOT）。
  */
+const assignDialogVisible = ref(false)
+const assignTarget = ref<UserItem | null>(null)
+const assignLocationId = ref<number | null>(null)
+const assignSubmitting = ref(false)
+const { locationOptions, loading: locationLoading, loadLocations } = useLocationOptions()
+
+/** 打开分配位置对话框（下拉选项按需加载） */
 async function handleAssignLocation(row: UserItem) {
+  assignTarget.value = row
+  assignLocationId.value = null
+  assignDialogVisible.value = true
+  if (locationOptions.value.length === 0) {
+    await loadLocations()
+  }
+}
+
+/** 提交分配位置 */
+async function submitAssignLocation() {
+  if (!assignTarget.value) return
+  if (assignLocationId.value === null) {
+    ElMessage.warning('请选择归属位置')
+    return
+  }
+  assignSubmitting.value = true
   try {
-    const { value } = await ElMessageBox.prompt(
-      `为用户「${row.fullName || row.username}」分配位置（请输入 locationId）`,
-      '分配位置',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        inputPattern: /^\d+$/,
-        inputErrorMessage: '请输入数字位置ID',
-      },
-    )
-    await userApi.assignStore(row.id, value)
+    await userApi.assignStore(assignTarget.value.id, String(assignLocationId.value))
     ElMessage.success('位置分配成功，请刷新列表查看')
-  } catch {
-    // 用户取消或校验失败：不处理
+    assignDialogVisible.value = false
+  } finally {
+    assignSubmitting.value = false
   }
 }
 
@@ -706,6 +721,36 @@ onMounted(() => {
           <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
         </template>
       </DataTable>
+
+      <!-- P1-USER-LOCATION-001：分配归属位置（design-001 §2.1 形态 = 位置下拉） -->
+      <el-dialog v-model="assignDialogVisible" title="分配归属位置" width="420px">
+        <el-form label-width="90px">
+          <el-form-item label="用户">
+            <span>{{ assignTarget ? (assignTarget.fullName || assignTarget.username) : '-' }}</span>
+          </el-form-item>
+          <el-form-item label="归属位置">
+            <el-select
+              v-model="assignLocationId"
+              placeholder="请选择位置（门店 / 仓库）"
+              filterable
+              clearable
+              :loading="locationLoading"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="opt in locationOptions"
+                :key="opt.locationId"
+                :label="`${opt.locationName}（${opt.locationType}）`"
+                :value="opt.locationId"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="assignDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="assignSubmitting" @click="submitAssignLocation">确定</el-button>
+        </template>
+      </el-dialog>
 
       <!-- 分页 -->
       <div class="pagination-wrapper">
