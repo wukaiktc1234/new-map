@@ -412,7 +412,7 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 ### 15.4 S5b 剩余（→ 下一轮）
 - **S2b DTO/API 字段改名**：`UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` / `UpdateUserRequest` / `EmployeeCreateDTO` / `EmployeeUpdateDTO`：`storeId → locationId`（含 delombok 生成的 `equals/hashCode/toString` 同步）+ `UpdateUserRequest.storeId` **字段删除**（-001 §2.3 字面要求）；
 - **前端接线（Owner 核心诉求"入口"）**：`UserManagementTab.vue` 门店控件（激活死代码 `storeOptions`）+ `api/system/user.ts` 的 `assignStore`/`unassignStore`（已定义 0 调用）→ 该 vue 带 WIP，需隔离；
-- **⚠ 契约决策点（待 Owner 裁决）**：-002 §5 修订一要求 Body 字段名为 `locationId`（值 = location_id 空间），而 design-001 §2.1 写的下拉选项来自 `/v1/stores/active`（store_id 空间）——两文冲突。实施须拍板：前端下拉列 **locations**（语义一致，送 locationId），还是保留 **stores**（送 store_id，字段名仍叫 locationId 则需在服务端换算）。
+- **⚠ 契约决策点（已裁定）**：-002 §5 修订一要求 Body 字段名为 `locationId`（值 = location_id 空间），design-001 §2.1 的下拉选项来自 `/v1/stores/active`（store_id 空间）——两文冲突。**依 Owner 既有指令「实施以 -002 为准」取 A**：字段 `locationId` 的值 = **location_id**；服务端 `assignStore` / `assignStoreBatch` 改为**直接接收 location_id** 并用 `LocationService` 校验 STORE 型（不再做换算）；前端下拉列 **locations**。**影响**：S5a/S5b 服务端入参空间需随之调整（当前唯一客户端是未接线前端，风险低）。
 
 ---
 
