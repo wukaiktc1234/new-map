@@ -1,5 +1,7 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.common.exception.NoLocationContextException;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.exception.BusinessException;
@@ -305,11 +307,14 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             Integer paymentMethodInt = command.getPaymentMethod() != null
                 ? convertPaymentMethod(command.getPaymentMethod()) : null;
 
-            // 9. 解析门店信息
+            // 9. 解析门店信息（P1-USER-LOCATION-001 #11：删除 STORE_A 查询与 "1" 数值兜底）
             String storeId = command.getStoreId();
             if (storeId == null || storeId.isEmpty()) {
-                StoreNew defaultStore = storeNewMapper.selectByStoreCode("STORE_A");
-                storeId = defaultStore != null ? String.valueOf(defaultStore.getStoreId()) : "1";
+                // 位置上下文解析链 ②：从登录上下文推导（POS token 必带 locationId，经 location_id_map 反查 store_id）
+                storeId = SecurityUtils.getCurrentUserStoreId();
+                if (storeId == null) {
+                    throw new NoLocationContextException("缺少门店信息：请求未携带 storeId，且登录上下文无归属位置");
+                }
             }
             String storeName = resolveStoreName(storeId);
             Long storeIdLong = null;

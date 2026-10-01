@@ -1,5 +1,8 @@
 package com.foodtraceability.service.purchase.impl;
 
+import com.foodtraceability.utils.SecurityUtils;
+import com.foodtraceability.common.exception.NoLocationAssignedException;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -432,8 +435,13 @@ public class PurchasePlanServiceImpl extends ServiceImpl<PurchasePlanMapper, Pur
         order.setRequestNo(plan.getPlanNo());
         order.setSourceType("purchase_plan");
         order.setPriority("normal");
-        // 集中式单店：默认门店 1
-        order.setStoreId(1L);
+        // P1-USER-LOCATION-001 #9：采购计划是门店需求驱动——门店从登录上下文取，
+        // 缺失即拒绝生成（删除"集中式单店：默认门店 1"数值兜底，design-001 §6 #9）
+        String ctxStoreId = SecurityUtils.getCurrentUserStoreId();
+        if (ctxStoreId == null) {
+            throw new NoLocationAssignedException();
+        }
+        order.setStoreId(Long.valueOf(ctxStoreId));
         order.setRemark(plan.getRemark());
         order.setSupplierId(null);
         order.setWarehouseId(null);

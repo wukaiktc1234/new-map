@@ -1,4 +1,6 @@
 package com.foodtraceability.service.impl;
+
+import com.foodtraceability.common.exception.NoLocationContextException;
 import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -323,9 +325,13 @@ public class PurchaseRequestServiceImpl extends ServiceImpl<PurchaseRequestMappe
     }
 
     /**
-     * 校验门店ID有效性：stores_new 中不存在时回落默认门店（1），防止生成订单时外键违反
+     * 校验门店ID有效性：stores_new 中不存在或无法解析 → **显式拒绝**（P1-USER-LOCATION-001 #10）。
+     *
+     * <p>原实现回落默认门店 1，会静默污染订单归属（design-001 §6 #10），已删除。
+     *
      * @param storeId 原始门店ID（字符串）
-     * @return 有效的门店ID字符串；无法解析时返回默认门店
+     * @return 有效的门店ID字符串
+     * @throws NoLocationContextException 门店不存在 / 无法解析（HTTP 400）
      */
     private String resolveValidStoreId(String storeId) {
         if (storeId == null) {
@@ -336,11 +342,11 @@ public class PurchaseRequestServiceImpl extends ServiceImpl<PurchaseRequestMappe
             if (storeNewMapper.selectById(id) != null) {
                 return storeId.trim();
             }
-            log.warn("采购申请 storeId={} 在 stores_new 中不存在，回落默认门店 1", storeId);
-            return "1";
+            log.warn("采购申请 storeId={} 在 stores_new 中不存在，拒绝（不再回落默认门店）", storeId);
+            throw new NoLocationContextException("门店无效或不存在：" + storeId);
         } catch (NumberFormatException e) {
             log.warn("采购申请 storeId 无法解析为 Long: {}", storeId);
-            return "1";
+            throw new NoLocationContextException("门店无效或不存在：" + storeId);
         }
     }
 

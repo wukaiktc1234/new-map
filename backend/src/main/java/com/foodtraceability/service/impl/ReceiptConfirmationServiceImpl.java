@@ -1,5 +1,7 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.common.exception.NoLocationContextException;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -559,20 +561,9 @@ UserMapper userMapper,
         if (!RECEIVER_STORE.equals(arrival.getReceiverType()) || StringUtils.hasText(arrival.getStoreId())) {
             return;
         }
-        String fallback = resolveDefaultStoreId();
-        if (!StringUtils.hasText(fallback)) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "门店收货缺少门店信息，请先在系统设置中维护门店");
-        }
-        log.warn("到货单[{}]门店ID为空，回退默认门店[{}]进行门店收货", arrival.getArrivalCode(), fallback);
-        arrival.setStoreId(fallback);
-    }
-
-    private String resolveDefaultStoreId() {
-        List<Store> stores = storeMapper.selectList(new LambdaQueryWrapper<Store>()
-                .eq(Store::getStatus, "active")
-                .orderByAsc(Store::getStoreId)
-                .last("LIMIT 1"));
-        return stores.isEmpty() ? null : stores.get(0).getStoreId();
+        // P1-USER-LOCATION-001 #12：收货必须明确落店——删除"最小活跃店"猜测（design-001 §6 #12）
+        throw new NoLocationContextException(
+                "到货单[" + arrival.getArrivalCode() + "]缺少门店信息，无法确认门店收货；请在收货单上明确门店");
     }
 
     private void validateConfirmQuantity(ReceiptConfirmationCreateDTO.ReceiptConfirmationItemDTO itemDTO,
