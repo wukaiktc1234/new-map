@@ -72,7 +72,7 @@
 |---|---|---|
 | 1 | **本机无 DB**（PostgreSQL 不在本机运行）→ 8 个 `@SpringBootTest` 集成测试 + E2E 不可运行 | S1/S7 的迁移与回填**无法本地活体验证**，只能静态审查 + 交 QA 在活体环境验收；单测（mockito/plain）可跑 |
 | 2 | **WIP 工作区致 ~10 个无关单测类失败**（ENV-9） | 42/42 基线在当前 WIP 树不可复现；本卡只对**受影响类**跑定向单测，并显式声明 WIP 干扰 |
-| 3 | JDK 25 + byte-buddy 1.14.10 → mockito 单测须 `JAVA_TOOL_OPTIONS=-Dnet.bytebuddy.experimental=true`（ENV-3） | 跑命令时必带 |
+| 3 | **构建 JDK 变更（2026-09-30 实测）**：原 `H:\jdk-25.0.1.8-hotspot`（Temurin 25）**已从磁盘消失**（`H:\` 全盘无 JDK）；现存可用 JDK = **`P:\my-new-project\JDK21`（Temurin 21.0.9+10 LTS）**。构建统一 `JAVA_HOME=P:\my-new-project\JDK21`（Maven 仍 `H:\fuwu\apache-maven-3.9.11`）。**副作用**：Java 25 下需要的 byte-buddy `experimental` 开关（ENV-3）在 JDK 21 下**不再需要** | 跑构建/测试时必带 |
 | 4 | Maven `clean` + `danger-full-access`（沙箱拒 `backend/`、`target/`、`.git/` 写） | 构建命令固定 |
 
 ---
@@ -277,4 +277,33 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §11 验收证据 + 限制项登记）**
+## §11 S4b 实施进度（2026-09-30，commit `7357433`）
+
+### 11.1 已完成（4 处，均在**无 WIP** 文件上）
+| # | 站点 | 原兜底 | 改为 |
+|---|---|---|---|
+| **#11** | `PosOrderCreateServiceImpl`（解析门店信息） | `selectByStoreCode("STORE_A")` → 否则 `"1"` | **解析链 ②**：`SecurityUtils.getCurrentUserStoreId()`；仍无 → **400 `NoLocationContextException`**（删双兜底） |
+| **#10** | `PurchaseRequestServiceImpl.resolveValidStoreId` | 门店不存在/无法解析 → **回落 `"1"`** | **抛 400**（"门店无效或不存在"）—— 回落会静默污染订单归属 |
+| **#12** | `ReceiptConfirmationServiceImpl` | 门店为空 → **"最小活跃店"猜测**（含 `resolveDefaultStoreId`） | **抛 400**（收货必须明确落店）；**删除猜测方法** |
+| **#9** | `PurchasePlanServiceImpl`（计划转订单） | `order.setStoreId(1L)`（"集中式单店"） | **从 `getCurrentUserStoreId()` 取；缺失 → 403 `NoLocationAssignedException`** |
+
+### 11.2 待办
+| # | 站点 | WIP | 状态 |
+|---|---|---|---|
+| #1 | `DiningTableManagementController:205-216` | +8 | ⏳ 需 hunk 隔离 |
+| #2 | `CallNumberQueueManagementController:90-100` | +3 | ⏳ 需 hunk 隔离 |
+| #13 | `OperationsDashboardDataServiceImpl:104-105` | +18−14 | ⏳ 需 hunk 隔离 |
+| #3~#8 | 设备域 5 处 `DEFAULT_STORE_ID` | 整条未跟踪 | **冻结 = LIM-2** |
+
+### 11.3 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（`JAVA_HOME=P:\my-new-project\JDK21`，Temurin 21.0.9；见 §4 #3 的 JDK 变更）。
+
+### 11.4 进度小结（验收基准 §3）
+- 基准 1（JWT claim `locationId` + 5 生成点）✅ **S3**
+- 基准 3（13 处兜底）：**4/13 已消除**（#9/#10/#11/#12），3 处待隔离（#1/#2/#13），5 处设备域冻结（LIM-2）+ 1 处（#7 心跳）随 LIM-2
+- 基准 4（仓库员工边界）/ 基准 5（admin 解析链）：守卫已就位（S4a），待站点接入
+- 基准 2（15 NULL 用户）→ S6/S7；基准 6（assign-store 审计）→ S5
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §12 验收证据 + 限制项登记）**
