@@ -416,4 +416,28 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §16 验收证据 + 限制项登记）**
+## §16 S5b-part2a assign-store 契约对齐（裁定 A）（2026-09-30，commit `87c9151`）
+
+### 16.1 交付（5 文件 / cached +66−47）
+| 项 | 内容 |
+|---|---|
+| `UserAssignStoreDTO` | `storeId → locationId`（**值 = locations.location_id**）；**顺带修正 `@NotBlank` 误用于 `Long`**（@NotBlank 只对 CharSequence 生效，原注解实际不校验）→ `@NotNull` |
+| `UserAssignStoreBatchDTO` | 同步 `storeId → locationId` |
+| `UserService.assignStore` / `assignStoreBatch` | 入参语义改为 **location_id**（不再做 store_id → location_id 换算） |
+| `UserServiceImpl` | 新增 `requireExistingLocation(locationId)`：经 `LocationService.getById` 校验位置存在；**STORE / CENTRAL / DEPOT 均可**（-002 §5.2 门店与仓库共用同一归属字段，故**不能**限制为 STORE 型）；注入 `LocationService` |
+| `UserController` | `assign-store` / `assign-store-batch` 改取 `request.getLocationId()` |
+
+### 16.2 裁定依据
+Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 -002 为准**）」→ -002 §5 修订一「Body 字段名改 locationId」+ §5.2「单字段走天下」⇒ 字段名与取值空间**同步**改为 location_id（design-001 §2.1 的 `/v1/stores/active` 下拉口径被 -002 覆盖）。
+
+### 16.3 PG-001 隔离与验证
+`UserController` 带无关 WIP（+19）→ 隔离后 cached **6 行**（3 改 3 增）、残留 **19 行逐字一致** ✓；另 4 文件无 WIP。`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。
+> **隔离方法学补充**：多行锚点（含换行拼接）易失配 —— 本轮首次 ABORT；**改用逐行单行锚点**后成功。记入 §12.2：锚点尽量**单行且可验证**。
+
+### 16.4 S5b 剩余
+- **S2b 其余 DTO**：`UserCreateDTO` / `UserUpdateDTO` / `UpdateUserRequest`（含 **字段删除**）/ `EmployeeCreateDTO` / `EmployeeUpdateDTO`：`storeId → locationId`（含 delombok 的 `equals/hashCode/toString` 同步）；
+- **前端接线**（Owner 核心诉求"入口"）：`UserManagementTab.vue`（死代码 `storeOptions` → 改为 **locations 下拉**）+ `api/system/user.ts` 的 `assignStore`/`unassignStore` 接线（送 `locationId`）；该 vue 带 WIP → 需隔离。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §17 验收证据 + 限制项登记）**
