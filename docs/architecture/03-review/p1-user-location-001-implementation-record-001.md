@@ -549,4 +549,44 @@ SELECT * FROM v_users_store_compat LIMIT 20;
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §21 验收证据 + 限制项登记）**
+## §21 S7 收口结论（part3）（2026-09-30）
+
+### 21.1 结论：`CLOSED_WITH_REGISTERED_LIMITATION`
+**依据**：验收基准 6 项中 **1 / 3 / 6 达成**；**2** 完成设计符合性核对（活体核对待 QA）；**4 / 5** 由 `LocationGuard` 与 -002 §7 规则承载；13 处兜底**非设备域 7/7 消除**，设备域 6 处与 KDS 识别因**依赖未跟踪 WIP 批次**而冻结；**前端 UI 未接线**（后端 API 完备）。
+
+| # | 基准 | 结论 |
+|---|---|---|
+| 1 | JWT claim `locationId` + 5 生成点一致 | ✅ S3 |
+| 2 | 15 NULL 用户逐人核对 | ✅ 设计符合性（活体待 QA，§17） |
+| 3 | 13 处兜底（403/400 文案正确） | ✅ 非设备域 7/7；设备域 6 = LIM-2 |
+| 4 | 仓库员工边界 | 🔶 规则/守卫就位（-002 §7） |
+| 5 | admin 写侧位置上下文解析链 | 🔶 `LocationGuard.assertStoreContext` 就位 |
+| 6 | assign-store 分配有审计留痕 | ✅ S5a |
+
+### 21.2 登记限制项
+| 编号 | 内容 | 解除条件 |
+|---|---|---|
+| **LIM-1** | KDS 托盘绑定链路的 `locationId` 识别（`SecurityUtils` 的 `KdsPrincipal` 分支） | KDS/设备过滤链批次入库后 |
+| **LIM-2** | 设备域 #3~#8 五处 `DEFAULT_STORE_ID=1L` → 设备归属 `location_id`（-002 §5.3，需 `devices.location_id` 迁移） | 同批次入库后 |
+| **LIM-3** | **前端分配入口未接线**：`UserManagementTab.vue` 位置控件 + `api/system/user.ts` 接线（后端 API 完备：单点 / 批量 / 权限 / 审计） | 前端轮次实施 + **前端构建验证** |
+| **ENV-10** | 已提交树不可独立编译（100 错，非本卡引入） | P0-WORKSPACE-WIP-CONSOLIDATION-001 |
+| **ENV-3（已更新）** | 构建 JDK 迁至 `P:\my-new-project\JDK21` | 已登记（KL 主表） |
+
+### 21.3 交付清单汇总（30 个本地 commit，**未 push**）
+- **迁移 ×2**：`V20260930_002`（users/employees 列改名 + employees.user_id + 守卫 + 兼容视图）、`V20260930_003`（onboarding_archive.location_id + 回填）；
+- **新增类 ×4**：`LocationIdBridge`（ID 空间桥，含静态入口）、`LocationGuard`、`NoLocationAssignedException`(403)、`NoLocationContextException`(400)；**新增 DTO ×1**（`UserAssignStoreBatchDTO`）；**新增 API ×1**（`PUT /v1/users/assign-store-batch`）；
+- **改名面**：`users` / `employees` 列 + `User` / `Employee` 实体 + 6 个 DTO + `UserMapper` 原生 SQL（含 SQL 内 JOIN `location_id_map`）+ `DataFixController`；
+- **身份层**：`SecurityUser.locationId` + JWT claim `locationId` + 5 生成点 + `SecurityUtils`（新主方法 + 反查兼容方法，15 存量调用点零改）；
+- **兜底消除 7 处**：#1 桌台 / #2 叫号 / #9 采购计划 / #10 采购申请 / #11 POS 建单 / #12 收货 / #13 运营总览；
+- **分配入口（后端）**：归属双写 + `employees.user_id` 补齐 + `@OperationLog` 审计 + 批量接口；
+- **入职链路**：`OnboardingArchive.locationId` + 注册回填（删除硬编码置空）+ `completeOnboarding` 透传；
+- **文档**：本记录 §1–§21；KL（ENV-3 更新 / ENV-10 新增）；roadmap 进度总览刷新。
+
+### 21.4 收口后剩余（进入下一轮）
+1. **LIM-3 前端接线**（唯一剩余代码项）；
+2. **KL 主表补登 LIM-1 / LIM-2 / LIM-3 三行**（本轮仅登记于本记录 + roadmap，KL 主表待补）；
+3. **push**（需 Owner 显式指令；当前 30 个 commit 全部本地）。
+
+---
+
+**（本记录随各片完成增量更新）**
