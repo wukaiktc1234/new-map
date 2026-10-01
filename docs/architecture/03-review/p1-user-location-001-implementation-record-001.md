@@ -365,4 +365,31 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §14 验收证据 + 限制项登记）**
+## §14 S5a 分配入口后端（2026-09-30，commit `6bf16b5`）
+
+### 14.1 交付（3 文件，+53/−7）
+| 项 | 内容 |
+|---|---|
+| `UserServiceImpl.assignStore` | 入参 `storeId`（store_id 空间）经 `location_id_map` 换算为 `location_id`；**门店无效即 400 `NoLocationContextException` 拒绝**（不再落 NULL 兜底） |
+| `UserServiceImpl.unassignStore` | 归属**双写**同步清空员工侧 |
+| 新增 `syncEmployeeAssignment(user, locationId)` | **-001 §1.4 双写**：按 `employee_code` 写 `employees.location_id` + **补齐 `employees.user_id` 强关联**（此前仅 employee_code 弱关联）；无档案（admin/总部/测试号）静默跳过；归属值只取已换算结果，**不猜不兜底** |
+| `AuthServiceImpl.updateUserInfo` | **越权面修复**（-001 §2.3）：删除自助更新中的归属写入 —— 用户不得自行改本人门店 |
+| `UserController` | `assign-store` / `unassign-store` 加 **`@OperationLog(module = "USER_STORE_ASSIGN")`** 审计留痕（复用既有 `sys_operation_logs` 机制）→ **验收基准 6 达成** |
+
+### 14.2 审计实现方式
+沿用现有 **`@OperationLog` 注解 + `OperationLogAspect`** 机制（模块 `USER_STORE_ASSIGN`，操作人/时间/请求参数由切面落 `sys_operation_logs`），**不新增独立审计代码** —— 与 design-001 §2.3「统一写 sys_operation_logs」等价且复用既有基础设施。
+
+### 14.3 PG-001 隔离
+`UserController` 带无关 WIP（+19）→ 按「HEAD + 本卡改动」入索引；**残留 diff = 19 逐字一致** ✓。另两文件无 WIP，常规精确 add。
+
+### 14.4 验证
+`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。
+
+### 14.5 S5b 待办
+- **批量接口** `PUT /v1/users/assign-store-batch`（U-7 拍板：Body = userIds[] + storeId，权限同单点，复用 `syncEmployeeAssignment`）；
+- **S2b**：`UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` / `UpdateUserRequest` / `EmployeeCreateDTO` / `EmployeeUpdateDTO` 字段 `storeId → locationId`（API 契约）+ **前端接线**（`UserManagementTab.vue` 门店控件 + `api/system/user.ts` 的 assignStore/unassignStore 已定义未调用；该文件带 WIP → 需隔离）；
+- **`UpdateUserRequest.storeId` 字段删除**（-001 §2.3 字面要求；本轮只删了写入路径）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §15 验收证据 + 限制项登记）**
