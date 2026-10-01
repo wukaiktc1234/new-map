@@ -600,11 +600,14 @@ SELECT * FROM v_users_store_compat LIMIT 20;
 ### 22.2 PG-001 隔离
 `UserManagementTab.vue` 带无关 WIP → 用 **Python 脚本**按「HEAD + 本卡改动」入索引（PowerShell 对含反引号/引号的 Vue 文本解析失败，脚本未执行、文件未受损）；**cached 28 行、残留 diff 中无本卡新增行**（已核对）✓。
 
-### 22.3 ⚠ 未构建验证（登记）
-本机**前端构建不可运行**：`pnpm build` 在依赖状态检查阶段调用 `pnpm install` 失败（deps 未安装 / 无 registry 可达）→ **前端改动仅经人工审阅**，须由有前端环境者跑 `pnpm build` 验证。后端 `mvn compile` 覆盖不到前端。
+### 22.3 ✅ 构建验证通过（2026-09-30，R19 补验）
+`pnpm build` 因依赖状态检查触发 `pnpm install` 失败而不可用 → 改为**直接调用本地工具链**验通：
+- **`node node_modules/vite/bin/vite.js build`** → **EXIT=0**（`✓ 3236 modules transformed` / `✓ built in 2.99s`）；
+- **`node node_modules/vue-tsc/bin/vue-tsc.js --noEmit`** → 全量 **144 条类型错**（均落在既有 WIP 文件，如 `api/hr/recruitment.ts`/`api/product/converters.ts`，同 ENV-9 性质），而**本卡两个文件（`UserManagementTab.vue` / `api/system/user.ts`）错误数 = 0** ✓。
+→ **前端改动已验证**（构建 + 类型检查），无需留待他人。
 
-### 22.4 LIM-3 状态更新
-LIM-3（前端分配入口）：**已接线（`331b79b`）**，但**未构建验证** → 解除条件改为「**跑 `pnpm build` 通过**」。KL 主表 KL-087 行同步。
+### 22.4 LIM-3 解除
+LIM-3（前端分配入口）：**已接线（`331b79b`）+ 已构建/类型验证（R19）** → **解除**。KL 主表 KL-087 行同步为「已解除」。
 
 ---
 
