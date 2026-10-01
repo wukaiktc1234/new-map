@@ -392,4 +392,28 @@ S1 已落盘；S2 实体改名**已尝试**：先改 `User`/`Employee` 字段与
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §15 验收证据 + 限制项登记）**
+## §15 S5b-part1 批量分配接口（2026-09-30，commit `39d63e3`）
+
+### 15.1 交付（4 文件，+99）
+| 项 | 内容 |
+|---|---|
+| `UserAssignStoreBatchDTO`（新） | `userIds[]` + `storeId`（`@NotEmpty` / `@NotNull` 校验；`storeId` 为 stores_new.store_id，内部换算） |
+| `UserService.assignStoreBatch` + `UserServiceImpl` 实现 | **与单点同语义**：`store_id` 经 `location_id_map` 换算；逐用户双写 `users.location_id` + `employees.location_id`（并补齐 `employees.user_id`，复用 `syncEmployeeAssignment`）；不存在用户跳过并告警；**整体一个事务**；返回成功数 |
+| `UserController` | `PUT /v1/users/assign-store-batch`：权限同单点（`system:user:assign-store`）+ **`@OperationLog(USER_STORE_ASSIGN)`** 审计留痕 |
+
+### 15.2 对应设计
+- design-001 §2.2「新增 `PUT /v1/users/assign-store-batch`（Body: userIds[] + storeId）；权限同单点」✓
+- U-7 拍板「批量分配接口一期做」✓
+- design-001 §2.2「按组织架构批量：一期不做」→ 遵守（未做）✓
+
+### 15.3 PG-001 隔离与验证
+`UserController` 带无关 WIP（+19）→ 隔离后 cached **12 行**、残留 **19 行逐字一致** ✓；另三文件无 WIP。`mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。
+
+### 15.4 S5b 剩余（→ 下一轮）
+- **S2b DTO/API 字段改名**：`UserCreateDTO` / `UserUpdateDTO` / `UserAssignStoreDTO` / `UpdateUserRequest` / `EmployeeCreateDTO` / `EmployeeUpdateDTO`：`storeId → locationId`（含 delombok 生成的 `equals/hashCode/toString` 同步）+ `UpdateUserRequest.storeId` **字段删除**（-001 §2.3 字面要求）；
+- **前端接线（Owner 核心诉求"入口"）**：`UserManagementTab.vue` 门店控件（激活死代码 `storeOptions`）+ `api/system/user.ts` 的 `assignStore`/`unassignStore`（已定义 0 调用）→ 该 vue 带 WIP，需隔离；
+- **⚠ 契约决策点（待 Owner 裁决）**：-002 §5 修订一要求 Body 字段名为 `locationId`（值 = location_id 空间），而 design-001 §2.1 写的下拉选项来自 `/v1/stores/active`（store_id 空间）——两文冲突。实施须拍板：前端下拉列 **locations**（语义一致，送 locationId），还是保留 **stores**（送 store_id，字段名仍叫 locationId 则需在服务端换算）。
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §16 验收证据 + 限制项登记）**
