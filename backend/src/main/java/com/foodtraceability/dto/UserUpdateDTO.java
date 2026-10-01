@@ -32,8 +32,8 @@ public class UserUpdateDTO {
     @Schema(description = "所属部门ID", example = "1234567890")
     private Long departmentId;
 
-    @Schema(description = "所属门店ID", example = "1234567890")
-    private Long storeId;
+    @Schema(description = "所属位置ID", example = "1234567890")
+    private Long locationId;
 
     @Schema(description = "员工编号", example = "EMP2024001")
     private String employeeCode;
@@ -84,12 +84,12 @@ public class UserUpdateDTO {
         this.departmentId = departmentId;
     }
 
-    public Long getStoreId() {
-        return storeId;
+    public Long getLocationId() {
+        return locationId;
     }
 
-    public void setStoreId(Long storeId) {
-        this.storeId = storeId;
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
     }
 
     public String getEmployeeCode() {
