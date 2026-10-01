@@ -772,6 +772,7 @@ onMounted(() => {
       v-model="dialogVisible"
       :title="dialogType === 'create' ? '新增用户' : '编辑用户'"
       width="680px"
+      class="user-edit-dialog"
       :close-on-click-modal="false"
     >
       <el-form
@@ -1078,6 +1079,12 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--fts-space-2);
   width: 100%;
+  /* 角色项较多（>10）时固定高度 + 内部滚动，避免弹窗超出视口
+     （全局 scroll-guard 会锁定页面滚动，超出部分将不可达） */
+  max-height: 32vh;
+  min-height: 120px;
+  overflow-y: auto;
+  padding-right: var(--fts-space-1);
 }
 
 .role-checkbox-item {
@@ -1140,5 +1147,13 @@ onMounted(() => {
   background: var(--fts-bg-primary);
   border-radius: var(--fts-radius-sm);
   border: 1px solid var(--fts-border-primary);
+}
+</style>
+<style>
+/* 编辑用户弹窗：内容过高时 body 内部滚动（弹窗默认不做高度约束，
+   视口较矮时会被 scroll-guard 锁死滚动导致内容不可达） */
+.user-edit-dialog .el-dialog__body {
+  max-height: 62vh;
+  overflow-y: auto;
 }
 </style>
