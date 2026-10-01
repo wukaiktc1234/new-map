@@ -440,4 +440,39 @@ Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 
 
 ---
 
-**（本记录随各片完成增量更新；收口时补 §17 验收证据 + 限制项登记）**
+## §17 15 个 NULL 用户逐人处置核对（验收基准 2）（2026-09-30）
+
+> 依据：阶段1 诊断 §5 活体分类 + design-001 §3.1 逐人处置表 + U-1（总部保持 NULL）/ U-5（finqa 停用）拍板。
+> **环境限制**：本机无 DB（§4 #1）→ 本表为**设计符合性核对**（对照处置表逐人定性）；**活体数据核对**（`SELECT username, location_id FROM users`）须在有 DB 环境执行。
+
+| # | username | 阶段1 分类 | 处置（设计） | 本卡落地后 `users.location_id` 期望 | 状态 |
+|---|---|---|---|---|---|
+| 1 | admin | 平台超管（data_scope=all） | **保持 NULL**（-001 §3.2 方案 A） | NULL | ✅ 不回填（S1 迁移只重映射非 NULL 值） |
+| 2–5 | emp-a / emp-b / emp-c / emp-d | 总部职能（HEADQUARTERS） | **保持 NULL** | NULL | ✅ 同上 |
+| 6–10 | emp-e / emp-f / emp-g / emp-h / emp-i | 总部职能（HEADQUARTERS） | **保持 NULL** | NULL | ✅ 同上 |
+| 11–12 | emp-l / emp-n | 仓库（WAREHOUSE；emp-n = ROLE_WAREHOUSE_MANAGER） | 归属 **DEPOT/CENTRAL 型 location**（-002 §5.2 / §7） | 仓库 location_id | ⚠ **待补**：原 `store_id` 为 NULL → S1 迁移不会自动回填；需人工分配 |
+| 对照 | emp-j / emp-k / emp-m | 已归店（不在 15 人之列） | 保持其门店归属 | stores_new → location 重映射后语义不变 | ✅ S1 迁移覆盖 |
+| 13–15 | finqa_register / finqa_confirm / finqa_noperm | 测试残留 | **停用/删除**（U-5，Owner 定） | — | ⏳ **待 Owner 执行**（本卡不删数据） |
+
+### 17.1 关键结论
+1. **admin + 9 个总部职能用户 = 10 人保持 NULL** —— 与 design-001 §3.2 方案 A 一致；配合 S4 兜底消除后，NULL **不再静默落"门店 1"**（改为 403/400 拒绝或走 data_scope 聚合）✓
+2. **emp-l / emp-n（仓库 2 人）**：其 `users.store_id` 原本即为 NULL，因此 **S1 迁移不会为它们回填 location_id**（迁移只重映射非 NULL 值）→ 需经 **S5 分配入口**人工分配仓库型 location，或在收口回填脚本中按 `employees.warehouse_id` 推导。
+   > -001 §4.1 把「emp-l/n 回填 employees.warehouse_id」列为"建议"、users 侧归属列为"待 Location 模型落地"；M3-M4 已收口（locations 就绪）→ 时点具备，但**归属分配按 Owner 裁定须人工**。
+3. **finqa×3** 属数据清理、非本卡代码范围 → 待 Owner 处置（U-5）。
+4. **活体核对不可行**（无 DB）：本表"期望值"由迁移逻辑 + 处置表推导；**QA 须在有 DB 环境执行 SQL 核对**（登记为交接项）。
+
+### 17.2 需 Owner 裁决/协助的 2 项
+- **(A) emp-l / emp-n 仓库归属**：走「人工经 S5 分配入口分配」还是「收口回填脚本按 `employees.warehouse_id` 推导」？后者省事但属"自动推导"，与 Owner「人工分配」裁定需确认。
+- **(B) finqa×3 停用/删除**：Owner 定（U-5 原为"建议停用"）。
+
+### 17.3 冻结限制项与环境事实汇总（累计）
+| 编号 | 内容 | 开卡/解除条件 |
+|---|---|---|
+| **LIM-1** | KDS 托盘绑定链路的 `locationId` 识别（`SecurityUtils` 的 `KdsPrincipal` 分支） | `KdsTokenFilter` / `KdsAuthProperties` / `DeviceWhitelistFilter` 批次入库后 |
+| **LIM-2** | 设备域 #3~#8 五处 `DEFAULT_STORE_ID=1L` → 设备归属 `location_id`（-002 §5.3） | 补 `devices.location_id` 迁移 + 设备注册链入库后 |
+| **ENV-10**（已登记 KL） | 已提交树不可独立编译（committed 代码引用未跟踪 WIP 类；100 errors，非本卡引入） | P0-WORKSPACE-WIP-CONSOLIDATION-001 后重验 |
+| **ENV-3（需更新）** | 构建 JDK 由 `H:\jdk-25.0.1.8-hotspot`（已消失）迁至 **`P:\my-new-project\JDK21`**（Temurin 21.0.9+10）；Java 25 的 byte-buddy experimental 开关不再需要 | 见 §4 #3；KL 主表待收口更新 |
+
+---
+
+**（本记录随各片完成增量更新；收口时补 §18 验收证据 + 限制项登记）**
