@@ -180,8 +180,8 @@ public class UserController {
     @OperationLog(module = "USER_STORE_ASSIGN", type = OperationLog.OperationType.UPDATE, desc = "分配门店归属（P1-USER-LOCATION-001 审计留痕）")
     public Result<Void> assignStore(@Parameter(description = "用户ID") @PathVariable Long id,
                                      @Valid @RequestBody UserAssignStoreDTO request) {
-        Long storeId = request.getStoreId();
-        boolean success = userService.assignStore(id, storeId);
+        Long locationId = request.getLocationId();
+        boolean success = userService.assignStore(id, locationId);
         if (!success) {
             return Result.error(404, "用户不存在");
         }
@@ -206,7 +206,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('system:user:assign-store') or hasAuthority('*')")
     @OperationLog(module = "USER_STORE_ASSIGN", type = OperationLog.OperationType.UPDATE, desc = "批量分配门店归属（P1-USER-LOCATION-001 审计留痕）")
     public Result<Integer> assignStoreBatch(@Valid @RequestBody UserAssignStoreBatchDTO request) {
-        int success = userService.assignStoreBatch(request.getUserIds(), request.getStoreId());
+        int success = userService.assignStoreBatch(request.getUserIds(), request.getLocationId());
         return Result.success(success, "批量分配完成，成功 " + success + " 个");
     }
 

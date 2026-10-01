@@ -1,5 +1,7 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.service.LocationService;
+
 import com.foodtraceability.common.exception.NoLocationContextException;
 import com.foodtraceability.service.EmployeeService;
 import com.foodtraceability.entity.Employee;
@@ -52,16 +54,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private final UserDataService userDataService;
     private final StoreDataService storeDataService;
     private final EmployeeService employeeService;
+    private final LocationService locationService;
     private final ObjectMapper objectMapper;
 
     public UserServiceImpl(PasswordEncoder passwordEncoder, RoleService roleService, 
                           UserDataService userDataService, StoreDataService storeDataService,
-                          EmployeeService employeeService) {
+                          EmployeeService employeeService, LocationService locationService) {
         this.passwordEncoder = passwordEncoder;
         this.roleService = roleService;
         this.userDataService = userDataService;
         this.storeDataService = storeDataService;
         this.employeeService = employeeService;
+        this.locationService = locationService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -161,17 +165,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean assignStore(Long userId, Long storeId) {
+    public boolean assignStore(Long userId, Long locationId) {
         User user = getById(userId);
         if (user == null) {
             return false;
         }
-        // P1-USER-LOCATION-001 §5 修订一：入参为 store_id（stores_new 空间），经 location_id_map
-        // 换算为 location_id 落库；门店无效即拒绝（不落 NULL 兜底）
-        Long locationId = LocationIdBridge.locationIdOfStore(storeId);
-        if (locationId == null) {
-            throw new NoLocationContextException("门店无效或不存在：" + storeId);
-        }
+        // P1-USER-LOCATION-001 §5 修订一 / 裁定 A：入参即 location_id（locations 空间），直接落库；
+        // 位置不存在即拒绝（不落 NULL 兜底，也不做 store_id→location_id 换算）
+        requireExistingLocation(locationId);
         user.setLocationId(locationId);
         user.setUpdatedTime(LocalDateTime.now());
         boolean result = updateById(user);
@@ -185,14 +186,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int assignStoreBatch(List<Long> userIds, Long storeId) {
+    public int assignStoreBatch(List<Long> userIds, Long locationId) {
         if (userIds == null || userIds.isEmpty()) {
             throw new NoLocationContextException("批量分配缺少目标用户");
         }
-        Long locationId = LocationIdBridge.locationIdOfStore(storeId);
-        if (locationId == null) {
-            throw new NoLocationContextException("门店无效或不存在：" + storeId);
-        }
+        requireExistingLocation(locationId);
         int success = 0;
         for (Long userId : userIds) {
             if (userId == null) {
@@ -258,6 +256,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             employee.setUserId(user.getId());
         }
         employeeService.updateById(employee);
+    }
+
+    /**
+     * P1-USER-LOCATION-001（裁定 A）：校验入参 {@code location_id} 指向一个存在（未删除）的位置。
+     *
+     * <p>STORE / CENTRAL / DEPOT 型**均可** —— 按 design-002 §5.2「仓库员工与门店员工使用
+     * 同一字段 locationId」，仓库归属是合法分配，故不能限制为 STORE 型。
+     *
+     * @throws NoLocationContextException 位置为空、不存在或已删除（HTTP 400）
+     */
+    private void requireExistingLocation(Long locationId) {
+        if (locationId == null || locationService.getById(locationId) == null) {
+            throw new NoLocationContextException("位置无效或不存在：" + locationId);
+        }
     }
 
     @Override
