@@ -20,7 +20,7 @@
 | **新增已知限制 / ENV** | **ENV-10（已提交树不可独立编译：100 错，非本卡引入）**、**ENV-3 更新（构建 JDK 迁至 `P:\my-new-project\JDK21`）**、ENV-9（WIP 致 ~10 单测类失败）、KL-084、KL-083 |
 | **工作区** | ~545 变更（WIP 留盘；PG-001 精确清单；本卡对 11 个带 WIP 的目标文件采用 **hunk 级隔离**，残留 diff 逐字等于原 WIP） |
 
-> **P1-USER-LOCATION-001（重档 · 阶段3）进度**：判档 = 重档（PG-006）；阶段1 诊断 + 阶段2 设计（19 项拍板）就位。**已完成** S1→S2a→S2b→S3→S4a→S4b(非设备域 7/7)→S5a→S5b-part1→S5b-part2→S6，全部 `mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。**剩余**：前端接线（`UserManagementTab.vue` + `api/system/user.ts`）+ S7 收口（回填/快照与 E2E 交接待补）。**限制**：LIM-1（KDS 冻结）/ LIM-2（设备域冻结）/ ENV-10（纯提交树不可编译）。**待 Owner**：emp-l/n 仓库归属方式、finqa×3 停用/删除。实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§19）。
+> **P1-USER-LOCATION-001（重档 · 阶段3）进度**：判档 = 重档（PG-006）；阶段1 诊断 + 阶段2 设计（19 项拍板）就位。**已完成** S1→S2a→S2b→S3→S4a→S4b(非设备域 7/7)→S5a→S5b-part1→S5b-part2→S6，全部 `mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。**剩余**：前端接线（`UserManagementTab.vue` + `api/system/user.ts`）+ S7 收口（回填/快照与 E2E 交接待补）。**限制**：LIM-1（KDS 冻结）/ LIM-2（设备域冻结）/ ENV-10（纯提交树不可编译）。**Owner 已裁决（2026-09-30）**：emp-l/n 走**人工分配**；finqa×3 **停用**（不删数据）。实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§19）。
 
 ## 一、当前状态总览
 

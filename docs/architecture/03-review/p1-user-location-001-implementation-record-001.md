@@ -461,9 +461,9 @@ Owner 既有指令「依据 design-001（主体）+ design-002（修订，**以 
 3. **finqa×3** 属数据清理、非本卡代码范围 → 待 Owner 处置（U-5）。
 4. **活体核对不可行**（无 DB）：本表"期望值"由迁移逻辑 + 处置表推导；**QA 须在有 DB 环境执行 SQL 核对**（登记为交接项）。
 
-### 17.2 需 Owner 裁决/协助的 2 项
-- **(A) emp-l / emp-n 仓库归属**：走「人工经 S5 分配入口分配」还是「收口回填脚本按 `employees.warehouse_id` 推导」？后者省事但属"自动推导"，与 Owner「人工分配」裁定需确认。
-- **(B) finqa×3 停用/删除**：Owner 定（U-5 原为"建议停用"）。
+### 17.2 Owner 已裁决（2026-09-30）
+- **(A) emp-l / emp-n 仓库归属 → 走人工分配**（经 S5 分配入口 / 新位置下拉 UI 选 DEPOT/CENTRAL 型位置）；**不写**按 `employees.warehouse_id` 自动推导的回填脚本。
+- **(B) finqa×3 → 停用**（不删数据）。详见 §23。
 
 ### 17.3 冻结限制项与环境事实汇总（累计）
 | 编号 | 内容 | 开卡/解除条件 |
@@ -615,6 +615,29 @@ SELECT * FROM v_users_store_compat LIMIT 20;
 
 ### 22.4 LIM-3 解除
 LIM-3（前端分配入口）：**已接线（`331b79b`）+ 已构建/类型验证（R19）** → **解除**。KL 主表 KL-087 行同步为「已解除」。
+
+---
+
+## §23 Owner 裁决落地：emp-l/n 与 finqa×3（2026-09-30）
+
+**Owner 裁决（本会话）**：
+1. **emp-l / emp-n（仓库 2 人）→ 人工分配**：经分配入口（记录 §14 的 `assign-store` / 新位置下拉 UI）选择其 DEPOT/CENTRAL 型位置；**不引入**"按 `employees.warehouse_id` 自动推导"的回填脚本 —— 与 Owner「人工分配」裁定一致（人工分配的对象是用户，不是靠档案猜）。
+2. **finqa×3（`finqa_register` / `finqa_confirm` / `finqa_noperm`）→ 停用**（保留数据，不删除）。
+
+**影响**：
+- 记录 §17.2 两项**全部闭环**，本卡**无待 Owner 裁决项**；
+- 两项均为**环境数据动作**，本机无 DB（§4 #1）故未执行，交有 DB 环境执行：
+  - emp-l/n：管理端「用户管理 → 分配位置」选仓库位置（或 `PUT /v1/users/{id}/assign-store` body `{"locationId": <仓库 location_id>}`）；
+  - finqa×3 停用（幂等；`users.status`：1=启用 / 0=禁用，与 `toggleStatus` 一致）：
+    ```sql
+    UPDATE users SET status = 0, updated_time = NOW()
+     WHERE username IN ('finqa_register', 'finqa_confirm', 'finqa_noperm')
+       AND deleted = 0
+       AND status <> 0;
+    ```
+  - **未新增 Flyway 迁移**：把"停用测试账号"这类环境数据动作固化进生产迁移链会让所有环境（含生产）连带执行，故仅以交接语句形式登记，由 Owner/QA 决定执行时点。
+
+**裁决后验收基准 2 的状态**：admin + 9 总部保持 NULL（设计符合性 ✓）；emp-l/n 归属改由**人工分配**闭环（运营动作）；finqa×3 停用（数据动作）。三者的**代码侧条件均已具备**。
 
 ---
 
