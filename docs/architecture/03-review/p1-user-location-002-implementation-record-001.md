@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1、C2 已提交；C3–C10 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1、C2 已提交（待 Windows 交验）；C2b（D1-4 落点，裁决已就位）+ C3–C10 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -48,7 +48,9 @@
 
 ---
 
-## §3 实施期新发现（需 Owner 裁决，**阻塞 C5**）
+## §3 实施期新发现（F-1 / F-2 / F-3 —— **已全部裁决，2026-09-30 第四批**）
+
+> 裁决前一律未擅自补做（PG-005 不扩范围）。裁决结果见 §3.4。
 
 ### F-1 —— 设计 D1-4 在 D9 提交切分中**没有落点**
 
@@ -74,22 +76,49 @@
 
 → **C5（前端员工表单停发 `workLocationType`）一旦落地，新建员工默认落入"全量可见"数据作用域。** 该隐患在改前已存在（不传即默认），C5 会把它变成普遍状态。
 
-**建议处置方向**（供 Owner 拍板，本卡未实施）：
-1. 定 F-2 映射表，并在 `resolveLocationId` 同批推导写入 `work_location_type`；或
-2. 把 `WorkLocationFilterHelper` 的判据从 `employees.work_location_type` 换成 `locations.location_type`（更彻底，但触及数据范围语义，属独立卡）；或
-3. 明确 `work_location_type` 进入退役路径（先停止消费，再 DROP）。
+### §3.4 裁决结果（2026-09-30 第四批 · Owner 原话已登记进设计 §7 U9 / U10）
 
-**C5 放行前需先裁 F-2 + F-3。**
+- **F-2 → U9 已裁**：`STORE→STORE`、`CENTRAL→WAREHOUSE`、`DEPOT→WAREHOUSE`；**`TRANSIT` 禁止作员工归属 → 显式拒绝**（词表外值同处理，不猜）。
+  Owner 补条：**无 `locationId` → 显式 `HEADQUARTERS`**（对应 design-001 §3.2 总部职能 NULL 场景，也是 `WorkLocationFilterHelper` "不限制"分支的语义承载）。
+- **F-3 → U10 已裁**：**`resolveLocationId` 里永远显式 `set workLocationType`——有 `locationId` 走 U9 映射；无 `locationId` → `HEADQUARTERS`；不走 DB DEFAULT。**
+- **F-1 已补落点**：新增提交 **C2b**（设计 D9 已插入，依赖 C2；**C5 的硬前置**）。
+
+**裁决后的实际语义收窄效果（如实说明，不夸大）**：
+- 有 `locationId` 的员工 → `work_location_type` 由位置类型推导，**不再由客户端传值决定** → 门店/仓库员工不会再落进"全量可见"。这是 F-3 隐患被真正修掉的部分。
+- 无 `locationId` 的员工 → 仍落 `HEADQUARTERS` = 全量可见，但**从"DB 默认值的意外结果"变成"显式且有业务语义的选择"**（总部职能）。范围本身未收窄，收窄的是**来源的可解释性**。
+
+### §3.5 裁决引出的数据侧待核项（未实施，登记）
+
+映射生效后，存量数据可能出现 `location_id` 与 `work_location_type` 不一致的行（历史上该字段由前端传值决定）。需核实行数再决定是否回填（回填属独立决策，不在 C2b 内）：
+
+```sql
+-- 存量不一致行数（映射口径 = U9）
+SELECT e.employee_id, e.employee_code, e.name, e.location_id,
+       l.location_type AS actual_type, e.work_location_type AS stored_type
+FROM employees e
+JOIN locations l ON l.location_id = e.location_id
+WHERE e.deleted = 0
+  AND NOT (
+        (l.location_type = 'STORE'   AND e.work_location_type = 'STORE')
+     OR (l.location_type IN ('CENTRAL','DEPOT') AND e.work_location_type = 'WAREHOUSE')
+  )
+ORDER BY e.employee_code;
+```
+
+判读：非 0 行 → 交 Owner 决定「回填」或「保留并登记为已知不一致」；**不自行回填**。`TRANSIT` 型位置若出现在 `employees.location_id` 上 → 属 C2b 上线前必须清零的脏数据（C2b 只拒绝新写入，不改存量）。
 
 ---
 
-## §4 未开始提交（C3–C10）
+## §4 未开始提交（C2b、C3–C10）
+
+> **推进顺序（Owner 第四批）**：等 C1+C2 的 Windows 交验结果 → **C2b → C3 → C4 → C5…**；**若 Owner 两天内未跑交验 → 改做 C3（独立主干）**。
 
 | 提交 | 状态 | 前置 |
 |---|---|---|
-| C3 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | 未开始 | C1–C2 交验通过 |
+| **C2b** 承载 D1-4：`resolveLocationId` 内按 U9 映射显式 `set workLocationType`；`TRANSIT`/词表外 → 400；无 `locationId` → 显式 `HEADQUARTERS`（不走 DB DEFAULT）+ 单测 | 未开始（**裁决已就位，代码未动**） | C1–C2 交验通过 |
+| C3 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | 未开始 | C1–C2 交验通过（或 Owner 两天未验 → 直接开工） |
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | 未开始 | C2、C3 |
-| C5 前端员工表单合并位置下拉（D2，N6 消解） | 未开始 | **F-2 + F-3 裁决** |
+| C5 前端员工表单合并位置下拉（D2，N6 消解） | 未开始 | **C2b（硬前置）**、C3 |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
 | C7 N3 三处（D4） | 未开始 | 无 |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | 未开始 | 无（设备域 KL-086 冻结不动） |
@@ -125,5 +154,5 @@
 - **无 schema 变更**、无迁移文件新增（C3 才引入 seed 迁移）。
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
-- 未做 D1-4（F-1/F-2/F-3 登记，不擅自补做）。
+- 未做 D1-4：F-1/F-2/F-3 登记后**未擅自补做**；Owner 第四批裁决（U9/U10）已登记进设计 §7 与 D9（新增 **C2b**），**代码仍未动**，等 C1+C2 交验结果。
 - 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对。

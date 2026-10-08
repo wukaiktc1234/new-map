@@ -205,16 +205,17 @@
 |---|---|---|
 | **C1** | 桥正向入口 + 单测（D1-1） | 无 |
 | **C2** | 员工 DTO 加 `locationId` + `EmployeeServiceImpl` 归属解析（D1-2/3）+ 单测 | C1 |
+| **C2b**（**新增落点，承载 D1-4**） | `resolveLocationId` 内按 **U9 映射**显式 `set workLocationType`：`STORE→STORE`、`CENTRAL/DEPOT→WAREHOUSE`；`TRANSIT` 或词表外值 → `BusinessException(400)` 显式拒绝；**无 `locationId` → 显式 `HEADQUARTERS`**（**不走 DB DEFAULT**，U10）+ 单测 | C2 |
 | **C3** | 权限码 5 面 + 独立端点 `PUT /v1/employees/{id}/assign-location` + 审计（D3-3/4/5）+ seed 迁移（**U7 已裁**：授 `ROLE_HR_DIRECTOR` + admin，**不授** `ROLE_STORE_MANAGER`；**U3 已裁**：同一迁移补 `system:user:assign-store` + `system:user:unassign-store` 两条 seed） | C2 |
 | **C4** | 反向同步 `syncUserAssignmentFromEmployee`（D3-1/2）+ 单测 | C2、C3 |
-| **C5** | 前端员工表单合并位置下拉（D2，含 N6 消解） | C2、C3 |
+| **C5** | 前端员工表单合并位置下拉（D2，含 N6 消解） | C2、C3、**C2b**（前端停发 `workLocationType` 必须以 C2b 已落地为前提） |
 | **C6** | 用户创建表单加归属（D6） | 无（可与 C5 并行） |
 | **C7** | N3 三处（D4） | 无 |
 | **C8** | N4 一处（D5，仅 `PurchaseArrivalServiceImpl`） | 无 |
 | **C9** | N8 出参加 `locationId` + 前端消费切换（D7） | 无 |
 | **C10** | N12 冗余收敛 + `@Deprecated`（D8-2/3；**U6 已裁：纳入**） | 无 |
 
-> C1–C4 是缺口①②③主干；C5–C10 各自独立，任一被 Owner 砍掉不影响其余。
+> C1–C4（含 **C2b**）是缺口①②③主干；C5–C10 各自独立，任一被 Owner 砍掉不影响其余。**C2b 是 C5 的硬前置**：前端停发 `workLocationType` 之前，后端必须已显式推导该字段。
 
 ---
 
@@ -322,9 +323,13 @@
 | **U6** | D8-2 冗余往返收敛（2 处）是否纳入 002 | ✅ **已裁** | **纳入**：`StoreInventoryController:76→83`、`SalesOrderServiceImpl:268` 两处收敛 | C10 已按此定稿 |
 | **U7** | `hr:employee:assign-location` 授予哪些角色 | ✅ **已裁** | **按推荐**：`ROLE_HR_DIRECTOR` + admin（`*` 已覆盖 admin）；**不授** `ROLE_STORE_MANAGER` | C3 seed 内容已按此定稿 |
 | **U8（新增）** | 「未分配位置的账号登录 POS → 下单撞墙」由谁管 | ✅ **已裁 = 归 B** | **不进 002、不加代码兜底**（宪法禁止）→ 另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**；形态已定 **B2-a + admin 例外**（见任务板该卡） | §0.2 分流；002 无新增范围 |
+| **U9（新增 · 实施期 F-2）** | `locations.location_type` → `employees.work_location_type` 的映射怎么定（两侧词表被 DB CHECK 硬约束且不重合） | ✅ **已裁（2026-09-30 第四批）** | **`STORE→STORE`、`CENTRAL→WAREHOUSE`、`DEPOT→WAREHOUSE`；`TRANSIT` 禁止作员工归属 → 显式拒绝**（词表外值同处理，不猜）。Owner 补条：**无 `locationId` → 显式 `HEADQUARTERS`**（对应 §3.2 总部职能 NULL 场景，也是 `WorkLocationFilterHelper` "不限制"分支的语义承载） | **新增提交 C2b** 承载 D1-4 |
+| **U10（新增 · 实施期 F-3）** | 不传即落 DB DEFAULT `HEADQUARTERS` → 新建员工落入"全量可见"数据作用域，怎么处置 | ✅ **已裁（同日）** | **C5 的写法：`resolveLocationId` 里永远显式 `set workLocationType`——有 `locationId` 走 U9 映射；无 `locationId` → `HEADQUARTERS`。不走 DB DEFAULT。** | C2b（C5 的硬前置） |
 
 **阶段 3 交接条件：已满足，并已放行（2026-09-30 第三批，方式 = 分批交验）。** U1–U8 全部裁决完毕，U1/U2/U4/U7 落地进 D1 / D3-1 / C3，U3/U5/U6 落地进 C3 / C10。**已实施 C1 `aff2568`（D1-1）+ C2 `ff4cba3`（D1-2/D1-3）**，验收待 Owner Windows 侧（ENV-11）；**C3–C10 待 C1–C2 交验通过**（本卡不实施 §24.3p 任何内容）。
-**实施期新发现（登记于 `docs/architecture/03-review/p1-user-location-002-implementation-record-001.md` §3）**：**F-1** = 本设计 D1-4 在 D9 的 C1–C10 切分中**没有落点**；**F-2** = `locations.location_type`（`STORE/CENTRAL/DEPOT/TRANSIT`，`V20260927_001:29` CHECK）与 `employees.work_location_type`（`STORE/WAREHOUSE/HEADQUARTERS` 且 DEFAULT `HEADQUARTERS`，`V20260721_001:16-17` CHECK）词表不重合 → D1-4 的"推导"需显式映射裁决；**F-3** = 不传即落 DB 默认 `HEADQUARTERS`，而 `WorkLocationFilterHelper:74/:103` 明示该值不限制数据范围 → **C5 前端停发 `workLocationType` 前必须先裁 F-2/F-3**。三项均未擅自补做（PG-005 不扩范围）。
+**实施期新发现（登记于 `docs/architecture/03-review/p1-user-location-002-implementation-record-001.md` §3）—— 三项均已裁（2026-09-30 第四批，见上表 U9/U10）**：**F-1** = 本设计 D1-4 在 D9 的 C1–C10 切分中**没有落点** → **已补 C2b 承载**；**F-2** = `locations.location_type`（`STORE/CENTRAL/DEPOT/TRANSIT`，`V20260927_001:29` CHECK）与 `employees.work_location_type`（`STORE/WAREHOUSE/HEADQUARTERS` 且 DEFAULT `HEADQUARTERS`，`V20260721_001:16-17` CHECK）词表不重合 → **映射已裁（U9）**；**F-3** = 不传即落 DB 默认 `HEADQUARTERS`，而 `WorkLocationFilterHelper:74/:103` 明示该值不限制数据范围 → **已裁（U10）：显式 set，不走 DB DEFAULT**。**三项在裁决前均未擅自补做（PG-005 不扩范围）。**
+
+**下一步（Owner 2026-09-30 第三批 + 第四批）**：等 C1+C2 的 Windows 侧交验结果 → 通过后按 **C2b → C3 → C4 → C5…** 顺序推进；**若 Owner 两天内未跑交验 → 改做 C3（独立主干）**。
 
 ---
 
