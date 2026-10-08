@@ -30,6 +30,7 @@
 | **§4.1 的 41 张 `store_id` 表** | **P1-LOCATION-MODEL-001 M5-M7**（任务板 §24.3g） | 表级收编是另一条主线 |
 | **N11**（POS / KDS 客户端下游断点） | 已另开轻档扫描卡并产出 [p1-pos-kitchen-storeid-downstream-scan-001.md](p1-pos-kitchen-storeid-downstream-scan-001.md) | Owner 明确「独立不阻塞 002」 |
 | **KL-085 / KL-086 冻结项**（KdsPrincipal、设备域 `DEFAULT_STORE_ID`） | 维持冻结 | 见 §2 D5 与 §7 |
+| **未分配位置账号在 POS 撞墙**（N11 A1 的处置） | **另开卡 §24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**（Owner 2026-09-30 裁「归 B」） | **002 内不加任何代码兜底**（违反 I-3 / 宪法）；002 只保证「已分配账号不再撞墙」（冒烟 C4），「未分配账号的可行动拒绝与引导」由该卡负责 |
 
 ---
 
@@ -66,7 +67,7 @@
    全空 → `null`（不落库，不兜底）。
 4. **`workLocationType` 不再作为写入依据**，改为从 `locations.location_type` 推导（与 Owner Q2 裁决一致）。
 
-**数据前提（阶段 2 已核实）**：`location_id_map` **已含 warehouses 映射行**——[V20260927_001:66-77](../../backend/src/main/resources/db/migration/V20260927_001__create_locations_and_location_id_map.sql#L66) 把真实仓写入 `locations` 并登记 `src_table='warehouses'`。**但 Owner「全清」决策排除了 8 个 E2E/TEST 仓库**（同文件 :6 注释）→ 这 8 个仓的 `warehouseId` 经新桥**返回 null** → 按 I-3 显式拒绝（见 §7 未决 U4）。
+**数据前提（阶段 2 已核实）**：`location_id_map` **已含 warehouses 映射行**——[V20260927_001:66-77](../../backend/src/main/resources/db/migration/V20260927_001__create_locations_and_location_id_map.sql#L66) 把真实仓写入 `locations` 并登记 `src_table='warehouses'`。**但 Owner「全清」决策排除了 8 个 E2E/TEST 仓库**（同文件 :6 注释）→ 这 8 个仓的 `warehouseId` 经新桥**返回 null** → 按 I-3 显式拒绝（**Owner U4 已裁：显式拒绝**，不猜、不兜底）。
 
 **取舍**：不新增 `employees` 列、不加迁移（`employees.location_id` 已由 [V20260930_002:3](../../backend/src/main/resources/db/migration/V20260930_002__user_location_001_rename_store_id_to_location_id.sql#L3) 从 `employees.store_id` 改名而来，可空）。
 
@@ -101,8 +102,8 @@
 
 1. **新增反向同步方法**（落在 `EmployeeServiceImpl`，命名 `syncUserAssignmentFromEmployee`），在 `updateEmployee` 归属发生变化时调用：
    - 关联键沿用既有惯例 **`employees.user_id`（已由 V20260930_002 :21 建列并回填）优先，`employee_code` 兜底**；
-   - 写入 `users.location_id = 解析出的 locationId`；
-   - **不创建用户**：找不到对应用户 → 只写审计、不动 `users`（避免员工档案造账号）。
+   - 写入 `users.location_id = 解析出的 locationId`（**Owner U1 已裁：后写覆盖**——用户已有不同归属时以员工侧本次写入为准，审计须记「旧值 → 新值」）；
+   - **不创建用户**（**Owner U2 已裁：只写员工表**）：找不到对应用户 → 只写员工侧 + 审计，**不动 `users`、不建账号、不报错**。
 2. **防回写循环**：正向 sync 与反向 sync **各自只写对向表一次**，不在被调用方法内再触发对向同步；实现上以「入口决定方向」为硬约束（用户入口→正向；员工入口→反向），并在两处方法注释互指。
 3. **权限门槛**（Owner Q1 约束①③）：`EmployeeController` 的归属变更须加
    `@PreAuthorize("hasAuthority('hr:employee:assign-location') or hasAuthority('*')")` + `@RequiresPermission(value="hr:employee:assign-location", action="assign-location")`，样板 = [UserController.java:184-186](../../backend/src/main/java/com/foodtraceability/controller/UserController.java#L184)。
@@ -204,7 +205,7 @@
 |---|---|---|
 | **C1** | 桥正向入口 + 单测（D1-1） | 无 |
 | **C2** | 员工 DTO 加 `locationId` + `EmployeeServiceImpl` 归属解析（D1-2/3）+ 单测 | C1 |
-| **C3** | 权限码 5 面 + 独立端点 `PUT /v1/employees/{id}/assign-location` + 审计（D3-3/4/5）+ seed 迁移 | C2 |
+| **C3** | 权限码 5 面 + 独立端点 `PUT /v1/employees/{id}/assign-location` + 审计（D3-3/4/5）+ seed 迁移（**U7 已裁**：授 `ROLE_HR_DIRECTOR` + admin，**不授** `ROLE_STORE_MANAGER`） | C2 |
 | **C4** | 反向同步 `syncUserAssignmentFromEmployee`（D3-1/2）+ 单测 | C2、C3 |
 | **C5** | 前端员工表单合并位置下拉（D2，含 N6 消解） | C2、C3 |
 | **C6** | 用户创建表单加归属（D6） | 无（可与 C5 并行） |
@@ -309,17 +310,20 @@
 
 ---
 
-## 7. 未决项（须 Owner 拍板后才进阶段 3）
+## 7. 未决项裁决状态（Owner 2026-09-30 第二批）
 
-| # | 问题 | 推荐 | 影响 |
-|---|---|---|---|
-| **U1** | 反向同步冲突语义：用户已有不同 `location_id` 时——覆盖 / 拒绝 / 覆盖但提示？ | **覆盖 + 审计旧值**（Owner Q1 已裁「同一件事」） | D3-1 |
-| **U2** | 员工无对应用户时：只审计 / 报错 / 自动建账号？ | **只审计，不建账号** | D3-1 |
-| **U3** | `-001` 的 `assign-store` 权限码未入库（§4 事实）：是否在同一 seed 迁移补齐？ | **补齐**（否则用户侧分配入口对非 admin 仍不可用，本卡员工侧却可用 → 口径不一致） | C3 范围 +1 权限码 |
-| **U4** | 8 个 E2E/TEST 仓（未迁 `locations`）的员工归属怎么办？ | **显式拒绝 + 提示「该仓库未纳入位置体系，待 M7 退役」**（符合 I-3） | D1 数据前提 |
-| **U5** | `PUT /v1/employees/{id}` 拆出独立归属端点（D3-3）——是否接受 API 面新增？ | **接受**（否则权限门槛会误伤普通档案编辑） | C3 |
-| **U6** | D8-2 冗余往返收敛（2 处）是否纳入 002？ | **纳入**（可砍，砍后 N12 仅剩登记面） | C10 |
-| **U7** | `hr:employee:assign-location` 授予哪些角色？（现有 HR 角色族：`ROLE_HR_DIRECTOR` 等，见 [init-data.sql:193](../../backend/src/main/resources/db/init-data.sql#L193)） | `ROLE_HR_DIRECTOR` + `admin`（`*` 已覆盖 admin）；`ROLE_STORE_MANAGER` **不授**（跨店改归属风险） | C3 seed 内容 |
+| # | 问题 | 状态 | 裁决 / 推荐 | 影响 |
+|---|---|---|---|---|
+| **U1** | 反向同步冲突语义 | ✅ **已裁** | **后写覆盖**（last-write-wins）+ 审计记旧值 | D3-1 已按此定稿 |
+| **U2** | 员工无对应用户时 | ✅ **已裁** | **只写员工表**：不动 `users`、不建账号、不报错 | D3-1 已按此定稿 |
+| **U3** | `system:user:assign-store` 未落 DB seed，是否同一迁移补齐 | ⏳ **待裁** | 推荐**补齐**（否则用户侧入口对非 admin 仍不可用，员工侧却可用 → 口径不一致） | C3 范围 +1 权限码 |
+| **U4** | 8 个未迁 `locations` 的 E2E/TEST 仓的员工归属 | ✅ **已裁** | **显式拒绝**（符合 I-3，不猜、不兜底） | D1 数据前提已按此定稿 |
+| **U5** | 是否接受新增 `PUT /v1/employees/{id}/assign-location` | ⏳ **待裁** | 推荐**接受**（否则权限门槛误伤普通档案编辑） | C3 |
+| **U6** | D8-2 冗余往返收敛（2 处）是否纳入 002 | ⏳ **待裁** | 推荐**纳入**（可砍，砍后 N12 仅剩登记面） | C10 |
+| **U7** | `hr:employee:assign-location` 授予哪些角色 | ✅ **已裁** | **按推荐**：`ROLE_HR_DIRECTOR` + admin（`*` 已覆盖 admin）；**不授** `ROLE_STORE_MANAGER` | C3 seed 内容已按此定稿 |
+| **U8（新增）** | 「未分配位置的账号登录 POS → 下单撞墙」由谁管 | ✅ **已裁 = 归 B** | **不进 002、不加代码兜底**（宪法禁止）→ 另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**；卡内仍待 Owner 选形态 B2-a / B2-b（见任务板该卡） | §0.2 分流；002 无新增范围 |
+
+**阶段 3 交接条件（更新）**：Owner 裁 **U3 / U5 / U6** 三项 → 放行阶段 3（按 D9 的 C1–C10 切分）。U1/U2/U4/U7 已落地进 D1 / D3 / C3。
 
 ---
 

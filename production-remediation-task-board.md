@@ -8098,14 +8098,14 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 2 设计完成，待 Owner 拍板设计 §7 七项**）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 2 设计完成，未决项已裁 4/7，剩 U3/U5/U6**）
 
 > **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-002**（Owner 编号建议给的是 002 / -001-R1 二选一；采 **002**——`-R1` 在本仓是 QA 复验惯例，本卡新增范围属新卡而非复验） |
-| 状态 | **阶段 2 设计完成，待 Owner 拍板**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决 U1–U7） |
+| 状态 | **阶段 2 设计完成；未决项已裁 4/7**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决项裁决状态表）。**已裁（2026-09-30 第二批）**：U1 后写覆盖 / U2 只写员工表 / U4 显式拒绝 / U7 授 `ROLE_HR_DIRECTOR`+admin 不授门店经理；**待裁**：U3（`assign-store` seed 是否补齐）/ U5（是否接受新端点）/ U6（冗余收敛是否纳入）。**U8 已裁 = 归 B** → POS 未分配撞墙**不进 002**，另开 §24.3p |
 | 优先级 | P1 |
 | 性质 | **P1-USER-LOCATION-001 收尾补丁卡**（非新领域）：用户管理 vs 员工管理两个"归属位置"入口口径一致性 |
 | 前置卡 | P1-USER-LOCATION-001（CLOSED_WITH_REGISTERED_LIMITATION，`ff61f85`） |
@@ -8116,7 +8116,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **非范围（明确排除，已分流，禁止在 002 内顺手做）** | **N1/N2** → 库存收编卡（M5 或 P1-LOCATION-MODEL-001 M5-M7）；**N5** → 财务域卡；**N9**（`inventory_movement` 无 Flyway 定义）→ **P0-FLYWAY-COVERAGE-002**（§24.3b）；**§4.4** `role_stores`/`sys_stores`/`sys_user_stores` → **P0-ROLE-STORE-SCHEMA-001**（§24.3c）；**§4.1 的 41 张 `store_id` 表** → **P1-LOCATION-MODEL-001 M5-M7**（§24.3g）；**N11** → 已另开轻档扫描卡 §24.3n；**KL-085 / KL-086 冻结项**不动（含 `HardwareConfigServiceImpl:95/138` 与 `DeviceStatusServiceImpl` 6 处 `DEFAULT_STORE_ID` —— 属 KL-086 冻结区，故 N4 只取非冻结那一处） |
 | 阶段 2 核实结论（原「预判」已核） | **无新表、无列变更**（`locations`/`location_id_map` 已建，`employees.location_id`+`employees.user_id`+`users.location_id` 已在 `V20260930_002`；`location_id_map` **确含 warehouses 映射行** `V20260927_001:66-77`，但 Owner「全清」决策排除的 **8 个 E2E/TEST 仓不在映射内** → 新桥对其返回 null）；**需 1 条 seed 迁移**（新权限码须入库，PG-003 Flyway 单一来源）。附带登记事实：-001 S5a 的 `system:user:assign-store` **未落任何 DB seed**（`init-data.sql` 与全部 Flyway 迁移 grep 0 命中）→ 现仅 `hasAuthority('*')` 可用 → 见设计 §7 **U3** |
 | 验收基准（**阶段 2 定稿**） | 见 `docs/design/p1-user-location-002-design-001.md` §6：A1–A9（单测/集成，含「`grep -c DEFAULT_STORE_ID` 计数不变」以证明未撞 KL-086）+ B1–B4（前端，含旧端点调用 0 命中）+ C1–C4 手工冒烟（仓库员工 JWT `locationId` 非空 → `requireWarehouseContext()` 通过 → POS 下单不再 `NoLocationContextException`）+ D 边界自检（增量 = 19 文件 + 1 新迁移；两个带 WIP 的前端文件残留 diff 逐字等于原 WIP） |
-| 启动条件 | ~~Owner 审阶段 1 诊断 → 放行阶段 2~~（**已完成**）→ **Owner 对设计 §7 七项（U1–U7）拍板 → 阶段 3 实施（按设计 D9 的 C1–C10 提交切分）** |
+| 启动条件 | ~~Owner 审阶段 1 诊断 → 放行阶段 2~~（**已完成**）→ ~~设计 §7 七项拍板~~（**U1/U2/U4/U7 已裁 2026-09-30**）→ **剩余 U3 / U5 / U6 拍板 → 阶段 3 实施（按设计 D9 的 C1–C10 切分）** |
 
 ---
 
@@ -8157,6 +8157,25 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **N11** POS / KDS 客户端下游断点 | **已开卡 §24.3n 并完成** | 完成 |
 | **§4.4** `role_stores` / `sys_stores` / `sys_user_stores` | **P0-ROLE-STORE-SCHEMA-001 / P1-ROLE-STORE-ISOLATION-001**（§24.3c） | 挂已有卡（新增登记） |
 | **§4.1** 41 张 `store_id` 表 | **P1-LOCATION-MODEL-001 M5-M7**（§24.3g） | 挂已有卡（新增登记） |
+| **POS 未分配位置撞墙**（§24.3n 表 A1 的处置） | **已开卡 §24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**（Owner 2026-09-30 裁「归 B：不加代码兜底，做显式拒绝 + 登录引导」）→ **不进 002** | 开卡未启动 |
+
+---
+
+## 24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001（2026-09-30 Owner 裁「归 B」后开卡；**未启动**）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-UNASSIGNED-LOCATION-GUIDANCE-001**（来源 = §24.3n 扫描卡表 A1；Owner 明确「**不是加进 002**，是决定谁来管」） |
+| 状态 | **开卡登记，未启动**；Owner 已裁方向 = **B（不加代码兜底）**；卡内 **B2-a / B2-b 形态待 Owner 选** |
+| 判档建议 | **轻档**（2 处后端小改 + 前端 0～1 处；无 schema、无迁移、无新权限码）——待 Owner 确认。**若选 B2-b（登录横幅 + 禁用下单）则升重档**（跨前后端 + 登录行为变更 + 需实施记录） |
+| 问题（已核五步事实链） | ① POS 登录 `PosAuthServiceImpl.login`（:65-110）校验链 = 用户存在 / 密码 / `status != 1` → 403「账号已被禁用，请联系管理员」/ `hasPosRole` → 403「无收银操作权限」——**无归属检查** → 未分配账号可正常登录 POS；② POS token **确实携带** `locationId` claim（`buildSecurityUser` :292 `setLocationId(user.getLocationId())`），值 = `users.location_id`；③ 下单 `PosOrderCreateServiceImpl:311-317`：请求无 storeId（POS 从不发，见 §24.3n）→ `SecurityUtils.getCurrentUserStoreId()` → 桥返回 null → **抛 `NoLocationContextException`（400，"缺少门店信息：请求未携带 storeId，且登录上下文无归属位置"）**；④ **语义错分类**：按 -002 §5 修订二 + -001 验收基准（实施记录 :542「未分配归属用户访问门店强绑定接口 → 断言 **403 `NoLocationAssignedException`**」），该场景应为 `NoLocationAssignedException`（**403**，默认文案**已存在**：「当前用户未分配位置，请联系管理员在用户管理中分配」）→ POS 路径偏离既定语义，且 400 文案对收银员不可行动（会去找门店而不是找管理员）；⑤ 前端**目前无法自行判断**：POS 登录响应 `userInfo` 只有 `{userId, employeeId, employeeName, terminalId}`（:116-120），**无 locationId / storeId**；`Login.vue:115-120` 声明的 `shopName` 是**幻影字段**（后端从不发送） |
+| 处置方向（Owner 已裁） | **不加代码兜底**——宪法禁止数值兜底，「按门店名解析 STORE_A」属**名称兜底**同禁（-001 #11 已删 `"1"` 兜底与 STORE_A 查询，不得回滚）。改为「**显式拒绝 + 可行动引导**」 |
+| 方案 B1（语义修正，**纯 bug 候选 → PG-005.1 豁免适用**） | `PosOrderCreateServiceImpl:316` 的 `NoLocationContextException`(400) → `NoLocationAssignedException`(403)，文案用既有 `DEFAULT_MESSAGE`。**异常类与文案均已存在**，改动 = 换类型 + 换文案，无新类、无新文案、无新逻辑 |
+| 方案 B2（Owner 要的「登录时给明确引导」） | 在 `PosAuthServiceImpl.login` 校验链 `hasPosRole` 之后加「归属缺失」检查——与既有 403 模式（:100 禁用 / :106 无权限）**同构**。**两形态待 Owner 选**：**B2-a 登录即拒**（403 + 既有文案）→ 前端**零改动**（`Login.vue:186-189` 已把后端 message 落到 `error.value` 显示）；**B2-b 允许登录 + 显式标记**（`userInfo` 加 `locationAssigned` + 前端横幅 + 禁用下单按钮）→ 前端需改，且判「未分配」须用 `locationId`（见下行陷阱） |
+| ⚠ 陷阱（防误实现，须随卡带走） | 判「未分配」**不能用 `storeId == null`**：`AuthServiceImpl:322` `response.setStoreId(LocationIdBridge.storeIdOf(user.getLocationId()))` 对**仓库型 location 也返回 null**（`storeIdOf` 只查 `src_table='stores_new'`，`LocationIdBridge:23/46/62`）→ 用 storeId 判会把**已分配的仓库员工误报为未分配**。正确判据 = `locationId == null`（管理端该字段由 002 **C9** 加入 `UserInfoResponse`；POS 登录响应侧仍需本卡自行加） |
+| **前置核实（硬门槛，未跑不得实施）** | 跑一条 SQL 求交集：**`users.location_id IS NULL` ∩ 具备 POS 角色**（`hasPosRole` 角色族）。已知 NULL 集合 = **15 人**（-001 实施记录 :49 / :527：admin + 9 总部**按设计保持 NULL**、finqa×3 已停用、emp-l/n 待人工分配）。若交集含「按设计保持 NULL」的总部账号或 E2E 测试账号 → **B2-a 会让其 POS 登录开始失败**，须先决定豁免路径（改分配 / 改测试账号 / 只选 B2-b） |
+| 与 002 的关系 | **独立、不阻塞 002、002 阶段 3 不做本卡任何内容**。002 冒烟 C4 只覆盖「已分配账号不再撞墙」；本卡覆盖「未分配账号的失败体验」。若选 **B2-b**，本卡**依赖 002 C9**（`UserInfoResponse.locationId`）→ 排期须在其后 |
+| 不在本卡 | 不加任何默认门店/默认位置；不动 `SecurityUtils`；不解冻 KL-085/086；不修 §24.3n 表 B 的「无门店作用域」端点（属 P1-ROLE-STORE-ISOLATION-001 / §24.3c）；不修 `Login.vue` 幻影字段 `shopName`（已在 §24.3n 表 C 附注登记） |
 
 ---
 

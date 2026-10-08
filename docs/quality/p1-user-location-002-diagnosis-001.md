@@ -112,3 +112,5 @@ P1-USER-LOCATION-001 已收口 `CLOSED_WITH_REGISTERED_LIMITATION`（`ff61f85`�
 **交接条件：Owner 审本报告 → 放行阶段 2（设计）。**
 
 **放行记录（2026-09-30）**：Owner 收下字段入口清单（`docs/quality/field-entry-inventory-001.md`）并明确「不再普查」，指定其为**本卡阶段 2 的输入** → 据此视为**放行阶段 2**；同时给出收窄范围（K1–K3 + 缺口①②③ + N3 + N4 + N6/N7 + N8/N12；排除 N1/N2/N5/N9/N10 与 §4.1/§4.4）。阶段 2 已产出 = [../design/p1-user-location-002-design-001.md](../design/p1-user-location-002-design-001.md)（§8 触点清单已在其中逐条落为方案）。**下一交接：Owner 拍板该设计 §7 的 U1–U7 → 阶段 3 实施。**
+
+**裁决记录（2026-09-30 第二批）**：**已裁 4 项** —— U1 **后写覆盖**（审计记旧值）/ U2 **只写员工表**（不动 `users`、不建账号）/ U4 **显式拒绝**（8 个未迁 `locations` 的 E2E/TEST 仓不猜不兜底）/ U7 授 **`ROLE_HR_DIRECTOR` + admin，不授 `ROLE_STORE_MANAGER`**；四项已落地进设计 §7 与 D1 / D3-1 / C3。**仍待裁 3 项**：U3（`system:user:assign-store` seed 是否补齐）/ U5（是否接受新端点 `PUT /v1/employees/{id}/assign-location`）/ U6（2 处冗余往返收敛是否纳入）→ **此三项 = 阶段 3 交接条件**。**U8 已裁 = 归 B**：「未分配位置账号在 POS 下单撞墙」**不进 002、不加代码兜底**，另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**（任务板）。
