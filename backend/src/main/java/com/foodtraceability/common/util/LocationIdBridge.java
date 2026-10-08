@@ -42,12 +42,31 @@ public class LocationIdBridge {
         return locationIdMapMapper.selectSrcIdByLocationId(SRC_STORES_NEW, locationId);
     }
 
-    /** stores_new.store_id → location_id；无映射返回 null */
+    /**
+     * stores_new.store_id → location_id；无映射返回 null。
+     *
+     * <p>保留原签名（零调用点冲击），实现委托给泛化入口
+     * （P1-USER-LOCATION-002 D1-1）。
+     */
     public Long toLocationId(Long storeId) {
-        if (storeId == null) {
+        return toLocationId(SRC_STORES_NEW, storeId);
+    }
+
+    /**
+     * 泛化正向入口：{@code (srcTable, srcId) → locations.location_id}；无映射返回 null。
+     *
+     * <p><b>P1-USER-LOCATION-002 缺口①</b>：此前桥只有 {@code location_id → warehouse_id}
+     * 的反向入口（{@link #toWarehouseId}），没有 {@code warehouse_id → location_id} 的正向入口，
+     * 导致"选仓库"的员工归属无法换算成 {@code location_id}（{@code employees.location_id} 恒 NULL）。
+     *
+     * <p>无映射时返回 {@code null} 而非兜底值：未纳入位置体系的来源（如 P1-LOCATION-MODEL-001
+     * 「全清」决策排除的 8 个 E2E/TEST 仓库）按显式拒绝语义处理，禁止数值/名称兜底。
+     */
+    public Long toLocationId(String srcTable, Long srcId) {
+        if (srcTable == null || srcTable.isEmpty() || srcId == null) {
             return null;
         }
-        return locationIdMapMapper.selectLocationIdBySrcId(SRC_STORES_NEW, storeId);
+        return locationIdMapMapper.selectLocationIdBySrcId(srcTable, srcId);
     }
 
     /** location_id → warehouses.warehouse_id；无映射返回 null */
@@ -68,5 +87,16 @@ public class LocationIdBridge {
     public static Long locationIdOfStore(Long storeId) {
         LocationIdBridge bridge = instance;
         return bridge == null ? null : bridge.toLocationId(storeId);
+    }
+
+    /**
+     * 静态入口：warehouses.warehouse_id → location_id（与 {@link #locationIdOfStore} 对称）。
+     *
+     * <p>P1-USER-LOCATION-002 D1-1 新增；非 Spring 上下文返回 {@code null}，调用方按
+     * "该来源未纳入位置体系"语义处理。
+     */
+    public static Long locationIdOfWarehouse(Long warehouseId) {
+        LocationIdBridge bridge = instance;
+        return bridge == null ? null : bridge.toLocationId(SRC_WAREHOUSES, warehouseId);
     }
 }
