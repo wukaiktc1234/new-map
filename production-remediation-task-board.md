@@ -8098,14 +8098,14 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 2 设计完成，未决项 U1–U8 全部裁决完毕，待 Owner 放行阶段 3**）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1+C2 已提交待 Windows 交验，C3–C10 未开始，新发现 F-1/F-2/F-3 阻塞 C5**）
 
 > **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-002**（Owner 编号建议给的是 002 / -001-R1 二选一；采 **002**——`-R1` 在本仓是 QA 复验惯例，本卡新增范围属新卡而非复验） |
-| 状态 | **阶段 2 设计完成；未决项 U1–U8 全部裁决完毕**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决项裁决状态表）。**裁决全表（2026-09-30 第二批）**：U1 后写覆盖 / U2 只写员工表 / U3 **补齐**（同一 seed 迁移补 `system:user:assign-store` + `unassign-store`，C3 范围 +2 权限码）/ U4 显式拒绝 / U5 **接受**新端点 / U6 **纳入**冗余收敛 / U7 授 `ROLE_HR_DIRECTOR`+admin 不授门店经理 / U8 **归 B**（POS 未分配撞墙**不进 002**，另开 §24.3p） |
+| 状态 | **阶段 2 设计完成；未决项 U1–U8 全部裁决完毕**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决项裁决状态表）。**裁决全表（2026-09-30 第二批）**：U1 后写覆盖 / U2 只写员工表 / U3 **补齐**（同一 seed 迁移补 `system:user:assign-store` + `unassign-store`，C3 范围 +2 权限码）/ U4 显式拒绝 / U5 **接受**新端点 / U6 **纳入**冗余收敛 / U7 授 `ROLE_HR_DIRECTOR`+admin 不授门店经理 / U8 **归 B**（POS 未分配撞墙**不进 002**，另开 §24.3p）。**阶段 3 已开工（分批交验）：C1+C2 已提交，C3–C10 未开始 → 详见下方「阶段 3 已提交」与实施记录** |
 | 优先级 | P1 |
 | 性质 | **P1-USER-LOCATION-001 收尾补丁卡**（非新领域）：用户管理 vs 员工管理两个"归属位置"入口口径一致性 |
 | 前置卡 | P1-USER-LOCATION-001（CLOSED_WITH_REGISTERED_LIMITATION，`ff61f85`） |
@@ -8116,7 +8116,11 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **非范围（明确排除，已分流，禁止在 002 内顺手做）** | **N1/N2** → 库存收编卡（M5 或 P1-LOCATION-MODEL-001 M5-M7）；**N5** → 财务域卡；**N9**（`inventory_movement` 无 Flyway 定义）→ **P0-FLYWAY-COVERAGE-002**（§24.3b）；**§4.4** `role_stores`/`sys_stores`/`sys_user_stores` → **P0-ROLE-STORE-SCHEMA-001**（§24.3c）；**§4.1 的 41 张 `store_id` 表** → **P1-LOCATION-MODEL-001 M5-M7**（§24.3g）；**N11** → 已另开轻档扫描卡 §24.3n；**KL-085 / KL-086 冻结项**不动（含 `HardwareConfigServiceImpl:95/138` 与 `DeviceStatusServiceImpl` 6 处 `DEFAULT_STORE_ID` —— 属 KL-086 冻结区，故 N4 只取非冻结那一处） |
 | 阶段 2 核实结论（原「预判」已核） | **无新表、无列变更**（`locations`/`location_id_map` 已建，`employees.location_id`+`employees.user_id`+`users.location_id` 已在 `V20260930_002`；`location_id_map` **确含 warehouses 映射行** `V20260927_001:66-77`，但 Owner「全清」决策排除的 **8 个 E2E/TEST 仓不在映射内** → 新桥对其返回 null）；**需 1 条 seed 迁移**（新权限码须入库，PG-003 Flyway 单一来源）。附带登记事实：-001 S5a 的 `system:user:assign-store` **未落任何 DB seed**（`init-data.sql` 与全部 Flyway 迁移 grep 0 命中）→ 现仅 `hasAuthority('*')` 可用 → 见设计 §7 **U3** |
 | 验收基准（**阶段 2 定稿**） | 见 `docs/design/p1-user-location-002-design-001.md` §6：A1–A9（单测/集成，含「`grep -c DEFAULT_STORE_ID` 计数不变」以证明未撞 KL-086）+ B1–B4（前端，含旧端点调用 0 命中）+ C1–C4 手工冒烟（仓库员工 JWT `locationId` 非空 → `requireWarehouseContext()` 通过 → POS 下单不再 `NoLocationContextException`）+ D 边界自检（增量 = 19 文件 + 1 新迁移；两个带 WIP 的前端文件残留 diff 逐字等于原 WIP） |
-| 启动条件 | ~~Owner 审阶段 1 诊断 → 放行阶段 2~~（**已完成**）→ ~~设计 §7 未决项拍板~~（**U1–U8 全部已裁 2026-09-30**）→ **待 Owner 放行 → 阶段 3 实施（按设计 D9 的 C1–C10 切分）** |
+| 启动条件 | ~~Owner 审阶段 1 诊断 → 放行阶段 2~~（**已完成**）→ ~~设计 §7 未决项拍板~~（**U1–U8 全部已裁 2026-09-30**）→ ~~放行阶段 3~~（**已放行，方式 = 分批交验**）→ **当前：C1+C2 交 Owner Windows 侧编译 + 单测交验 → 通过后放行 C3–C10** |
+| **阶段 3 放行方式（Owner 2026-09-30 第三批）** | Owner 选「**先做 C1–C2 分批交验**」（非一次性 C1–C10）；§24.3p 选「**等前置交集 SQL 结果再实施**」；push 选「保持本地，Owner 侧统一 push」 |
+| **阶段 3 已提交（2 片）** | **C1 `aff2568`** = 桥正向入口 `toLocationId(srcTable, srcId)` + `static locationIdOfWarehouse` + `LocationIdBridgeTest`（6 例）；实测 `toLocationId` 外部调用点 **0** → 零冲击由推测变事实。**C2 `ff4cba3`** = 员工 DTO 加 `locationId`（`storeId`/`warehouseId`/`workLocationType` 标 `@Deprecated` 保留）+ `EmployeeServiceImpl.resolveLocationId` 优先级链（`locationId` → `storeId` 桥 → `warehouseId` 桥 → null）+ 存在性校验（不存在或 `deleted=1` → 400）+ create/update 两处写入切换 + `EmployeeServiceImplLocationResolveTest`（9 例）。实施记录 = **`docs/architecture/03-review/p1-user-location-002-implementation-record-001.md`** |
+| **实施期新发现 F-1 / F-2 / F-3（需 Owner 裁决，阻塞 C5）** | **F-1**：设计 D1-4（`workLocationType` 改由 `locations.location_type` 推导）在 D9 的 C1–C10 中**没有落点** → 未擅自补做。**F-2**：两侧词表被 DB CHECK 硬约束且不重合——`locations.location_type IN ('STORE','CENTRAL','DEPOT','TRANSIT')`（`V20260927_001:17/:29`）vs `employees.work_location_type IN ('STORE','WAREHOUSE','HEADQUARTERS')` **DEFAULT `'HEADQUARTERS'`**（`V20260721_001:16-17`）→ 推导需显式映射（`CENTRAL`→`WAREHOUSE` 还是 `HEADQUARTERS`？`TRANSIT` 映射到什么或禁止作员工归属？）。**F-3**：MyBatis-Plus 默认跳过 null 字段 → 不传即落 DB 默认 `'HEADQUARTERS'`，而 `WorkLocationFilterHelper:74/:103` 明示「HEADQUARTERS 不限制，可查看全部」、:61 `workLocationType == null` 直接不过滤 → **C5 前端停发该字段后，新建员工默认落入全量可见数据作用域**（改前已存在的隐患会被普遍化）。三个方向供拍板：① 定映射表并在 `resolveLocationId` 同批推导写入；② 把 helper 判据换成 `locations.location_type`（独立卡）；③ `work_location_type` 走退役路径 |
+| 阶段 3 验收状态 | ⏸ **全部待 Owner Windows 侧执行（ENV-11：本 Linux 会话无 `java`/`mvn`/`psql`/`docker`，仓内 `JDK21/` 与 `maven-mvnd-1.0.3-windows-amd64/` 均为 Windows 二进制）**：`mvnd -q compile` + `mvnd test -Dtest=LocationIdBridgeTest,EmployeeServiceImplLocationResolveTest` + 全量 `mvnd test`（关注 `EmployeeServiceImpl` 构造新增第 5 参的影响面）+ 手工「选仓库 → `employees.location_id` 非 NULL」。失败即按提交粒度 revert `ff4cba3`（C2），C1 独立 |
 
 ---
 

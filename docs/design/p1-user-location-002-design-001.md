@@ -323,7 +323,8 @@
 | **U7** | `hr:employee:assign-location` 授予哪些角色 | ✅ **已裁** | **按推荐**：`ROLE_HR_DIRECTOR` + admin（`*` 已覆盖 admin）；**不授** `ROLE_STORE_MANAGER` | C3 seed 内容已按此定稿 |
 | **U8（新增）** | 「未分配位置的账号登录 POS → 下单撞墙」由谁管 | ✅ **已裁 = 归 B** | **不进 002、不加代码兜底**（宪法禁止）→ 另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**；形态已定 **B2-a + admin 例外**（见任务板该卡） | §0.2 分流；002 无新增范围 |
 
-**阶段 3 交接条件：已满足。** U1–U8 全部裁决完毕，U1/U2/U4/U7 落地进 D1 / D3-1 / C3，U3/U5/U6 落地进 C3 / C10。**下一步 = Owner 放行 → 按 D9 的 C1–C10 切分实施阶段 3**（本卡不实施 §24.3p 任何内容）。
+**阶段 3 交接条件：已满足，并已放行（2026-09-30 第三批，方式 = 分批交验）。** U1–U8 全部裁决完毕，U1/U2/U4/U7 落地进 D1 / D3-1 / C3，U3/U5/U6 落地进 C3 / C10。**已实施 C1 `aff2568`（D1-1）+ C2 `ff4cba3`（D1-2/D1-3）**，验收待 Owner Windows 侧（ENV-11）；**C3–C10 待 C1–C2 交验通过**（本卡不实施 §24.3p 任何内容）。
+**实施期新发现（登记于 `docs/architecture/03-review/p1-user-location-002-implementation-record-001.md` §3）**：**F-1** = 本设计 D1-4 在 D9 的 C1–C10 切分中**没有落点**；**F-2** = `locations.location_type`（`STORE/CENTRAL/DEPOT/TRANSIT`，`V20260927_001:29` CHECK）与 `employees.work_location_type`（`STORE/WAREHOUSE/HEADQUARTERS` 且 DEFAULT `HEADQUARTERS`，`V20260721_001:16-17` CHECK）词表不重合 → D1-4 的"推导"需显式映射裁决；**F-3** = 不传即落 DB 默认 `HEADQUARTERS`，而 `WorkLocationFilterHelper:74/:103` 明示该值不限制数据范围 → **C5 前端停发 `workLocationType` 前必须先裁 F-2/F-3**。三项均未擅自补做（PG-005 不扩范围）。
 
 ---
 

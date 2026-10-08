@@ -49,7 +49,8 @@
 > 用途：任何涉及 `location_id / store_id / warehouse_id` 的卡片，**先引用本清单对应行**，不要每卡各自 grep、结果不归档（P1-USER-LOCATION-001 漏扫前端的根因，见 [architecture/03-review/p1-user-location-001-implementation-record-001.md](architecture/03-review/p1-user-location-001-implementation-record-001.md) §7）。
 - 字段读写点 + UI 入口清单（36 行入口 / 4 个 ID 空间 / 已知 6 项 + 新发现 12 项不一致）：[quality/field-entry-inventory-001.md](quality/field-entry-inventory-001.md)
 - POS / KDS 客户端 storeId 端点**下游断点清单**（会断 7 / 不会断但语义错 6 / 已断 7 组；轻档扫描卡 N11 产物）：[quality/p1-pos-kitchen-storeid-downstream-scan-001.md](quality/p1-pos-kitchen-storeid-downstream-scan-001.md)
-- P1-USER-LOCATION-002 **阶段 2 设计**（D1–D9 + 19 文件改动清单 + 回滚 + 验收基准定稿 + 未决 U1–U7，**待 Owner 拍板，未实施**）：[design/p1-user-location-002-design-001.md](design/p1-user-location-002-design-001.md)；阶段 1 诊断 = [quality/p1-user-location-002-diagnosis-001.md](quality/p1-user-location-002-diagnosis-001.md)
+- P1-USER-LOCATION-002 **阶段 2 设计**（D1–D9 + 19 文件改动清单 + 回滚 + 验收基准定稿 + 未决项 **U1–U8 已全部裁决**）：[design/p1-user-location-002-design-001.md](design/p1-user-location-002-design-001.md)；阶段 1 诊断 = [quality/p1-user-location-002-diagnosis-001.md](quality/p1-user-location-002-diagnosis-001.md)
+- P1-USER-LOCATION-002 **阶段 3 实施记录**（C1 `aff2568` + C2 `ff4cba3` 已提交、待 Windows 侧交验；C3–C10 未开始；**新发现 F-1/F-2/F-3 阻塞 C5**）：[architecture/03-review/p1-user-location-002-implementation-record-001.md](architecture/03-review/p1-user-location-002-implementation-record-001.md)
 
 ## Owner 决策与确认单（等批复/已批复）
 > 批复现状 → **单一事实源** [../remediation-roadmap.md](../remediation-roadmap.md)「当前进度总览」；INDEX 只列文件、不复述状态。
