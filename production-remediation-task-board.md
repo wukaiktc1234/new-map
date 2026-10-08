@@ -8072,7 +8072,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-001** |
-| 状态 | **进行中（阶段3 实施；判档 = 重档）**——2026-09-30 Owner 开卡 + 判档（PG-006 回"重"）；依赖 P1-LOCATION-MODEL-001 一期核心层**已收口**（`b2e1313`）；阶段1 诊断（`user-store-assignment-chain-audit-001.md`）+ 阶段2 设计（`-001` 主体 / `-002` 修订，19 项拍板）已就位；实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md` |
+| 状态 | **CLOSED_WITH_REGISTERED_LIMITATION（2026-09-30 收口，`ff61f85` 已 push；判档 = 重档）**——38 commit；限制 KL-085（LIM-1）/ KL-086（LIM-2）冻结、KL-087（LIM-3）已解除；Owner 裁决 emp-l/n 人工分配 + finqa×3 停用（记录 §23）；**收尾核验发现 3 缺口 → 补丁卡 §24.3j P1-USER-LOCATION-002**；实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§23） |
 | 优先级 | P1 |
 | 性质 | 身份层重构 + 用户归属（JWT 携带 locationId / SecurityUtils / 13 处兜底消除 / 分配入口 / 入职链路 / users.location_id 改名） |
 | 前置 | U-1~U-7 已拍板（✅ 2026-09-27 完成，含附加 2/3/4） |
@@ -8097,6 +8097,21 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 验收基准 | 浏览器级：后端宕机 90s+ 恢复后，4 处客户端在无人工干预下自动重连并收到后续推送（KDS 看板卡片移动作为收消息断言） |
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
+
+## 24.3j P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；阶段 1 诊断完成，待 Owner 审）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-USER-LOCATION-002**（Owner 编号建议给的是 002 / -001-R1 二选一；采 **002**——`-R1` 在本仓是 QA 复验惯例，本卡新增范围属新卡而非复验） |
+| 状态 | **阶段 1 诊断完成，待 Owner 审**（判档 = 重档，PG-006 Owner 2026-09-30）；诊断报告 = `docs/quality/p1-user-location-002-diagnosis-001.md` |
+| 优先级 | P1 |
+| 性质 | **P1-USER-LOCATION-001 收尾补丁卡**（非新领域）：用户管理 vs 员工管理两个"归属位置"入口口径一致性 |
+| 前置卡 | P1-USER-LOCATION-001（CLOSED_WITH_REGISTERED_LIMITATION，`ff61f85`） |
+| Owner 裁决（2026-09-30） | **Q1=A** 员工归属与用户归属是同一件事，附 3 约束：新增权限码 `hr:employee:assign-location` / 改员工归属落审计（`EMPLOYEE_LOCATION_ASSIGN`）/ HR 改归属=变相权限变更须权限门槛；**Q2** 合并成一个位置下拉（`/v1/locations`，"归属类型"退化为展示字段，从 `location.type` 推导，带类型标签）；**Q3** `fc2ad96` push（已裁决 push，本会话 Linux 环境无 GitHub 凭据 → 环境阻断，待 Owner 机执行） |
+| 范围 | 缺口① 员工选仓库归属不落 `employees.location_id`（EmployeeServiceImpl:311/353 只从 storeId 推导，桥无正向 warehouse→location 入口）；缺口② 员工管理前端旧两套空间（`/v1/stores/active`+`/v1/warehouses`）→ 统一 `/v1/locations`；缺口③ employee→user 反向同步（带权限码 + 审计） |
+| 非范围 | KL-085（KDS）/ KL-086（设备域）冻结项不动；预判无新表无 schema 变更（`location_id_map` 已含 warehouses 映射源，阶段 2 核实） |
+| 验收基准（草案，阶段 2 定稿） | ① 员工管理选仓库位置 → `employees.location_id` 非 NULL；② 两入口下拉同源 `/v1/locations`；③ 员工管理改归属 → `users.location_id` 同步 + 审计留痕 + `hr:employee:assign-location` 权限门槛生效；④ 用户管理入口既有行为不回归；⑤ 仓库员工 JWT `locationId` 指向 DEPOT/CENTRAL 型 location |
+| 启动条件 | **Owner 审阶段 1 诊断 → 放行阶段 2 设计 → 设计拍板 → 阶段 3 实施** |
 
 ---
 

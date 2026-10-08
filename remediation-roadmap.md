@@ -13,14 +13,14 @@
 
 | 项 | 值 |
 |---|---|
-| **当前 HEAD** | 见 `git log -1`；本轮（P1-USER-LOCATION-001 阶段3 实施）本地 **ahead=28**，origin/master 仍为 `b2e1313`（M3-M4 收口），**未 push**（push 需 Owner 显式指令） |
-| **活跃主线** | **P1-USER-LOCATION-001（重档 · 阶段3 实施中）**：S1 迁移 / S2a 列+实体改名+ID 空间桥 / S2b DTO 改名（-002 范围全完成）/ S3 身份层（JWT claim `locationId` + 5 生成点）/ S4a 守卫与拒绝异常 / S4b 非设备域 7 处兜底 / S5a 分配入口后端（双写+审计）/ S5b-part1 批量接口 / S5b-part2 契约对齐（裁定 A：`locationId` 值 = location_id）/ S6 入职链路 —— **均已提交且 `mvn -o clean compile` 通过**；**剩：前端接线 + S7 收口** |
-| **最近提交** | `ce8c436` 记录 §19 → `011a75c` S2b 尾（DTO 改名全范围完成）→ `3bea354` 删除 `UpdateUserRequest.storeId` → `87c9151` 契约对齐（裁定 A）→ `6bf16b5` S5a 分配入口 → `7d6db6d` S6 入职链路 |
+| **当前 HEAD** | local **`fc2ad96`**（编辑弹窗溢出修复，**ahead=1 未 push**）/ origin/master = **`ff61f85`**（P1-USER-LOCATION-001 收口，已 push）；Owner 2026-09-30 已裁决 push `fc2ad96`，但本会话 Linux 环境无 GitHub 凭据（无 credential helper/gh）→ **环境阻断**，待 Owner Windows 机执行或提供凭据 |
+| **活跃主线** | **P1-USER-LOCATION-002（重档 · 阶段1 诊断完成，待 Owner 审）**：P1-USER-LOCATION-001 收尾补丁卡（任务板 §24.3j）——3 缺口：① 员工选仓库归属不落 `employees.location_id`（EmployeeServiceImpl:311/353 只从 storeId 推导，桥无正向 warehouse→location 入口）② 员工管理前端旧两套空间（`/v1/stores/active`+`/v1/warehouses`）③ 无 employee→user 反向同步。**Owner 已裁决（2026-09-30）**：Q1=A 归属同一件事 + 3 约束（权限码 `hr:employee:assign-location` / 审计 `EMPLOYEE_LOCATION_ASSIGN` / 权限门槛）；Q2=合并一个位置下拉（`/v1/locations`，归属类型退化为展示）。诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`。**P1-USER-LOCATION-001 = `CLOSED_WITH_REGISTERED_LIMITATION`（`ff61f85`，已 push）**；冻结项 KL-085/086 维持 |
+| **最近提交** | `ad07ef9` R19 前端构建+类型验证（KL-087 解除）→ `0e1ecdb` §22.3 R19 复验证据 → `500c154` 用户归属 locations 下拉 → `ff61f85` §23 Owner 裁决落地（**已 push**）→ `fc2ad96` 编辑弹窗溢出修复（本地待 push） |
 | **挂起项（集中登记）** | ① P0-C 仓→店补货 → M5；② status 不重算 → M5；③ **M5 整体挂起**（开卡条件 = 待产品定"仓→店补货链路"）；④ **P1-USER-LOCATION-001 冻结项 LIM-1（KDS 链路识别）/ LIM-2（设备域 5 处兜底）** |
 | **新增已知限制 / ENV** | **ENV-10（已提交树不可独立编译：100 错，非本卡引入）**、**ENV-3 更新（构建 JDK 迁至 `P:\my-new-project\JDK21`）**、ENV-9（WIP 致 ~10 单测类失败）、KL-084、KL-083 |
 | **工作区** | ~545 变更（WIP 留盘；PG-001 精确清单；本卡对 11 个带 WIP 的目标文件采用 **hunk 级隔离**，残留 diff 逐字等于原 WIP） |
 
-> **P1-USER-LOCATION-001（重档 · 阶段3）进度**：判档 = 重档（PG-006）；阶段1 诊断 + 阶段2 设计（19 项拍板）就位。**已完成** S1→S2a→S2b→S3→S4a→S4b(非设备域 7/7)→S5a→S5b-part1→S5b-part2→S6，全部 `mvn -o clean compile` = **BUILD SUCCESS**（JDK21）。**剩余**：前端接线（`UserManagementTab.vue` + `api/system/user.ts`）+ S7 收口（回填/快照与 E2E 交接待补）。**限制**：LIM-1（KDS 冻结）/ LIM-2（设备域冻结）/ ENV-10（纯提交树不可编译）。**Owner 已裁决（2026-09-30）**：emp-l/n 走**人工分配**；finqa×3 **停用**（不删数据）。实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§19）。
+> **P1-USER-LOCATION-001（重档 · 阶段3）进度**：判档 = 重档（PG-006）；阶段1 诊断 + 阶段2 设计（19 项拍板）就位。**已收口（2026-09-30）**：前端接线完成（`331b79b`，R19 构建+类型验证，LIM-3 解除）+ S7 收口（`ff61f85`，`CLOSED_WITH_REGISTERED_LIMITATION`，已 push）；收尾核验发现 3 缺口 → 补丁卡 **P1-USER-LOCATION-002**（任务板 §24.3j，阶段1 诊断完成待 Owner 审）。**限制**：LIM-1（KDS 冻结）/ LIM-2（设备域冻结）/ ENV-10（纯提交树不可编译）。**Owner 已裁决（2026-09-30）**：emp-l/n 走**人工分配**；finqa×3 **停用**（不删数据）。实施记录 = `docs/architecture/03-review/p1-user-location-001-implementation-record-001.md`（§1–§23）。
 
 ## 一、当前状态总览
 
