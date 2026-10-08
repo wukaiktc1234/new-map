@@ -205,14 +205,14 @@
 |---|---|---|
 | **C1** | 桥正向入口 + 单测（D1-1） | 无 |
 | **C2** | 员工 DTO 加 `locationId` + `EmployeeServiceImpl` 归属解析（D1-2/3）+ 单测 | C1 |
-| **C3** | 权限码 5 面 + 独立端点 `PUT /v1/employees/{id}/assign-location` + 审计（D3-3/4/5）+ seed 迁移（**U7 已裁**：授 `ROLE_HR_DIRECTOR` + admin，**不授** `ROLE_STORE_MANAGER`） | C2 |
+| **C3** | 权限码 5 面 + 独立端点 `PUT /v1/employees/{id}/assign-location` + 审计（D3-3/4/5）+ seed 迁移（**U7 已裁**：授 `ROLE_HR_DIRECTOR` + admin，**不授** `ROLE_STORE_MANAGER`；**U3 已裁**：同一迁移补 `system:user:assign-store` + `system:user:unassign-store` 两条 seed） | C2 |
 | **C4** | 反向同步 `syncUserAssignmentFromEmployee`（D3-1/2）+ 单测 | C2、C3 |
 | **C5** | 前端员工表单合并位置下拉（D2，含 N6 消解） | C2、C3 |
 | **C6** | 用户创建表单加归属（D6） | 无（可与 C5 并行） |
 | **C7** | N3 三处（D4） | 无 |
 | **C8** | N4 一处（D5，仅 `PurchaseArrivalServiceImpl`） | 无 |
 | **C9** | N8 出参加 `locationId` + 前端消费切换（D7） | 无 |
-| **C10** | N12 冗余收敛 + `@Deprecated`（D8-2/3） | 无 |
+| **C10** | N12 冗余收敛 + `@Deprecated`（D8-2/3；**U6 已裁：纳入**） | 无 |
 
 > C1–C4 是缺口①②③主干；C5–C10 各自独立，任一被 Owner 砍掉不影响其余。
 
@@ -252,10 +252,10 @@
 |---|---|---|
 | 需要新表？ | **否** | `locations` / `location_id_map` 已由 V20260927_001 建 |
 | 需要新列 / 改名？ | **否** | `employees.location_id`、`employees.user_id`、`users.location_id` 均已存在（[V20260930_002:21,37](../../backend/src/main/resources/db/migration/V20260930_002__user_location_001_rename_store_id_to_location_id.sql#L21) 及 :3 注释） |
-| 需要 seed 迁移？ | **是（1 条）** | 新权限码须入库；PG-003 要求 Flyway 单一来源 → 只改 `init-data.sql` 不满足 |
-| ⚠ 附带事实（登记，不在本卡修） | -001 S5a 的 `system:user:assign-store` **未落任何 DB seed**：`init-data.sql` 与全部 Flyway 迁移 grep 均 0 命中 → 现只有 `hasAuthority('*')`（admin）可用 | 实测：`grep -rn "assign-store" backend/src/main/resources/db/` → 0 命中 |
+| 需要 seed 迁移？ | **是（1 条迁移，内含 3 个权限码 seed）** | 新权限码须入库；PG-003 要求 Flyway 单一来源 → 只改 `init-data.sql` 不满足。**U3 已裁**：同一迁移内一并补 `system:user:assign-store` / `system:user:unassign-store`（此前 0 条 seed，仅 admin `*` 可用） |
+| ⚠ 附带事实（**U3 已裁 → 纳入本卡 C3**） | -001 S5a 的 `system:user:assign-store` **未落任何 DB seed**：`init-data.sql` 与全部 Flyway 迁移 grep 均 0 命中 → 现只有 `hasAuthority('*')`（admin）可用 | 实测：`grep -rn "assign-store" backend/src/main/resources/db/` → 0 命中 |
 
-→ 该事实构成 **U3 未决**（见 §7）：是否在 C3 的同一 seed 迁移里一并补齐 `assign-store` / `unassign-store`。
+→ **U3 已裁（2026-09-30）：补齐** —— C3 的同一 seed 迁移内一并补 `system:user:assign-store` / `system:user:unassign-store`（见 §7）。
 
 ---
 
@@ -264,7 +264,7 @@
 | 层 | 回滚方式 | 说明 |
 |---|---|---|
 | 代码 | **按 C1–C10 逐提交 `git revert`**（每提交独立可 revert，切分依据见 D9） | 精确 `git add`（PG-001）保证每提交只含本卡 hunk，revert 不会带走 WIP |
-| 数据库 | 无 schema 变更 → **无结构回滚**；seed 迁移回滚 = **forward-fix**（追加一条 `DELETE FROM role_permissions/permissions WHERE permission_id='PERM_HR_EMP_ASSIGN_LOCATION'` 迁移） | 实测本仓 `db/migration/` **无 undo/revert 命名惯例**（`grep -ci "undo\|revert"` = 0）→ 不引入 Flyway undo，沿用 forward-fix |
+| 数据库 | 无 schema 变更 → **无结构回滚**；seed 迁移回滚 = **forward-fix**（追加一条 `DELETE` 迁移，覆盖 `PERM_HR_EMP_ASSIGN_LOCATION` 与 U3 补入的 `system:user:assign-store` / `system:user:unassign-store` 三条 seed） | 实测本仓 `db/migration/` **无 undo/revert 命名惯例**（`grep -ci "undo\|revert"` = 0）→ 不引入 Flyway undo，沿用 forward-fix |
 | 前端 | C5 / C6 各自 revert；旧端点 `/v1/stores/active`、`/v1/warehouses` **未删** → 回滚后表单可直接恢复 | D2「不做」项正是为回滚留的退路 |
 | 权限 | 若 C3 已发放权限而 C4 被 revert → 权限存在但无反向同步 = 行为退回 -001 现状（不产生错误） | 顺序依赖已在 D9 标注 |
 | 数据修复 | 若阶段 3 后发现「仓库员工 `location_id` 已写但写错」→ 提供一次性 `UPDATE ... FROM location_id_map` 脚本（**只写不跑，交 Owner**） | 参照 V20260930_002 的守卫式回填写法（:13-15 校验非 0 即 RAISE EXCEPTION） |
@@ -316,14 +316,14 @@
 |---|---|---|---|---|
 | **U1** | 反向同步冲突语义 | ✅ **已裁** | **后写覆盖**（last-write-wins）+ 审计记旧值 | D3-1 已按此定稿 |
 | **U2** | 员工无对应用户时 | ✅ **已裁** | **只写员工表**：不动 `users`、不建账号、不报错 | D3-1 已按此定稿 |
-| **U3** | `system:user:assign-store` 未落 DB seed，是否同一迁移补齐 | ⏳ **待裁** | 推荐**补齐**（否则用户侧入口对非 admin 仍不可用，员工侧却可用 → 口径不一致） | C3 范围 +1 权限码 |
+| **U3** | `system:user:assign-store` 未落 DB seed，是否同一迁移补齐 | ✅ **已裁** | **补齐**：同一 seed 迁移内补 `system:user:assign-store` + `system:user:unassign-store`（消除「用户侧不可用、员工侧可用」的口径不一致） | C3 范围 **+2 权限码**（已按此定稿） |
 | **U4** | 8 个未迁 `locations` 的 E2E/TEST 仓的员工归属 | ✅ **已裁** | **显式拒绝**（符合 I-3，不猜、不兜底） | D1 数据前提已按此定稿 |
-| **U5** | 是否接受新增 `PUT /v1/employees/{id}/assign-location` | ⏳ **待裁** | 推荐**接受**（否则权限门槛误伤普通档案编辑） | C3 |
-| **U6** | D8-2 冗余往返收敛（2 处）是否纳入 002 | ⏳ **待裁** | 推荐**纳入**（可砍，砍后 N12 仅剩登记面） | C10 |
+| **U5** | 是否接受新增 `PUT /v1/employees/{id}/assign-location` | ✅ **已裁** | **接受**：归属写入从普通档案编辑拆出独立端点 | C3 已按此定稿 |
+| **U6** | D8-2 冗余往返收敛（2 处）是否纳入 002 | ✅ **已裁** | **纳入**：`StoreInventoryController:76→83`、`SalesOrderServiceImpl:268` 两处收敛 | C10 已按此定稿 |
 | **U7** | `hr:employee:assign-location` 授予哪些角色 | ✅ **已裁** | **按推荐**：`ROLE_HR_DIRECTOR` + admin（`*` 已覆盖 admin）；**不授** `ROLE_STORE_MANAGER` | C3 seed 内容已按此定稿 |
-| **U8（新增）** | 「未分配位置的账号登录 POS → 下单撞墙」由谁管 | ✅ **已裁 = 归 B** | **不进 002、不加代码兜底**（宪法禁止）→ 另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**；卡内仍待 Owner 选形态 B2-a / B2-b（见任务板该卡） | §0.2 分流；002 无新增范围 |
+| **U8（新增）** | 「未分配位置的账号登录 POS → 下单撞墙」由谁管 | ✅ **已裁 = 归 B** | **不进 002、不加代码兜底**（宪法禁止）→ 另开卡 **§24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**；形态已定 **B2-a + admin 例外**（见任务板该卡） | §0.2 分流；002 无新增范围 |
 
-**阶段 3 交接条件（更新）**：Owner 裁 **U3 / U5 / U6** 三项 → 放行阶段 3（按 D9 的 C1–C10 切分）。U1/U2/U4/U7 已落地进 D1 / D3 / C3。
+**阶段 3 交接条件：已满足。** U1–U8 全部裁决完毕，U1/U2/U4/U7 落地进 D1 / D3-1 / C3，U3/U5/U6 落地进 C3 / C10。**下一步 = Owner 放行 → 按 D9 的 C1–C10 切分实施阶段 3**（本卡不实施 §24.3p 任何内容）。
 
 ---
 
