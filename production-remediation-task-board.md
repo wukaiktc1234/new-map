@@ -8098,20 +8098,65 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3j P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；阶段 1 诊断完成，待 Owner 审）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 2 设计完成，待 Owner 拍板设计 §7 七项**）
+
+> **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-002**（Owner 编号建议给的是 002 / -001-R1 二选一；采 **002**——`-R1` 在本仓是 QA 复验惯例，本卡新增范围属新卡而非复验） |
-| 状态 | **阶段 1 诊断完成，待 Owner 审**（判档 = 重档，PG-006 Owner 2026-09-30）；诊断报告 = `docs/quality/p1-user-location-002-diagnosis-001.md` |
+| 状态 | **阶段 2 设计完成，待 Owner 拍板**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决 U1–U7） |
 | 优先级 | P1 |
 | 性质 | **P1-USER-LOCATION-001 收尾补丁卡**（非新领域）：用户管理 vs 员工管理两个"归属位置"入口口径一致性 |
 | 前置卡 | P1-USER-LOCATION-001（CLOSED_WITH_REGISTERED_LIMITATION，`ff61f85`） |
+| 输入 | `docs/quality/field-entry-inventory-001.md`（字段入口清单，Owner 指定为阶段 2 输入：36 行 UI 入口 / 4 个 ID 空间 / K1–K6 + N1–N12） |
 | Owner 裁决（2026-09-30） | **Q1=A** 员工归属与用户归属是同一件事，附 3 约束：新增权限码 `hr:employee:assign-location` / 改员工归属落审计（`EMPLOYEE_LOCATION_ASSIGN`）/ HR 改归属=变相权限变更须权限门槛；**Q2** 合并成一个位置下拉（`/v1/locations`，"归属类型"退化为展示字段，从 `location.type` 推导，带类型标签）；**Q3** `fc2ad96` push（已裁决 push，本会话 Linux 环境无 GitHub 凭据 → 环境阻断，待 Owner 机执行） |
-| 范围 | 缺口① 员工选仓库归属不落 `employees.location_id`（EmployeeServiceImpl:311/353 只从 storeId 推导，桥无正向 warehouse→location 入口）；缺口② 员工管理前端旧两套空间（`/v1/stores/active`+`/v1/warehouses`）→ 统一 `/v1/locations`；缺口③ employee→user 反向同步（带权限码 + 审计） |
-| 非范围 | KL-085（KDS）/ KL-086（设备域）冻结项不动；预判无新表无 schema 变更（`location_id_map` 已含 warehouses 映射源，阶段 2 核实） |
-| 验收基准（草案，阶段 2 定稿） | ① 员工管理选仓库位置 → `employees.location_id` 非 NULL；② 两入口下拉同源 `/v1/locations`；③ 员工管理改归属 → `users.location_id` 同步 + 审计留痕 + `hr:employee:assign-location` 权限门槛生效；④ 用户管理入口既有行为不回归；⑤ 仓库员工 JWT `locationId` 指向 DEPOT/CENTRAL 型 location |
-| 启动条件 | **Owner 审阶段 1 诊断 → 放行阶段 2 设计 → 设计拍板 → 阶段 3 实施** |
+| **阶段 2 放行记录（2026-09-30 Owner 指令）** | Owner 收下入口清单并明确「**不再普查**」，指定清单为 002 阶段 2 输入 → **视为放行阶段 2 设计**；同时给出**收窄范围**（见下行），并要求 N11 另开轻档扫描卡并行、其余条目挂已有卡 |
+| **范围（Owner 收窄后定稿）** | **K1–K3** + **缺口①**（员工选仓库归属不落 `employees.location_id`；EmployeeServiceImpl:311/353 只从 storeId 推导，桥无正向 warehouse→location 入口）+ **缺口②**（员工前端旧两套空间 `/v1/stores/active`+`/v1/warehouses` → 统一 `/v1/locations`）+ **缺口③**（employee→user 反向同步，带权限码 + 审计）+ **N3**（`Inventory` transient 违规用法 3 处）+ **N4**（仅 `PurchaseArrivalServiceImpl:656` 的 `1L` 兜底）+ **N6**（前端 `warehouseId/storeId` 类型 string vs 后端 Long，随缺口②消解）+ **N7**（用户创建表单无归属字段）+ **N8 与 N12**（出参契约仍返回 storeId；旧访问器 15 处 vs 新访问器 1 处，**同源合并处理**） |
+| **非范围（明确排除，已分流，禁止在 002 内顺手做）** | **N1/N2** → 库存收编卡（M5 或 P1-LOCATION-MODEL-001 M5-M7）；**N5** → 财务域卡；**N9**（`inventory_movement` 无 Flyway 定义）→ **P0-FLYWAY-COVERAGE-002**（§24.3b）；**§4.4** `role_stores`/`sys_stores`/`sys_user_stores` → **P0-ROLE-STORE-SCHEMA-001**（§24.3c）；**§4.1 的 41 张 `store_id` 表** → **P1-LOCATION-MODEL-001 M5-M7**（§24.3g）；**N11** → 已另开轻档扫描卡 §24.3n；**KL-085 / KL-086 冻结项**不动（含 `HardwareConfigServiceImpl:95/138` 与 `DeviceStatusServiceImpl` 6 处 `DEFAULT_STORE_ID` —— 属 KL-086 冻结区，故 N4 只取非冻结那一处） |
+| 阶段 2 核实结论（原「预判」已核） | **无新表、无列变更**（`locations`/`location_id_map` 已建，`employees.location_id`+`employees.user_id`+`users.location_id` 已在 `V20260930_002`；`location_id_map` **确含 warehouses 映射行** `V20260927_001:66-77`，但 Owner「全清」决策排除的 **8 个 E2E/TEST 仓不在映射内** → 新桥对其返回 null）；**需 1 条 seed 迁移**（新权限码须入库，PG-003 Flyway 单一来源）。附带登记事实：-001 S5a 的 `system:user:assign-store` **未落任何 DB seed**（`init-data.sql` 与全部 Flyway 迁移 grep 0 命中）→ 现仅 `hasAuthority('*')` 可用 → 见设计 §7 **U3** |
+| 验收基准（**阶段 2 定稿**） | 见 `docs/design/p1-user-location-002-design-001.md` §6：A1–A9（单测/集成，含「`grep -c DEFAULT_STORE_ID` 计数不变」以证明未撞 KL-086）+ B1–B4（前端，含旧端点调用 0 命中）+ C1–C4 手工冒烟（仓库员工 JWT `locationId` 非空 → `requireWarehouseContext()` 通过 → POS 下单不再 `NoLocationContextException`）+ D 边界自检（增量 = 19 文件 + 1 新迁移；两个带 WIP 的前端文件残留 diff 逐字等于原 WIP） |
+| 启动条件 | ~~Owner 审阶段 1 诊断 → 放行阶段 2~~（**已完成**）→ **Owner 对设计 §7 七项（U1–U7）拍板 → 阶段 3 实施（按设计 D9 的 C1–C10 提交切分）** |
+
+---
+
+## 24.3n P1-POS-KITCHEN-STOREID-DOWNSTREAM-SCAN-001（2026-09-30 Owner 指令开卡；**已完成 · 轻档 · 只读扫描**）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-POS-KITCHEN-STOREID-DOWNSTREAM-SCAN-001**（来源 = `docs/quality/field-entry-inventory-001.md` §6.2 **N11**） |
+| 判档 | **轻档**（PG-006，Owner 2026-09-30 明确「N11 扫描卡 = 轻档（并行）」）→ 不写实施记录、不更 INDEX/roadmap；本卡条目即登记载体 |
+| 状态 | **已完成**（只读扫描 + 落盘清单；**未改任何代码 / DB / 配置，未修任何发现**） |
+| 范围 | 仅 `frontend-pos/src` + `frontend-kitchen/src` 的 **storeId 相关端点调用** → 产出「后端 store→location 收编时会断的下游清单」 |
+| 产物 | `docs/quality/p1-pos-kitchen-storeid-downstream-scan-001.md`（表 A 会断 7 行 / 表 B 不会断但语义错 6 行 / 表 C 已断 7 组 + 判定汇总 + 复现脚本） |
+| 核心结论 | ① **最高风险**：POS 下单**从不发送 storeId**（`posApi.ts:214-220 OrderRequest` 无该字段、`Payment.vue:649-662` 组装无该字段）→ 100% 依赖 JWT `locationId` 经桥反查（`PosOrderCreateServiceImpl:311-317`，`"1"` 兜底已在 -001 #11 删除）→ 未分配 `users.location_id` 的账号登录 POS 后**下单直接抛 `NoLocationContextException`**；② `kitchen_orders.store_id` 直查无桥（`KitchenOrderController:71`）；③ 两个客户端声明的 storeId 参数**全部无视图层调用点传值**（含 `getStatistics` / `store-active` 死包装；`kitchenOrderApi.ts:72,76` 的 `{storeId}` 被当 axios config 静默丢弃）；④ **已断 7 组**：`/v1/kitchen-order/**` 全族 12 端点无 handler（却在 `JwtAuthenticationFilter:46` 公开白名单内）、`/v1/kitchen/{pending-orders,making-orders,completed-orders,serve-order,order-requirements,scan-food-trace-code}` 路径错、POS `Scan.vue:151-155` 三扫码分支无 handler、`CallingDisplay.vue:162` 双前缀 404；⑤ **无门店作用域的活端点**：`/v1/pos/tables/**`（`DiningTableController` 整类无 storeId/locationId）、`/v1/call-number/**`（对照管理端 `/v1/store-management/queue/**` 有作用域）、`GET /v1/pos/orders`、`/v1/kitchen/scan/{pending,making}-orders`（无身份 + 无过滤） |
+| 与 002 的关系 | **独立、不阻塞 002**（Owner 明确不把 N11 塞进 002）；002 阶段 2 设计不读本卡结论。本卡仅解释「为何 002 阶段 3 冒烟须含 POS 下单一项」 |
+| 未开卡事项（登记，待 Owner） | 表 B 的 5 组「无门店作用域」端点属**多门店数据隔离**缺口，不属 002 也不属本卡范围；建议随 P1-ROLE-STORE-ISOLATION-001（§24.3c）或 POS 域卡裁决 |
+| 边界 | 未扩至 `employee-frontend` / `frontend-design-*`（仍按 inventory §5 计数登记）；`TrayController.java`（` M`）与 `KdsTokenFilter.java`（`??` 未跟踪）属 WIP，**不作为已提交事实**，其 store 隔离结论挂 KL-085 冻结 |
+
+---
+
+## 24.3o 字段入口清单 N1–N12 分流登记（2026-09-30 Owner 指令；只登记去向，不实施）
+
+> 来源：`docs/quality/field-entry-inventory-001.md` §6.2。Owner 指令原文要点：「继续 002（重档）：范围 = K1-K3 + 缺口①②③ + N3 + N4 + N6/N7 + N12（+ N8 在 002 内处理，与 N12 同源）—— 不把 N1/N2/N5/N8/N9/N10 塞进 002，避免范围爆；开轻档扫描卡 N11；其余挂已有卡。」
+
+| 条目 | 去向 | 卡状态 |
+|---|---|---|
+| **K1 / K2 / K3** | **P1-USER-LOCATION-002**（§24.3m）阶段 2 已纳入 | 阶段 2 设计完成，待 Owner 拍板 U1–U7 |
+| **缺口①②③** | **P1-USER-LOCATION-002**（§24.3m） | 同上 |
+| **N3** transient 违规用法 3 处 | **P1-USER-LOCATION-002**（§24.3m，设计 D4） | 同上 |
+| **N4** 硬编码兜底 | **002 只取非冻结那一处**（`PurchaseArrivalServiceImpl:656`）；设备域 `DEFAULT_STORE_ID` 8 行使用点**维持 KL-086 冻结** | 002 内 / KL-086 冻结 |
+| **N6** 前端类型 string vs Long | **P1-USER-LOCATION-002**（§24.3m，随缺口②合并下拉自然消解，设计 D2-4） | 同上 |
+| **N7** 用户表单无归属字段 | **P1-USER-LOCATION-002**（§24.3m，设计 D6） | 同上 |
+| **N8** 出参契约仍返回 storeId | **002 内处理**（与 N12 同源，设计 D7：加 `locationId` + `storeId` 标废弃，不删） | 同上 |
+| **N12** 旧访问器 15 处 / 新访问器 1 处 | **002 内处理**（设计 D8：**13/15 点的目标表仍在 store_id 空间 → 不迁移**，只做桥消费清单登记 + 2 处冗余往返收敛 + `@Deprecated` 约束） | 同上 |
+| **N1 / N2** Mapper XML 跨空间比较 / location_code 当 store_id | **库存收编卡**：M5（§24.3g P1-LOCATION-MODEL-001 M5-M7，M5 现挂起，开卡条件 = 待产品定「仓→店补货链路」） | **不开新卡**，挂 M5 |
+| **N5** 银行账户「门店ID」自由文本 | **财务域卡**（随 P1-FIN-* 批次裁决；与 KL-084 同域） | 待财务域批次 |
+| **N9** `inventory_movement` 无 Flyway 定义 | **P0-FLYWAY-COVERAGE-002**（§24.3b「新卡预告 P0-FLYWAY-COVERAGE-001」，实际 Task ID 为 002；68 张黑箱表 / KL-082）→ **新增第 69 张候选** | 挂已有卡（新增登记） |
+| **N10** 仓库下拉无统一 composable（15 入口 / 9 文件） | **P1-USER-LOCATION-002 阶段 2 已消化其员工侧**（设计 D2 并入 `useLocationOptions`）；其余 8 文件的仓库下拉不在 002 范围 | 部分纳入 002，其余不卡 |
+| **N11** POS / KDS 客户端下游断点 | **已开卡 §24.3n 并完成** | 完成 |
+| **§4.4** `role_stores` / `sys_stores` / `sys_user_stores` | **P0-ROLE-STORE-SCHEMA-001 / P1-ROLE-STORE-ISOLATION-001**（§24.3c） | 挂已有卡（新增登记） |
+| **§4.1** 41 张 `store_id` 表 | **P1-LOCATION-MODEL-001 M5-M7**（§24.3g） | 挂已有卡（新增登记） |
 
 ---
 

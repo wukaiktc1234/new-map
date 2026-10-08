@@ -1,6 +1,6 @@
 # P1-USER-LOCATION-002 阶段 1 诊断报告（diagnosis-001）
 
-> 卡片：**P1-USER-LOCATION-002**（P1-USER-LOCATION-001 收尾补丁卡 · 重档 · 任务板 §24.3j）
+> 卡片：**P1-USER-LOCATION-002**（P1-USER-LOCATION-001 收尾补丁卡 · 重档 · 任务板 **§24.3m**；编号更正：原登记 §24.3j 与 P1-INVENTORY-LEGACY-WRITEPATH-001 撞号）
 > 日期：2026-09-30 ｜ 方法：**只读静态核验**（代码 + 设计文档 + git），零代码改动、零 DB 改动、零顺手修
 > 环境注记：所有结论基于**含 WIP 工作树**（ENV-10：已提交树不可独立编译）；构建 JDK = `P:\my-new-project\JDK21`（ENV-3 更新口径）
 
@@ -110,3 +110,5 @@ P1-USER-LOCATION-001 已收口 `CLOSED_WITH_REGISTERED_LIMITATION`（`ff61f85`�
 
 阶段 1（诊断）**完成**：全程只读；发现的问题未顺手修；未改代码/DB。
 **交接条件：Owner 审本报告 → 放行阶段 2（设计）。**
+
+**放行记录（2026-09-30）**：Owner 收下字段入口清单（`docs/quality/field-entry-inventory-001.md`）并明确「不再普查」，指定其为**本卡阶段 2 的输入** → 据此视为**放行阶段 2**；同时给出收窄范围（K1–K3 + 缺口①②③ + N3 + N4 + N6/N7 + N8/N12；排除 N1/N2/N5/N9/N10 与 §4.1/§4.4）。阶段 2 已产出 = [../design/p1-user-location-002-design-001.md](../design/p1-user-location-002-design-001.md)（§8 触点清单已在其中逐条落为方案）。**下一交接：Owner 拍板该设计 §7 的 U1–U7 → 阶段 3 实施。**
