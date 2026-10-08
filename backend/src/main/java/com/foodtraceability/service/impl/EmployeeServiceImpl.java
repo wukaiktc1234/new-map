@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.entity.Employee;
 import com.foodtraceability.entity.Department;
+import com.foodtraceability.entity.Location;
 import com.foodtraceability.entity.Position;
 import com.foodtraceability.dto.EmployeeCreateDTO;
 import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.OnboardingArchive;
 import com.foodtraceability.mapper.EmployeeMapper;
+import com.foodtraceability.mapper.LocationMapper;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.service.EmployeeService;
 import com.foodtraceability.service.DepartmentService;
@@ -43,20 +45,29 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final EmployeeCodeGenerator employeeCodeGenerator;
 
     /**
+     * 位置主表 Mapper（P1-USER-LOCATION-002 D1-3）：校验请求携带的 {@code locationId}
+     * 确实存在于 {@code locations}，避免把非法归属写进 {@code employees.location_id}。
+     */
+    private final LocationMapper locationMapper;
+
+    /**
      * 构造函数注入（禁止 @Autowired 字段注入）
      * 使用 @Lazy 解决循环依赖
      * @param positionService 职位服务
      * @param departmentService 部门服务
      * @param organizationChangeLogService 组织架构变更日志服务
      * @param employeeCodeGenerator 员工编号生成器
+     * @param locationMapper 位置主表 Mapper（归属校验）
      */
     public EmployeeServiceImpl(PositionService positionService, @Lazy DepartmentService departmentService,
                                OrganizationChangeLogService organizationChangeLogService,
-                               EmployeeCodeGenerator employeeCodeGenerator) {
+                               EmployeeCodeGenerator employeeCodeGenerator,
+                               LocationMapper locationMapper) {
         this.positionService = positionService;
         this.departmentService = departmentService;
         this.organizationChangeLogService = organizationChangeLogService;
         this.employeeCodeGenerator = employeeCodeGenerator;
+        this.locationMapper = locationMapper;
     }
 
     @Override
@@ -299,8 +310,48 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         return getEmployeeDetail(String.valueOf(employeeId));
     }
 
+    /**
+     * 归属解析优先级（P1-USER-LOCATION-002 D1-3）：
+     * <ol>
+     *   <li>{@code locationId} 非空 → 校验存在于 {@code locations} 后直用；</li>
+     *   <li>否则 {@code storeId} 非空 → 经 {@link LocationIdBridge#locationIdOfStore} 换算；</li>
+     *   <li>否则 {@code warehouseId} 非空 → 经 {@link LocationIdBridge#locationIdOfWarehouse} 换算
+     *       （<b>缺口①的新路径</b>：此前仓库归属恒为 NULL）；</li>
+     *   <li>全空 → 返回 {@code null}：不落库、不猜、不兜底（不变量 I-3）。</li>
+     * </ol>
+     *
+     * <p>返回 {@code null} 时 MyBatis-Plus 的 {@code updateById} 默认跳过该列，
+     * 即"请求未表达归属意图"不会被误清空。
+     *
+     * @param locationId  新归属入参（首选）
+     * @param storeId     观察期兼容入参（已废弃）
+     * @param warehouseId 观察期兼容入参（已废弃）
+     * @return locations.location_id，或 null
+     */
+    @SuppressWarnings("deprecation")
+    private Long resolveLocationId(Long locationId, Long storeId, Long warehouseId) {
+        if (locationId != null) {
+            Location location = locationMapper.selectById(locationId);
+            if (location == null || Integer.valueOf(1).equals(location.getDeleted())) {
+                throw new BusinessException(400, "归属位置不存在或已删除：" + locationId);
+            }
+            if (Integer.valueOf(0).equals(location.getStatus())) {
+                log.warn("归属位置已停用（status=0），仍按请求写入：locationId={}", locationId);
+            }
+            return location.getLocationId();
+        }
+        if (storeId != null) {
+            return LocationIdBridge.locationIdOfStore(storeId);
+        }
+        if (warehouseId != null) {
+            return LocationIdBridge.locationIdOfWarehouse(warehouseId);
+        }
+        return null;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SuppressWarnings("deprecation") // 观察期兼容：旧归属入参仍可用，见 resolveLocationId
     public Employee createEmployee(EmployeeCreateDTO dto) {
         Employee employee = new Employee();
         employee.setName(dto.getName());
@@ -308,7 +359,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
         employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setLocationId(LocationIdBridge.locationIdOfStore(dto.getStoreId()));
+        employee.setLocationId(resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus());
@@ -331,6 +382,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @SuppressWarnings("deprecation") // 观察期兼容：旧归属入参仍可用，见 resolveLocationId
     public Employee updateEmployee(String id, EmployeeUpdateDTO dto) {
         Long employeeId;
         try {
@@ -350,7 +402,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
         employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setLocationId(LocationIdBridge.locationIdOfStore(dto.getStoreId()));
+        employee.setLocationId(resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus() != null ? dto.getStatus() : oldEmployee.getStatus());

@@ -28,14 +28,39 @@ public class EmployeeCreateDTO {
     @Schema(description = "职位ID", example = "1")
     private Long positionId;
 
+    /**
+     * 归属位置（P1-USER-LOCATION-002 D1-2）：{@code locations.location_id}。
+     *
+     * <p>自本卡起这是<b>唯一归属入参</b>；{@code storeId} / {@code warehouseId} /
+     * {@code workLocationType} 进入观察期兼容。
+     */
+    @Schema(description = "归属位置ID（locations.location_id；门店/仓库/总部统一走此字段）", example = "1")
+    private Long locationId;
+
+    /**
+     * @deprecated P1-USER-LOCATION-002 D1-2：工作归属类型不再作为写入依据，改由
+     *             {@code locations.location_type} 推导（Owner Q2 裁决）。保留字段仅为观察期兼容，
+     *             前端不再发送。
+     */
+    @Deprecated
     @Pattern(regexp = "^(STORE|WAREHOUSE|HEADQUARTERS)$", message = "工作归属类型必须为STORE、WAREHOUSE或HEADQUARTERS")
-    @Schema(description = "工作归属类型：STORE/WAREHOUSE/HEADQUARTERS", example = "STORE")
+    @Schema(description = "【已废弃，由 locationId 推导】工作归属类型：STORE/WAREHOUSE/HEADQUARTERS", example = "STORE")
     private String workLocationType;
 
-    @Schema(description = "所属门店ID", example = "1")
+    /**
+     * @deprecated P1-USER-LOCATION-002 D1-2：改用 {@link #locationId}。保留为观察期兼容入参
+     *             （经 {@code LocationIdBridge} 换算），前端不再发送。
+     */
+    @Deprecated
+    @Schema(description = "【已废弃，改用 locationId】所属门店ID（stores_new.store_id）", example = "1")
     private Long storeId;
 
-    @Schema(description = "归属仓库ID", example = "1")
+    /**
+     * @deprecated P1-USER-LOCATION-002 D1-2：改用 {@link #locationId}。保留为观察期兼容入参
+     *             （经 {@code LocationIdBridge.locationIdOfWarehouse} 换算），前端不再发送。
+     */
+    @Deprecated
+    @Schema(description = "【已废弃，改用 locationId】归属仓库ID（warehouses.warehouse_id）", example = "1")
     private Long warehouseId;
 
     @NotNull(message = "入职日期不能为空")
@@ -81,6 +106,18 @@ public class EmployeeCreateDTO {
         this.positionId = positionId;
     }
 
+    public Long getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
+    }
+
+    /**
+     * @deprecated P1-USER-LOCATION-002 D1-2：归属类型改由 {@code locations.location_type} 推导。
+     */
+    @Deprecated
     public String getWorkLocationType() {
         return workLocationType;
     }
