@@ -1,12 +1,15 @@
 package com.foodtraceability.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.foodtraceability.annotation.RequiresPermission;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.dto.EmployeeAssignLocationDTO;
 import com.foodtraceability.dto.EmployeeBasicInfo;
 import com.foodtraceability.dto.EmployeeCreateDTO;
 import com.foodtraceability.dto.EmployeeTransferDTO;
 import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.Employee;
+import com.foodtraceability.security.annotation.OperationLog;
 import com.foodtraceability.service.EmployeeDataService;
 import com.foodtraceability.service.EmployeeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -171,6 +174,23 @@ public class EmployeeController {
             log.error("更新员工失败", e);
             return Result.error("更新员工失败，请联系管理员");
         }
+    }
+
+    @PutMapping("/{id}/assign-location")
+    @Operation(summary = "员工归属分配", description = "变更员工归属位置（locationId）；workLocationType 由后端按位置类型推导。" +
+            "与用户侧 PUT /v1/users/{id}/assign-store 对称（P1-USER-LOCATION-002 C3 / D3-2）。" +
+            "注意：PUT /{id} 仅承担「改档案」，归属变更必须走本端点（D3-2 拆分要求）。")
+    @RequiresPermission(value = "hr:employee:assign-location", action = "assign-location")
+    @PreAuthorize("hasAuthority('hr:employee:assign-location') or hasAuthority('*')")
+    @OperationLog(module = "EMPLOYEE_LOCATION_ASSIGN", type = OperationLog.OperationType.UPDATE, desc = "员工归属变更（含反向同步 users.location_id）")
+    public Result<Employee> assignLocation(@Parameter(description = "员工ID") @PathVariable String id,
+                                            @Parameter(description = "归属分配信息") @Valid @RequestBody EmployeeAssignLocationDTO request) {
+        Long locationId = request.getLocationId();
+        Employee updated = employeeService.assignEmployeeLocation(id, locationId);
+        if (updated == null) {
+            return Result.error(404, "员工不存在");
+        }
+        return Result.success(updated, "员工归属分配成功");
     }
 
     @Operation(summary = "员工人事变动", description = "员工调岗、调部门等人事变动")

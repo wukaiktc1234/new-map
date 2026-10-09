@@ -10,11 +10,14 @@ import com.foodtraceability.entity.Position;
 import com.foodtraceability.dto.EmployeeCreateDTO;
 import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.OnboardingArchive;
+import com.foodtraceability.entity.OperationLogEntity;
 import com.foodtraceability.mapper.EmployeeMapper;
 import com.foodtraceability.mapper.LocationMapper;
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.security.model.SecurityUser;
 import com.foodtraceability.service.EmployeeService;
 import com.foodtraceability.service.DepartmentService;
+import com.foodtraceability.service.OperationLogService;
 import com.foodtraceability.service.OrganizationChangeLogService;
 import com.foodtraceability.service.PositionService;
 import com.foodtraceability.utils.EmployeeCodeGenerator;
@@ -51,6 +54,12 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final LocationMapper locationMapper;
 
     /**
+     * 操作日志服务（P1-USER-LOCATION-002 D3-4）：
+     * {@link #assignEmployeeLocation} 的服务级动态审计行（desc 含旧值→新值）。
+     */
+    private final OperationLogService operationLogService;
+
+    /**
      * 构造函数注入（禁止 @Autowired 字段注入）
      * 使用 @Lazy 解决循环依赖
      * @param positionService 职位服务
@@ -58,16 +67,19 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
      * @param organizationChangeLogService 组织架构变更日志服务
      * @param employeeCodeGenerator 员工编号生成器
      * @param locationMapper 位置主表 Mapper（归属校验）
+     * @param operationLogService 操作日志服务（D3-4 审计）
      */
     public EmployeeServiceImpl(PositionService positionService, @Lazy DepartmentService departmentService,
                                OrganizationChangeLogService organizationChangeLogService,
                                EmployeeCodeGenerator employeeCodeGenerator,
-                               LocationMapper locationMapper) {
+                               LocationMapper locationMapper,
+                               OperationLogService operationLogService) {
         this.positionService = positionService;
         this.departmentService = departmentService;
         this.organizationChangeLogService = organizationChangeLogService;
         this.employeeCodeGenerator = employeeCodeGenerator;
         this.locationMapper = locationMapper;
+        this.operationLogService = operationLogService;
     }
 
     @Override
@@ -477,6 +489,107 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         syncDepartmentEmployeeCount(oldEmployee, employee);
 
         return getEmployeeDetail(id);
+    }
+
+    /**
+     * 员工归属分配（P1-USER-LOCATION-002 C3，D3-2/D3-3/D3-4）。
+     *
+     * <p>只改「归属」两列：{@code location_id} + {@code work_location_type}
+     * （后者由后端按 U9 显式推导，前端不得提交）；其余档案字段一律不动，
+     * 与 {@link #updateEmployee} 的「改档案」职责分离（D3-2 拆分要求）。
+     *
+     * <p>校验语义（与 C2b 一致）：位置不存在/已删除 → 400；
+     * {@code location_type = TRANSIT}（或词表外值）→ 400 显式拒绝，不猜。
+     *
+     * <p>审计（D3-4）：模块 EMPLOYEE_LOCATION_ASSIGN、type UPDATE、
+     * desc 含「旧值 → 新值」——{@code @OperationLog} 注解 desc 为静态，
+     * 动态旧值行参照 TaxRecordServiceImpl#logIdempotencyHit 的服务级补行先例。
+     *
+     * <p>C4（D3-1）将在 {@code updateById} 之后接入反向同步
+     * {@code syncUserAssignmentFromEmployee}（入口决定方向：员工入口→反向，防回写循环）。
+     *
+     * @param id 员工ID
+     * @param locationId 目标位置ID（非空；controller 层 @NotNull 校验）
+     * @return 更新后的员工（含部门/岗位名称填充）
+     * @throws BusinessException 400 员工ID格式无效/位置不存在或已删除/位置类型不可作归属；404 员工不存在
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Employee assignEmployeeLocation(String id, Long locationId) {
+        Long employeeId;
+        try {
+            employeeId = Long.valueOf(id);
+        } catch (NumberFormatException e) {
+            throw new BusinessException(400, "员工ID格式无效");
+        }
+        Employee oldEmployee = getById(employeeId);
+        if (oldEmployee == null) {
+            throw new BusinessException(404, "员工不存在");
+        }
+
+        // 归属解析与校验（D1-3：不存在/已删除 → 400；已停用 status=0 仅告警放行）
+        Long resolvedLocationId = resolveLocationId(locationId, null, null);
+        // U9/U10：主键回查 location_type 推导 workLocationType（TRANSIT/词表外 → 400）
+        String workLocationType = deriveWorkLocationType(resolvedLocationId, resolvedLocationId, null, null);
+
+        Employee employee = new Employee();
+        employee.setId(employeeId);
+        employee.setLocationId(resolvedLocationId);
+        employee.setWorkLocationType(workLocationType);
+        employee.setUpdatedTime(LocalDateTime.now());
+        employee.setUpdatedBy(currentOperatorName());
+        updateById(employee);
+
+        // D3-4 审计：服务级动态行，desc 含旧值 → 新值（C4 接入反向同步后本行文案保持）
+        logLocationAssignAudit(employeeId, oldEmployee, resolvedLocationId, workLocationType);
+
+        return getEmployeeDetail(id);
+    }
+
+    /**
+     * D3-4 服务级动态审计行（模块 EMPLOYEE_LOCATION_ASSIGN，desc 含旧值→新值）。
+     *
+     * <p>参照 TaxRecordServiceImpl#logIdempotencyHit 先例：审计失败仅告警，不阻断主流程。
+     */
+    private void logLocationAssignAudit(Long employeeId, Employee oldEmployee,
+                                        Long newLocationId, String newWorkLocationType) {
+        try {
+            OperationLogEntity opLog = new OperationLogEntity();
+            opLog.setOperationModule("EMPLOYEE_LOCATION_ASSIGN");
+            opLog.setOperationType("UPDATE");
+            opLog.setOperationDesc("员工归属分配：locationId " + oldEmployee.getLocationId() + " → " + newLocationId
+                    + "；workLocationType " + oldEmployee.getWorkLocationType() + " → " + newWorkLocationType);
+            opLog.setRequestMethod("PUT");
+            opLog.setRequestUrl("/v1/employees/" + employeeId + "/assign-location");
+            opLog.setRequestParams("{\"locationId\":" + newLocationId + "}");
+            opLog.setBusinessId(String.valueOf(employeeId));
+            opLog.setStatus("SUCCESS");
+            opLog.setOperationTime(LocalDateTime.now());
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.getPrincipal() instanceof SecurityUser) {
+                SecurityUser user = (SecurityUser) authentication.getPrincipal();
+                opLog.setOperatorId(user.getUserId());
+                opLog.setOperatorName(user.getUsername());
+            }
+            operationLogService.logOperation(opLog);
+        } catch (Exception e) {
+            log.warn("记录员工归属分配审计日志失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 当前操作人用户名（安全上下文无主或异常时返回 null，不阻断主流程）。
+     */
+    private String currentOperatorName() {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.getPrincipal() instanceof SecurityUser) {
+                return ((SecurityUser) authentication.getPrincipal()).getUsername();
+            }
+        } catch (Exception ignored) {
+            // 操作人信息缺失不阻断主流程
+        }
+        return null;
     }
 
     @Override

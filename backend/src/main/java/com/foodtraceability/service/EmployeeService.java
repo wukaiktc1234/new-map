@@ -120,4 +120,21 @@ public interface EmployeeService extends IService<Employee> {
      * @return 是否成功
      */
     boolean deleteEmployee(String id);
+
+    /**
+     * 员工归属分配（P1-USER-LOCATION-002 C3，D3-2/D3-3/D3-4）
+     *
+     * <p>独立端点 {@code PUT /v1/employees/{id}/assign-location} 的服务入口：
+     * 只改「归属」（locationId + 后端推导的 workLocationType），不改其余档案字段；
+     * workLocationType 由后端按 U9 映射推导（C2b），前端不得提交；
+     * 审计（模块 EMPLOYEE_LOCATION_ASSIGN）desc 含「旧值 → 新值」（D3-4）。
+     *
+     * <p>反向同步 users.location_id 由 C4（D3-1）在本方法内接入，
+     * 防回写循环约束见 D3-1 第 2 条（入口决定方向：员工入口→反向）。
+     *
+     * @param id 员工ID
+     * @param locationId 目标位置ID（locations.location_id；TRANSIT 型 400 拒绝）
+     * @return 更新后的员工（员工不存在时返回 null，由控制器转 404）
+     */
+    Employee assignEmployeeLocation(String id, Long locationId);
 }

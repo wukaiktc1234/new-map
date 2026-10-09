@@ -366,6 +366,7 @@ export const systemModules: ModulePermission[] = [
       "hr:employee:create",
       "hr:employee:edit",
       "hr:employee:delete",
+      "hr:employee:assign-location", // P1-USER-LOCATION-002 C3：员工归属分配（PUT /v1/employees/{id}/assign-location）
       "hr:organization:view",
       "hr:organization:manage",
       "hr:position:view",

@@ -100,6 +100,8 @@ public final class AdminPermissions {
         "hr:contract-template:view", "hr:contract-template:manage",
         "hr:attendance:view",
         "hr:employee:view", "hr:employee:manage",
+        // P1-USER-LOCATION-002 D3：员工归属分配（PUT /v1/employees/{id}/assign-location）
+        "hr:employee:assign-location",
         "hr:knowledge-base:view", "hr:knowledge-base:manage",
         "hr:training:view", "hr:training:manage",
         "hr:health-certificate:view", "hr:health-certificate:manage",

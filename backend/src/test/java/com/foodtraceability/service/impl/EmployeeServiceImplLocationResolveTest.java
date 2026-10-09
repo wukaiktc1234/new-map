@@ -10,6 +10,7 @@ import com.foodtraceability.mapper.EmployeeMapper;
 import com.foodtraceability.mapper.LocationIdMapMapper;
 import com.foodtraceability.mapper.LocationMapper;
 import com.foodtraceability.service.DepartmentService;
+import com.foodtraceability.service.OperationLogService;
 import com.foodtraceability.service.OrganizationChangeLogService;
 import com.foodtraceability.service.PositionService;
 import com.foodtraceability.utils.EmployeeCodeGenerator;
@@ -84,6 +85,9 @@ class EmployeeServiceImplLocationResolveTest {
     @Mock
     private EmployeeMapper employeeMapper;
 
+    @Mock
+    private OperationLogService operationLogService;
+
     private EmployeeServiceImpl service;
 
     @BeforeEach
@@ -91,7 +95,8 @@ class EmployeeServiceImplLocationResolveTest {
         // 构造即自注册静态桥实例（模拟 Spring 上下文）
         new LocationIdBridge(locationIdMapMapper);
         service = new EmployeeServiceImpl(positionService, departmentService,
-                organizationChangeLogService, employeeCodeGenerator, locationMapper);
+                organizationChangeLogService, employeeCodeGenerator, locationMapper,
+                operationLogService);
         ReflectionTestUtils.setField(service, "baseMapper", employeeMapper);
     }
 

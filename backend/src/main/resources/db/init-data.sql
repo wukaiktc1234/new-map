@@ -101,6 +101,7 @@ SELECT * FROM (VALUES
     ('PERM_HR_EMP_CREATE',   '员工创建', 'hr:employee:create',   1, 'hr', 1, NOW(), NOW(), 0),
     ('PERM_HR_EMP_UPDATE',   '员工更新', 'hr:employee:update',   1, 'hr', 1, NOW(), NOW(), 0),
     ('PERM_HR_EMP_DELETE',   '员工删除', 'hr:employee:delete',   1, 'hr', 1, NOW(), NOW(), 0),
+    ('PERM_HR_EMP_ASSIGN_LOCATION', '员工归属分配', 'hr:employee:assign-location', 1, 'hr', 1, NOW(), NOW(), 0),
     ('PERM_HR_ATTEND_LIST',  '考勤列表', 'hr:attendance:list',   1, 'hr', 1, NOW(), NOW(), 0),
     ('PERM_HR_ATTEND_EXPORT','考勤导出', 'hr:attendance:export', 1, 'hr', 1, NOW(), NOW(), 0),
 
@@ -281,6 +282,17 @@ WHERE r.role_code = 'PURCHASE' AND r.deleted = 0
       AND rp.permission_id = CAST(p.permission_id AS VARCHAR)
       AND rp.deleted = 0
   );
+
+
+-- 1.3.7 HR 主管权限（员工归属分配，P1-USER-LOCATION-002 D3 / U7）
+-- 注：ROLE_HR_DIRECTOR 为人工创建角色（见 V20260728_011 同款绑定）；
+--     role_id/permission_id 均存字符串 ID（与 UserMapper.xml 的 role_id_str/permission_id_str join 对齐）。
+INSERT INTO role_permissions (role_id, permission_id, deleted, create_time)
+SELECT 'ROLE_HR_DIRECTOR', 'PERM_HR_EMP_ASSIGN_LOCATION', 0, NOW()
+WHERE NOT EXISTS (
+    SELECT 1 FROM role_permissions
+    WHERE role_id = 'ROLE_HR_DIRECTOR' AND permission_id = 'PERM_HR_EMP_ASSIGN_LOCATION' AND deleted = 0
+);
 
 
 -- ------------------------------------------------------------
