@@ -191,7 +191,7 @@ ORDER BY e.employee_code;
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | ✅ 已提交 `563c3e8`（vue-tsc 改动文件 0 错误，2026-10-09；live UI 待 Owner ENV-11） | C2b（硬前置）✅、C3 ✅ |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
 | C7 N3 三处（D4） | 未开始 | 无 |
-| C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | 未开始 | 无（设备域 KL-086 冻结不动） |
+| C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
 | C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
 | C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | 未开始 | 无 |
 
@@ -214,6 +214,9 @@ ORDER BY e.employee_code;
 | C5 live：表单单一 locations 下拉（无 TRANSIT）+ 提交后 `employees.location_id`/`work_location_type` 按 C2b 推导 + 列表显示位置名 | 设计 §2 D2、§7 U9/U10 | ⏸ 待 Owner live（ENV-11） | 前端代码路径已锁：payload 仅 `locationId`（grep 0 残留）；推导权威 = 后端 C2b（35/35 绿） |
 | 既有测试无回归 | §6 | ✅ **本卡改动面全量复跑全绿 41/41**（`LocationIdBridgeTest` 6 + `EmployeeServiceImplAssignLocationTest` 10 + `EmployeeServiceImplLocationResolveTest` 21 + `EmployeeAssignLocationEndpointTest` 4，各 `Failures: 0, Errors: 0`）；全量 380 tests / 74 失败（15F+59E）= 18 个其它测试类（integration / finance / sysdict / code generator / sorting），无一涉及本卡改动面 | `mvn test` 全量（C5 批次，2026-10-09，`MVN_EXIT=1` 由其它类失败导致）；**354→380 的 +26 = 本卡 C2b/C3/C4 提交的测试**（`acb9aa8`：LocationResolveTest 9→19 **+10**；`ddb7d08`：EndpointTest 4 + AssignLocationTest 6 新建 **+10**；`e97db65`：AssignLocationTest 6→10 + LocationResolveTest 19→21 **+6**；10+10+6=26 与差值精确吻合；基线 354 已含 C1 +6 / C2 +9）；**失败增量 58→74**：`backend/src/test` 工作树仅 1 个 WIP 改动（`PaymentServiceImplTest.java`）+ 环境/DB 状态漂移（10 个 integration 类全 Errors，与 Owner 并发 DB 操作时段吻合）；C1–C4 测试类两轮均绿（旧批次原始日志已清理，逐类对比不可行，如实登记）；C2b 批次定向 25/25；C3 批次定向 29/29；C4 批次定向 35/35 |
 
+| C8 A7：`: 1L` 0 命中 + 未指定收货仓库 → 业务异常不默认仓库 1（裁决 4 后：receiver_type 优先——STORE→store_id / WAREHOUSE→warehouse_id / 空或未知 → 400） | §6 A7 | ✅ `grep ': 1L'` 0 命中；ReceiverKey 5 例全绿（裁决 4 仅改判断顺序，未动 ReceiverKey 归一化） | `mvn test -Dtest=PurchaseArrivalReceiverKeyNormalizationTest`（定向批次 **Tests run: 5, Failures: 0, Errors: 0**，`MVN_EXIT=0`，`c8patch-mvn-targeted.log`，2026-10-09） |
+| C8 A9：`DEFAULT_STORE_ID` 计数不变（KL-086 未撞） | §6 A9 | ✅ 9 行不变（`DeviceConstants:1` + `DeviceStatusServiceImpl:6` + `HardwareConfigServiceImpl:2`） | `git grep -c DEFAULT_STORE_ID backend/src/main/java`（2026-10-09） |
+
 **原登记的本侧未能自验风险点 → 已实跑解除**：
 1. `EmployeeCodeGenerator` Mockito mock —— ✅ 实跑通过；
 2. `ServiceImpl.baseMapper` 反射注入 —— ✅ 实跑通过；
@@ -230,4 +233,5 @@ ORDER BY e.employee_code;
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
 - D1-4 已完成（C2b `acb9aa8`）：F-1/F-2/F-3 登记 → Owner 第四批裁决（U9/U10）→ C1+C2 交验通过 → **裁决后实施，无擅自补做**；§3.5 数据回填仍未实施（独立决策）。
+- **C8（`0e160d9` + 补丁 `014247b`）**：改动面 = `PurchaseArrivalServiceImpl` 单文件 2 处（`buildAndSaveArrival` 创建期校验 + `increaseInventoryForArrival` 确认期解析）；**裁决 3**：12 单存量 `receiver_type=STORE + warehouse_id=1` **不纠正** = **N14**（任务板 §24.3o；物料混装非门店入货逻辑形态，声明 STORE 是标错）；**裁决 4**：判断顺序改 **receiver_type 优先**（1) 空 → 400（防御，ReceiverKey 入口已按 A2 归一）2) STORE → store_id 必填 3) WAREHOUSE → warehouse_id 必填 4) 未知 → 400；`warehouse_id` 仅 WAREHOUSE 接收方落库——U11-B 未覆盖的顺序变更，Owner 显式裁；无 schema 变更、无数据迁移、无新权限/端点；未新增测试（A7/A9 = grep 断言 + 既有 5 例定向绿）。
 - 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存；C4：4 files / +231 −7；C5：2 files / +60 −77，两混合文件用 hunk 级 `git apply --cached` 精确暂存 + 暂存态自洽核对）。

@@ -8098,7 +8098,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1–C5 已提交（C1 `aff2568` / C2 `ff4cba3` / C2b `acb9aa8` / C3 `ddb7d08` / C4 `e97db65` / C5 `563c3e8`；后端定向 35/35 绿，C5 前端改动文件 0 类型错误，全量复跑本卡面 41/41 绿）；C6–C10 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1–C5 已提交（C1 `aff2568` / C2 `ff4cba3` / C2b `acb9aa8` / C3 `ddb7d08` / C4 `e97db65` / C5 `563c3e8`；后端定向 35/35 绿，C5 前端改动文件 0 类型错误，全量复跑本卡面 41/41 绿）；C8 已提交（`0e160d9` + 补丁 `014247b` 裁决 4 receiver_type 优先；定向 5/5 绿，A7/A9 过）；C6/C7/C9/C10 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
 
 > **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
@@ -8122,6 +8122,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **实施期新发现 F-1 / F-2 / F-3（已全部裁决 2026-09-30 第四批 = 设计 U9 / U10）** | **F-1**：设计 D1-4（`workLocationType` 改由 `locations.location_type` 推导）在 D9 的 C1–C10 中**没有落点** → 未擅自补做。**F-2**：两侧词表被 DB CHECK 硬约束且不重合——`locations.location_type IN ('STORE','CENTRAL','DEPOT','TRANSIT')`（`V20260927_001:17/:29`）vs `employees.work_location_type IN ('STORE','WAREHOUSE','HEADQUARTERS')` **DEFAULT `'HEADQUARTERS'`**（`V20260721_001:16-17`）→ 推导需显式映射（`CENTRAL`→`WAREHOUSE` 还是 `HEADQUARTERS`？`TRANSIT` 映射到什么或禁止作员工归属？）。**F-3**：MyBatis-Plus 默认跳过 null 字段 → 不传即落 DB 默认 `'HEADQUARTERS'`，而 `WorkLocationFilterHelper:74/:103` 明示「HEADQUARTERS 不限制，可查看全部」、:61 `workLocationType == null` 直接不过滤 → **C5 前端停发该字段后，新建员工默认落入全量可见数据作用域**（改前已存在的隐患会被普遍化）。三个方向供拍板 → **已裁**：**U9** = `STORE→STORE`、`CENTRAL→WAREHOUSE`、`DEPOT→WAREHOUSE`；**`TRANSIT` 禁止作员工归属 → 显式拒绝**（词表外值同处理，不猜）；Owner 补条 **无 `locationId` → 显式 `HEADQUARTERS`**（对应 design-001 §3.2 总部职能 NULL 场景 = helper「不限制」分支的语义承载）。**U10** = `resolveLocationId` 里**永远显式 `set workLocationType`**——有 `locationId` 走 U9 映射，无 → `HEADQUARTERS`，**不走 DB DEFAULT**。**F-1 落点 = 新增提交 C2b**（设计 D9 已插入，依赖 C2，**C5 的硬前置**）。裁决前一律未擅自补做。附带登记**数据侧待核 SQL**（存量 `location_id` 与 `work_location_type` 不一致行数；`TRANSIT` 型位置是否已被员工作归属——C2b 只拒新写入不改存量）见实施记录 §3.5 |
 | 阶段 3 验收状态 | ⏸ **全部待 Owner Windows 侧执行（ENV-11：本 Linux 会话无 `java`/`mvn`/`psql`/`docker`，仓内 `JDK21/` 与 `maven-mvnd-1.0.3-windows-amd64/` 均为 Windows 二进制）**：`mvnd -q compile` + `mvnd test -Dtest=LocationIdBridgeTest,EmployeeServiceImplLocationResolveTest` + 全量 `mvnd test`（关注 `EmployeeServiceImpl` 构造新增第 5 参的影响面）+ 手工「选仓库 → `employees.location_id` 非 NULL」。失败即按提交粒度 revert `ff4cba3`（C2），C1 独立 |
 | **下一步顺序（Owner 2026-09-30 第四批）** | 等 C1+C2 的 Windows 交验结果 → **C2b → C3 → C4 → C5…**；**若 Owner 两天内未跑交验 → 改做 C3（独立主干）**。C2b 裁决已就位但**代码未动** |
+| **C8（D5/N4）已提交 + 裁决 3/4（2026-10-09）** | **C8 `0e160d9`**：移除 `PurchaseArrivalServiceImpl:656` 的 `1L` 兜底（U11 裁决 B：仓空且店空 → 400「未指定收货仓库」；确认入库按 warehouse_id/stores_new 双空间分别解析）→ **补丁 `014247b`（裁决 4：判断顺序改 receiver_type 优先）**：1) receiver_type 空 → 400（空值已在 ReceiverKey 入口按 A2 归一为 STORE，此检查为防御边界）；2) STORE → store_id 必填（warehouse_id 保持 NULL，双列互斥）；3) WAREHOUSE → warehouse_id 必填；4) 未知 → 400；`warehouse_id` 仅 WAREHOUSE 接收方落库。定向 `PurchaseArrivalReceiverKeyNormalizationTest` 5/5 绿；A7 `grep ': 1L'` 0 命中；A9 `DEFAULT_STORE_ID` 9 行不变。**裁决 3**：12 单存量 `receiver_type=STORE + warehouse_id=1`（当前 DB：STORE\|1\|1×11、STORE\|2\|1×1）**不纠正**——物料混装（设备+食材+测试数据）非门店入货逻辑形态；声明 STORE 是标错，非真实意图 → **登记 N14（见 §24.3o）** |
 
 ---
 
@@ -8163,6 +8164,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **§4.4** `role_stores` / `sys_stores` / `sys_user_stores` | **P0-ROLE-STORE-SCHEMA-001 / P1-ROLE-STORE-ISOLATION-001**（§24.3c） | 挂已有卡（新增登记） |
 | **§4.1** 41 张 `store_id` 表 | **P1-LOCATION-MODEL-001 M5-M7**（§24.3g） | 挂已有卡（新增登记） |
 | **POS 未分配位置撞墙**（§24.3n 表 A1 的处置） | **已开卡 §24.3p P1-UNASSIGNED-LOCATION-GUIDANCE-001**（Owner 2026-09-30 裁「归 B：不加代码兜底，做显式拒绝 + 登录引导」）→ **不进 002** | 开卡未启动 |
+| **N14** 历史语义矛盾：12 单存量 `purchase_arrivals` receiver_type=STORE + warehouse_id=1（当前 DB：STORE\|1\|1×11、STORE\|2\|1×1；审计快照 `STORE\|1\|1×12`） | **不纠正**（2026-10-09 Owner 裁决 3）：物料混装（设备+食材+测试数据）非门店入货逻辑形态；声明 STORE 是标错，非真实意图；裁决 4 的 receiver_type 优先仅作用于代码路径，不触存量行 | 历史矛盾，不纠正（证据：`warehouse-type-audit-001.md:113`；`data-chain-fix-tracking.md:455-458`（08-01 批 10 兜底来源）；C8 证据链 E1–E15） |
 
 ---
 
