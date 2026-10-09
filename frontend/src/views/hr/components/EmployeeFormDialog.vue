@@ -3,8 +3,7 @@ import { ref, reactive, watch, computed, nextTick, onUnmounted, onMounted } from
 import { ElMessage, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
 import { Plus, UserFilled, Delete } from '@element-plus/icons-vue'
 import { useDepartmentOptions } from '@/composables/useDepartmentOptions'
-import { storeArchiveApi } from '@/api/store-ops/store-archive'
-import { warehouseApi } from '@/api/warehouse/warehouse'
+import { useLocationOptions } from '@/composables/useLocationOptions'
 import { positionApi } from '@/api/hr/position'
 import type { PositionItem } from '@/api/hr/position'
 
@@ -30,9 +29,7 @@ interface Employee {
   retirementDate?: string  // 退休日期（超龄返聘时填写）
   reemploymentDate?: string // 返聘日期
   agreementNo?: string     // 劳务协议编号
-  workLocationType?: string // HEADQUARTERS/STORE/WAREHOUSE
-  storeId?: string         // 归属门店ID
-  warehouseId?: string     // 归属仓库ID
+  locationId?: number      // C5 (D2)：归属位置ID（locations.location_id；N6：number ↔ 后端 Long）
   workLocationName?: string // 工作归属显示名称
 }
 
@@ -73,9 +70,7 @@ const formData = reactive<Employee>({
   retirementDate: '',
   reemploymentDate: '',
   agreementNo: '',
-  workLocationType: 'HEADQUARTERS',
-  storeId: '',
-  warehouseId: '',
+  locationId: undefined,
 })
 
 const statusOptions = [
@@ -90,14 +85,28 @@ const genderOptions = [
   { label: '其他', value: 'other' },
 ]
 
-const workLocationOptions = [
-  { label: '总部', value: 'HEADQUARTERS' },
-  { label: '门店', value: 'STORE' },
-  { label: '仓库', value: 'WAREHOUSE' },
-]
+/** C5 (D2)：归属位置单一数据源 GET /v1/locations（复用 useLocationOptions，门店侧已收敛）；
+ *  U9：TRANSIT 禁作员工归属 → 前端先行过滤（后端 C2b 对 TRANSIT 亦 400 拒绝） */
+const { locationOptions } = useLocationOptions(true)
+const employeeLocationOptions = computed(() =>
+  locationOptions.value.filter(l => l.locationType !== 'TRANSIT'),
+)
 
-const storeOptions = ref<{ storeId: number; storeName: string }[]>([])
-const warehouseOptions = ref<{ warehouseId: string; warehouseName: string }[]>([])
+/** 位置类型中文标签（locations.location_type → 展示文案） */
+const locationTypeLabels: Record<string, string> = {
+  STORE: '门店',
+  CENTRAL: '中央仓',
+  DEPOT: '仓储仓',
+  TRANSIT: '在途',
+}
+
+/** C5 (D2)：「归属类型」降级为只读展示，值由所选 location.locationType 推导（不再先选类型再选实体） */
+const derivedLocationTypeLabel = computed(() => {
+  const loc = locationOptions.value.find(l => l.locationId === formData.locationId)
+  if (!loc) return '总部（未选位置 = 总部职能）'
+  return locationTypeLabels[loc.locationType] || loc.locationType
+})
+
 const positionOptions = ref<PositionItem[]>([])
 
 /** 根据已选部门过滤岗位选项 */
@@ -111,8 +120,6 @@ const { departmentOptions, getDepartmentById } = useDepartmentOptions(true)
 
 const isEditMode = computed(() => props.editData !== null)
 const dialogTitle = computed(() => isEditMode.value ? '编辑员工' : '新增员工')
-const showStoreSelect = computed(() => formData.workLocationType === 'STORE')
-const showWarehouseSelect = computed(() => formData.workLocationType === 'WAREHOUSE')
 
 const rules: FormRules = {
   name: [
@@ -164,9 +171,7 @@ function resetForm() {
   formData.retirementDate = ''
   formData.reemploymentDate = ''
   formData.agreementNo = ''
-  formData.workLocationType = 'HEADQUARTERS'
-  formData.storeId = ''
-  formData.warehouseId = ''
+  formData.locationId = undefined
   avatarUrl.value = ''
   avatarFile.value = null
   formRef.value?.resetFields()
@@ -192,9 +197,7 @@ function fillEditData(data: Employee) {
   formData.retirementDate = data.retirementDate || ''
   formData.reemploymentDate = data.reemploymentDate || ''
   formData.agreementNo = data.agreementNo || ''
-  formData.workLocationType = data.workLocationType || 'HEADQUARTERS'
-  formData.storeId = data.storeId || ''
-  formData.warehouseId = data.warehouseId || ''
+  formData.locationId = data.locationId ?? undefined
   avatarUrl.value = ''
 }
 
@@ -257,21 +260,6 @@ function handlePositionChange(positionId: string) {
   formData.position = pos ? pos.positionName : ''
 }
 
-/** 加载门店/仓库选项 */
-async function loadLocationOptions(): Promise<void> {
-  try {
-    const [stores, warehouses] = await Promise.all([
-      storeArchiveApi.getActiveStores(),
-      warehouseApi.getActiveList(),
-    ])
-    storeOptions.value = stores || []
-    warehouseOptions.value = warehouses || []
-  } catch {
-    storeOptions.value = []
-    warehouseOptions.value = []
-  }
-}
-
 /** 加载岗位选项 */
 async function loadPositionOptions(): Promise<void> {
   try {
@@ -302,15 +290,6 @@ watch(
   },
 )
 
-// 监听工作归属类型变化，清空不相关的归属字段
-watch(
-  () => formData.workLocationType,
-  (newType) => {
-    if (newType !== 'STORE') formData.storeId = ''
-    if (newType !== 'WAREHOUSE') formData.warehouseId = ''
-  },
-)
-
 watch(
   () => props.editData,
   (newVal) => { if (props.modelValue && newVal) nextTick(() => fillEditData(newVal)) },
@@ -318,7 +297,6 @@ watch(
 )
 
 onMounted(() => {
-  loadLocationOptions()
   loadPositionOptions()
 })
 
@@ -454,27 +432,25 @@ onUnmounted(() => {
         </el-row>
 
         <!-- ===== 工作归属 ===== -->
+        <!-- C5 (D2)：合并为单一位置下拉（locations 数据源）；「归属类型」降级为只读展示，由所选位置类型推导。
+             workLocationType / storeId / warehouseId 停止发送——后端 C2b 从 location_type 推导（U9/U10）为权威来源 -->
         <el-divider content-position="left">工作归属</el-divider>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="归属类型" prop="workLocationType">
-              <el-select v-model="formData.workLocationType" placeholder="请选择工作归属类型" clearable class="form-select" :teleported="false">
-                <el-option v-for="opt in workLocationOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            <el-form-item label="归属位置" prop="locationId">
+              <el-select v-model="formData.locationId" placeholder="请选择归属位置（不选 = 总部职能）" clearable class="form-select" :teleported="true">
+                <el-option
+                  v-for="opt in employeeLocationOptions"
+                  :key="opt.locationId"
+                  :label="`${opt.locationName}（${locationTypeLabels[opt.locationType] || opt.locationType}）`"
+                  :value="opt.locationId"
+                />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col v-if="showStoreSelect" :span="12">
-            <el-form-item label="归属门店" prop="storeId">
-              <el-select v-model="formData.storeId" placeholder="请选择归属门店" clearable class="form-select" :teleported="false">
-                <el-option v-for="store in storeOptions" :key="store.storeId" :label="store.storeName" :value="String(store.storeId)" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="showWarehouseSelect" :span="12">
-            <el-form-item label="归属仓库" prop="warehouseId">
-              <el-select v-model="formData.warehouseId" placeholder="请选择归属仓库" clearable class="form-select" :teleported="false">
-                <el-option v-for="wh in warehouseOptions" :key="wh.warehouseId" :label="wh.warehouseName" :value="wh.warehouseId" />
-              </el-select>
+          <el-col :span="12">
+            <el-form-item label="归属类型">
+              <el-input :model-value="derivedLocationTypeLabel" readonly placeholder="由所选位置类型推导" />
             </el-form-item>
           </el-col>
         </el-row>

@@ -30,6 +30,7 @@ import StatusTag from '@/components/core/StatusTag.vue'
 import { useStandardPage } from '@/composables/useStandardPage'
 import { useStatCardFilter } from '@/composables/useStatCardFilter'
 import { useDepartmentOptions } from '@/composables/useDepartmentOptions'
+import { useLocationOptions } from '@/composables/useLocationOptions'
 import { employeeApi } from '@/api/hr'
 import type { Employee as BackendEmployee, EmployeeStatistics } from '@/types/hr'
 import EmployeeFormDialog from './components/EmployeeFormDialog.vue'
@@ -37,6 +38,9 @@ import EmployeeDetailDialog from './components/EmployeeDetailDialog.vue'
 import EmployeeTransferDialog from './components/EmployeeTransferDialog.vue'
 
 const { pagination } = useStandardPage()
+
+/** C5 (D2)：列表「工作归属」展示名按 locationId 解析 locations 表（响应式，加载完成后自动刷新） */
+const { getLocationName: locationNameById } = useLocationOptions(true)
 
 /** 处理分页大小变化 */
 function handleSizeChange(size: number): void {
@@ -75,9 +79,8 @@ interface Employee {
   retirementDate?: string
   reemploymentDate?: string
   agreementNo?: string
+  locationId?: number
   workLocationType?: string
-  storeId?: string
-  warehouseId?: string
   workLocationName?: string
 }
 
@@ -166,12 +169,11 @@ function toBackendStatus(status: string): number {
  */
 function fromBackendEmployee(raw: BackendEmployee): Employee {
   const rawAny = raw as Record<string, unknown>
-  const workLocationType = String(rawAny.workLocationType ?? 'HEADQUARTERS')
-  const storeId = rawAny.storeId != null ? String(rawAny.storeId) : undefined
-  const warehouseId = rawAny.warehouseId != null ? String(rawAny.warehouseId) : undefined
-  let workLocationName = '总部'
-  if (workLocationType === 'STORE') workLocationName = storeId ? `门店 ${storeId}` : '门店'
-  if (workLocationType === 'WAREHOUSE') workLocationName = warehouseId ? `仓库 ${warehouseId}` : '仓库'
+  const locationId = rawAny.locationId != null ? Number(rawAny.locationId) : undefined
+  const workLocationType = String(rawAny.workLocationType ?? (locationId == null ? 'HEADQUARTERS' : ''))
+  // C5 (D2)：归属展示名基于 locationId（locations 表）；无位置 → 总部（U10）
+  let workLocationName = locationId != null ? locationNameById(locationId) : ''
+  if (!workLocationName || workLocationName === '-') workLocationName = '总部'
   return {
     id: String(raw.id ?? rawAny.employeeId ?? ''),
     name: String(rawAny.name ?? raw.employeeName ?? ''),
@@ -194,9 +196,8 @@ function fromBackendEmployee(raw: BackendEmployee): Employee {
     retirementDate: formatDate(rawAny.retirementDate),
     reemploymentDate: formatDate(rawAny.reemploymentDate),
     agreementNo: String(rawAny.agreementNo ?? ''),
+    locationId,
     workLocationType,
-    storeId,
-    warehouseId,
     workLocationName,
   }
 }
@@ -230,6 +231,12 @@ function fromBackendEmployeeList(list: BackendEmployee[] | null | undefined): Em
   return (list || []).map(fromBackendEmployee)
 }
 
+/** C5 (D2)：归属展示名 = locationId 解析名（响应式）→ 回退快照名 → 总部 */
+function displayWorkLocationName(row: Employee): string {
+  const name = row.locationId != null ? locationNameById(row.locationId) : ''
+  return name && name !== '-' ? name : (row.workLocationName || '总部')
+}
+
 /**
  * 本地 Employee → 后端创建/更新 payload
  * 字段映射遵循 EmployeeCreateDTO / EmployeeUpdateDTO 的字段命名
@@ -248,9 +255,9 @@ function toBackendPayload(local: Employee): Record<string, unknown> {
     baseSalary: local.salary,
     employmentType: local.employmentType,
     emergencyContact: local.emergencyContact,
-    workLocationType: local.workLocationType || 'HEADQUARTERS',
-    storeId: local.workLocationType === 'STORE' ? local.storeId : undefined,
-    warehouseId: local.workLocationType === 'WAREHOUSE' ? local.warehouseId : undefined,
+    // C5 (D2)：归属唯一入参 locationId（N6：number ↔ 后端 Long）；
+    // workLocationType 由后端 C2b 从 location_type 推导（U9/U10 权威来源）；storeId/warehouseId 停止发送（D2-3）
+    locationId: local.locationId,
   }
 }
 
@@ -462,7 +469,7 @@ onMounted(() => {
           <StatusTag status="active" :label="row.department || '-'" size="small" />
         </template>
         <template #workLocation="{ row }">
-          <StatusTag v-if="row.workLocationType" :status="row.workLocationType === 'STORE' ? 'success' : row.workLocationType === 'WAREHOUSE' ? 'warning' : 'info'" :label="row.workLocationName || '总部'" size="small" />
+          <StatusTag v-if="row.workLocationType" :status="row.workLocationType === 'STORE' ? 'success' : row.workLocationType === 'WAREHOUSE' ? 'warning' : 'info'" :label="displayWorkLocationName(row)" size="small" />
           <span v-else class="text-secondary">总部</span>
         </template>
         <template #employmentType="{ row }">
