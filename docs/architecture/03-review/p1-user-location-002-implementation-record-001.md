@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b、C3、C4 已提交（C4 定向 35/35 绿）；C5–C10 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b、C3、C4、C5 已提交（C4 定向 35/35 绿；C5 前端改动文件 0 类型错误）；C6–C10 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -32,6 +32,7 @@
 | `acb9aa8` **C2b** | D1-4 落点：`workLocationType` 显式推导——新增 `mapLocationTypeToWorkLocationType`（U9 映射）+ `deriveWorkLocationType`；创建路径无 locationId → 显式 `HEADQUARTERS`（U10，不走 DB DEFAULT）；更新路径未表达归属意图 → 不 set（I-3）；`TRANSIT`/词表外 → 400 | `service/impl/EmployeeServiceImpl.java` + `EmployeeServiceImplLocationResolveTest`（9→19 例，+10 C2b 用例） | 设计 §2 D1-4、§7 U9/U10、F-1/F-2/F-3 裁决（§3.4） | ✅ 编译 + 定向测试 25/25 绿（2026-10-09，JDK21 + Maven 3.9.11） |
 | `ddb7d08` **C3** | 员工归属分配端点 `PUT /v1/employees/{id}/assign-location`（D3-2）：新 DTO `EmployeeAssignLocationDTO`（`locationId` `@NotNull`）；`assignEmployeeLocation`（id 解析 → 404 → `resolveLocationId` → `deriveWorkLocationType` → 只写归属两列 → 审计 → 详情）；权限码 `hr:employee:assign-location` **5 面逐字一致**（AdminPermissions / init-data.sql / seed 迁移 / permissions.ts / `@PreAuthorize`+`@RequiresPermission`）；审计模块 `EMPLOYEE_LOCATION_ASSIGN`（controller `@OperationLog` + 服务级动态行 desc 含旧值→新值）；seed 迁移 `V20261009_001`（3 权限码，仅绑 `ROLE_HR_DIRECTOR`） | 4 新文件（DTO / 迁移 / 2 测试类）+ 7 修改（controller / 接口 / impl / AdminPermissions +2 行 / init-data.sql / permissions.ts +1 行 / C2b 测试 6 参构造） | 设计 §2 D3-2/D3-3/D3-4、§7 U3/U7、§6 A4 | ✅ 编译 + 定向测试 29/29 绿（2026-10-09）；A4 live HTTP 部分待 Owner（ENV-11） |
 | `e97db65` **C4** | 反向同步 `syncUserAssignmentFromEmployee`（D3-1，impl 私有方法，不上接口）：关联键 `employees.user_id` 优先 / `employee_code` 兜底（`selectOne` + `LIMIT 1` 防多行异常）；U1 last-write-wins（审计 desc 记 users 侧旧 → 新）；U2 无用户不动 users、不建号、不报错；**部分更新**仅 id+locationId+updatedTime（防 `password` 覆盖）；调用点 `updateEmployee`（locationId 非空）+ `assignEmployeeLocation`；`logLocationAssignAudit` 4→5 参（syncDesc）；构造 6→7 参（注入 `UserMapper` 而非 UserService，避免与 `UserServiceImpl` 成环）；D3-2 防写回环：双向 javadoc 互参（入口决定方向） | 4 文件（impl + `UserServiceImpl` 注释 + 2 测试文件），+231/−7 | 设计 §2 D3-1/D3-2、§7 U1/U2 | ✅ 编译 + 定向测试 35/35 绿（2026-10-09） |
+| `563c3e8` **C5** | 前端员工表单归属收敛为单一 locations 下拉（D2，N6 消解）：`EmployeeFormDialog` 两旧下拉（归属类型 + 门店/仓库实体）→ 单一 locations 下拉（`useLocationOptions`，`GET /v1/locations`）；TRANSIT 前端先行过滤（U9，后端 C2b 亦 400）；「归属类型」降级只读展示（由所选 locationType 推导）；载荷仅发 `locationId`（N6：number ↔ 后端 Long），`workLocationType`/`storeId`/`warehouseId` 停止发送（后端 C2b U9/U10 推导为权威来源）；`HREmployee` 本地接口 +locationId/−storeId/−warehouseId，展示名按 locationId 响应式解析（回退总部 U10），`toBackendPayload` 仅发 locationId，StatusTag 经 `displayWorkLocationName` | 2 文件（`EmployeeFormDialog.vue` + `HREmployee.vue`），+60/−77 | 设计 §2 D2（N6 消解）、§7 U9/U10 | ✅ vue-tsc 改动文件 0 错误（2026-10-09）；live UI 待 Owner（ENV-11） |
 
 ### C1 落地事实（与设计的差异登记）
 
@@ -102,6 +103,19 @@
 - **提交精度**：4 files / +231 −7；`UserServiceImpl` 仅 javadoc 注释（Owner WIP 行不在该 hunk，无冲突）；Owner WIP 保持未暂存。
 - **回退**：无 schema 变更（纯 Java），`git revert e97db65` 独立，不影响 C3/C2b/C2/C1。
 
+### C5 落地事实
+
+- **单一数据源**：`GET /v1/locations`（复用既有 composable `useLocationOptions(true)`，与门店侧 / `UserManagementTab` 同源），替代两旧数据源 `/v1/stores/active` + `/v1/warehouses`。**两旧端点保留未删**（D2「不做」项 = 回滚退路；其他消费方未盘点）。
+- **单下拉 + 类型标签**：option 标签 = `locationName（locationType 中文标签）`（`STORE→门店 / CENTRAL→中央仓 / DEPOT→仓储仓`），`:value="opt.locationId"`（number ↔ 后端 Long，**N6 消解**）；「归属类型」从下拉降级为**只读展示**（`el-input readonly`，值由所选 `locationType` 推导；未选 →「总部（未选位置 = 总部职能）」）——「先选类型再选实体」的交互不复存在。
+- **TRANSIT 过滤**：`employeeLocationOptions = locationOptions.filter(l => l.locationType !== 'TRANSIT')`（U9：TRANSIT 禁止作员工归属——前端第一道防线；后端 C2b `mapLocationTypeToWorkLocationType` 对 TRANSIT 亦 400，双保险）。
+- **载荷收敛**：`toBackendPayload` 仅发 `locationId`；`workLocationType`/`storeId`/`warehouseId` 停止发送——后端 C2b U9/U10 显式推导为权威来源（C5 硬前置已满足：`acb9aa8` 交验通过）。`api/hr/employee.ts` 的 payload 为透传 spread，**无需改码**（收敛在 `HREmployee.vue` 载荷构造侧完成，与 D2 改动清单一致）。
+- **展示名响应式**：`fromBackendEmployee` 是快照转换器——若列表先于 locations 加载完成，快照名会停在回退值 → 模板级 `displayWorkLocationName(row)`：`locationNameById(row.locationId)`（读 `locationOptions` Ref，响应式，加载完成后自动刷新）→ 回退快照名 →「总部」；快照转换同时保留（`workLocationName`）作兜底。
+- **`types/hr.ts` 未改**：`Employee` 接口带 `[key: string]: unknown` 索引签名，`locationId` 加入无需类型变更（与 D2 清单一致）。
+- **验证（Windows 侧，2026-10-09）**：`vue-tsc --noEmit` → 两改动文件 **0 错误**（全项目 144 条均在其它 WIP 文件 = 既有，无一涉及本卡）；功能代码对 `storeId`/`warehouseId` 引用 = 0（仅 2 处 C5 说明注释）。
+- **提交精度（hunk 级隔离，沿用 C3 先例）**：工作树含 Owner WIP 混入两文件（`submitHandler` 机制 / `:teleported` 翻转 / `:lock-scroll` 移除 / 统计 error toast）→ 脚本从全量 diff 抽取 C5 hunk（dialog 11 + HREmployee 8，混合 hunk 按 `locationId` 行拆分），`git apply --cached` 应用（`--check` 预检通过）；`git diff --cached --stat` 核对 **2 files / +60 −77**；Owner WIP 全部保持未暂存；**暂存态自洽核对**：`submitHandler` 0 处 / `emit('submit')` 1 处（HEAD 原 handleSubmit）/ `@submit` 1 处——提交后的文件不依赖任何未提交 WIP。
+- **回退**：纯前端，`git revert 563c3e8` 独立；旧端点未删 → 回滚后表单可直接恢复（D2 回滚路径兑现）。
+- **live 验证（待 Owner，ENV-11）**：员工表单「归属位置」下拉显示 locations（含类型标签，无 TRANSIT）；选门店提交 → `employees.location_id` 非 NULL 且 `work_location_type='STORE'`（C2b 推导生效）；不选提交 → `HEADQUARTERS`（U10）；列表「工作归属」列显示位置名称。
+
 ---
 
 ## §3 实施期新发现（F-1 / F-2 / F-3 —— **已全部裁决，2026-09-30 第四批**）
@@ -167,14 +181,14 @@ ORDER BY e.employee_code;
 
 ## §4 未开始提交（C4–C10）
 
-> **推进顺序（Owner 第四批）**：C1+C2 Windows 交验 ✅ → **C2b ✅（`acb9aa8`）→ C3 ✅（`ddb7d08`）→ C4 → C5…**。
+> **推进顺序（Owner 第四批）**：C1+C2 Windows 交验 ✅ → **C2b ✅（`acb9aa8`）→ C3 ✅（`ddb7d08`）→ C4 ✅（`e97db65`）→ C5 ✅（`563c3e8`）→ C6…**。
 
 | 提交 | 状态 | 前置 |
 |---|---|---|
 | **C2b** 承载 D1-4：`resolveLocationId` 内按 U9 映射显式 `set workLocationType`；`TRANSIT`/词表外 → 400；无 `locationId` → 显式 `HEADQUARTERS`（不走 DB DEFAULT）+ 单测 | ✅ 已提交 `acb9aa8` + 交验通过（定向 25/25 绿，2026-10-09） | C1–C2 交验通过 ✅ |
 | **C3** 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | ✅ 已提交 `ddb7d08` + 交验通过（定向 29/29 绿，2026-10-09；A4 live HTTP 待 Owner ENV-11） | C1–C2 交验通过 ✅ |
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | ✅ 已提交 `e97db65` + 交验通过（定向 35/35 绿，2026-10-09） | C2、C3 ✅ |
-| C5 前端员工表单合并位置下拉（D2，N6 消解） | 未开始 | **C2b（硬前置）**、C3 |
+| C5 前端员工表单合并位置下拉（D2，N6 消解） | ✅ 已提交 `563c3e8`（vue-tsc 改动文件 0 错误，2026-10-09；live UI 待 Owner ENV-11） | C2b（硬前置）✅、C3 ✅ |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
 | C7 N3 三处（D4） | 未开始 | 无 |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | 未开始 | 无（设备域 KL-086 冻结不动） |
@@ -196,22 +210,24 @@ ORDER BY e.employee_code;
 | `EmployeeServiceImplAssignLocationTest` + `EmployeeAssignLocationEndpointTest` 通过（C3，10 例） | §6 A4 | ✅ 10/10 | `mvn test -Dtest=EmployeeServiceImplAssignLocationTest,EmployeeAssignLocationEndpointTest,EmployeeServiceImplLocationResolveTest`（定向批次 **Tests run: 29, Failures: 0, Errors: 0**） |
 | 三个测试类定向 35 例（C4：Assign 10 + Resolve 21 + Endpoint 4） | §2 D3-1/D3-2、§7 U1/U2 | ✅ 35/35 | `mvn test -Dtest=EmployeeServiceImplAssignLocationTest,EmployeeServiceImplLocationResolveTest,EmployeeAssignLocationEndpointTest`（定向批次 **Tests run: 35, Failures: 0, Errors: 0**，`MVN_EXIT=0`） |
 | A4 live：无权限 403 / 有权限 200 + `operation_log` 出现 `EMPLOYEE_LOCATION_ASSIGN` 行且 desc 含旧值→新值 | §6 A4 | ⏸ 待 Owner live（ENV-11） | 单测已锁：403 强制链 = `PermissionAspect` 既有机制（`assign-store` 同码先例）；200 + 审计行 = 服务级单测断言 |
-| 既有测试无回归 | §6 | ✅ 354 tests / 58 失败 = 基线 58（27F+31E，全为 ENV-9 既有 WIP，无一涉及本卡改动面） | `mvn test` 全量（C1+C2 批次）；C2b 批次以定向 25/25 复核；C3 批次以定向 29/29 复核；C4 批次以定向 35/35 复核，全量将于 C5 后复跑 |
+| C5 前端类型检查 | 设计 §2 D2 | ✅ 改动文件 0 错误（全项目 144 条 = 既有 WIP，无一涉及本卡） | `vue-tsc --noEmit`（frontend，2026-10-09） |
+| C5 live：表单单一 locations 下拉（无 TRANSIT）+ 提交后 `employees.location_id`/`work_location_type` 按 C2b 推导 + 列表显示位置名 | 设计 §2 D2、§7 U9/U10 | ⏸ 待 Owner live（ENV-11） | 前端代码路径已锁：payload 仅 `locationId`（grep 0 残留）；推导权威 = 后端 C2b（35/35 绿） |
+| 既有测试无回归 | §6 | ✅ **本卡改动面全量复跑全绿 41/41**（`LocationIdBridgeTest` 6 + `EmployeeServiceImplAssignLocationTest` 10 + `EmployeeServiceImplLocationResolveTest` 21 + `EmployeeAssignLocationEndpointTest` 4，各 `Failures: 0, Errors: 0`）；全量 380 tests / 74 失败（15F+59E）= 18 个其它 WIP 测试类（integration / finance / sysdict / code generator / sorting），无一涉及本卡改动面 | `mvn test` 全量（C5 批次，2026-10-09，`MVN_EXIT=1` 由 WIP 失败导致）；对照：C1+C2 批次 354 tests / 58 失败（27F+31E）→ C5 批次 380 / 74，**增量 = Owner WIP 新增/修改的测试代码进入工作树**（C5 本身纯前端 0 后端改动；C1–C4 全部测试类仍绿）；C2b 批次以定向 25/25 复核；C3 批次以定向 29/29 复核；C4 批次以定向 35/35 复核 |
 
 **原登记的本侧未能自验风险点 → 已实跑解除**：
 1. `EmployeeCodeGenerator` Mockito mock —— ✅ 实跑通过；
 2. `ServiceImpl.baseMapper` 反射注入 —— ✅ 实跑通过；
 3. `createEmployee` `this.save` 走 mock `EmployeeMapper.insert` —— ✅ 断言全部成立。
 
-**回退预案（若后续发现问题）**：按提交粒度 revert `e97db65`（C4，纯 Java）→ `ddb7d08`（C3）→ `acb9aa8`（C2b）→ `ff4cba3`（C2）→ `aff2568`（C1），五者独立（C3 seed 迁移为幂等 INSERT，无 schema 变更，随提交整体回退）。
+**回退预案（若后续发现问题）**：按提交粒度 revert `563c3e8`（C5，纯前端）→ `e97db65`（C4，纯 Java）→ `ddb7d08`（C3）→ `acb9aa8`（C2b）→ `ff4cba3`（C2）→ `aff2568`（C1），六者独立（C3 seed 迁移为幂等 INSERT，无 schema 变更，随提交整体回退；C5 旧端点未删，回滚后表单可直接恢复）。
 
 ---
 
 ## §6 边界自检
 
-- 本阶段改动面（C1–C4 合计）：**C1–C2b 3 主文件 + 2 测试文件；C3 新增 DTO + seed 迁移 + 2 测试类；C4 impl 私有方法 + 构造 +2 处调用点 + `UserServiceImpl` D3-2 互参注释 + 2 测试文件**，修改 controller/接口/impl/`AdminPermissions`（+2 行）/`init-data.sql`/`permissions.ts`（+1 行）/C2b 测试，未触碰其他 WIP 基线文件（Owner WIP 混行保持未暂存）。
+- 本阶段改动面（C1–C5 合计）：**C1–C2b 3 主文件 + 2 测试文件；C3 新增 DTO + seed 迁移 + 2 测试类；C4 impl 私有方法 + 构造 +2 处调用点 + `UserServiceImpl` D3-2 互参注释 + 2 测试文件；C5 前端 2 文件（`EmployeeFormDialog.vue` + `HREmployee.vue`，+60/−77）**，修改 controller/接口/impl/`AdminPermissions`（+2 行）/`init-data.sql`/`permissions.ts`（+1 行）/C2b 测试，未触碰其他 WIP 基线文件（Owner WIP 混行保持未暂存）。
 - **无 schema 变更**；C3 引入 1 条幂等 seed 迁移（`V20261009_001`：3 权限码 + 1 角色绑定，无表结构变更）。
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
 - D1-4 已完成（C2b `acb9aa8`）：F-1/F-2/F-3 登记 → Owner 第四批裁决（U9/U10）→ C1+C2 交验通过 → **裁决后实施，无擅自补做**；§3.5 数据回填仍未实施（独立决策）。
-- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存；C4：4 files / +231 −7）。
+- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存；C4：4 files / +231 −7；C5：2 files / +60 −77，两混合文件用 hunk 级 `git apply --cached` 精确暂存 + 暂存态自洽核对）。
