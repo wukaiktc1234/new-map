@@ -365,10 +365,24 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private void increaseInventoryForArrival(PurchaseArrival arrival) {
         List<PurchaseArrivalItem> items = loadArrivalItems(arrival.getArrivalId());
         // M3-M4 规则4：warehouseId 经 map 解析（兜底默认仓库 1 已按宪法 §三.4 删除）
-        com.foodtraceability.entity.Location syncLocation = locationService.resolveByWarehouseId(arrival.getWarehouseId());
+        // P1-USER-LOCATION-002 D5（U11 裁决 B）：按接收方空间解析收货位置——
+        // 仓库接收方走 warehouse_id（map src_table='warehouses'），门店接收方（warehouse_id=NULL）
+        // 走 store_id（map src_table='stores_new'，即桥 locationIdOfStore 的 SQL 面）；两空间互不混用（I-2）。
+        com.foodtraceability.entity.Location syncLocation = null;
+        if (arrival.getWarehouseId() != null) {
+            syncLocation = locationService.resolveByWarehouseId(arrival.getWarehouseId());
+        } else if (StringUtils.hasText(arrival.getStoreId())) {
+            String storeIdText = arrival.getStoreId().trim();
+            if (!storeIdText.matches("\\d+")) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "到货单门店ID非法，无法解析收货位置：storeId=" + storeIdText);
+            }
+            syncLocation = locationService.resolveByStoreId(Long.valueOf(storeIdText));
+        }
         if (syncLocation == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                "到货单仓库未映射到位置，无法同步门店库存：warehouseId=" + arrival.getWarehouseId());
+                "到货单收货位置未映射到位置，无法同步库存：warehouseId=" + arrival.getWarehouseId()
+                        + ", storeId=" + arrival.getStoreId());
         }
         Long locationIdForSync = syncLocation.getLocationId();
 
@@ -646,6 +660,12 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private PurchaseArrival buildAndSaveArrival(PurchaseOrder order, ReceiverKey key,
                                                 List<PurchaseOrderItem> orderItems,
                                                 PurchaseArrivalCreateDTO createDTO) {
+        // P1-USER-LOCATION-002 D5（U11 裁决 B）：未指定收货仓库且非门店接收 → 显式失败（禁止兜底默认仓库 1）。
+        // 门店接收方保持 warehouse_id=NULL（I-2：warehouse_id 属仓库旧空间，不写 locationId/不跨空间推导），
+        // 其收货位置在确认入库时经 store_id 解析（见 increaseInventoryForArrival）。
+        if (key.warehouseId == null && !StringUtils.hasText(key.storeId)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "未指定收货仓库");
+        }
         PurchaseArrival arrival = new PurchaseArrival();
         arrival.setArrivalCode(generateArrivalCode());
         arrival.setOrderId(order.getOrderId());
@@ -653,7 +673,7 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         arrival.setSupplierName(order.getSupplierName());
         arrival.setReceiverType(key.receiverType);
         arrival.setStoreId(key.storeId);
-        arrival.setWarehouseId(key.warehouseId != null ? key.warehouseId : 1L); // 未指定收货仓库时兜底默认仓库（集中式单店）
+        arrival.setWarehouseId(key.warehouseId); // 仓库接收方 = 显式仓库；门店接收方 = NULL（收货位置经 store_id 解析）
         arrival.setShipmentStatus(createDTO.getShipmentStatus());
         arrival.setLogisticsNo(createDTO.getLogisticsNo());
         arrival.setLogisticsCompany(createDTO.getLogisticsCompany());
