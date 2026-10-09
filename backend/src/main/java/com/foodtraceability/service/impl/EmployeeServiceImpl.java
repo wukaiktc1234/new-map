@@ -349,6 +349,60 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         return null;
     }
 
+    /**
+     * U9 映射（p1-user-location-002-design-001.md §7 U9）：
+     * {@code locations.location_type} → {@code employees.work_location_type}。
+     *
+     * <p>两侧词表被各自 DB CHECK 硬约束且<b>不重合</b>（F-2）：
+     * <ul>
+     *   <li>{@code STORE} → {@code STORE}</li>
+     *   <li>{@code CENTRAL} / {@code DEPOT} → {@code WAREHOUSE}</li>
+     *   <li>{@code TRANSIT} 禁止作员工归属；词表外值（含 null）同处理 → 400 显式拒绝，<b>不猜</b></li>
+     * </ul>
+     *
+     * @param locationType locations.location_type 值
+     * @return employees.work_location_type 值
+     * @throws BusinessException 400，当 TRANSIT 或词表外值
+     */
+    static String mapLocationTypeToWorkLocationType(String locationType) {
+        if ("STORE".equals(locationType)) {
+            return "STORE";
+        }
+        if ("CENTRAL".equals(locationType) || "DEPOT".equals(locationType)) {
+            return "WAREHOUSE";
+        }
+        throw new BusinessException(400, "该位置类型不可作为员工归属：" + locationType);
+    }
+
+    /**
+     * U10：按解析出的归属显式推导 {@code workLocationType}（不走 DB DEFAULT HEADQUARTERS）。
+     *
+     * <ul>
+     *   <li>locationId 路径 → 主键回查 {@code locations.location_type} 走 U9 映射；</li>
+     *   <li>storeId/warehouseId 桥路径 → 按来源推导（STORE / WAREHOUSE），不查库
+     *       （与 C2 桥语义一致：桥分支不做存在性校验）；</li>
+     * </ul>
+     *
+     * <p>调用方保证 resolvedLocationId 非空：解析为 null 时创建路径显式落
+     * {@code HEADQUARTERS}（§3.2 总部职能 NULL 场景），更新路径不 set
+     * （null → updateById 跳过该列，I-3）。
+     *
+     * @param resolvedLocationId resolveLocationId 解析结果（非空）
+     * @param locationIdParam    请求入参 locationId（null 表示桥路径）
+     * @param storeId            请求入参 storeId（观察期兼容）
+     * @param warehouseId        请求入参 warehouseId（观察期兼容）
+     * @return 显式 workLocationType 值
+     */
+    @SuppressWarnings("deprecation")
+    private String deriveWorkLocationType(Long resolvedLocationId, Long locationIdParam, Long storeId, Long warehouseId) {
+        if (locationIdParam == null) {
+            // 桥路径：storeId → STORE；warehouseId → WAREHOUSE（按来源推导，与桥分支不查库一致）
+            return storeId != null ? "STORE" : "WAREHOUSE";
+        }
+        Location location = locationMapper.selectById(resolvedLocationId);
+        return mapLocationTypeToWorkLocationType(location == null ? null : location.getLocationType());
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @SuppressWarnings("deprecation") // 观察期兼容：旧归属入参仍可用，见 resolveLocationId
@@ -358,8 +412,12 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setGender(dto.getGender());
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
-        employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setLocationId(resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
+        Long locationId = resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId());
+        employee.setLocationId(locationId);
+        // U10：显式 set workLocationType——有 locationId 按 U9 映射推导；无 locationId → 显式 HEADQUARTERS（不走 DB DEFAULT）
+        employee.setWorkLocationType(locationId == null
+                ? "HEADQUARTERS"
+                : deriveWorkLocationType(locationId, dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus());
@@ -401,8 +459,13 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setGender(dto.getGender());
         employee.setDepartmentId(dto.getDepartmentId());
         employee.setPositionId(dto.getPositionId());
-        employee.setWorkLocationType(dto.getWorkLocationType());
-        employee.setLocationId(resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
+        Long locationId = resolveLocationId(dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId());
+        employee.setLocationId(locationId);
+        // U10/U9：请求表达了归属意图（locationId 可解析）→ 显式推导 workLocationType；
+        // 未表达（全空 → null）→ 不 set，MyBatis-Plus updateById 跳过该列，存量值不被清空（I-3）
+        employee.setWorkLocationType(locationId == null
+                ? null
+                : deriveWorkLocationType(locationId, dto.getLocationId(), dto.getStoreId(), dto.getWarehouseId()));
         employee.setWarehouseId(dto.getWarehouseId());
         employee.setHireDate(dto.getHireDate());
         employee.setStatus(dto.getStatus() != null ? dto.getStatus() : oldEmployee.getStatus());

@@ -3,6 +3,7 @@ package com.foodtraceability.service.impl;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.util.LocationIdBridge;
 import com.foodtraceability.dto.EmployeeCreateDTO;
+import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.Employee;
 import com.foodtraceability.entity.Location;
 import com.foodtraceability.mapper.EmployeeMapper;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -36,11 +38,16 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * EmployeeServiceImpl 归属解析单元测试 —— P1-USER-LOCATION-002 C2（D1-2 / D1-3）。
+ * EmployeeServiceImpl 归属解析单元测试 —— P1-USER-LOCATION-002 C2（D1-2 / D1-3）+ C2b（D1-4 / U9 / U10）。
  *
  * <p>验收点（设计文档 p1-user-location-002-design-001.md §2 D1-3 / §6 A2）：
  * 归属解析优先级 {@code locationId → storeId(桥) → warehouseId(桥) → null}，
  * 其中 <b>warehouseId 经桥</b>是缺口①的新路径（此前 {@code employees.location_id} 对仓库员工恒 NULL）。
+ *
+ * <p>C2b 验收点（§7 U9 / U10，D1-4 落点）：
+ * {@code workLocationType} 永远由后端显式推导——有 locationId 按 U9 映射
+ * （STORE→STORE，CENTRAL/DEPOT→WAREHOUSE），TRANSIT 或词表外值 → 400 显式拒绝；
+ * 无 locationId → 创建路径显式 HEADQUARTERS（不走 DB DEFAULT），更新路径不 set（I-3）。
  *
  * <p>不变量 I-3：任何分支都不得产生数值兜底；全空入参必须落 NULL。
  *
@@ -233,5 +240,148 @@ class EmployeeServiceImplLocationResolveTest {
         if (saved.getLocationId() != null) {
             fail("非 Spring 上下文应返回 NULL，实际：" + saved.getLocationId());
         }
+    }
+
+    // ============ C2b：workLocationType 显式推导（D1-4 / U9 / U10） ============
+
+    @Test
+    @DisplayName("C2b：创建路径 locationId=STORE → 显式推导 workLocationType=STORE")
+    void createWithStoreLocationDerivesStoreWorkLocationType() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setLocationId(500L);
+        when(locationMapper.selectById(500L)).thenReturn(activeLocation(500L, "STORE", 1));
+
+        Employee saved = service.createEmployee(dto);
+
+        assertEquals("STORE", saved.getWorkLocationType(), "U9：STORE → STORE");
+    }
+
+    @Test
+    @DisplayName("C2b：创建路径 locationId=CENTRAL → 显式推导 workLocationType=WAREHOUSE")
+    void createWithCentralLocationDerivesWarehouseWorkLocationType() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setLocationId(503L);
+        when(locationMapper.selectById(503L)).thenReturn(activeLocation(503L, "CENTRAL", 1));
+
+        Employee saved = service.createEmployee(dto);
+
+        assertEquals("WAREHOUSE", saved.getWorkLocationType(), "U9：CENTRAL → WAREHOUSE");
+    }
+
+    @Test
+    @DisplayName("C2b：创建路径 locationId=DEPOT → 显式推导 workLocationType=WAREHOUSE")
+    void createWithDepotLocationDerivesWarehouseWorkLocationType() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setLocationId(504L);
+        when(locationMapper.selectById(504L)).thenReturn(activeLocation(504L, "DEPOT", 1));
+
+        Employee saved = service.createEmployee(dto);
+
+        assertEquals("WAREHOUSE", saved.getWorkLocationType(), "U9：DEPOT → WAREHOUSE");
+    }
+
+    @Test
+    @DisplayName("C2b：locationId 指向 TRANSIT 位置 → 400 显式拒绝（禁止作员工归属）")
+    void createWithTransitLocationIsRejected() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setLocationId(505L);
+        when(locationMapper.selectById(505L)).thenReturn(activeLocation(505L, "TRANSIT", 1));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.createEmployee(dto));
+
+        assertEquals(Integer.valueOf(400), ex.getCode(), "U9：TRANSIT 禁止作员工归属 → 显式拒绝");
+        verify(employeeMapper, never()).insert(any(Employee.class));
+    }
+
+    @Test
+    @DisplayName("C2b：locationId 指向词表外 location_type → 400 显式拒绝（不猜）")
+    void createWithUnknownLocationTypeIsRejected() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setLocationId(506L);
+        when(locationMapper.selectById(506L)).thenReturn(activeLocation(506L, "FACTORY", 1));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.createEmployee(dto));
+
+        assertEquals(Integer.valueOf(400), ex.getCode(), "U9：词表外值同处理 → 显式拒绝，不猜");
+        verify(employeeMapper, never()).insert(any(Employee.class));
+    }
+
+    @Test
+    @DisplayName("C2b：创建路径无归属 → 显式 set workLocationType=HEADQUARTERS（不走 DB DEFAULT）")
+    void createWithoutLocationIsExplicitlyHeadquarters() {
+        EmployeeCreateDTO dto = baseDto();
+
+        Employee saved = service.createEmployee(dto);
+
+        assertNull(saved.getLocationId());
+        assertEquals("HEADQUARTERS", saved.getWorkLocationType(),
+                "U10：无 locationId → 显式 HEADQUARTERS（§3.2 总部职能 NULL 场景），非隐式落 DB DEFAULT");
+    }
+
+    @Test
+    @DisplayName("C2b：storeId 桥路径 → 按来源推导 workLocationType=STORE（不查库）")
+    void legacyStoreIdBridgeDerivesStoreWorkLocationType() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setStoreId(9L);
+        when(locationIdMapMapper.selectLocationIdBySrcId(LocationIdBridge.SRC_STORES_NEW, 9L))
+                .thenReturn(900L);
+
+        Employee saved = service.createEmployee(dto);
+
+        assertEquals(Long.valueOf(900L), saved.getLocationId());
+        assertEquals("STORE", saved.getWorkLocationType(),
+                "U9：门店桥 → STORE（按来源推导，与桥分支不查库一致）");
+        verify(locationMapper, never()).selectById(any());
+    }
+
+    @Test
+    @DisplayName("C2b：warehouseId 桥路径 → 按来源推导 workLocationType=WAREHOUSE")
+    void legacyWarehouseIdBridgeDerivesWarehouseWorkLocationType() {
+        EmployeeCreateDTO dto = baseDto();
+        dto.setWarehouseId(77L);
+        when(locationIdMapMapper.selectLocationIdBySrcId(LocationIdBridge.SRC_WAREHOUSES, 77L))
+                .thenReturn(700L);
+
+        Employee saved = service.createEmployee(dto);
+
+        assertEquals(Long.valueOf(700L), saved.getLocationId());
+        assertEquals("WAREHOUSE", saved.getWorkLocationType(), "U9：仓库桥 → WAREHOUSE（按来源推导）");
+    }
+
+    @Test
+    @DisplayName("C2b：更新路径 locationId=STORE → 显式推导 workLocationType=STORE")
+    void updateWithStoreLocationDerivesStoreWorkLocationType() {
+        Employee existing = new Employee();
+        existing.setId(1L);
+        when(employeeMapper.selectById(1L)).thenReturn(existing);
+        when(locationMapper.selectById(500L)).thenReturn(activeLocation(500L, "STORE", 1));
+
+        EmployeeUpdateDTO dto = new EmployeeUpdateDTO();
+        dto.setLocationId(500L);
+
+        service.updateEmployee("1", dto);
+
+        ArgumentCaptor<Employee> captor = ArgumentCaptor.forClass(Employee.class);
+        verify(employeeMapper).updateById(captor.capture());
+        assertEquals("STORE", captor.getValue().getWorkLocationType(),
+                "U9：更新路径表达归属意图时同样显式推导");
+    }
+
+    @Test
+    @DisplayName("C2b：更新路径无归属意图 → workLocationType 不 set（列不变，I-3）")
+    void updateWithoutLocationLeavesWorkLocationTypeUntouched() {
+        Employee existing = new Employee();
+        existing.setId(1L);
+        when(employeeMapper.selectById(1L)).thenReturn(existing);
+
+        EmployeeUpdateDTO dto = new EmployeeUpdateDTO();
+        dto.setName("测试员工");
+
+        service.updateEmployee("1", dto);
+
+        ArgumentCaptor<Employee> captor = ArgumentCaptor.forClass(Employee.class);
+        verify(employeeMapper).updateById(captor.capture());
+        assertNull(captor.getValue().getWorkLocationType(),
+                "未表达归属意图 → 不 set workLocationType，MyBatis-Plus 跳过该列，存量值不被清空（I-3）");
     }
 }
