@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b 已提交 + Windows 侧交验通过（定向 25/25，全量 = 基线 58 零回归）；C3–C10 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b、C3 已提交（C3 定向 29/29 绿）；C4–C10 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -30,6 +30,7 @@
 | `aff2568` **C1** | 桥补正向入口：`toLocationId(String srcTable, Long srcId)`；旧 `toLocationId(Long storeId)` 保留签名、委托 `SRC_STORES_NEW`；新增 `static locationIdOfWarehouse` | `common/util/LocationIdBridge.java` + 新测试 `LocationIdBridgeTest`（6 例） | 设计 §2 D1-1、§6 A1 | ⏸ 待 Windows 侧（ENV-11） |
 | `ff4cba3` **C2** | 员工 DTO 加 `locationId`（唯一归属入参），`storeId`/`warehouseId`/`workLocationType` 标 `@Deprecated` 保留；`EmployeeServiceImpl.resolveLocationId` 优先级链 + 存在性校验；create/update 两处写入改走它；新增 `LocationMapper` 构造注入 | `dto/EmployeeCreateDTO.java`、`dto/EmployeeUpdateDTO.java`、`service/impl/EmployeeServiceImpl.java` + 新测试 `EmployeeServiceImplLocationResolveTest`（9 例） | 设计 §2 D1-2 / D1-3、§3 改动清单、§6 A2 | ✅ Windows 侧交验通过（2026-10-09） |
 | `acb9aa8` **C2b** | D1-4 落点：`workLocationType` 显式推导——新增 `mapLocationTypeToWorkLocationType`（U9 映射）+ `deriveWorkLocationType`；创建路径无 locationId → 显式 `HEADQUARTERS`（U10，不走 DB DEFAULT）；更新路径未表达归属意图 → 不 set（I-3）；`TRANSIT`/词表外 → 400 | `service/impl/EmployeeServiceImpl.java` + `EmployeeServiceImplLocationResolveTest`（9→19 例，+10 C2b 用例） | 设计 §2 D1-4、§7 U9/U10、F-1/F-2/F-3 裁决（§3.4） | ✅ 编译 + 定向测试 25/25 绿（2026-10-09，JDK21 + Maven 3.9.11） |
+| `ddb7d08` **C3** | 员工归属分配端点 `PUT /v1/employees/{id}/assign-location`（D3-2）：新 DTO `EmployeeAssignLocationDTO`（`locationId` `@NotNull`）；`assignEmployeeLocation`（id 解析 → 404 → `resolveLocationId` → `deriveWorkLocationType` → 只写归属两列 → 审计 → 详情）；权限码 `hr:employee:assign-location` **5 面逐字一致**（AdminPermissions / init-data.sql / seed 迁移 / permissions.ts / `@PreAuthorize`+`@RequiresPermission`）；审计模块 `EMPLOYEE_LOCATION_ASSIGN`（controller `@OperationLog` + 服务级动态行 desc 含旧值→新值）；seed 迁移 `V20261009_001`（3 权限码，仅绑 `ROLE_HR_DIRECTOR`） | 4 新文件（DTO / 迁移 / 2 测试类）+ 7 修改（controller / 接口 / impl / AdminPermissions +2 行 / init-data.sql / permissions.ts +1 行 / C2b 测试 6 参构造） | 设计 §2 D3-2/D3-3/D3-4、§7 U3/U7、§6 A4 | ✅ 编译 + 定向测试 29/29 绿（2026-10-09）；A4 live HTTP 部分待 Owner（ENV-11） |
 
 ### C1 落地事实（与设计的差异登记）
 
@@ -59,6 +60,28 @@
 - **单测 9→19**（+10）：STORE/CENTRAL/DEPOT 三分支映射、TRANSIT 400、词表外 400（`FACTORY` 造词）、创建无归属→HEADQUARTERS、桥 storeId→STORE / 桥 warehouseId→WAREHOUSE（均带 `verify(locationMapper, never())` 锁"不查库"）、更新路径 STORE 推导（`ArgumentCaptor` 抓 `updateById` 实参）、更新无归属→`workLocationType == null`（I-3）。
 - **验收（Windows 侧，2026-10-09）**：`mvn test -Dtest=LocationIdBridgeTest,EmployeeServiceImplLocationResolveTest` → **Tests run: 25, Failures: 0, Errors: 0**（6 + 19）。JDK21（Temurin 21.0.9）+ Maven 3.9.11。
 - **§3.5 数据侧待核项未动**（回填属独立决策）；SQL-2a/2b 已核 = 0 行（无 TRANSIT 脏数据、无存量不一致），C2b 数据前置干净。
+
+### C3 落地事实
+
+- **权限码 5 面**（`hr:employee:assign-location` 逐字一致，`EmployeeAssignLocationEndpointTest` 锁死）：
+  1. `AdminPermissions.ALL`（后端注册面，+注释 +2 行）；
+  2. `init-data.sql` 权限行 `PERM_HR_EMP_ASSIGN_LOCATION` + §1.3.7 幂等绑定块（`ROLE_HR_DIRECTOR`，`ON CONFLICT DO NOTHING`）；
+  3. seed 迁移 `V20261009_001__seed_hr_employee_assign_location.sql`（U3：3 码同一迁移——`hr:employee:assign-location` + `system:user:assign-store` + `system:user:unassign-store`；U7：仅绑 `ROLE_HR_DIRECTOR`，**不**含 `ROLE_STORE_MANAGER`；假设 `ROLE_HR_DIRECTOR` 已存在——`V20260728_011` 先例，迁移内不 CREATE）；
+  4. `frontend/src/utils/permissions.ts` 权限注册（+1 行）；
+  5. `EmployeeController.assignLocation`：`@PreAuthorize("hasAuthority('hr:employee:assign-location') or hasAuthority('*')")` + `@RequiresPermission("hr:employee:assign-location")`（`PermissionAspect` 既有链 → `BusinessException(403, "权限不足: …")`）。
+- **端点契约**（与 `PUT /v1/users/{id}/assign-store` 对称）：请求体 `EmployeeAssignLocationDTO { locationId: Long @NotNull }`（`@NotNull` 落字段级，测试用 `getDeclaredField` 断言）；响应 `Result<Employee>`（详情，部门/岗位名称填充）；员工不存在 → 404；id 非法 → 400。
+- **服务流**（`EmployeeServiceImpl.assignEmployeeLocation`，`@Transactional(rollbackFor=Exception)`）：id 解析（失败→400）→ `getById`（null→404）→ `resolveLocationId(locationId, null, null)`（C2 链：不存在/已删除→400）→ `deriveWorkLocationType`（C2b U9：`TRANSIT`/词表外→400）→ 只写 `location_id` + `work_location_type` 两列（附 `updatedTime`/`updatedBy`）→ 审计 → `getEmployeeDetail`。**其余档案字段一律不动**（D3-2 与 `updateEmployee`「改档案」职责分离）；归属入参走 `locationId` 唯一入口，不传 `storeId`/`warehouseId`。
+- **审计 D3-4 双层**：
+  - controller：`@OperationLog(module = "EMPLOYEE_LOCATION_ASSIGN", type = UPDATE, desc = "员工归属变更（含反向同步 users.location_id）")`——静态注解行（A4 grep 点）；
+  - 服务级：`logLocationAssignAudit` 动态补行，`desc = "员工归属分配：locationId 旧 → 新；workLocationType 旧 → 新"`（静态注解 desc 无法携带旧值；参照 `TaxRecordServiceImpl#logIdempotencyHit` :119-143「审计失败仅告警不阻断」先例，单测锁死）；操作人取 `SecurityContextHolder`（测试线程无上下文 → 容忍 null，不阻断）。
+  - `users.location_id` 反向同步为 **C4 接入点**（D3-1），接入后本审计行文案保持。
+- **构造 5→6 参**（新增 `OperationLogService`）：`EmployeeServiceImplLocationResolveTest` 同步修 6 参构造 + `@Mock OperationLogService`；全仓无其他 `new EmployeeServiceImpl(` 手工调用点（C2 落地事实延续）。
+- **单测 +10（19→29）**：
+  - `EmployeeServiceImplAssignLocationTest` 6 例：STORE 位置成功（`ArgumentCaptor` 断言 `updateById` 恰写两列 + 审计行 `desc` 含旧→新 + module `EMPLOYEE_LOCATION_ASSIGN`）；`TRANSIT`→400 且不写不审计；未知位置→400；员工 404；**审计失败不阻断主流程**（`updateById` 照常）；id `"abc"`→400。
+  - `EmployeeAssignLocationEndpointTest` 4 例：端点注解五断言（`@RequestMapping("/v1/employees")` + `PUT /{id}/assign-location` + `@RequiresPermission` + `@PreAuthorize` 含码 + `@OperationLog` 模块）；DTO `@NotNull` 字段级；`AdminPermissions.ALL` 含码；**5 面文件面一致性**（`init-data.sql` 权限行 + 1.3.7 绑定、迁移文件 3 码 + `ROLE_HR_DIRECTOR` 正 / `ROLE_STORE_MANAGER` 负、`permissions.ts` 含码）。
+- **交验（Windows 侧，2026-10-09）**：`mvn test -Dtest=EmployeeServiceImplAssignLocationTest,EmployeeAssignLocationEndpointTest,EmployeeServiceImplLocationResolveTest` → **Tests run: 29, Failures: 0, Errors: 0**（6+4+19），`MVN_EXIT=0`。JDK21（Temurin 21.0.9）+ Maven 3.9.11。
+- **A4 live 部分**（无权限 403 / 有权限 200 + `operation_log` 出现 `EMPLOYEE_LOCATION_ASSIGN` 行且 desc 含旧→新）：403 强制链 = `PermissionAspect` 既有机制（与 `assign-store` 同码先例）；200 + 审计行路径已被单测锁死；live HTTP 归 Owner（ENV-11 清单，与 C2b 交验模式一致）。
+- **提交精度**：工作树含 Owner WIP（`AdminPermissions.java` / `permissions.ts` 中 P0-SEC-001-D 等混行），本提交用 **hunk 级 `git apply --cached`** 精确暂存（两文件各只进 C3 行，`apply --check` 预检通过），`git diff --cached --stat` 核对 **11 files / +607 −2**；Owner WIP 全部保持未暂存。
 
 ---
 
@@ -123,14 +146,14 @@ ORDER BY e.employee_code;
 
 ---
 
-## §4 未开始提交（C2b、C3–C10）
+## §4 未开始提交（C4–C10）
 
-> **推进顺序（Owner 第四批）**：C1+C2 Windows 交验 ✅ → **C2b ✅（`acb9aa8`）→ C3 → C4 → C5…**。
+> **推进顺序（Owner 第四批）**：C1+C2 Windows 交验 ✅ → **C2b ✅（`acb9aa8`）→ C3 ✅（`ddb7d08`）→ C4 → C5…**。
 
 | 提交 | 状态 | 前置 |
 |---|---|---|
 | **C2b** 承载 D1-4：`resolveLocationId` 内按 U9 映射显式 `set workLocationType`；`TRANSIT`/词表外 → 400；无 `locationId` → 显式 `HEADQUARTERS`（不走 DB DEFAULT）+ 单测 | ✅ 已提交 `acb9aa8` + 交验通过（定向 25/25 绿，2026-10-09） | C1–C2 交验通过 ✅ |
-| C3 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | 未开始 | C1–C2 交验通过（或 Owner 两天未验 → 直接开工） |
+| **C3** 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | ✅ 已提交 `ddb7d08` + 交验通过（定向 29/29 绿，2026-10-09；A4 live HTTP 待 Owner ENV-11） | C1–C2 交验通过 ✅ |
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | 未开始 | C2、C3 |
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | 未开始 | **C2b（硬前置）**、C3 |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
@@ -151,22 +174,24 @@ ORDER BY e.employee_code;
 | `LocationIdBridgeTest` 6 例通过 | §6 A1 | ✅ 6/6 | `mvn test -Dtest=LocationIdBridgeTest,…` |
 | `EmployeeServiceImplLocationResolveTest` 通过（C2b 后 19 例） | §6 A2 | ✅ 19/19（C2 9 例 + C2b 10 例） | 同上（定向批次 **Tests run: 25, Failures: 0, Errors: 0**） |
 | 仓库员工归属不再恒 NULL（端到端） | §6 A2 / 诊断缺口① | ⏸ 待 Owner 手工 | 员工表单选仓库 → 查 `employees.location_id` 非 NULL（emp-l/emp-n 待 UI 分配） |
-| 既有测试无回归 | §6 | ✅ 354 tests / 58 失败 = 基线 58（27F+31E，全为 ENV-9 既有 WIP，无一涉及本卡改动面） | `mvn test` 全量（C1+C2 批次）；C2b 批次以定向 25/25 复核，全量将于 C5 后复跑 |
+| `EmployeeServiceImplAssignLocationTest` + `EmployeeAssignLocationEndpointTest` 通过（C3，10 例） | §6 A4 | ✅ 10/10 | `mvn test -Dtest=EmployeeServiceImplAssignLocationTest,EmployeeAssignLocationEndpointTest,EmployeeServiceImplLocationResolveTest`（定向批次 **Tests run: 29, Failures: 0, Errors: 0**） |
+| A4 live：无权限 403 / 有权限 200 + `operation_log` 出现 `EMPLOYEE_LOCATION_ASSIGN` 行且 desc 含旧值→新值 | §6 A4 | ⏸ 待 Owner live（ENV-11） | 单测已锁：403 强制链 = `PermissionAspect` 既有机制（`assign-store` 同码先例）；200 + 审计行 = 服务级单测断言 |
+| 既有测试无回归 | §6 | ✅ 354 tests / 58 失败 = 基线 58（27F+31E，全为 ENV-9 既有 WIP，无一涉及本卡改动面） | `mvn test` 全量（C1+C2 批次）；C2b 批次以定向 25/25 复核；C3 批次以定向 29/29 复核，全量将于 C5 后复跑 |
 
 **原登记的本侧未能自验风险点 → 已实跑解除**：
 1. `EmployeeCodeGenerator` Mockito mock —— ✅ 实跑通过；
 2. `ServiceImpl.baseMapper` 反射注入 —— ✅ 实跑通过；
 3. `createEmployee` `this.save` 走 mock `EmployeeMapper.insert` —— ✅ 断言全部成立。
 
-**回退预案（若后续发现问题）**：按提交粒度 revert `acb9aa8`（C2b）→ `ff4cba3`（C2）→ `aff2568`（C1），三者独立。
+**回退预案（若后续发现问题）**：按提交粒度 revert `ddb7d08`（C3）→ `acb9aa8`（C2b）→ `ff4cba3`（C2）→ `aff2568`（C1），四者独立（C3 seed 迁移为幂等 INSERT，无 schema 变更，随提交整体回退）。
 
 ---
 
 ## §6 边界自检
 
-- 本阶段改动面（C1–C2b 合计）：**3 个主文件 + 2 个测试文件**（C2b 复用 C2 的 2 个文件，未新增文件），未触碰其他 WIP 基线文件。
-- **无 schema 变更**、无迁移文件新增（C3 才引入 seed 迁移）。
+- 本阶段改动面（C1–C3 合计）：**C1–C2b 3 主文件 + 2 测试文件；C3 新增 DTO + seed 迁移 + 2 测试类**，修改 controller/接口/impl/`AdminPermissions`（+2 行）/`init-data.sql`/`permissions.ts`（+1 行）/C2b 测试，未触碰其他 WIP 基线文件（Owner WIP 混行保持未暂存）。
+- **无 schema 变更**；C3 引入 1 条幂等 seed 迁移（`V20261009_001`：3 权限码 + 1 角色绑定，无表结构变更）。
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
 - D1-4 已完成（C2b `acb9aa8`）：F-1/F-2/F-3 登记 → Owner 第四批裁决（U9/U10）→ C1+C2 交验通过 → **裁决后实施，无擅自补做**；§3.5 数据回填仍未实施（独立决策）。
-- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5）。
+- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存）。
