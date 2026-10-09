@@ -235,6 +235,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * P1-USER-LOCATION-001 §1.4：用户归属 ↔ 员工档案**双写**（关联键 = {@code employee_code}），
      * 同时补齐 {@code employees.user_id} 强关联（此前只有 employee_code 弱关联）。
      *
+     * <p>C4（P1-USER-LOCATION-002 D3-2，入口决定方向）：用户入口（assignStore / unassignStore）→
+     * 正向同步（本方法，写 employees 表）；员工入口（EmployeeServiceImpl#updateEmployee 归属变更 /
+     * EmployeeServiceImpl#assignEmployeeLocation）→ 反向同步
+     * {@code EmployeeServiceImpl#syncUserAssignmentFromEmployee}（写 users 表）。
+     * 每个方向各写对侧表一次，被调方法内不再反向触发，防止写回环。
+     *
      * <p>找不到员工档案（admin / 总部 / 测试账号）时静默跳过；归属值一律取用户侧已换算的
      * {@code location_id}，不做任何猜测或数值兜底。
      *

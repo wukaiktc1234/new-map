@@ -7,12 +7,14 @@ import com.foodtraceability.entity.Employee;
 import com.foodtraceability.entity.Department;
 import com.foodtraceability.entity.Location;
 import com.foodtraceability.entity.Position;
+import com.foodtraceability.entity.User;
 import com.foodtraceability.dto.EmployeeCreateDTO;
 import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.OnboardingArchive;
 import com.foodtraceability.entity.OperationLogEntity;
 import com.foodtraceability.mapper.EmployeeMapper;
 import com.foodtraceability.mapper.LocationMapper;
+import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.security.model.SecurityUser;
 import com.foodtraceability.service.EmployeeService;
@@ -60,6 +62,12 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final OperationLogService operationLogService;
 
     /**
+     * 用户 Mapper（P1-USER-LOCATION-002 C4 D3-1）：员工 → users.location_id **反向同步**。
+     * 注入 Mapper 而非 UserServiceImpl：UserServiceImpl 已依赖 EmployeeService，反向注入服务会成环。
+     */
+    private final UserMapper userMapper;
+
+    /**
      * 构造函数注入（禁止 @Autowired 字段注入）
      * 使用 @Lazy 解决循环依赖
      * @param positionService 职位服务
@@ -68,18 +76,21 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
      * @param employeeCodeGenerator 员工编号生成器
      * @param locationMapper 位置主表 Mapper（归属校验）
      * @param operationLogService 操作日志服务（D3-4 审计）
+     * @param userMapper 用户 Mapper（C4 D3-1 反向同步）
      */
     public EmployeeServiceImpl(PositionService positionService, @Lazy DepartmentService departmentService,
                                OrganizationChangeLogService organizationChangeLogService,
                                EmployeeCodeGenerator employeeCodeGenerator,
                                LocationMapper locationMapper,
-                               OperationLogService operationLogService) {
+                               OperationLogService operationLogService,
+                               UserMapper userMapper) {
         this.positionService = positionService;
         this.departmentService = departmentService;
         this.organizationChangeLogService = organizationChangeLogService;
         this.employeeCodeGenerator = employeeCodeGenerator;
         this.locationMapper = locationMapper;
         this.operationLogService = operationLogService;
+        this.userMapper = userMapper;
     }
 
     @Override
@@ -483,6 +494,12 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setStatus(dto.getStatus() != null ? dto.getStatus() : oldEmployee.getStatus());
         updateById(employee);
 
+        // C4（D3-1）：表达了归属（locationId 可解析）→ 反向同步对应用户（入口决定方向：员工入口 → 反向；防写回环）
+        // U2：找不到对应用户 → 不动 users、不报错；未表达归属（locationId=null）→ 不调用
+        if (locationId != null) {
+            syncUserAssignmentFromEmployee(employeeId, locationId);
+        }
+
         // 同步更新岗位在岗人数
         syncPositionEmployeeCount(oldEmployee, employee);
         // 同步更新部门在岗人数
@@ -540,25 +557,85 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         employee.setUpdatedBy(currentOperatorName());
         updateById(employee);
 
-        // D3-4 审计：服务级动态行，desc 含旧值 → 新值（C4 接入反向同步后本行文案保持）
-        logLocationAssignAudit(employeeId, oldEmployee, resolvedLocationId, workLocationType);
+        // C4（D3-1）：反向同步（入口决定方向：员工入口 → 反向；与 UserServiceImpl#syncEmployeeAssignment 正向同步互参，防写回环）
+        String syncDesc = syncUserAssignmentFromEmployee(employeeId, resolvedLocationId);
+
+        // D3-4 审计：服务级动态行，desc 含旧值 → 新值（含 users 侧旧值 → 新值，U1）
+        logLocationAssignAudit(employeeId, oldEmployee, resolvedLocationId, workLocationType, syncDesc);
 
         return getEmployeeDetail(id);
+    }
+
+    /**
+     * C4（D3-1）：员工 → 用户 **反向同步**（P1-USER-LOCATION-002）。
+     *
+     * <p>入口决定方向（D3-2 防写回环）：用户入口（assignStore / unassignStore）→ 正向同步
+     * {@code UserServiceImpl#syncEmployeeAssignment}（写 employees 表）；
+     * 员工入口（{@link #updateEmployee} 归属变更 / {@link #assignEmployeeLocation}）→ 反向同步（本方法，
+     * 写 users 表）。每个方向各写对侧表一次，被调方法内不再反向触发，防止写回环。
+     *
+     * <p>关联键沿用既有约定：{@code employees.user_id} 优先（V20260930_002 建列回填），
+     * {@code employee_code} 兜底（D3-1）。
+     *
+     * <p>U1（last-write-wins）：用户已有不同归属时，以本次员工侧写入为准，
+     * 审计 desc 记录「旧值 → 新值」。U2（只写员工表）：找不到对应用户 → 不动
+     * {@code users}、不建号、不抛错。
+     *
+     * <p>部分更新：仅写 {@code users.location_id} + {@code updated_time}，绝不触碰密码等其他字段。
+     *
+     * @param employeeId 员工ID（员工侧归属已写入）
+     * @param newLocationId 新归属位置ID（非空；调用方未表达归属意图时不应调用）
+     * @return users 侧审计 desc 片段（旧 → 新 / 未重复写 / 未动）
+     */
+    private String syncUserAssignmentFromEmployee(Long employeeId, Long newLocationId) {
+        Employee employee = getById(employeeId);
+        if (employee == null) {
+            return "员工记录不存在，users 未动";
+        }
+        // 关联键：employees.user_id 优先，employee_code 兜底（D3-1）
+        User user = null;
+        if (employee.getUserId() != null) {
+            user = userMapper.selectById(employee.getUserId());
+        }
+        if (user == null && employee.getEmployeeCode() != null && !employee.getEmployeeCode().isBlank()) {
+            QueryWrapper<User> wrapper = new QueryWrapper<>();
+            wrapper.eq("employee_code", employee.getEmployeeCode());
+            user = userMapper.selectOne(wrapper.last("LIMIT 1"));
+        }
+        if (user == null) {
+            log.debug("员工未找到对应用户，跳过反向同步（U2）: employeeId={}, userId={}, employeeCode={}",
+                    employeeId, employee.getUserId(), employee.getEmployeeCode());
+            return "未找到对应用户，users 未动（U2）";
+        }
+        Long oldUserLocationId = user.getLocationId();
+        if (java.util.Objects.equals(oldUserLocationId, newLocationId)) {
+            return "users.location_id 已是新值（" + newLocationId + "），未重复写";
+        }
+        // U1：last-write-wins（部分更新，不触碰其他字段）
+        User update = new User();
+        update.setId(user.getId());
+        update.setLocationId(newLocationId);
+        update.setUpdatedTime(LocalDateTime.now());
+        userMapper.updateById(update);
+        return "反向同步 users.location_id " + oldUserLocationId + " → " + newLocationId;
     }
 
     /**
      * D3-4 服务级动态审计行（模块 EMPLOYEE_LOCATION_ASSIGN，desc 含旧值→新值）。
      *
      * <p>参照 TaxRecordServiceImpl#logIdempotencyHit 先例：审计失败仅告警，不阻断主流程。
+     *
+     * @param syncDesc C4 反向同步 desc 片段（users 侧旧 → 新 / 未重复写 / 未动）
      */
     private void logLocationAssignAudit(Long employeeId, Employee oldEmployee,
-                                        Long newLocationId, String newWorkLocationType) {
+                                        Long newLocationId, String newWorkLocationType, String syncDesc) {
         try {
             OperationLogEntity opLog = new OperationLogEntity();
             opLog.setOperationModule("EMPLOYEE_LOCATION_ASSIGN");
             opLog.setOperationType("UPDATE");
             opLog.setOperationDesc("员工归属分配：locationId " + oldEmployee.getLocationId() + " → " + newLocationId
-                    + "；workLocationType " + oldEmployee.getWorkLocationType() + " → " + newWorkLocationType);
+                    + "；workLocationType " + oldEmployee.getWorkLocationType() + " → " + newWorkLocationType
+                    + (syncDesc == null || syncDesc.isBlank() ? "" : "；" + syncDesc));
             opLog.setRequestMethod("PUT");
             opLog.setRequestUrl("/v1/employees/" + employeeId + "/assign-location");
             opLog.setRequestParams("{\"locationId\":" + newLocationId + "}");

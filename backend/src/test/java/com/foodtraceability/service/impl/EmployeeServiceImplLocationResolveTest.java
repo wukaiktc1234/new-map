@@ -6,9 +6,11 @@ import com.foodtraceability.dto.EmployeeCreateDTO;
 import com.foodtraceability.dto.EmployeeUpdateDTO;
 import com.foodtraceability.entity.Employee;
 import com.foodtraceability.entity.Location;
+import com.foodtraceability.entity.User;
 import com.foodtraceability.mapper.EmployeeMapper;
 import com.foodtraceability.mapper.LocationIdMapMapper;
 import com.foodtraceability.mapper.LocationMapper;
+import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.service.DepartmentService;
 import com.foodtraceability.service.OperationLogService;
 import com.foodtraceability.service.OrganizationChangeLogService;
@@ -88,6 +90,9 @@ class EmployeeServiceImplLocationResolveTest {
     @Mock
     private OperationLogService operationLogService;
 
+    @Mock
+    private UserMapper userMapper;
+
     private EmployeeServiceImpl service;
 
     @BeforeEach
@@ -96,7 +101,7 @@ class EmployeeServiceImplLocationResolveTest {
         new LocationIdBridge(locationIdMapMapper);
         service = new EmployeeServiceImpl(positionService, departmentService,
                 organizationChangeLogService, employeeCodeGenerator, locationMapper,
-                operationLogService);
+                operationLogService, userMapper);
         ReflectionTestUtils.setField(service, "baseMapper", employeeMapper);
     }
 
@@ -388,5 +393,48 @@ class EmployeeServiceImplLocationResolveTest {
         verify(employeeMapper).updateById(captor.capture());
         assertNull(captor.getValue().getWorkLocationType(),
                 "未表达归属意图 → 不 set workLocationType，MyBatis-Plus 跳过该列，存量值不被清空（I-3）");
+    }
+
+    @Test
+    @DisplayName("C4：updateEmployee 归属变更 → 反向同步 users.location_id（入口决定方向）")
+    void updateEmployeeLocationChangeReverseSyncsUser() {
+        Employee existing = new Employee();
+        existing.setId(1L);
+        existing.setUserId(9L);
+        existing.setLocationId(2L);
+        when(employeeMapper.selectById(1L)).thenReturn(existing);
+        when(locationMapper.selectById(500L)).thenReturn(activeLocation(500L, "STORE", 1));
+
+        User user = new User();
+        user.setId(9L);
+        user.setLocationId(2L);
+        when(userMapper.selectById(9L)).thenReturn(user);
+
+        EmployeeUpdateDTO dto = new EmployeeUpdateDTO();
+        dto.setLocationId(500L);
+
+        service.updateEmployee("1", dto);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(userCaptor.capture());
+        assertEquals(Long.valueOf(9L), userCaptor.getValue().getId());
+        assertEquals(Long.valueOf(500L), userCaptor.getValue().getLocationId(),
+                "U1：last-write-wins，用户既有归属（2）被员工侧（500）覆盖");
+    }
+
+    @Test
+    @DisplayName("C4：updateEmployee 未表达归属 → 不调用反向同步（U2 边界）")
+    void updateWithoutLocationDoesNotReverseSync() {
+        Employee existing = new Employee();
+        existing.setId(1L);
+        existing.setUserId(9L);
+        when(employeeMapper.selectById(1L)).thenReturn(existing);
+
+        EmployeeUpdateDTO dto = new EmployeeUpdateDTO();
+        dto.setName("测试员工");
+
+        service.updateEmployee("1", dto);
+
+        verifyNoInteractions(userMapper);
     }
 }

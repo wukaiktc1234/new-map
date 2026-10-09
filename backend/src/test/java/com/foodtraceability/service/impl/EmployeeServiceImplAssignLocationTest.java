@@ -4,8 +4,10 @@ import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.entity.Employee;
 import com.foodtraceability.entity.Location;
 import com.foodtraceability.entity.OperationLogEntity;
+import com.foodtraceability.entity.User;
 import com.foodtraceability.mapper.EmployeeMapper;
 import com.foodtraceability.mapper.LocationMapper;
+import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.service.DepartmentService;
 import com.foodtraceability.service.OperationLogService;
 import com.foodtraceability.service.OrganizationChangeLogService;
@@ -32,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -69,6 +72,9 @@ class EmployeeServiceImplAssignLocationTest {
     private OperationLogService operationLogService;
 
     @Mock
+    private UserMapper userMapper;
+
+    @Mock
     private EmployeeMapper employeeMapper;
 
     private EmployeeServiceImpl service;
@@ -77,7 +83,7 @@ class EmployeeServiceImplAssignLocationTest {
     void setUp() {
         service = new EmployeeServiceImpl(positionService, departmentService,
                 organizationChangeLogService, employeeCodeGenerator, locationMapper,
-                operationLogService);
+                operationLogService, userMapper);
         // baseMapper 是 ServiceImpl 的 protected 字段
         ReflectionTestUtils.setField(service, "baseMapper", employeeMapper);
     }
@@ -195,5 +201,92 @@ class EmployeeServiceImplAssignLocationTest {
         assertEquals(Integer.valueOf(400), ex.getCode());
         verify(employeeMapper, never()).updateById(any(Employee.class));
         verify(operationLogService, never()).logOperation(any(OperationLogEntity.class));
+    }
+
+    // ---- C4（D3-1）：员工 → 用户反向同步 syncUserAssignmentFromEmployee ----
+
+    @Test
+    @DisplayName("C4：反向同步按 employees.user_id 优先写 users.location_id（U1），审计 desc 含 users 侧旧 → 新")
+    void assignLocationReverseSyncByUserIdWritesUserLocationId() {
+        Employee emp = existingEmployee(3L, "STORE");
+        emp.setUserId(9L);
+        when(employeeMapper.selectById(100L)).thenReturn(emp);
+        when(locationMapper.selectById(7L)).thenReturn(location(7L, "STORE"));
+        User user = new User();
+        user.setId(9L);
+        user.setLocationId(12L);
+        when(userMapper.selectById(9L)).thenReturn(user);
+
+        service.assignEmployeeLocation("100", 7L);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(userCaptor.capture());
+        assertEquals(Long.valueOf(9L), userCaptor.getValue().getId());
+        assertEquals(Long.valueOf(7L), userCaptor.getValue().getLocationId(),
+                "U1：last-write-wins，员工侧写入优先");
+        verify(userMapper, never()).selectOne(any());
+        ArgumentCaptor<OperationLogEntity> logCaptor = ArgumentCaptor.forClass(OperationLogEntity.class);
+        verify(operationLogService).logOperation(logCaptor.capture());
+        assertTrue(logCaptor.getValue().getOperationDesc().contains("12 → 7"),
+                "U1：审计 desc 必须记录 users 侧旧值 → 新值");
+    }
+
+    @Test
+    @DisplayName("C4：userId 为 null → employee_code 兜底反查用户（D3-1 关联键）")
+    void assignLocationReverseSyncFallsBackToEmployeeCode() {
+        Employee emp = existingEmployee(3L, "STORE");
+        emp.setEmployeeCode("E001");
+        when(employeeMapper.selectById(100L)).thenReturn(emp);
+        when(locationMapper.selectById(7L)).thenReturn(location(7L, "STORE"));
+        User user = new User();
+        user.setId(44L);
+        user.setLocationId(5L);
+        when(userMapper.selectOne(any())).thenReturn(user);
+
+        service.assignEmployeeLocation("100", 7L);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userMapper).updateById(userCaptor.capture());
+        assertEquals(Long.valueOf(44L), userCaptor.getValue().getId());
+        assertEquals(Long.valueOf(7L), userCaptor.getValue().getLocationId());
+    }
+
+    @Test
+    @DisplayName("C4：无对应用户 → 不动 users、不建号、不报错（U2），审计 desc 如实记录")
+    void assignLocationReverseSyncNoUserSkipsWithoutError() {
+        Employee emp = existingEmployee(3L, "STORE");
+        when(employeeMapper.selectById(100L)).thenReturn(emp);
+        when(locationMapper.selectById(7L)).thenReturn(location(7L, "STORE"));
+
+        Employee result = assertDoesNotThrow(() -> service.assignEmployeeLocation("100", 7L));
+
+        assertNotNull(result, "主流程必须成功：员工侧写入 + 审计照常");
+        verify(employeeMapper).updateById(any(Employee.class));
+        verifyNoInteractions(userMapper);
+        ArgumentCaptor<OperationLogEntity> logCaptor = ArgumentCaptor.forClass(OperationLogEntity.class);
+        verify(operationLogService).logOperation(logCaptor.capture());
+        assertTrue(logCaptor.getValue().getOperationDesc().contains("未找到对应用户"),
+                "U2：审计 desc 应如实记录 users 未动");
+    }
+
+    @Test
+    @DisplayName("C4：用户已是新归属 → 不重复写（no-op），审计 desc 如实记录")
+    void assignLocationReverseSyncUserAlreadyAtNewLocationSkipsWrite() {
+        Employee emp = existingEmployee(3L, "STORE");
+        emp.setUserId(9L);
+        when(employeeMapper.selectById(100L)).thenReturn(emp);
+        when(locationMapper.selectById(7L)).thenReturn(location(7L, "STORE"));
+        User user = new User();
+        user.setId(9L);
+        user.setLocationId(7L); // 已是新值
+        when(userMapper.selectById(9L)).thenReturn(user);
+
+        service.assignEmployeeLocation("100", 7L);
+
+        verify(userMapper, never()).updateById(any(User.class));
+        ArgumentCaptor<OperationLogEntity> logCaptor = ArgumentCaptor.forClass(OperationLogEntity.class);
+        verify(operationLogService).logOperation(logCaptor.capture());
+        assertTrue(logCaptor.getValue().getOperationDesc().contains("未重复写"),
+                "审计 desc 应记录 no-op 事实，不静默跳过");
     }
 }
