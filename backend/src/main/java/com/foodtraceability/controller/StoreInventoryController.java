@@ -69,18 +69,17 @@ public class StoreInventoryController {
         try {
             Page<Inventory> pageParam = new Page<>(page, pageSize);
 
-            // 门店ID处理：非管理员且具有门店权限时，强制使用当前用户的门店ID（现状保留）
-            Long effectiveStoreId = storeId;
+            // 门店作用域：非管理员且具有门店权限时，强制使用当前用户的位置（现状保留）
+            // P1-USER-LOCATION-002 C10（D8-2，U6 已裁纳入）：冗余往返收敛——门店权限用户直接取上下文 locationId；
+            // 原路径 = 反查 storeId → 再经 location_id_map 正查 locationId（两次 DB 往返，语义等价，
+            // 见设计 §2 D8 桥消费清单：本行目标表 inventory 已收编，故收敛）
+            Long locationId;
             if (!com.foodtraceability.utils.SecurityUtils.isAdmin()
                     && com.foodtraceability.utils.SecurityUtils.hasStorePermission()) {
-                String currentUserStoreId = com.foodtraceability.utils.SecurityUtils.getCurrentUserStoreId();
-                if (currentUserStoreId != null && !currentUserStoreId.isEmpty()) {
-                    effectiveStoreId = Long.valueOf(currentUserStoreId.trim());
-                }
+                locationId = com.foodtraceability.utils.SecurityUtils.getCurrentUserLocationId();
+            } else {
+                locationId = inventoryService.resolveLocationIdByStoreId(storeId);
             }
-
-            // 门店 → 位置（未映射返回 null → 空页，保持前端容错现状）
-            Long locationId = inventoryService.resolveLocationIdByStoreId(effectiveStoreId);
             if (locationId == null) {
                 return Result.success(pageParam, "查询门店库存列表成功");
             }

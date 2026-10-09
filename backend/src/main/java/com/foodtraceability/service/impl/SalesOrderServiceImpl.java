@@ -259,20 +259,23 @@ public class SalesOrderServiceImpl extends ServiceImpl<SalesOrderMapper, SalesOr
      * - 移除直写旁路（inventoryMapper.updateById）与 product_id/store_id 污染列查询
      * - Q5=B（Owner 2026-09-28 批复）：扣减不足改抛 INVENTORY_INSUFFICIENT，订单链感知缺货；
      *   原"静默钳 0"与"不写流水"行为废止
-     * - locationId 经 store_id 别名解析（规则 3/4）
+     * - locationId 直接取当前用户上下文（P1-USER-LOCATION-002 C10 / D8-2 冗余往返收敛；
+     *   原路径 = 反查 storeId → 再经 location_id_map 正查 locationId）；
+     *   storeId 仅保留给 inventory_code.store_id 存量列写入（D8-1 桥消费清单，目标表未收编，不迁移）
      */
     private void deductInventoryForOrder(Long orderId) {
         // OICBE-B2-001 类型适配（T-1 主键 String 化）：Mapper.selectOrderDetailList 签名 Long → String
         List<SalesOrderDetail> details = salesOrderMapper.selectOrderDetailList(String.valueOf(orderId));
 
+        // storeId 仅供下方 inventoryCode.setStoreId（存量列，D8-1 登记面；调用已 @Deprecated 方法 = 存量过渡面）
         String storeIdStr = SecurityUtils.getCurrentUserStoreId();
         Long storeId = storeIdStr != null ? Long.parseLong(storeIdStr) : null;
         String username = SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "system";
 
-        Long locationId = inventoryService.resolveLocationIdByStoreId(storeId);
+        Long locationId = SecurityUtils.getCurrentUserLocationId();
         if (locationId == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR,
-                "当前用户未分配门店（或门店未映射位置），无法执行销售出库扣减：storeId=" + storeId);
+                "当前用户未分配位置，无法执行销售出库扣减：storeId=" + storeId);
         }
 
         for (SalesOrderDetail detail : details) {

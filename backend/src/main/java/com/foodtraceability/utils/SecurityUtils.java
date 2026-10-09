@@ -120,7 +120,10 @@ public class SecurityUtils {
      * 观察期后废弃，新代码一律用 {@link #getCurrentUserLocationId()}。
      *
      * @return store_id（字符串）；未登录、未分配归属或无法反查时返回 null
+     * @deprecated P1-USER-LOCATION-002 D8-3（U6 已裁纳入，C10）编码约束：**新增代码一律用 {@link #getCurrentUserLocationId()}**。
+     *             本方法仅供 15 个存量调用点过渡（桥消费清单 = 设计 §2 D8 表）；对应目标表收编（P1-LOCATION-MODEL-001 M5-M7）后按行销账删除。
      */
+    @Deprecated
     public static String getCurrentUserStoreId() {
         Long locationId = getCurrentUserLocationId();
         if (locationId == null) {
@@ -177,6 +180,8 @@ public class SecurityUtils {
      * 判断当前用户是否有门店权限
      * @return true表示用户有门店权限，false表示用户没有门店权限或未登录
      */
+    // 内部兼容包装：调用已 @Deprecated 的 getCurrentUserStoreId()（D8-3 存量过渡面），抑制自身告警
+    @SuppressWarnings("deprecation")
     public static boolean hasStorePermission() {
         String storeId = getCurrentUserStoreId();
         return storeId != null && !storeId.isEmpty();
