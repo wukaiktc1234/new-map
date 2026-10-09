@@ -365,24 +365,38 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private void increaseInventoryForArrival(PurchaseArrival arrival) {
         List<PurchaseArrivalItem> items = loadArrivalItems(arrival.getArrivalId());
         // M3-M4 规则4：warehouseId 经 map 解析（兜底默认仓库 1 已按宪法 §三.4 删除）
-        // P1-USER-LOCATION-002 D5（U11 裁决 B）：按接收方空间解析收货位置——
-        // 仓库接收方走 warehouse_id（map src_table='warehouses'），门店接收方（warehouse_id=NULL）
-        // 走 store_id（map src_table='stores_new'，即桥 locationIdOfStore 的 SQL 面）；两空间互不混用（I-2）。
-        com.foodtraceability.entity.Location syncLocation = null;
-        if (arrival.getWarehouseId() != null) {
-            syncLocation = locationService.resolveByWarehouseId(arrival.getWarehouseId());
-        } else if (StringUtils.hasText(arrival.getStoreId())) {
+        // P1-USER-LOCATION-002 D5（U11 裁决 B + 裁决 4：receiver_type 优先）：
+        // 1) receiver_type 空 → 400；2) STORE → 经 store_id 解析（map src_table='stores_new'，即桥 locationIdOfStore 的 SQL 面）；
+        // 3) WAREHOUSE → 经 warehouse_id 解析（map src_table='warehouses'）；4) 未知类型 → 400。
+        // 两空间互不混用（I-2）；receiver_type 为判别器，ID 字段随类型（07-21 DDL 双列互斥语义）。
+        String receiverType = arrival.getReceiverType() == null ? null : arrival.getReceiverType().trim();
+        if (!StringUtils.hasText(receiverType)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "到货单未指定收货方类型，无法解析收货位置");
+        }
+        String receiverTypeUpper = receiverType.toUpperCase();
+        com.foodtraceability.entity.Location syncLocation;
+        if ("STORE".equals(receiverTypeUpper)) {
+            if (!StringUtils.hasText(arrival.getStoreId())) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "到货单收货方为门店，但未指定门店，无法解析收货位置");
+            }
             String storeIdText = arrival.getStoreId().trim();
             if (!storeIdText.matches("\\d+")) {
                 throw new BusinessException(ErrorCode.PARAM_ERROR,
                     "到货单门店ID非法，无法解析收货位置：storeId=" + storeIdText);
             }
             syncLocation = locationService.resolveByStoreId(Long.valueOf(storeIdText));
+        } else if ("WAREHOUSE".equals(receiverTypeUpper)) {
+            if (arrival.getWarehouseId() == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "到货单收货方为仓库，但未指定仓库，无法解析收货位置");
+            }
+            syncLocation = locationService.resolveByWarehouseId(arrival.getWarehouseId());
+        } else {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "到货单收货方类型非法：" + arrival.getReceiverType());
         }
         if (syncLocation == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                "到货单收货位置未映射到位置，无法同步库存：warehouseId=" + arrival.getWarehouseId()
-                        + ", storeId=" + arrival.getStoreId());
+                "到货单收货位置未映射到位置，无法同步库存：receiverType=" + receiverType
+                        + ", warehouseId=" + arrival.getWarehouseId() + ", storeId=" + arrival.getStoreId());
         }
         Long locationIdForSync = syncLocation.getLocationId();
 
@@ -660,11 +674,24 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
     private PurchaseArrival buildAndSaveArrival(PurchaseOrder order, ReceiverKey key,
                                                 List<PurchaseOrderItem> orderItems,
                                                 PurchaseArrivalCreateDTO createDTO) {
-        // P1-USER-LOCATION-002 D5（U11 裁决 B）：未指定收货仓库且非门店接收 → 显式失败（禁止兜底默认仓库 1）。
-        // 门店接收方保持 warehouse_id=NULL（I-2：warehouse_id 属仓库旧空间，不写 locationId/不跨空间推导），
-        // 其收货位置在确认入库时经 store_id 解析（见 increaseInventoryForArrival）。
-        if (key.warehouseId == null && !StringUtils.hasText(key.storeId)) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "未指定收货仓库");
+        // P1-USER-LOCATION-002 D5（U11 裁决 B + 裁决 4：receiver_type 优先）：
+        // 1) receiver_type 空 → 400（空值已在 ReceiverKey 入口归一为 "STORE"——P1-PROCUREMENT-BLOCKERS-001 A2，测试覆盖；
+        //    到达此处必非空，此检查为防御边界）；
+        // 2) STORE → store_id 必填（warehouse_id 保持 NULL，双列互斥；I-2：不跨空间写）；
+        // 3) WAREHOUSE → warehouse_id 必填；4) 未知类型 → 400。禁止兜底默认仓库 1（见 FACTS P-02）。
+        if (!StringUtils.hasText(key.receiverType)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "未指定收货方类型");
+        }
+        if ("STORE".equals(key.receiverType)) {
+            if (!StringUtils.hasText(key.storeId)) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "收货方为门店，但未指定门店");
+            }
+        } else if ("WAREHOUSE".equals(key.receiverType)) {
+            if (key.warehouseId == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "未指定收货仓库");
+            }
+        } else {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "收货方类型非法：" + key.receiverType);
         }
         PurchaseArrival arrival = new PurchaseArrival();
         arrival.setArrivalCode(generateArrivalCode());
@@ -673,7 +700,10 @@ public class PurchaseArrivalServiceImpl extends ServiceImpl<PurchaseArrivalMappe
         arrival.setSupplierName(order.getSupplierName());
         arrival.setReceiverType(key.receiverType);
         arrival.setStoreId(key.storeId);
-        arrival.setWarehouseId(key.warehouseId); // 仓库接收方 = 显式仓库；门店接收方 = NULL（收货位置经 store_id 解析）
+        // 裁决 4（receiver_type 优先）：warehouse_id 仅 WAREHOUSE 接收方落库；STORE 接收方保持 NULL（I-2：warehouse_id 属仓库旧空间）
+        if ("WAREHOUSE".equals(key.receiverType)) {
+            arrival.setWarehouseId(key.warehouseId);
+        }
         arrival.setShipmentStatus(createDTO.getShipmentStatus());
         arrival.setLogisticsNo(createDTO.getLogisticsNo());
         arrival.setLogisticsCompany(createDTO.getLogisticsCompany());
