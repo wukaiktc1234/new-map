@@ -193,7 +193,7 @@ ORDER BY e.employee_code;
 | C7 N3 三处（D4） | 未开始 | 无 |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
 | C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
-| C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | 未开始 | 无 |
+| C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | ✅ 已提交 `fd87808`（定向 7/7 绿前后一致，2026-10-09） | 无 |
 
 **§24.3p（POS 未分配位置引导）不在本卡内**，且其前置交集 SQL 未跑 → 未实施（Owner 已裁：等 SQL 结果再实施）。
 
@@ -216,6 +216,7 @@ ORDER BY e.employee_code;
 
 | C8 A7：`: 1L` 0 命中 + 未指定收货仓库 → 业务异常不默认仓库 1（裁决 4 后：receiver_type 优先——STORE→store_id / WAREHOUSE→warehouse_id / 空或未知 → 400） | §6 A7 | ✅ `grep ': 1L'` 0 命中；ReceiverKey 5 例全绿（裁决 4 仅改判断顺序，未动 ReceiverKey 归一化） | `mvn test -Dtest=PurchaseArrivalReceiverKeyNormalizationTest`（定向批次 **Tests run: 5, Failures: 0, Errors: 0**，`MVN_EXIT=0`，`c8patch-mvn-targeted.log`，2026-10-09） |
 | C8 A9：`DEFAULT_STORE_ID` 计数不变（KL-086 未撞） | §6 A9 | ✅ 9 行不变（`DeviceConstants:1` + `DeviceStatusServiceImpl:6` + `HardwareConfigServiceImpl:2`） | `git grep -c DEFAULT_STORE_ID backend/src/main/java`（2026-10-09） |
+| C10 冗余收敛：2 处不再「反查 storeId → 正查 locationId」+ `@Deprecated` 编码约束 | 设计 §2 D8-2/3（U6） | ✅ `SalesOrderServiceImpl` 中 `resolveLocationIdByStoreId` **0 命中**；`StoreInventoryController` 仅余管理员/显式参数路径（非冗余，保留）；`@Deprecated` 位于 `:126`（`getCurrentUserStoreId` 定义 `:127`）；真实调用点 **15→14**；定向 7/7 绿（改动前基线 / 改动后） | `mvn test -Dtest=SalesOrderServiceImplTest`（**Tests run: 7, Failures: 0, Errors: 0**，`MVN_EXIT=0`，`c10-baseline-mvn.log` / `c10-verify-mvn.log`）+ `git grep`（2026-10-09） |
 
 **原登记的本侧未能自验风险点 → 已实跑解除**：
 1. `EmployeeCodeGenerator` Mockito mock —— ✅ 实跑通过；
@@ -233,5 +234,6 @@ ORDER BY e.employee_code;
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
 - D1-4 已完成（C2b `acb9aa8`）：F-1/F-2/F-3 登记 → Owner 第四批裁决（U9/U10）→ C1+C2 交验通过 → **裁决后实施，无擅自补做**；§3.5 数据回填仍未实施（独立决策）。
+- **C10（`fd87808`）**：改动面 = 3 文件（`SecurityUtils` `@Deprecated`+Javadoc+`hasStorePermission` 抑制；`StoreInventoryController` 门店权限分支直取 `getCurrentUserLocationId()`；`SalesOrderServiceImpl` 出库扣减 locationId 直取上下文 + 方法 Javadoc 同步）；**行为差异（证据登记）**：`deductInventoryForOrder` 对 WAREHOUSE 型位置用户旧 = 无 store 别名 → 恒抛「未分配门店」，新 = 直取位置正常扣减（移除冗余间接的产物；设计 D8「语义等价」对 STORE 用户严格成立）；`StoreInventoryController` 管理员/显式 `storeId` 参数路径行为不变；未新增测试（现有测试 0 覆盖这两处——`SalesOrderServiceImplTest` 7/7 绿前后一致）；D8-1 桥消费清单 15→14（StoreInventoryController 行销账，设计 §2 D8 表为定稿登记面）；14 个存量调用点今后编译出 deprecation 告警 = 预期信号。
 - **C8（`0e160d9` + 补丁 `014247b`）**：改动面 = `PurchaseArrivalServiceImpl` 单文件 2 处（`buildAndSaveArrival` 创建期校验 + `increaseInventoryForArrival` 确认期解析）；**裁决 3**：12 单存量 `receiver_type=STORE + warehouse_id=1` **不纠正** = **N14**（任务板 §24.3o；物料混装非门店入货逻辑形态，声明 STORE 是标错）；**裁决 4**：判断顺序改 **receiver_type 优先**（1) 空 → 400（防御，ReceiverKey 入口已按 A2 归一）2) STORE → store_id 必填 3) WAREHOUSE → warehouse_id 必填 4) 未知 → 400；`warehouse_id` 仅 WAREHOUSE 接收方落库——U11-B 未覆盖的顺序变更，Owner 显式裁；无 schema 变更、无数据迁移、无新权限/端点；未新增测试（A7/A9 = grep 断言 + 既有 5 例定向绿）。
 - 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存；C4：4 files / +231 −7；C5：2 files / +60 −77，两混合文件用 hunk 级 `git apply --cached` 精确暂存 + 暂存态自洽核对）。

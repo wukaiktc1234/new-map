@@ -8098,7 +8098,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1–C5 已提交（C1 `aff2568` / C2 `ff4cba3` / C2b `acb9aa8` / C3 `ddb7d08` / C4 `e97db65` / C5 `563c3e8`；后端定向 35/35 绿，C5 前端改动文件 0 类型错误，全量复跑本卡面 41/41 绿）；C8 已提交（`0e160d9` + 补丁 `014247b` 裁决 4 receiver_type 优先；定向 5/5 绿，A7/A9 过）；C6/C7/C9/C10 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1–C5 已提交（C1 `aff2568` / C2 `ff4cba3` / C2b `acb9aa8` / C3 `ddb7d08` / C4 `e97db65` / C5 `563c3e8`；后端定向 35/35 绿，C5 前端改动文件 0 类型错误，全量复跑本卡面 41/41 绿）；C8 已提交（`0e160d9` + 补丁 `014247b` 裁决 4 receiver_type 优先；定向 5/5 绿，A7/A9 过）；C10 已提交（`fd87808` D8-2/3，定向 7/7 绿）；C6/C7/C9 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
 
 > **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
@@ -8123,6 +8123,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 阶段 3 验收状态 | ⏸ **全部待 Owner Windows 侧执行（ENV-11：本 Linux 会话无 `java`/`mvn`/`psql`/`docker`，仓内 `JDK21/` 与 `maven-mvnd-1.0.3-windows-amd64/` 均为 Windows 二进制）**：`mvnd -q compile` + `mvnd test -Dtest=LocationIdBridgeTest,EmployeeServiceImplLocationResolveTest` + 全量 `mvnd test`（关注 `EmployeeServiceImpl` 构造新增第 5 参的影响面）+ 手工「选仓库 → `employees.location_id` 非 NULL」。失败即按提交粒度 revert `ff4cba3`（C2），C1 独立 |
 | **下一步顺序（Owner 2026-09-30 第四批）** | 等 C1+C2 的 Windows 交验结果 → **C2b → C3 → C4 → C5…**；**若 Owner 两天内未跑交验 → 改做 C3（独立主干）**。C2b 裁决已就位但**代码未动** |
 | **C8（D5/N4）已提交 + 裁决 3/4（2026-10-09）** | **C8 `0e160d9`**：移除 `PurchaseArrivalServiceImpl:656` 的 `1L` 兜底（U11 裁决 B：仓空且店空 → 400「未指定收货仓库」；确认入库按 warehouse_id/stores_new 双空间分别解析）→ **补丁 `014247b`（裁决 4：判断顺序改 receiver_type 优先）**：1) receiver_type 空 → 400（空值已在 ReceiverKey 入口按 A2 归一为 STORE，此检查为防御边界）；2) STORE → store_id 必填（warehouse_id 保持 NULL，双列互斥）；3) WAREHOUSE → warehouse_id 必填；4) 未知 → 400；`warehouse_id` 仅 WAREHOUSE 接收方落库。定向 `PurchaseArrivalReceiverKeyNormalizationTest` 5/5 绿；A7 `grep ': 1L'` 0 命中；A9 `DEFAULT_STORE_ID` 9 行不变。**裁决 3**：12 单存量 `receiver_type=STORE + warehouse_id=1`（当前 DB：STORE\|1\|1×11、STORE\|2\|1×1）**不纠正**——物料混装（设备+食材+测试数据）非门店入货逻辑形态；声明 STORE 是标错，非真实意图 → **登记 N14（见 §24.3o）** |
+| **C10（D8-2/3，N12）已提交（2026-10-09）** | **`fd87808`**：① D8-2 收敛 2 处冗余往返——`StoreInventoryController:76→83`（门店权限用户直接取上下文 `getCurrentUserLocationId()`，省「反查 locationId→storeId → 再经 map 正查 locationId」两次 DB 往返；管理员/无门店权限的显式 `storeId` 参数路径保留 `resolveLocationIdByStoreId(storeId)`，非冗余）；`SalesOrderServiceImpl:268`（出库扣减 locationId 直取上下文；`storeId` 仅保留给 `inventory_code.store_id` 存量列写入 :299）。② D8-3 `SecurityUtils.getCurrentUserStoreId()` 加 `@Deprecated` + `@deprecated` Javadoc（新增代码一律用 `getCurrentUserLocationId()`；`hasStorePermission` 内部兼容包装已抑制告警）。真实调用点 **15→14**（D8-1 桥消费清单 StoreInventoryController 行已销账，设计表为定稿登记面）。定向 `SalesOrderServiceImplTest` 改动前 7/7 绿（基线 `c10-baseline-mvn.log`）/ 改动后 7/7 绿，BUILD SUCCESS。**行为差异（如实登记，待 Owner 知悉）**：`deductInventoryForOrder` 旧路径 = WAREHOUSE 型位置用户无 store 别名 → storeId=null → locationId=null → **恒抛异常**；新路径直取 locationId → **可在其位置正常扣减**——冗余间接的产物被移除（设计 D8「语义等价」对 STORE 用户严格成立，对 WAREHOUSE 用户为行为变化） |
 
 ---
 
