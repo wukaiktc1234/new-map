@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1、C2 已提交（待 Windows 交验）；C2b（D1-4 落点，裁决已就位）+ C3–C10 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b 已提交 + Windows 侧交验通过（定向 25/25，全量 = 基线 58 零回归）；C3–C10 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -28,7 +28,8 @@
 | 提交 | 内容 | 文件面 | 依据 | 验收状态 |
 |---|---|---|---|---|
 | `aff2568` **C1** | 桥补正向入口：`toLocationId(String srcTable, Long srcId)`；旧 `toLocationId(Long storeId)` 保留签名、委托 `SRC_STORES_NEW`；新增 `static locationIdOfWarehouse` | `common/util/LocationIdBridge.java` + 新测试 `LocationIdBridgeTest`（6 例） | 设计 §2 D1-1、§6 A1 | ⏸ 待 Windows 侧（ENV-11） |
-| `ff4cba3` **C2** | 员工 DTO 加 `locationId`（唯一归属入参），`storeId`/`warehouseId`/`workLocationType` 标 `@Deprecated` 保留；`EmployeeServiceImpl.resolveLocationId` 优先级链 + 存在性校验；create/update 两处写入改走它；新增 `LocationMapper` 构造注入 | `dto/EmployeeCreateDTO.java`、`dto/EmployeeUpdateDTO.java`、`service/impl/EmployeeServiceImpl.java` + 新测试 `EmployeeServiceImplLocationResolveTest`（9 例） | 设计 §2 D1-2 / D1-3、§3 改动清单、§6 A2 | ⏸ 待 Windows 侧（ENV-11） |
+| `ff4cba3` **C2** | 员工 DTO 加 `locationId`（唯一归属入参），`storeId`/`warehouseId`/`workLocationType` 标 `@Deprecated` 保留；`EmployeeServiceImpl.resolveLocationId` 优先级链 + 存在性校验；create/update 两处写入改走它；新增 `LocationMapper` 构造注入 | `dto/EmployeeCreateDTO.java`、`dto/EmployeeUpdateDTO.java`、`service/impl/EmployeeServiceImpl.java` + 新测试 `EmployeeServiceImplLocationResolveTest`（9 例） | 设计 §2 D1-2 / D1-3、§3 改动清单、§6 A2 | ✅ Windows 侧交验通过（2026-10-09） |
+| `acb9aa8` **C2b** | D1-4 落点：`workLocationType` 显式推导——新增 `mapLocationTypeToWorkLocationType`（U9 映射）+ `deriveWorkLocationType`；创建路径无 locationId → 显式 `HEADQUARTERS`（U10，不走 DB DEFAULT）；更新路径未表达归属意图 → 不 set（I-3）；`TRANSIT`/词表外 → 400 | `service/impl/EmployeeServiceImpl.java` + `EmployeeServiceImplLocationResolveTest`（9→19 例，+10 C2b 用例） | 设计 §2 D1-4、§7 U9/U10、F-1/F-2/F-3 裁决（§3.4） | ✅ 编译 + 定向测试 25/25 绿（2026-10-09，JDK21 + Maven 3.9.11） |
 
 ### C1 落地事实（与设计的差异登记）
 
@@ -45,6 +46,19 @@
 - 返回 `null` 时 MyBatis-Plus `updateById` 默认跳过该列 → "请求未表达归属意图"不会被误清空（与改前行为一致）。
 - 构造签名新增第 5 参 `LocationMapper`：**实测全仓无 `new EmployeeServiceImpl(` 手工调用点（0 处）**，仅 Spring 装配受影响。
 - 旧入参 getter 已标 `@Deprecated` → 在 `createEmployee`/`updateEmployee` 上加 `@SuppressWarnings("deprecation")` 抑制观察期兼容告警（`maven-compiler-plugin` 无 `-Werror`，pom :510-521 已核实）。
+
+### C2b 落地事实
+
+- **两个新方法**（`service/impl/EmployeeServiceImpl.java`，`resolveLocationId` 之后）：
+  - `static mapLocationTypeToWorkLocationType(String locationType)` —— U9 映射：`STORE→STORE`、`CENTRAL/DEPOT→WAREHOUSE`；`TRANSIT`/词表外（含 null）→ `BusinessException(400, "该位置类型不可作为员工归属：…")`。静态 + 包级可见，直接可单测。
+  - `private deriveWorkLocationType(resolvedLocationId, locationIdParam, storeId, warehouseId)` —— locationId 路径主键回查走 U9 映射；桥路径（`locationIdParam == null`）**按来源推导**：`storeId→STORE`、`warehouseId→WAREHOUSE`，**不查库**（与 C2 桥分支"不做存在性校验"语义一致）。
+- **创建路径**：`locationId == null → 显式 "HEADQUARTERS"`（U10：§3.2 总部职能 NULL 场景，非 DB DEFAULT 的意外结果）；非空 → `deriveWorkLocationType`。
+- **更新路径**：`locationId == null → 不 set`（null → MyBatis-Plus `updateById` 跳过该列，存量值不被清空，I-3）；非空 → `deriveWorkLocationType`。
+- **DTO `workLocationType` 字段保留**（`@Deprecated`），但后端已成为权威来源：客户端传值不再影响落库（C5 停发的前置条件成立）。
+- **locationId 路径多一次 `selectById`**：`resolveLocationId` 已查过一次存在性，`deriveWorkLocationType` 再查一次取 `location_type`。同事务内两次主键查询，代价可忽略；换来的是方法边界清晰（映射方法只依赖入参，静态可测）。
+- **单测 9→19**（+10）：STORE/CENTRAL/DEPOT 三分支映射、TRANSIT 400、词表外 400（`FACTORY` 造词）、创建无归属→HEADQUARTERS、桥 storeId→STORE / 桥 warehouseId→WAREHOUSE（均带 `verify(locationMapper, never())` 锁"不查库"）、更新路径 STORE 推导（`ArgumentCaptor` 抓 `updateById` 实参）、更新无归属→`workLocationType == null`（I-3）。
+- **验收（Windows 侧，2026-10-09）**：`mvn test -Dtest=LocationIdBridgeTest,EmployeeServiceImplLocationResolveTest` → **Tests run: 25, Failures: 0, Errors: 0**（6 + 19）。JDK21（Temurin 21.0.9）+ Maven 3.9.11。
+- **§3.5 数据侧待核项未动**（回填属独立决策）；SQL-2a/2b 已核 = 0 行（无 TRANSIT 脏数据、无存量不一致），C2b 数据前置干净。
 
 ---
 
@@ -111,11 +125,11 @@ ORDER BY e.employee_code;
 
 ## §4 未开始提交（C2b、C3–C10）
 
-> **推进顺序（Owner 第四批）**：等 C1+C2 的 Windows 交验结果 → **C2b → C3 → C4 → C5…**；**若 Owner 两天内未跑交验 → 改做 C3（独立主干）**。
+> **推进顺序（Owner 第四批）**：C1+C2 Windows 交验 ✅ → **C2b ✅（`acb9aa8`）→ C3 → C4 → C5…**。
 
 | 提交 | 状态 | 前置 |
 |---|---|---|
-| **C2b** 承载 D1-4：`resolveLocationId` 内按 U9 映射显式 `set workLocationType`；`TRANSIT`/词表外 → 400；无 `locationId` → 显式 `HEADQUARTERS`（不走 DB DEFAULT）+ 单测 | 未开始（**裁决已就位，代码未动**） | C1–C2 交验通过 |
+| **C2b** 承载 D1-4：`resolveLocationId` 内按 U9 映射显式 `set workLocationType`；`TRANSIT`/词表外 → 400；无 `locationId` → 显式 `HEADQUARTERS`（不走 DB DEFAULT）+ 单测 | ✅ 已提交 `acb9aa8` + 交验通过（定向 25/25 绿，2026-10-09） | C1–C2 交验通过 ✅ |
 | C3 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | 未开始 | C1–C2 交验通过（或 Owner 两天未验 → 直接开工） |
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | 未开始 | C2、C3 |
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | 未开始 | **C2b（硬前置）**、C3 |
@@ -129,30 +143,30 @@ ORDER BY e.employee_code;
 
 ---
 
-## §5 验收状态（ENV-11：本 Linux 会话无 `java`/`mvn`/`psql`/`docker`）
+## §5 验收状态（Windows 侧交验，2026-10-09 完成；ENV-11 已解除：本会话在 Windows 侧，JDK21 + Maven 3.9.11 可用）
 
-| 验收项 | 设计出处 | 状态 | Owner 侧执行方式 |
+| 验收项 | 设计出处 | 状态 | 执行方式（实际） |
 |---|---|---|---|
-| 编译通过 | §6 | ⏸ 待执行 | `cd backend && mvnd -q compile` |
-| `LocationIdBridgeTest` 6 例通过 | §6 A1 | ⏸ 待执行 | `mvnd test -Dtest=LocationIdBridgeTest` |
-| `EmployeeServiceImplLocationResolveTest` 9 例通过 | §6 A2 | ⏸ 待执行 | `mvnd test -Dtest=EmployeeServiceImplLocationResolveTest` |
-| 仓库员工归属不再恒 NULL（端到端） | §6 A2 / 诊断缺口① | ⏸ 待执行 | 手工：员工表单选仓库 → 查 `employees.location_id` 非 NULL |
-| 既有测试无回归 | §6 | ⏸ 待执行 | `mvnd test`（关注 `EmployeeServiceImpl` 构造签名变更影响面） |
+| 编译通过 | §6 | ✅ 通过（`mvn test` 全构建 compile + testCompile 成功） | `mvn -f backend/pom.xml test …`（JDK21 Temurin 21.0.9，Maven 3.9.11） |
+| `LocationIdBridgeTest` 6 例通过 | §6 A1 | ✅ 6/6 | `mvn test -Dtest=LocationIdBridgeTest,…` |
+| `EmployeeServiceImplLocationResolveTest` 通过（C2b 后 19 例） | §6 A2 | ✅ 19/19（C2 9 例 + C2b 10 例） | 同上（定向批次 **Tests run: 25, Failures: 0, Errors: 0**） |
+| 仓库员工归属不再恒 NULL（端到端） | §6 A2 / 诊断缺口① | ⏸ 待 Owner 手工 | 员工表单选仓库 → 查 `employees.location_id` 非 NULL（emp-l/emp-n 待 UI 分配） |
+| 既有测试无回归 | §6 | ✅ 354 tests / 58 失败 = 基线 58（27F+31E，全为 ENV-9 既有 WIP，无一涉及本卡改动面） | `mvn test` 全量（C1+C2 批次）；C2b 批次以定向 25/25 复核，全量将于 C5 后复跑 |
 
-**本侧未能自验的编译期风险点（如实登记，不掩饰）**：
-1. `EmployeeCodeGenerator` 为具体类（非 final，:17）→ Mockito 可 mock，但未实跑确认；
-2. `ServiceImpl.baseMapper` 反射注入沿用仓内既有做法（`AccountingSubjectServiceTest` :42-47 同法），未实跑确认；
-3. `createEmployee` 内 `this.save(employee)` 走 mock 的 `EmployeeMapper.insert`（返回 0）→ 断言只针对返回对象上的 `locationId`，不依赖 DB 写入结果。
+**原登记的本侧未能自验风险点 → 已实跑解除**：
+1. `EmployeeCodeGenerator` Mockito mock —— ✅ 实跑通过；
+2. `ServiceImpl.baseMapper` 反射注入 —— ✅ 实跑通过；
+3. `createEmployee` `this.save` 走 mock `EmployeeMapper.insert` —— ✅ 断言全部成立。
 
-若上述任一项在 Windows 侧失败，**按提交粒度 revert `ff4cba3`（C2）即可**，C1 独立不受影响。
+**回退预案（若后续发现问题）**：按提交粒度 revert `acb9aa8`（C2b）→ `ff4cba3`（C2）→ `aff2568`（C1），三者独立。
 
 ---
 
 ## §6 边界自检
 
-- 本阶段仅改动 **3 个主文件 + 2 个新测试文件**（见 §2），未触碰其他 679 条 WIP 基线文件；每次提交后 `git status --short | wc -l` 回到 **679**。
+- 本阶段改动面（C1–C2b 合计）：**3 个主文件 + 2 个测试文件**（C2b 复用 C2 的 2 个文件，未新增文件），未触碰其他 WIP 基线文件。
 - **无 schema 变更**、无迁移文件新增（C3 才引入 seed 迁移）。
 - **未解冻** KL-085（`KdsPrincipal`）、KL-086（设备域 `DEFAULT_STORE_ID`）。
 - **未实施 §24.3p 任何内容**（含 B1 语义修正）——该卡独立，且前置 SQL 未跑。
-- 未做 D1-4：F-1/F-2/F-3 登记后**未擅自补做**；Owner 第四批裁决（U9/U10）已登记进设计 §7 与 D9（新增 **C2b**），**代码仍未动**，等 C1+C2 交验结果。
-- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对。
+- D1-4 已完成（C2b `acb9aa8`）：F-1/F-2/F-3 登记 → Owner 第四批裁决（U9/U10）→ C1+C2 交验通过 → **裁决后实施，无擅自补做**；§3.5 数据回填仍未实施（独立决策）。
+- 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5）。
