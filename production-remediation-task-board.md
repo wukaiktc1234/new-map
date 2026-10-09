@@ -8098,7 +8098,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 估算 | 0.5~1 人天 |
 | 启动条件 | **Owner 明确指令后** |
 
-## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1+C2 已提交待 Windows 交验；C2b（D1-4 落点）+ C3–C10 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
+## 24.3m P1-USER-LOCATION-002（2026-09-30 Owner 裁决后登记；**阶段 3 进行中：C1–C5 已提交（C1 `aff2568` / C2 `ff4cba3` / C2b `acb9aa8` / C3 `ddb7d08` / C4 `e97db65` / C5 `563c3e8`；后端定向 35/35 绿，C5 前端改动文件 0 类型错误，全量复跑本卡面 41/41 绿）；C6–C10 未开始；实施期新发现 F-1/F-2/F-3 已全部裁决 = U9/U10**）
 
 > **编号更正**：本卡原登记为 §24.3j，与 §24.3j P1-INVENTORY-LEGACY-WRITEPATH-001（:8009）**撞号**，现改登 **§24.3m**（`24.3l` 后首个空位）；§24.3j 归 P1-INVENTORY-LEGACY-WRITEPATH-001（外部 `§24.3j` 引用均指该卡）。引用本卡以 Task ID **P1-USER-LOCATION-002** 为准。
 
