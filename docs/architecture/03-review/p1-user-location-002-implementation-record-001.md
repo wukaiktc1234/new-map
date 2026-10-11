@@ -366,3 +366,11 @@ ORDER BY e.employee_code;
   - **live 验证（待 Owner，ENV-11）**：`GET /v1/auth/me` 与 `GET /v1/users/basic-info/{userId}` 返回体应含 `locationId`（= `users.location_id`），`storeId`/`storeName` 值与 C9 前完全一致（观察期兼容；消费点 0 切换，零行为变化）。
 - **回退**：`git revert 803e5ae` 独立（纯加字段 + 标注，`storeId`/`storeName` 原值原语义不动，回退不影响任何已提交切片）。
 - 结论：C9 收口；**C1–C10 全部收口，本卡实施阶段 3 完成**（live 验证项挂 Owner ENV-11）。
+
+### §7.8 全量自然复跑（最终门，2026-10-12，C9 提交后）
+
+- 命令：`mvn -f backend\pom.xml test`（JDK21 Temurin 21.0.9 + Maven 3.9.11；`c9-full-mvn.log`）。
+- 结果：**Tests run: 381, Failures: 18, Errors: 44, Skipped: 1**（62 失败；BUILD FAILURE = 既有环境漂移，非本卡）。
+- 与 C5 基线全量（`c5-mvn-full.log`，380 tests / 74 失败 / 18 失败类）逐类对比：**新增失败类 = 0**；2 类转绿（`MaterialDeductionAudit*`，环境漂移向好）；+1 测试 = C7 `InventoryTransientFieldMeasureTest`（@Disabled 档案，= Skipped:1）——非 C9 引入。
+- 本卡全部测试类绿：`LocationIdBridgeTest` 6 + `EmployeeAssignLocationEndpointTest` 4 + `EmployeeServiceImplAssignLocationTest` 10 + `EmployeeServiceImplLocationResolveTest` 21 + `InventoryServiceImplLegacyBridgeTest` 7 + `InventoryServiceImplLocationStockTest` 9 + `SalesOrderServiceImplTest` 7 + `PurchaseArrivalReceiverKeyNormalizationTest` 5 + `FoodLegacySyncTest` 5 + `PosOrderCreateServiceFoodIdMapTest` 5 + `PosOrderEnsureLegacyRowTest` 3 + `PurchaseOrderSupplierBindingTest` 2 + `PurchaseReturnServiceImplTest` 5 + `PurchaseStockinServiceImplTest` 8 + `InventoryMovementServiceImplTest` 9 + `InventoryTransferServiceImplTest` 4 + `OrderNewServiceImplDeductTest` 28 + `OrderNewServiceImplOrderNumberA1Test` 3。
+- 62 个失败全部落在 C5 基线既有漂移类（finance 系 / `SysSetting*` / `SysDict*` / `Position*Generator` / `OrderManagement`+`SystemSettings*` 集成 context 加载失败等），与本卡代码路径无交集（C9 触碰的 `AuthServiceImpl`/`UserDataServiceImpl`/2 个 DTO 0 测试引用，§7.7 实证）。

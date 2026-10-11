@@ -8105,7 +8105,7 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 项 | 值 |
 |----|------|
 | Task ID | **P1-USER-LOCATION-002**（Owner 编号建议给的是 002 / -001-R1 二选一；采 **002**——`-R1` 在本仓是 QA 复验惯例，本卡新增范围属新卡而非复验） |
-| 状态 | **阶段 2 设计完成；未决项 U1–U8 全部裁决完毕**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决项裁决状态表）。**裁决全表（2026-09-30 第二批）**：U1 后写覆盖 / U2 只写员工表 / U3 **补齐**（同一 seed 迁移补 `system:user:assign-store` + `unassign-store`，C3 范围 +2 权限码）/ U4 显式拒绝 / U5 **接受**新端点 / U6 **纳入**冗余收敛 / U7 授 `ROLE_HR_DIRECTOR`+admin 不授门店经理 / U8 **归 B**（POS 未分配撞墙**不进 002**，另开 §24.3p）。**阶段 3 已开工（分批交验）：C1–C10 全部已提交 + 全部已收口（C8/C10/C7/C6/C9 均收口 2026-10-09/12）→ 详见下方「阶段 3 已提交」与实施记录** |
+| 状态 | **阶段 2 设计完成；未决项 U1–U8 全部裁决完毕**（判档 = 重档，PG-006 Owner 2026-09-30）。阶段 1 诊断 = `docs/quality/p1-user-location-002-diagnosis-001.md`；**阶段 2 设计 = `docs/design/p1-user-location-002-design-001.md`**（设计决策 D1–D9 + 19 文件改动清单 + 回滚方案 + 验收基准定稿 + 未决项裁决状态表）。**裁决全表（2026-09-30 第二批）**：U1 后写覆盖 / U2 只写员工表 / U3 **补齐**（同一 seed 迁移补 `system:user:assign-store` + `unassign-store`，C3 范围 +2 权限码）/ U4 显式拒绝 / U5 **接受**新端点 / U6 **纳入**冗余收敛 / U7 授 `ROLE_HR_DIRECTOR`+admin 不授门店经理 / U8 **归 B**（POS 未分配撞墙**不进 002**，另开 §24.3p）。**阶段 3 已开工（分批交验）：C1–C10 全部已提交 + 全部已收口（C8/C10/C7/C6/C9 均收口 2026-10-09/12）→ 详见下方「阶段 3 已提交」与实施记录；全量自然复跑最终门通过（`c9-full-mvn.log`：381 tests / 62 失败，vs C5 基线 380/74 逐类对比 = **0 新增失败类**，本卡测试类全绿，实施记录 §7.8）** |
 | 优先级 | P1 |
 | 性质 | **P1-USER-LOCATION-001 收尾补丁卡**（非新领域）：用户管理 vs 员工管理两个"归属位置"入口口径一致性 |
 | 前置卡 | P1-USER-LOCATION-001（CLOSED_WITH_REGISTERED_LIMITATION，`ff61f85`） |
