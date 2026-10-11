@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10、C7 已提交（C10/C7 均已收口 2026-10-09，§7/§7.5）；C6/C9 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10、C7、C6 已提交（C10/C7/C6 均已收口 2026-10-09，§7/§7.5/§7.6）；C9 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -189,7 +189,7 @@ ORDER BY e.employee_code;
 | **C3** 权限码 5 面 + `PUT /v1/employees/{id}/assign-location` + 审计 + seed 迁移（U3/U7 已裁） | ✅ 已提交 `ddb7d08` + 交验通过（定向 29/29 绿，2026-10-09；A4 live HTTP 待 Owner ENV-11） | C1–C2 交验通过 ✅ |
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | ✅ 已提交 `e97db65` + 交验通过（定向 35/35 绿，2026-10-09） | C2、C3 ✅ |
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | ✅ 已提交 `563c3e8`（vue-tsc 改动文件 0 错误，2026-10-09；live UI 待 Owner ENV-11） | C2b（硬前置）✅、C3 ✅ |
-| C6 用户创建表单加归属（D6） | 未开始 | 无 |
+| C6 用户创建表单加归属（D6） | **已提交 + 已收口（2026-10-09，`dd6ddcc`）**——创建表单可选位置下拉（复用 `useLocationOptions`，单一数据源 `/v1/locations`）；纯前端 2 文件 +35/−0；vue-tsc 改动文件 0 错误；编辑不加内联入口（仍走 `assign-store`）。前置实测 + 交验 + 纪律事件见 **§7.6** | 无 |
 | C7 N3 三处（D4） | **已提交 + 已收口（2026-10-09，`32d493b`）**——3 处全修 + 桥反查 + 实测测试 `@Disabled` 档案化；定向 50/50 绿 + A6 grep 过；N17 表缺失明确划出范围。前置实测 `c7pre-mvn-measure.log`（§7.4）；收口详情 **§7.5** | `32d493b` |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
 | C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
@@ -304,3 +304,33 @@ ORDER BY e.employee_code;
 - 编译 + 定向批（含全量 test-compile，构造器变更影响面 = 仅 Spring 装配；全仓无 3 个改动类的 `new XxxImpl(` 手工调用点）：`LocationIdBridgeTest` 6 + `EmployeeServiceImplLocationResolveTest` 21 + `InventoryServiceImplLegacyBridgeTest` 7 + `InventoryServiceImplLocationStockTest` 9 + `SalesOrderServiceImplTest` 7 = **50/50 绿，BUILD SUCCESS**（`c7-mvn.log`）；
 - **A6 grep（更新版，适配活库现实）**：main 源码 `Inventory::getWarehouseId` / `Inventory::getStoreId` **代码命中 0**（唯一文本命中 = `ProcurementTraceServiceImpl:442` C7 说明注释）；`MaterialArchiveServiceImpl` 无 `Inventory.setWarehouseId`（剩余 `getWarehouseId` 均为 Warehouse 实体合法用法）；`InventoryWarningScheduler` 无 `inventory.getWarehouseId()` 代码命中；实测测试 `@Disabled` 随本提交入档；
 - **纪律事件（如实登记）**：`MaterialArchiveServiceImpl` 工作区含 **Owner WIP barcode hunk（:232-234**，`queryDTO.getBarcode()` 查询过滤，非 C7 范围）→ 直接 `git add` 会混入提交 → 以 **index 手术**（`git show HEAD:` 基线 + 行级剔除该 hunk → `git hash-object -w` + `git update-index --cacheinfo`）使暂存版 = HEAD + 仅 C7 hunks；提交后复核：该文件 `git diff` 仅剩 barcode hunk 未暂存，Owner WIP 完整保留。
+
+### §7.6 C6 收口（2026-10-09，`dd6ddcc`）
+
+**提交**：`dd6ddcc`（2 文件 +35/−0；**纯前端，零后端改动**；代码提交与文档提交分离）。
+
+**前置核实（D6 前提，逐项实测）**：
+- 后端已就绪：`UserCreateDTO:49` 已有 `locationId`（Long）；`UserController.createUser:74` `user.setLocationId(userDTO.getLocationId())` → 直落 `users.location_id` → **C6 = 纯前端**。
+- `UserManagementTab.vue` 已 import `useLocationOptions`（:17）并实例化（:456，「分配位置」对话框用）→ 复用同一实例，无新增 composable。
+- 前端 `UserCreateDTO`（`api/system/user.ts:61`）**缺** `locationId` → 本卡补上。
+
+**改动面（2 文件 +35/−0）**：
+
+| 文件 | 改动 |
+|---|---|
+| `frontend/src/api/system/user.ts` | `UserCreateDTO` +`locationId?: number`（`locations.location_id`，可选） |
+| `frontend/src/views/system/components/UserManagementTab.vue`（5 hunks，仅创建路径） | ① `UserFormData` +`locationId: number \| null`；② `formData` 初始化 `null`；③ `handleCreate` 重置 + **按需预载**（`locationOptions` 为空才 `loadLocations()`，与「分配位置」对话框共享同一实例）；④ `handleSubmit` create 载荷 +`locationId: formData.locationId ?? undefined`（未选不发 → 后端 null，不强制归属）；⑤ 模板：组织信息行后插入**创建模式专属**（`v-if="dialogType === 'create'"`）**可选**「归属位置」下拉（filterable/clearable，标签 = `locationName（locationType）`，与分配对话框同构；无 required 规则） |
+
+**范围（按 D6 严格执行）**：
+- **编辑表单不加内联位置入口**——编辑仍走既有 `PUT /v1/users/{id}/assign-store`（-001 权限门 + 审计不变）；
+- 「分配位置」对话框、用户列表列、后端代码一律未动；无 schema 变更。
+
+**交验证据**：
+- `vue-tsc --noEmit`（全项目）：144 个既有错误全部在其它 WIP 文件（recruitment/converters/stockin/…），**本卡 2 个改动文件 0 类型错误**（`c6-vue-tsc.log`，2026-10-09）；
+- 暂存面自洽核对：`git diff --cached --stat` = **2 files / +35 −0**；blob 级 diff（HEAD vs C6-only `4612b7a`）逐 hunk 核对 = 仅上述 5 hunks，无其它差异。
+
+**纪律事件（如实登记）**：`UserManagementTab.vue` 工作区含 Owner WIP（`:teleported` ×4、批量导入/导出/删除按钮禁用 + tooltip、注释位移，39+/23−）→ 整文件 `git add` 会混入 → 以 **index 手术**（`git show HEAD:` 基线 + 应用 C6 5 hunks → `git hash-object -w` `4612b7a` + `git update-index --cacheinfo`）使暂存版 = HEAD + 仅 C6 hunks；提交后复核：Owner WIP 全部 hunk 仍完整留在工作区未提交（`git diff` 复核 6 个 WIP hunk 在位）。
+
+**live 验证（待 Owner，ENV-11）**：用户管理 →「新增用户」→ 出现「归属位置」下拉（locations 数据、带类型标签）→ 选中提交 → `users.location_id` 非 NULL；不选提交 → NULL（不强制归属）；「编辑」对话框**无**「归属位置」字段（改归属仍走行内「分配位置」）。
+
+**回退**：`git revert dd6ddcc` 独立（纯前端；后端字段本就就绪，回退不影响任何已提交切片）。
