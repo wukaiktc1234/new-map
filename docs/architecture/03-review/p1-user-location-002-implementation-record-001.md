@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10 已提交（C10 已收口 2026-10-09，§7）；C7 进行中（D4 3 处，前置实测 landed）；C6/C9 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10、C7 已提交（C10/C7 均已收口 2026-10-09，§7/§7.5）；C6/C9 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -190,7 +190,7 @@ ORDER BY e.employee_code;
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | ✅ 已提交 `e97db65` + 交验通过（定向 35/35 绿，2026-10-09） | C2、C3 ✅ |
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | ✅ 已提交 `563c3e8`（vue-tsc 改动文件 0 错误，2026-10-09；live UI 待 Owner ENV-11） | C2b（硬前置）✅、C3 ✅ |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
-| C7 N3 三处（D4） | **进行中**（2026-10-09 前置实测 landed：`c7pre-mvn-measure.log`——:443 必炸 / :388 静默丢失 / :188 读回+表缺失双重，见 §7.3） | 无 |
+| C7 N3 三处（D4） | **已提交 + 已收口（2026-10-09，`32d493b`）**——3 处全修 + 桥反查 + 实测测试 `@Disabled` 档案化；定向 50/50 绿 + A6 grep 过；N17 表缺失明确划出范围。前置实测 `c7pre-mvn-measure.log`（§7.4）；收口详情 **§7.5** | `32d493b` |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
 | C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
 | C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | ✅ 已提交 `fd87808` + docs `a515b69`（定向 7/7 绿前后一致；**已收口**：2026-10-09 Owner 裁决 = 权限模型有洞、行为变更不可达 → 不回退，见 §7） | 无 |
@@ -280,3 +280,27 @@ ORDER BY e.employee_code;
   | `InventoryWarningScheduler:188` | 读回（+ N17 表缺失） | 违规用法 | **双重问题**（:188 恒 null + 目标表活库缺失 → 全链在 :173 即炸，:188 当前实为死代码） |
 - **实测测试文件处置（Owner 2026-10-09）**：**保留**，加 `@Disabled`（非单元测试，档案性证据），随 C7 提交。
 - **活库交叉证据**：`inventory` 表 25 列仅含 `location_id`（**无** warehouse_id/store_id 列）——即便 transient 映射成功，写入也会 PG 报错；旧 DDL（V1.0.0.100:429/447）带 warehouse_id 的建表已被 M3-M4 重建取代。
+
+### §7.5 C7 收口（2026-10-09，`32d493b`）
+
+**提交**：`32d493b`（7 文件 +129/−9；代码 6 + 实测测试 1；代码提交与文档提交分离）。
+
+**修法差异（Owner 开工令「先想清楚 3 处的修法差异」→ 按严重度三分法落地）**：
+
+| 处 | 定性（§7.4） | 修法 | 未映射仓库时语义 |
+|---|---|---|---|
+| `ProcurementTraceServiceImpl.fillInventoryInfo:443`（读/查询） | 必炸 → 500 | `locationService.resolveByWarehouseId` 解析 + `eq(Inventory::getLocationId, …)`（S6b 同款）；:454 VO `setWarehouseId` 原读 transient 恒 null → 改填入参 warehouseId（本方法正是按该仓库过滤，语义等价） | **早退不填充**（读侧不抛，与 :432 空值守卫同风格） |
+| `MaterialArchiveServiceImpl.ensureInventoryForMaterial:388`（写） | 静默丢失 + location_id 恒 NULL | 解析后 `setLocationId(location.getLocationId())`，**删除** `setWarehouseId(warehouseId)`；日志补 locationId | **log.warn + 跳过初始化**（写侧不产生 location_id=NULL 的孤儿记录） |
+| `InventoryWarningScheduler.createWarningRecord:188`（读回） | 双重问题（当前死代码，异常先于 :173 触发） | **桥反查**（新增）：`locationService.resolveWarehouseIdByLocationId(inventory.getLocationId())` 落旧空间 `warehouse_id` 列 | **保持 null**（禁止数值兜底；位置未映射 warehouses 来源时不猜） |
+
+**新增桥反查（对称于 C1 正向桥）**：
+- `LocationMapper.selectWarehouseIdByLocation(locationId)` — `SELECT m.src_id FROM location_id_map m WHERE m.location_id = ? AND m.src_table = 'warehouses'`；
+- `LocationService.resolveWarehouseIdByLocationId(locationId)` + `LocationServiceImpl` 实现 — null 入 → null 出，否则走 mapper；
+- 唯一消费点 = 站点 3（站点 1/2 均为正向 warehouse→location，走既有 `resolveByWarehouseId`，零新增路径）。
+
+**范围外（如实登记，不实施）**：N17（`inventory_warning_records` 表活库缺失，§7.3）——C7 不建表、不改 `@TableName`、无 schema 变更；仅保证表可用后 `warehouse_id` 读回正确。N15/N16 同属未启动。
+
+**交验证据**：
+- 编译 + 定向批（含全量 test-compile，构造器变更影响面 = 仅 Spring 装配；全仓无 3 个改动类的 `new XxxImpl(` 手工调用点）：`LocationIdBridgeTest` 6 + `EmployeeServiceImplLocationResolveTest` 21 + `InventoryServiceImplLegacyBridgeTest` 7 + `InventoryServiceImplLocationStockTest` 9 + `SalesOrderServiceImplTest` 7 = **50/50 绿，BUILD SUCCESS**（`c7-mvn.log`）；
+- **A6 grep（更新版，适配活库现实）**：main 源码 `Inventory::getWarehouseId` / `Inventory::getStoreId` **代码命中 0**（唯一文本命中 = `ProcurementTraceServiceImpl:442` C7 说明注释）；`MaterialArchiveServiceImpl` 无 `Inventory.setWarehouseId`（剩余 `getWarehouseId` 均为 Warehouse 实体合法用法）；`InventoryWarningScheduler` 无 `inventory.getWarehouseId()` 代码命中；实测测试 `@Disabled` 随本提交入档；
+- **纪律事件（如实登记）**：`MaterialArchiveServiceImpl` 工作区含 **Owner WIP barcode hunk（:232-234**，`queryDTO.getBarcode()` 查询过滤，非 C7 范围）→ 直接 `git add` 会混入提交 → 以 **index 手术**（`git show HEAD:` 基线 + 行级剔除该 hunk → `git hash-object -w` + `git update-index --cacheinfo`）使暂存版 = HEAD + 仅 C7 hunks；提交后复核：该文件 `git diff` 仅剩 barcode hunk 未暂存，Owner WIP 完整保留。
