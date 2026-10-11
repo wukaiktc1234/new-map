@@ -73,6 +73,8 @@ export interface UserCreateDTO {
   status?: number
   /** 所属部门ID */
   departmentId?: string
+  /** 归属位置ID（C6/D6，可选；locations.location_id——后端 `UserController.createUser` 直落 users.location_id） */
+  locationId?: number
   /** 所属门店ID */
   storeId?: string
   /** 员工编号 */

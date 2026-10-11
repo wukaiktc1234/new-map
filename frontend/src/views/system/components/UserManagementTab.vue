@@ -31,6 +31,8 @@ interface UserFormData {
   position: string
   roleIds: string[]
   status: number
+  /** 归属位置（C6/D6，可选；locations.location_id；创建后仍可在编辑模式经「分配位置」修改） */
+  locationId: number | null
 }
 
 /** 重置密码表单 */
@@ -93,6 +95,7 @@ const formData = reactive<UserFormData>({
   position: '',
   roleIds: [],
   status: 1,
+  locationId: null,
 })
 
 /** 表单验证规则 */
@@ -301,7 +304,12 @@ function handleCreate() {
     position: '',
     roleIds: [],
     status: 1,
+    locationId: null,
   })
+  // C6 (D6)：创建模式按需预载位置下拉（可选字段），与「分配位置」对话框共享同一 locationOptions 实例
+  if (locationOptions.value.length === 0) {
+    void loadLocations()
+  }
   dialogVisible.value = true
 }
 
@@ -362,6 +370,7 @@ async function handleSubmit() {
         phone: formData.phone || undefined,
         status: formData.status,
         departmentId: formData.departmentId || undefined,
+        locationId: formData.locationId ?? undefined,
       })
       // 创建成功后分配角色
       if (formData.roleIds.length > 0) {
@@ -871,6 +880,30 @@ onMounted(() => {
                 placeholder="请输入职位"
                 maxlength="50"
               />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- C6 (D6)：创建表单归属位置（可选）——复用「分配位置」对话框的 useLocationOptions 数据源；
+             编辑模式不加内联入口，仍走既有 PUT /v1/users/{id}/assign-store（权限门 + 审计不变） -->
+        <el-row :gutter="20" v-if="dialogType === 'create'">
+          <el-col :span="24">
+            <el-form-item label="归属位置">
+              <el-select
+                v-model="formData.locationId"
+                placeholder="可选：创建后可编辑模式经「分配位置」修改（门店 / 仓库）"
+                filterable
+                clearable
+                :loading="locationLoading"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="opt in locationOptions"
+                  :key="opt.locationId"
+                  :label="`${opt.locationName}（${opt.locationType}）`"
+                  :value="opt.locationId"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
