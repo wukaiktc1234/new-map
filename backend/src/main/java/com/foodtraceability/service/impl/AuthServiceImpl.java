@@ -319,8 +319,11 @@ public class AuthServiceImpl implements AuthService {
             response.setAvatar(user.getAvatar());
             response.setDepartmentId(user.getDepartmentId());
             response.setDepartment(user.getDepartment());
+            // C9/D7（P1-USER-LOCATION-002）：加新留旧——storeId/storeName 观察期兼容（经桥反查），
+            // locationId = 新位置空间（locations.location_id），直取 users.location_id，不经桥
             response.setStoreId(LocationIdBridge.storeIdOf(user.getLocationId()));
             response.setStoreName(user.getStoreName());
+            response.setLocationId(user.getLocationId());
             response.setCreatedAt(user.getCreatedTime());
             response.setUpdatedAt(user.getUpdatedTime());
 

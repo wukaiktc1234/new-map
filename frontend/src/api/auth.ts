@@ -25,6 +25,8 @@ export interface UserInfo {
   avatar?: string
   roles: string[]
   permissions: string[]
+  /** 归属位置ID（C9/D7，P1-USER-LOCATION-002：locations.location_id，/v1/auth/me 返回；新消费点应读本字段；旧门店空间 storeId/storeName 观察期兼容保留） */
+  locationId?: number
 }
 
 /** 登录响应 */

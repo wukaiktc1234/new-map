@@ -29,10 +29,17 @@ public class UserInfoResponse {
     private LocalDateTime createdAt;
     @Schema(description = "更新时间", example = "2023-01-01T12:00:00")
     private LocalDateTime updatedAt;
-    @Schema(description = "门店ID", example = "1234567890")
+    /** C9/D7（P1-USER-LOCATION-002）：观察期兼容，取值经 location_id_map 反查；新消费点应读 {@link #locationId}（新位置空间），观察期结束且消费点归零后另卡删除 */
+    @Deprecated
+    @Schema(description = "门店ID（已废弃，观察期兼容）", example = "1234567890")
     private Long storeId;
-    @Schema(description = "门店名称", example = "中心店")
+    /** C9/D7（P1-USER-LOCATION-002）：观察期兼容，取值经 location_id_map 反查；新消费点应读 {@link #locationId}（新位置空间） */
+    @Deprecated
+    @Schema(description = "门店名称（已废弃，观察期兼容）", example = "中心店")
     private String storeName;
+    /** C9/D7（P1-USER-LOCATION-002）：归属位置ID——新位置空间（locations.location_id），直取 users.location_id，不经 location_id_map 桥换算 */
+    @Schema(description = "归属位置ID（locations.location_id）", example = "1234567890")
+    private Long locationId;
     @Schema(description = "部门ID", example = "1234567890")
     private Long departmentId;
     @Schema(description = "部门名称", example = "生产部")
@@ -91,6 +98,10 @@ public class UserInfoResponse {
 
     public String getStoreName() {
         return this.storeName;
+    }
+
+    public Long getLocationId() {
+        return this.locationId;
     }
 
     public Long getDepartmentId() {
@@ -157,6 +168,10 @@ public class UserInfoResponse {
         this.storeName = storeName;
     }
 
+    public void setLocationId(final Long locationId) {
+        this.locationId = locationId;
+    }
+
     public void setDepartmentId(final Long departmentId) {
         this.departmentId = departmentId;
     }
@@ -215,6 +230,9 @@ public class UserInfoResponse {
         final java.lang.Object this$storeName = this.getStoreName();
         final java.lang.Object other$storeName = other.getStoreName();
         if (this$storeName == null ? other$storeName != null : !this$storeName.equals(other$storeName)) return false;
+        final java.lang.Object this$locationId = this.getLocationId();
+        final java.lang.Object other$locationId = other.getLocationId();
+        if (this$locationId == null ? other$locationId != null : !this$locationId.equals(other$locationId)) return false;
         final java.lang.Object this$departmentId = this.getDepartmentId();
         final java.lang.Object other$departmentId = other.getDepartmentId();
         if (this$departmentId == null ? other$departmentId != null : !this$departmentId.equals(other$departmentId)) return false;
@@ -262,6 +280,8 @@ public class UserInfoResponse {
         result = result * PRIME + ($storeId == null ? 43 : $storeId.hashCode());
         final java.lang.Object $storeName = this.getStoreName();
         result = result * PRIME + ($storeName == null ? 43 : $storeName.hashCode());
+        final java.lang.Object $locationId = this.getLocationId();
+        result = result * PRIME + ($locationId == null ? 43 : $locationId.hashCode());
         final java.lang.Object $departmentId = this.getDepartmentId();
         result = result * PRIME + ($departmentId == null ? 43 : $departmentId.hashCode());
         final java.lang.Object $department = this.getDepartment();
@@ -275,6 +295,6 @@ public class UserInfoResponse {
 
     @java.lang.Override
     public java.lang.String toString() {
-        return "UserInfoResponse(id=" + this.getId() + ", username=" + this.getUsername() + ", name=" + this.getName() + ", email=" + this.getEmail() + ", phone=" + this.getPhone() + ", status=" + this.getStatus() + ", roles=" + this.getRoles() + ", permissions=" + this.getPermissions() + ", createdAt=" + this.getCreatedAt() + ", updatedAt=" + this.getUpdatedAt() + ", storeId=" + this.getStoreId() + ", storeName=" + this.getStoreName() + ", departmentId=" + this.getDepartmentId() + ", department=" + this.getDepartment() + ", companyId=" + this.getCompanyId() + ", avatar=" + this.getAvatar() + ")";
+        return "UserInfoResponse(id=" + this.getId() + ", username=" + this.getUsername() + ", name=" + this.getName() + ", email=" + this.getEmail() + ", phone=" + this.getPhone() + ", status=" + this.getStatus() + ", roles=" + this.getRoles() + ", permissions=" + this.getPermissions() + ", createdAt=" + this.getCreatedAt() + ", updatedAt=" + this.getUpdatedAt() + ", storeId=" + this.getStoreId() + ", storeName=" + this.getStoreName() + ", locationId=" + this.getLocationId() + ", departmentId=" + this.getDepartmentId() + ", department=" + this.getDepartment() + ", companyId=" + this.getCompanyId() + ", avatar=" + this.getAvatar() + ")";
     }
 }

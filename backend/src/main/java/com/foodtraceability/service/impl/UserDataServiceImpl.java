@@ -152,6 +152,8 @@ public class UserDataServiceImpl implements UserDataService {
             .departmentName(user.getDepartment())
             .storeId(LocationIdBridge.storeIdOf(user.getLocationId()))
             .storeName(storeName)
+            // C9/D7（P1-USER-LOCATION-002）：加新留旧——locationId = 新位置空间，直取 users.location_id，不经桥
+            .locationId(user.getLocationId())
             .avatar(user.getAvatar())
             .version(user.getVersion() != null ? user.getVersion().longValue() : 0L)
             .updateTime(user.getUpdatedTime())

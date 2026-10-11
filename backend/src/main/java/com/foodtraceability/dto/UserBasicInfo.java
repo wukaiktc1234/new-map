@@ -30,11 +30,19 @@ public class UserBasicInfo {
     @Schema(description = "所属部门名称", example = "生产部")
     private String departmentName;
 
-    @Schema(description = "所属门店ID", example = "1234567890")
+    /** C9/D7（P1-USER-LOCATION-002）：观察期兼容，取值经 location_id_map 反查；新消费点应读 {@link #locationId}（新位置空间），观察期结束且消费点归零后另卡删除 */
+    @Deprecated
+    @Schema(description = "所属门店ID（已废弃，观察期兼容）", example = "1234567890")
     private Long storeId;
 
-    @Schema(description = "所属门店名称", example = "中心店")
+    /** C9/D7（P1-USER-LOCATION-002）：观察期兼容，取值经 location_id_map 反查；新消费点应读 {@link #locationId}（新位置空间） */
+    @Deprecated
+    @Schema(description = "所属门店名称（已废弃，观察期兼容）", example = "中心店")
     private String storeName;
+
+    /** C9/D7（P1-USER-LOCATION-002）：归属位置ID——新位置空间（locations.location_id），直取 users.location_id，不经 location_id_map 桥换算 */
+    @Schema(description = "归属位置ID（locations.location_id）", example = "1234567890")
+    private Long locationId;
 
     @Schema(description = "头像URL", example = "https://example.com/avatar.jpg")
     private String avatar;
@@ -49,7 +57,7 @@ public class UserBasicInfo {
 
     public UserBasicInfo(String userId, String username, String fullName, String email,
                         String phone, Integer status, Long departmentId, String departmentName,
-                        Long storeId, String storeName, String avatar, Long version,
+                        Long storeId, String storeName, Long locationId, String avatar, Long version,
                         LocalDateTime updateTime) {
         this.userId = userId;
         this.username = username;
@@ -61,6 +69,7 @@ public class UserBasicInfo {
         this.departmentName = departmentName;
         this.storeId = storeId;
         this.storeName = storeName;
+        this.locationId = locationId;
         this.avatar = avatar;
         this.version = version;
         this.updateTime = updateTime;
@@ -150,6 +159,14 @@ public class UserBasicInfo {
         this.storeName = storeName;
     }
 
+    public Long getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
+    }
+
     public String getAvatar() {
         return avatar;
     }
@@ -185,6 +202,7 @@ public class UserBasicInfo {
         private String departmentName;
         private Long storeId;
         private String storeName;
+        private Long locationId;
         private String avatar;
         private Long version;
         private LocalDateTime updateTime;
@@ -239,6 +257,11 @@ public class UserBasicInfo {
             return this;
         }
 
+        public UserBasicInfoBuilder locationId(Long locationId) {
+            this.locationId = locationId;
+            return this;
+        }
+
         public UserBasicInfoBuilder avatar(String avatar) {
             this.avatar = avatar;
             return this;
@@ -256,7 +279,7 @@ public class UserBasicInfo {
 
         public UserBasicInfo build() {
             return new UserBasicInfo(userId, username, fullName, email, phone, status,
-                    departmentId, departmentName, storeId, storeName, avatar, version, updateTime);
+                    departmentId, departmentName, storeId, storeName, locationId, avatar, version, updateTime);
         }
     }
 }
