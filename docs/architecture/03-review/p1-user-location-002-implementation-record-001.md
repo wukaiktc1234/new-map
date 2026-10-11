@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10、C7、C6 已提交（C10/C7/C6 均已收口 2026-10-09，§7/§7.5/§7.6）；C9 未开始** | 本记录 |
+| 阶段 3 实施 | **✅ 完成：C1–C10 全部已提交 + 全部已收口（C10/C7/C6/C9 均收口 2026-10-09/12，§7/§7.5/§7.6/§7.7）** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -192,7 +192,7 @@ ORDER BY e.employee_code;
 | C6 用户创建表单加归属（D6） | **已提交 + 已收口（2026-10-09，`dd6ddcc`）**——创建表单可选位置下拉（复用 `useLocationOptions`，单一数据源 `/v1/locations`）；纯前端 2 文件 +35/−0；vue-tsc 改动文件 0 错误；编辑不加内联入口（仍走 `assign-store`）。前置实测 + 交验 + 纪律事件见 **§7.6** | 无 |
 | C7 N3 三处（D4） | **已提交 + 已收口（2026-10-09，`32d493b`）**——3 处全修 + 桥反查 + 实测测试 `@Disabled` 档案化；定向 50/50 绿 + A6 grep 过；N17 表缺失明确划出范围。前置实测 `c7pre-mvn-measure.log`（§7.4）；收口详情 **§7.5** | `32d493b` |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
-| C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
+| C9 N8 出参加 `locationId` + 前端消费切换（D7） | **已提交 + 已收口（2026-10-12，`803e5ae`）**——2 DTO +`locationId`（新位置空间，直取 `users.location_id` 不经桥）+ `storeId`/`storeName` `@Deprecated`；前端 `auth.ts` +`locationId`；消费点清点 6 处全旧空间/显示 → 0 处切换（D7 取舍）；`permission.ts` 透传一行延后（P0-SEC-006 WIP 耦合）。前置核实 + 交验 + 纪律事件见 **§7.7** | 无 |
 | C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | ✅ 已提交 `fd87808` + docs `a515b69`（定向 7/7 绿前后一致；**已收口**：2026-10-09 Owner 裁决 = 权限模型有洞、行为变更不可达 → 不回退，见 §7） | 无 |
 
 **§24.3p（POS 未分配位置引导）不在本卡内**，且其前置交集 SQL 未跑 → 未实施（Owner 已裁：等 SQL 结果再实施）。
@@ -334,3 +334,35 @@ ORDER BY e.employee_code;
 **live 验证（待 Owner，ENV-11）**：用户管理 →「新增用户」→ 出现「归属位置」下拉（locations 数据、带类型标签）→ 选中提交 → `users.location_id` 非 NULL；不选提交 → NULL（不强制归属）；「编辑」对话框**无**「归属位置」字段（改归属仍走行内「分配位置」）。
 
 **回退**：`git revert dd6ddcc` 独立（纯前端；后端字段本就就绪，回退不影响任何已提交切片）。
+
+### §7.7 C9 出参契约加新留旧（D7）：前置核实、交验、纪律事件与延后登记（2026-10-12）
+
+- 范围（D7 裁决，不猜）：两个出参 DTO（`UserInfoResponse` = `/v1/auth/me` 契约，`UserBasicInfo` = `/v1/users/basic-info` 契约）**加新留旧 + 标废弃，不删**——新增 `locationId`（新位置空间 `locations.location_id`，**直取 `users.location_id`，不经桥**）；`storeId`/`storeName` 保留 + `@Deprecated` + 观察期兼容注释；前端 `auth.ts` 类型加 `locationId`。删除 `storeId` 待观察期结束、消费点归零后另卡做。
+- 前置核实（逐项实测，不猜）：
+  - 构建点 2 处：`AuthServiceImpl.getUserInfo:312-325`（`updateUserInfo:606` 委托 `getUserInfo` → 同一改动覆盖）+ `UserDataServiceImpl.convertToBasicInfo:144-158`（全仓 grep = `UserBasicInfo` 唯一构建点；全参构造器唯一外部调用点 = 内部 builder `build()`，已同步加参）。
+  - **消费点全量清点（D7 阶段 3 前置：未清点禁止删字段）——6 处用户契约消费全部为旧门店空间或门店名显示，0 处需要新位置空间 → 全部保持原样**：
+    1. `stores/permission.ts:408-409` `accessibleStores = [userInfo.storeId]`（旧门店空间）；
+    2. `stores/permission.ts:496-497`（**Owner WIP**）`/me`→`info` 映射 `storeId`/`storeName`（旧门店空间）；
+    3. `views/store-ops/StoreReceiving.vue:29` `userInfo?.storeName` 显示；
+    4. `views/employee/SelfServicePortal.vue:48` `userInfo?.storeName` 显示；
+    5. `views/personal/PersonalCenter.vue:234` `userInfo?.storeName` 显示；
+    6. `views/store-ops/ReceivingMobile.vue:648` `me?.storeName` 显示（直连 `/me`）。
+  - `types/index.ts` 旧 `UserInfo`（`storeId?: string`）非 `/me` 契约类型、无本卡消费点 → 不属 D7 范围；`types/auth.ts`/`utils/auth.ts` 的 `UserInfo`/`UserInfoResponse` 无 `storeId` 字段 → 不适用。
+  - 0 测试类引用 `UserInfoResponse`/`UserBasicInfo`（`grep backend/src/test` 实证）。
+  - WIP 盘点：4 个后端文件 `git status` 干净（直接 add）；`api/auth.ts` 含 Owner WIP 8 行（`UserInfo` +`storeId`/`storeName`/`departmentId`/`department`，P0-SEC-006 `/me` 授权链配套）→ index 手术。
+- 改动（`803e5ae`，5 文件 +57/−7）：
+  1. `UserInfoResponse`：+`locationId` 字段/getter/setter/equals/hashCode/toString；`storeId`/`storeName` 加 `@Deprecated` +「观察期兼容，取值经 `location_id_map` 反查；新消费点应读 `locationId`」注释；`@Schema` 描述同步标「已废弃」。
+  2. `UserBasicInfo`：+`locationId` 字段/全参构造器加参/getter/setter/builder 全链；同款 `@Deprecated` + 注释。
+  3. `AuthServiceImpl.getUserInfo`：+`response.setLocationId(user.getLocationId())`（直取，不经桥；紧邻保留的 `storeIdOf` 反查行，注释标明加新留旧）。
+  4. `UserDataServiceImpl.convertToBasicInfo`：+`.locationId(user.getLocationId())`（同注）。
+  5. `api/auth.ts`：`UserInfo` +`locationId?: number`（HEAD 基线 +2 行；C9-only blob `472f0c2`，blob diff = 仅 2 行插入）。
+- 交验（命令 + 结果，不猜）：
+  - `mvn -f backend/pom.xml test-compile` → **BUILD SUCCESS**（17.9s，`c9-compile.log`）——主 + 测试全编译，构造器签名变更零外部调用点实证。
+  - `vue-tsc --noEmit`（frontend）→ **144 个既有错误全在其它 WIP 文件（recruitment/converters/stockin/plan 等），C9 文件（`api/auth.ts`、`stores/permission.ts`）0 错误**（`c9-vue-tsc.log`）。
+  - 暂存面自洽：`git diff --cached --stat` = 5 文件 +57/−7；auth.ts 暂存 blob diff = HEAD 基线仅 +2 行（Owner WIP 0 行混入）。
+- 纪律事件（如实登记）：
+  - **Owner WIP 保护**：`api/auth.ts` 工作区 WIP（8 行）经 index 手术（`git show HEAD:` 基线 + 应用 C9 2 行 → `git hash-object -w` `472f0c2` + `git update-index --cacheinfo`）隔离，只暂存 C9 2 行；提交后复核工作区 diff = 8 行 WIP 原样在位（`M frontend/src/api/auth.ts`）。
+  - **延后登记（一行跟进，非本卡欠账）**：`stores/permission.ts` `/me→info` 映射透传 `locationId`（`info` 加 `locationId: me.locationId ?? undefined`）——该映射整段属 P0-SEC-006 Owner WIP（HEAD 版本基于 `jwtPayload` 解码，`locationId` 不在 JWT 载荷；WIP 版本改读 `me` 但未透传）→ 与 WIP 强耦合，WIP 提交后一行即可落地，已登记于任务板 C9 行。
+  - **live 验证（待 Owner，ENV-11）**：`GET /v1/auth/me` 与 `GET /v1/users/basic-info/{userId}` 返回体应含 `locationId`（= `users.location_id`），`storeId`/`storeName` 值与 C9 前完全一致（观察期兼容；消费点 0 切换，零行为变化）。
+- **回退**：`git revert 803e5ae` 独立（纯加字段 + 标注，`storeId`/`storeName` 原值原语义不动，回退不影响任何已提交切片）。
+- 结论：C9 收口；**C1–C10 全部收口，本卡实施阶段 3 完成**（live 验证项挂 Owner ENV-11）。
