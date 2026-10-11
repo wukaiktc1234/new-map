@@ -17,7 +17,7 @@
 |---|---|---|
 | 阶段 1 诊断（只读） | ✅ 完成 | `p1-user-location-002-diagnosis-001.md` |
 | 阶段 2 设计（只出方案，禁改代码） | ✅ 完成（U1–U8 全裁） | `p1-user-location-002-design-001.md` |
-| 阶段 3 实施 | **▶ 进行中：C1、C2、C2b、C3、C4、C5 已提交（C4 定向 35/35 绿；C5 前端改动文件 0 类型错误）；C6–C10 未开始** | 本记录 |
+| 阶段 3 实施 | **▶ 进行中：C1–C5、C8、C10 已提交（C10 已收口 2026-10-09，§7）；C7 进行中（D4 3 处，前置实测 landed）；C6/C9 未开始** | 本记录 |
 
 **阶段 3 边界（PG-005）**：允许改代码 / 补测试 / 补实施记录；**禁止跨阶段顺手修、禁止扩大范围**。本卡 I-4 已定：**无 schema 变更**，唯一允许的 DB 动作是 C3 的 1 条 seed 迁移（3 个权限码）。
 
@@ -190,10 +190,10 @@ ORDER BY e.employee_code;
 | C4 反向同步 `syncUserAssignmentFromEmployee`（U1/U2 已裁） | ✅ 已提交 `e97db65` + 交验通过（定向 35/35 绿，2026-10-09） | C2、C3 ✅ |
 | C5 前端员工表单合并位置下拉（D2，N6 消解） | ✅ 已提交 `563c3e8`（vue-tsc 改动文件 0 错误，2026-10-09；live UI 待 Owner ENV-11） | C2b（硬前置）✅、C3 ✅ |
 | C6 用户创建表单加归属（D6） | 未开始 | 无 |
-| C7 N3 三处（D4） | 未开始 | 无 |
+| C7 N3 三处（D4） | **进行中**（2026-10-09 前置实测 landed：`c7pre-mvn-measure.log`——:443 必炸 / :388 静默丢失 / :188 读回+表缺失双重，见 §7.3） | 无 |
 | C8 N4 一处（D5，仅 `PurchaseArrivalServiceImpl:656`） | ✅ 已提交 `0e160d9` + 补丁 `014247b`（**裁决 4：判断顺序改 receiver_type 优先**；定向 5/5 绿，A7/A9 过，2026-10-09） | 无（设备域 KL-086 冻结不动） |
 | C9 N8 出参加 `locationId` + 前端消费切换（D7） | 未开始 | 无 |
-| C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | ✅ 已提交 `fd87808`（定向 7/7 绿前后一致，2026-10-09） | 无 |
+| C10 N12 冗余收敛 2 处 + `@Deprecated`（D8-2/3，U6 已裁纳入） | ✅ 已提交 `fd87808` + docs `a515b69`（定向 7/7 绿前后一致；**已收口**：2026-10-09 Owner 裁决 = 权限模型有洞、行为变更不可达 → 不回退，见 §7） | 无 |
 
 **§24.3p（POS 未分配位置引导）不在本卡内**，且其前置交集 SQL 未跑 → 未实施（Owner 已裁：等 SQL 结果再实施）。
 
@@ -237,3 +237,46 @@ ORDER BY e.employee_code;
 - **C10（`fd87808`）**：改动面 = 3 文件（`SecurityUtils` `@Deprecated`+Javadoc+`hasStorePermission` 抑制；`StoreInventoryController` 门店权限分支直取 `getCurrentUserLocationId()`；`SalesOrderServiceImpl` 出库扣减 locationId 直取上下文 + 方法 Javadoc 同步）；**行为差异（证据登记）**：`deductInventoryForOrder` 对 WAREHOUSE 型位置用户旧 = 无 store 别名 → 恒抛「未分配门店」，新 = 直取位置正常扣减（移除冗余间接的产物；设计 D8「语义等价」对 STORE 用户严格成立）；`StoreInventoryController` 管理员/显式 `storeId` 参数路径行为不变；未新增测试（现有测试 0 覆盖这两处——`SalesOrderServiceImplTest` 7/7 绿前后一致）；D8-1 桥消费清单 15→14（StoreInventoryController 行销账，设计 §2 D8 表为定稿登记面）；14 个存量调用点今后编译出 deprecation 告警 = 预期信号。
 - **C8（`0e160d9` + 补丁 `014247b`）**：改动面 = `PurchaseArrivalServiceImpl` 单文件 2 处（`buildAndSaveArrival` 创建期校验 + `increaseInventoryForArrival` 确认期解析）；**裁决 3**：12 单存量 `receiver_type=STORE + warehouse_id=1` **不纠正** = **N14**（任务板 §24.3o；物料混装非门店入货逻辑形态，声明 STORE 是标错）；**裁决 4**：判断顺序改 **receiver_type 优先**（1) 空 → 400（防御，ReceiverKey 入口已按 A2 归一）2) STORE → store_id 必填 3) WAREHOUSE → warehouse_id 必填 4) 未知 → 400；`warehouse_id` 仅 WAREHOUSE 接收方落库——U11-B 未覆盖的顺序变更，Owner 显式裁；无 schema 变更、无数据迁移、无新权限/端点；未新增测试（A7/A9 = grep 断言 + 既有 5 例定向绿）。
 - 提交方式：PG-001 精确 `git add` 逐文件 + `git diff --cached --stat` 核对（C2b：2 files / +218 −5；C3：11 files / +607 −2，其中 `AdminPermissions.java` / `permissions.ts` 两混合文件用 hunk 级 `git apply --cached` 精确暂存；C4：4 files / +231 −7；C5：2 files / +60 −77，两混合文件用 hunk 级 `git apply --cached` 精确暂存 + 暂存态自洽核对）。
+
+---
+
+## §7 C10 收口（2026-10-09 Owner 裁决）+ C7 前置实测
+
+### §7.1 Owner 裁决（原文要点）
+
+> C10 收口，但定性改写：不是"顺带修复 vs 越权"——是**"权限模型有洞，行为变更不可达"**。`order:manage` 不在 DB、无角色持有、端点实际仅 admin 可达 → **C10 变更无害（不可达）→ 不回退**。
+
+- **C10 状态**：`fd87808`（code）+ `a515b69`（docs）→ **已收口**（2026-10-09）。
+- **行为差异定性**：`deductInventoryForOrder` 对 WAREHOUSE 型位置用户「旧恒抛 → 新可扣减」的差异，因权限门（`order:manage`/`order:view` 活库无行、无角色持有、`user_permissions`=0 行）使端点实际仅 `*` 通配（admin 系角色）可达 → **不可达 → 无害**。
+
+### §7.2 五步追溯证据清单（Owner 指定 5 步，2026-10-09 交付）
+
+1. **调用链**：`SalesOrderServiceImpl:266`（private 定义）← 唯一调用点 `:143`（`completeOrder` `:128`，preparing→completed）← `SalesOrderController:78-83` `POST /v1/sales/order/{id}/complete`。
+2. **上游业务动作**：旧版销售订单完成（`SalesOrder`/`sales_order`，store_id 空间）——非 OrderNew（POS/core）；`sales-order-orders-mapping.md:183`、`project-map.md:318`（扣减**门店**库存）。
+3. **设计文档操作者语义**：`LocationGuard.java:21-22`（门店单据 → 仓库员工被拒绝）vs `:23-24`（出库列于仓库单据 → 功能权限）vs `project-map.md:318`/`零信任全链路测试方案.md:321`（销售出库归**门店**口径）——**两处证据张力，仅登记不裁**。
+4. **守卫调用**：`grep locationGuard\.` backend/src/main → **0 命中**；SalesOrderServiceImpl 内 require*/assert* → 0 命中；S4b 7 处全为直接抛异常；002 设计 :304 引用的 `security/guard/LocationGuard.java` 不存在 → **该动作无任何 location/store/warehouse 守卫**。
+5. **权限门**：`SalesOrderController:80` `@PreAuthorize("order:manage" or "*")`；`SecurityUser:58-69` `*` 仅 admin 系角色；`AdminPermissions:76`/`UserDetailsServiceImpl:62` 不含 `order:manage`/`order:view`（仅 `purchase:order:%`）；活库 `permissions` 无该二行、`role_permissions` 368 行无角色持有、`user_permissions` 0 行、`PermissionInitServiceImpl:139/143` 有创建代码但活库未落 → **非 admin 角色当前 403，端点实际仅 admin 可达**。
+
+### §7.3 追溯挖出的三个新发现（已登记任务板 §24.3o，均另立卡）
+
+| 编号 | 内容 | 证据锚点 |
+|---|---|---|
+| **N15** | SalesOrderController 权限模型失效（`order:manage`/`order:view` 活库无行、无角色持有、端点实际仅 `*` 通配可达） | 追溯步骤 5 全链 + 活库 psql 实测 |
+| **N16** | LocationGuard 孤儿类（0 调用点；S4b 7 处全直接抛异常；设计"收敛到守卫"从未落地；设计 :304 引用文件不存在） | 追溯步骤 4 全链 |
+| **N17** | InventoryWarningRecord 表名错位（实体 `@TableName("inventory_warning_records")` 复数——活库无此表、无 Flyway 迁移创建；活库仅单数 `inventory_warning_record`（动作日志表，列集不同）与旧表 `inventory_warning`）→ 调度器 `createWarningRecord` 全链运行时必中 `relation does not exist`，被 `:75` catch 吞 → 每小时静默失败 | `InventoryWarningRecord.java:15`；`InventoryWarningScheduler.java:173/:196`；grep migration 0 命中；psql 实测 |
+
+### §7.4 C7 前置实测（D4「阶段 3 前置核实项」，2026-10-09 landed）
+
+- **实测方式**：`InventoryTransientFieldMeasureTest`（MP 3.5.5 `MybatisConfiguration` + `MapperBuilderAssistant` + `TableInfoHelper.initTableInfo` 离线初始化 TableInfo，**无 Spring 上下文、无 DB**）→ `mvn test` **MVN_EXIT=0**。
+- **MEASURE 输出**（`c7pre-mvn-measure.log:52-54`）：
+  1. `MEASURE_MAPPED_FIELDS` = locationId→location_id, materialId→material_id, …, version→version —— **`warehouseId`/`storeId` 不在映射清单**（MP 3.5.5 对 `transient` 字段整体跳过）；
+  2. `wrapper.eq(Inventory::getWarehouseId, …)` → **`MybatisPlusException: can not find lambda cache for this property [warehouseId] of entity [com.foodtraceability.entity.Inventory]`**（解析即抛，非"打到旧列/恒空"）；
+  3. 同异常经 SQL 生成路径复现。
+- **三处严重度更新（Owner 已确认）**：
+  | 处 | 路径 | 改前登记 | **实测后** |
+  |---|---|---|---|
+  | `ProcurementTraceServiceImpl:443` | 查询 | 违规用法 | **必炸**（`fillInventoryInfo` 在 `buildTraceInfoByOrderId:258` 主链、无 try/catch → 带 warehouseId 的采购单溯源查询运行时 500） |
+  | `MaterialArchiveServiceImpl:388` | 写入（新记录） | 违规用法 | **静默丢失**（新库存记录 `location_id` 恒 NULL，违反 (location_id, material_id) 唯一口径，全链路 location 查询漏行） |
+  | `InventoryWarningScheduler:188` | 读回（+ N17 表缺失） | 违规用法 | **双重问题**（:188 恒 null + 目标表活库缺失 → 全链在 :173 即炸，:188 当前实为死代码） |
+- **实测测试文件处置（Owner 2026-10-09）**：**保留**，加 `@Disabled`（非单元测试，档案性证据），随 C7 提交。
+- **活库交叉证据**：`inventory` 表 25 列仅含 `location_id`（**无** warehouse_id/store_id 列）——即便 transient 映射成功，写入也会 PG 报错；旧 DDL（V1.0.0.100:429/447）带 warehouse_id 的建表已被 M3-M4 重建取代。
