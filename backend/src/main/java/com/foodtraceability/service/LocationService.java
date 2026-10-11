@@ -25,6 +25,14 @@ public interface LocationService {
      */
     Location resolveByWarehouseId(Long warehouseId);
 
+    /**
+     * 按位置反查来源仓库 ID（location_id → warehouses.warehouse_id，经 location_id_map，
+     * 与 {@link #resolveByWarehouseId(Long)} 对称）。用于向旧空间 warehouse_id 列写值的
+     * 存量消费点（C7：InventoryWarningScheduler 预警记录读回）。
+     * @return 位置未映射到 warehouses 来源时返回 null（调用方按业务决定语义，禁止数值兜底）
+     */
+    Long resolveWarehouseIdByLocationId(Long locationId);
+
     /** 活跃位置列表（可按类型过滤：STORE / CENTRAL / DEPOT / TRANSIT） */
     List<Location> listActive(String locationType);
 }

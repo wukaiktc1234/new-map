@@ -8,6 +8,7 @@ import com.foodtraceability.dto.ProcurementTraceNodeVO;
 import com.foodtraceability.dto.ProcurementTraceQueryDTO;
 import com.foodtraceability.entity.AssetMaster;
 import com.foodtraceability.entity.Inventory;
+import com.foodtraceability.entity.Location;
 import com.foodtraceability.entity.PurchaseOrder;
 import com.foodtraceability.entity.PurchaseOrderItem;
 import com.foodtraceability.entity.PurchaseRequest;
@@ -24,6 +25,7 @@ import com.foodtraceability.mapper.PurchaseStockinItemMapper;
 import com.foodtraceability.mapper.PurchaseStockinMapper;
 import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.ProcurementTraceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +59,7 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
     private final AssetMasterMapper assetMasterMapper;
     private final WarehouseMapper warehouseMapper;
     private final SupplierMapper supplierMapper;
+    private final LocationService locationService;
 
     public ProcurementTraceServiceImpl(PurchaseOrderMapper purchaseOrderMapper,
                                        PurchaseOrderItemMapper purchaseOrderItemMapper,
@@ -66,7 +69,8 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
                                        InventoryMapper inventoryMapper,
                                        AssetMasterMapper assetMasterMapper,
                                        WarehouseMapper warehouseMapper,
-                                       SupplierMapper supplierMapper) {
+                                       SupplierMapper supplierMapper,
+                                       LocationService locationService) {
         this.purchaseOrderMapper = purchaseOrderMapper;
         this.purchaseOrderItemMapper = purchaseOrderItemMapper;
         this.purchaseRequestMapper = purchaseRequestMapper;
@@ -76,6 +80,7 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
         this.assetMasterMapper = assetMasterMapper;
         this.warehouseMapper = warehouseMapper;
         this.supplierMapper = supplierMapper;
+        this.locationService = locationService;
     }
 
     @Override
@@ -433,6 +438,15 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
             return;
         }
 
+        // C7（N3/D4，2026-10-09 前置实测 c7pre-mvn-measure.log）：Inventory.warehouseId 是 transient 字段，
+        // MP 3.5.5 不映射——旧 `eq(Inventory::getWarehouseId, …)` 解析即抛 MybatisPlusException（必炸，
+        // 本方法在 buildTraceInfoByOrderId 主链且无 try/catch → 带仓库的采购单溯源查询 500）。
+        // 改走 S6b 标准模式：warehouse→location 解析（InventoryServiceImpl#getByMaterialAndWarehouse 同款）+ location_id 查询。
+        Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            return; // 仓库未映射位置 → 不填充库存信息（与上方空值守卫同风格；读侧不抛）
+        }
+
         List<Long> materialIds = orderItems.stream()
                 .map(PurchaseOrderItem::getMaterialId)
                 .filter(Objects::nonNull)
@@ -440,7 +454,7 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
                 .collect(Collectors.toList());
 
         LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Inventory::getWarehouseId, warehouseId)
+        wrapper.eq(Inventory::getLocationId, location.getLocationId())
                 .in(Inventory::getMaterialId, materialIds);
         List<Inventory> inventories = inventoryMapper.selectList(wrapper);
 
@@ -451,7 +465,9 @@ public class ProcurementTraceServiceImpl implements ProcurementTraceService {
             Inventory inventory = inventoryMap.get(materialItem.getMaterialId());
             if (inventory != null) {
                 materialItem.setCurrentStock(inventory.getQuantity());
-                materialItem.setWarehouseId(inventory.getWarehouseId());
+                // C7：旧 `inventory.getWarehouseId()` 读 transient 字段恒为 null；
+                // 改填入参 warehouseId（本方法正是按该仓库的位置过滤出来的，语义等价）
+                materialItem.setWarehouseId(warehouseId);
                 materialItem.setMaterialCode(inventory.getMaterialCode());
             }
         }

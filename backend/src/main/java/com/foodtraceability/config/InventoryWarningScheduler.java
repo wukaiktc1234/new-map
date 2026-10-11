@@ -6,6 +6,7 @@ import com.foodtraceability.entity.InventoryWarningRule;
 import com.foodtraceability.mapper.InventoryMapper;
 import com.foodtraceability.mapper.InventoryWarningRecordMapper;
 import com.foodtraceability.mapper.InventoryWarningRuleMapper;
+import com.foodtraceability.service.LocationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,13 +28,16 @@ public class InventoryWarningScheduler {
     private final InventoryWarningRuleMapper warningRuleMapper;
     private final InventoryMapper inventoryMapper;
     private final InventoryWarningRecordMapper warningRecordMapper;
+    private final LocationService locationService;
 
     public InventoryWarningScheduler(InventoryWarningRuleMapper warningRuleMapper,
                                     InventoryMapper inventoryMapper,
-                                    InventoryWarningRecordMapper warningRecordMapper) {
+                                    InventoryWarningRecordMapper warningRecordMapper,
+             LocationService locationService) {
         this.warningRuleMapper = warningRuleMapper;
         this.inventoryMapper = inventoryMapper;
         this.warningRecordMapper = warningRecordMapper;
+        this.locationService = locationService;
     }
 
     /**
@@ -185,7 +189,12 @@ public class InventoryWarningScheduler {
         InventoryWarningRecord record = new InventoryWarningRecord();
         record.setRuleId(rule.getRuleId());
         record.setInventoryId(inventory.getInventoryId());
-        record.setWarehouseId(inventory.getWarehouseId());
+        // C7（N3/D4，2026-10-09 前置实测 c7pre-mvn-measure.log）：旧 `inventory.getWarehouseId()` 读 transient
+        // 字段恒为 null（MP 3.5.5 不映射 transient）；改由 inventory.locationId 经 location_id_map
+        // 反查 warehouses 来源 ID 落旧空间 warehouse_id 列（位置未映射仓库时保持 null，禁止数值兜底）。
+        // 注：本方法整体仍受 N17（inventory_warning_records 表活库缺失）阻塞——建表/改映射归 N17 卡；
+        // C7 仅保证表可用后 warehouse_id 读回正确。
+        record.setWarehouseId(locationService.resolveWarehouseIdByLocationId(inventory.getLocationId()));
         record.setWarningType(rule.getWarningType());
         record.setCurrentValue(inventory.getQuantity());
         record.setThresholdValue(rule.getThresholdValue());

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.dto.PageResult;
 import com.foodtraceability.dto.purchase.*;
 import com.foodtraceability.entity.Inventory;
+import com.foodtraceability.entity.Location;
 import com.foodtraceability.entity.MaterialArchive;
 import com.foodtraceability.entity.MaterialCategory;
 import com.foodtraceability.entity.Supplier;
@@ -15,6 +16,7 @@ import com.foodtraceability.mapper.MaterialCategoryMapper;
 import com.foodtraceability.mapper.SupplierMapper;
 import com.foodtraceability.mapper.WarehouseMapper;
 import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.service.LocationService;
 import com.foodtraceability.service.purchase.MaterialArchiveService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,7 @@ public class MaterialArchiveServiceImpl implements MaterialArchiveService {
     private final InventoryService inventoryService;
     private final WarehouseMapper warehouseMapper;
     private final MaterialCategoryMapper materialCategoryMapper;
+    private final LocationService locationService;
 
     /** 分类名称缓存（categoryId → 名称，避免重复查询） */
     private final Map<Long, String> categoryNameCache = new ConcurrentHashMap<>();
@@ -53,12 +56,14 @@ public class MaterialArchiveServiceImpl implements MaterialArchiveService {
             SupplierMapper supplierMapper,
             InventoryService inventoryService,
             WarehouseMapper warehouseMapper,
-            MaterialCategoryMapper materialCategoryMapper) {
+            MaterialCategoryMapper materialCategoryMapper,
+            LocationService locationService) {
         this.materialArchiveMapper = materialArchiveMapper;
         this.supplierMapper = supplierMapper;
         this.inventoryService = inventoryService;
         this.warehouseMapper = warehouseMapper;
         this.materialCategoryMapper = materialCategoryMapper;
+        this.locationService = locationService;
     }
 
     // ==================== 分页查询 ====================
@@ -369,6 +374,17 @@ public class MaterialArchiveServiceImpl implements MaterialArchiveService {
         }
 
         Long warehouseId = defaultWarehouse.getWarehouseId();
+
+        // C7（N3/D4，2026-10-09 前置实测 c7pre-mvn-measure.log）：Inventory.warehouseId 是 transient 字段，
+        // MP 3.5.5 不映射——旧 `setWarehouseId(warehouseId)` 写入被静默丢弃，且新记录 location_id 恒 NULL
+        // （违反 (location_id, material_id) 唯一口径，全链路 location 查询漏行）。
+        // 改走 S6b 标准模式：warehouse→location 解析 + 写 location_id。
+        Location location = locationService.resolveByWarehouseId(warehouseId);
+        if (location == null) {
+            log.warn("默认仓库[{}]未映射到位置，跳过物料[{}]的库存初始化", warehouseId, material.getMaterialId());
+            return;
+        }
+
         Inventory existing = inventoryService.getByMaterialAndWarehouse(material.getMaterialId(), warehouseId);
         if (existing != null) {
             log.debug("物料[{}]在仓库[{}]已存在库存记录，跳过初始化", material.getMaterialId(), warehouseId);
@@ -382,7 +398,7 @@ public class MaterialArchiveServiceImpl implements MaterialArchiveService {
         inventory.setMaterialCategoryId(material.getCategoryId());
         inventory.setSpecification(material.getSpec());
         inventory.setUnit(material.getUnit());
-        inventory.setWarehouseId(warehouseId);
+        inventory.setLocationId(location.getLocationId());
         inventory.setQuantity(BigDecimal.ZERO);
         inventory.setLockedQuantity(BigDecimal.ZERO);
         inventory.setStatus(material.getStatus() != null && material.getStatus() == 1 ? 1 : 0);
@@ -390,8 +406,8 @@ public class MaterialArchiveServiceImpl implements MaterialArchiveService {
         inventory.setUpdateTime(LocalDateTime.now());
 
         inventoryService.save(inventory);
-        log.info("物料档案联动创建库存初始记录成功: materialId={}, warehouseId={}",
-                material.getMaterialId(), warehouseId);
+        log.info("物料档案联动创建库存初始记录成功: materialId={}, warehouseId={}, locationId={}",
+                material.getMaterialId(), warehouseId, location.getLocationId());
     }
 
     /**

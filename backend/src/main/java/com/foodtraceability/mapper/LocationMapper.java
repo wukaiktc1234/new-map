@@ -31,6 +31,15 @@ public interface LocationMapper extends BaseMapper<Location> {
     Location selectByStoreId(@Param("storeId") Long storeId);
 
     /**
+     * 按位置反查来源仓库 ID（warehouses.warehouse_id 别名），与 selectBySource 对称。
+     * 用于把新空间 location_id 写回旧空间 warehouse_id 列的存量表（N17 预警记录表等）。
+     * 未映射返回 null（调用方按业务决定语义，禁止数值兜底）。
+     */
+    @Select("SELECT m.src_id FROM location_id_map m " +
+            "WHERE m.location_id = #{locationId} AND m.src_table = 'warehouses'")
+    Long selectWarehouseIdByLocation(@Param("locationId") Long locationId);
+
+    /**
      * 活跃位置列表（可按类型过滤）。
      */
     @Select("<script>SELECT * FROM locations WHERE deleted = 0 AND status = 1" +

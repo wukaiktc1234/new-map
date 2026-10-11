@@ -52,6 +52,14 @@ public class LocationServiceImpl implements LocationService {
     }
 
     @Override
+    public Long resolveWarehouseIdByLocationId(Long locationId) {
+        if (locationId == null) {
+            return null;
+        }
+        return locationMapper.selectWarehouseIdByLocation(locationId);
+    }
+
+    @Override
     public List<Location> listActive(String locationType) {
         return locationMapper.selectActive(locationType);
     }
