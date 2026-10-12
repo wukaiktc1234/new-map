@@ -8288,6 +8288,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 > - **待 Owner 裁决**：`order:add` 角色绑定清单（Agent 建议 = 镜像 `order:manage` 的 5 角色，待确认，不猜）；
 > - 验收基准（同主体模式）：迁移提交 + `flyway_schema_history` `success=t` 行（PG-001 扩展）+ 活库复核 + `mvn test` 58 逐测试集合相等。
 
+**扩展子项收口戳（2026-10-13，实施完成，待 Owner Live 验证）**：
+> - Owner 裁决已落（2026-10-12 指令）：角色绑定清单 = **镜像 `order:manage` 的 5 角色**（'1' / ROLE_ADMIN / ROLE_OWNER / ROLE_OPS_DIRECTOR / ROLE_STORE_MANAGER）——上行「待 Owner 裁决」项关闭；
+> - 实施：`V20261012_003__seed_order_add_permission.sql`（提交 `68fb1d3`）——1 码（PERM_ORDER_ADD / '新增订单'，permission_type=1 镜像种子面既有约定：活库 131 行全 type=1，代码树 0/1/2 为树自身层级语义，迁移注释内如实登记）+ 5 绑定，全 NOT EXISTS 幂等；
+> - 应用（**PG-001 扩展条款 2 首次合规执行 = 独立 Flyway runner，非 mvn test 上下文**）：flyway-maven-plugin:9.22.3 独立调用，flags 与活库 profile（application.yml:45 激活 pg）等价；证据 = `flyway_schema_history` **rank 216 version 20261012.003 success=t installed_on 2026-10-13 04:13:08.892463**；
+> - 活库复核（psql 实测）：`permissions` order:% = 3 行（add/manage/view），总数 131→132；`role_permissions` PERM_ORDER_ADD = 5 行；order:% 绑定总数 15（5×3）；
+> - `mvn test` run#5：381 / 27F / 31E / 1S，**58 F+E 逐测试集合与基线相等（SET-EQUAL: True）**——零回归；
+> - 顺带发现（runner 首跑 validate 暴露，未处理、如实登记，待 Owner 裁决）：rank 207 `20260922.001` 历史行 checksum=NULL（本地文件存在但未被 git 跟踪，checksum mismatch）；rank 209 `999` 历史行存在但本地 V999 文件已不存在——均为 9 月既有历史状态，app 侧 pg profile validate-on-migrate=false 长期容忍；本次未做 repair、未触碰历史行；
+> - **扩展子项状态：实施 CLOSED（Live 验证批次归 Owner：持角色 200 / 无角色 403 / UI 菜单，与 N15 Live 同批）**。
+
 ### §24.3s-SI-1 子项：N16 LocationGuard 设计未落地（2026-10-12 Owner 指令「N15 开卡时纳入 N16 作子项」）
 
 | 项 | 值 |
