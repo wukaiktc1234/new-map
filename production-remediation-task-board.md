@@ -8246,6 +8246,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 关联 | §7.3 N17；KL-084（静默失败模式同类、根因不同） |
 | 回退 | 迁移幂等（`IF NOT EXISTS`）；表原本缺失，回退 = drop table，零数据损失 |
 
+> **收口记录（2026-10-12 追加，只增不改）**：**已收口**——实施 **`9aaa1f0`**（1 文件 +38：`V20261012_001__create_inventory_warning_records_table.sql`；调度器代码零改动）。
+> - 应用面：Flyway rank **214** `20261012.001` success=t（2026-10-12 20:47:02.923）；
+> - 证据面（活库）：`inventory_warning_records` 12 列 + `record_id` 主键 + 部分去重索引（`WHERE deleted = 0`），列集 = 实体 12 字段；
+> - 回归面：`mvn test`（实施后 run#2）= Tests run: 381, Failures: 27, Errors: 31, Skipped: 1 = **58 F+E**，与 run#1 逐测试集合相等（58==58，Compare-Object 空）→ **零新增失败**（注：卡验收基准「三点基线 381/62/16」为 C3 修复前基线；C3 修复 `697773e` 净减 4 = `FoodTracePromptServiceTest` 转 PASS，现行有效基线 = 58，详见记录 §7.11）；
+> - 验收基准 ②（触发一次 → 落 1 行）与 ④（UI 可见记录）= **Owner Live**（批次 C 已更新注释：失败窗口已闭合，下一小时整点周期起可 `SELECT count(*) FROM inventory_warning_records;` 验证增长）；
+> - 实施过程中发现的 C3 P0 缺陷（42601，`697773e` 修复）已记载于记录 §7.11。
+
 ## 24.3s P1-ORDER-PERMISSION-SEED-001（2026-10-12 Owner 开卡；来源 P1-USER-LOCATION-002 §7.3 N15；P1 已确认）
 
 | 项 | 值 |
@@ -8266,6 +8273,14 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 关联 | U3/C3（同模式：seed 迁移补权限码）；§7.3 N15；P1-SEC-009（渗透基线）；`PermissionInitServiceImpl`（现成 init 入口） |
 | 回退 | seed 迁移可回退（按 `permission_code` DELETE），零副作用 |
 
+> **收口记录（2026-10-12 追加，只增不改）**：**已收口**——实施 **`f3af724`**（1 文件 +109：`V20261012_002__seed_order_permissions.sql`；卡内 seed 路径 ①；角色清单 = {'1','ROLE_ADMIN','ROLE_OWNER','ROLE_OPS_DIRECTOR','ROLE_STORE_MANAGER'}）。
+> - 应用面：Flyway rank **215** `20261012.002` success=t（2026-10-12 21:10:50.996；**注意**：该次应用由 `mvn test` 上下文（`OrderManagementIntegrationTest` 默认 profile → 活库 → Flyway 自动执行）完成，非独立 runner——测试套件可自动落 pending 迁移至活库，后续执行 default-profile 测试类前须先核 flyway 状态）；
+> - 证据面（活库 psql 复核，2026-10-12）：2 权限码在位（`PERM_ORDER_MANAGE` 'order:manage' / `PERM_ORDER_VIEW` 'order:view'，deleted=0）+ **10 角色绑定**（上列 5 角色 × 2 码，deleted 全 0）；
+> - 回归面：`mvn test`（run#3）= 381 / 27F / 31E / 1S = **58 F+E**，与 run#2 逐测试集合相等（58==58，Compare-Object 空）→ **零新增失败**；
+> - **范围外观察（登记，不属本卡）**：`OrderNewController:38` 引用第三码 `order:add`（活库不存在、无角色持有）——本卡范围 = 2 码；`order:add` 缺口待 Owner 裁决（另卡或并入渗透基线核查）；
+> - **如实登记**：N15 不修复 `OrderManagementIntegrationTest` 9 失败（401×6/403×3）——该 9 测试为**未认证** MockMvc 请求（不发 token），属既有测试设计问题，run#0 基线即在（62 之一）；
+> - 验收基准 ②③⑤（持角色 200 / 无角色 403 / UI 菜单）= **Owner Live**：持 5 角色之一的非 admin 账号登录 → 访问销售订单端点 200；无该角色账号 403（fail-closed 不变）。
+
 ### §24.3s-SI-1 子项：N16 LocationGuard 设计未落地（2026-10-12 Owner 指令「N15 开卡时纳入 N16 作子项」）
 
 | 项 | 值 |
@@ -8277,6 +8292,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 处置 | **并入 §24.3s 卡（不再单独立卡）**；实施路径待 Owner 裁决：A. 删类（死代码清理，最小） B. 按设计落地（位置权限检查收敛到守卫，设计债偿还，须先做设计复核——:304 引用文件不存在，设计已失真） |
 | 验收基准 | A 路径：全仓 0 引用 + 编译通过 + `mvn test` 全量无新增失败（三点基线 381/62/16 不变）；B 路径：设计复核记录 + 守卫调用点接入 + 单测 + 三点基线不变 |
 | 启动条件 | 随 §24.3s 卡实施放行；路径裁决（A/B）待 Owner |
+
+> **收口记录（2026-10-12 追加，只增不改）**：**已收口（路径 A 删类）**——实施 **`c23dcd6`**（1 文件 −145：删除 `backend/src/main/java/com/foodtraceability/common/util/LocationGuard.java`）。
+> - 全仓代码面引用核查（2026-10-12）：backend/src（含 resources mapper XML）外部引用 = **0**（仅类声明/logger/构造器自引用 3 处）；frontend/src = **0**；docs 内 17 处均为设计/记录散文引用（历史面，按只增不改不动）；
+> - 编译面：`mvn test` run#4 含 compile 阶段，BUILD SUCCESS；
+> - 回归面：`mvn test`（run#4）= 381 / 27F / 31E / 1S = **58 F+E**，与 run#3 逐测试集合相等（58==58，Compare-Object 空）→ **零新增失败**；
+> - 回退：`git revert c23dcd6` 即恢复该 145 行文件；
+> - 同根因假设（Owner 卡面登记）：N15/N16 均已收口，该假设保留作历史登记（两卡实施均以其登记为前提，未阻塞收口）。
 
 ### §24.3t GOV-INCIDENT-003 恢复方案执行记录（2026-10-12，Owner 指令「方向修正：聚焦治理，暂不打包」第 1 项）
 

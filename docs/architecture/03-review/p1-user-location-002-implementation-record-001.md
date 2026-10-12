@@ -494,6 +494,25 @@ ORDER BY e.employee_code;
 | 3 | 对比 | `storeId`/`storeName` 值与 C9 前完全一致（**零行为变化**，消费点 0 切换） |
 | 4 | 前端已登录态（C9 跟进 `c588476` 消费链） | `permissionStore.userInfo.locationId` 可取（console 或 DevTools） |
 
+> **V-A3 判据细化（2026-10-12 追加，代码级锚定；原表行 1-3 表述保留作历史，执行以本块为准）**
+>
+> 代码级事实（HEAD 证据）：
+> - `/me` → `AuthServiceImpl:322-326`：`locationId` = `users.location_id` **直取**；`storeId` = `LocationIdBridge.storeIdOf(locationId)`（`location_id_map` 反查，`src_table='stores_new'`，无映射/归属 NULL → null）；`storeName` = `User.storeName`——该字段 `@TableField(exist = false)`（`User.java:108`），默认 `selectById` 不填充 → **`/me` 的 `storeName` 恒为 null（代码级常量，非故障）**。
+> - `basic-info/{userId}` → `UserDataServiceImpl:123-156`：`locationId`/`storeId` 同上；`storeName` = 反查 storeId 能解析时取 **`stores_new.store_name`**（经 `storeDataService.getStoreBasicInfo`），否则 null——**两端点 `storeName` 语义不同（/me 恒 null；basic-info 真实派生）**。
+> - Jackson：`WebConfig:84` `Include.ALWAYS` → null 字段在 JSON 中显式出现（如 `"locationId": null`），**不因 null 省略**。
+> - 活库锚点（food_traceability）：locations `1=测试门店A(STORE)` / `2=测试门店B(STORE)` / `3=DeepStore(STORE)` / `4=仓库B(DEPOT)` / `5=仓库A(CENTRAL)`；`location_id_map`：`stores_new` 1→loc1、2→loc2、3→loc3，`warehouses` 1→loc5、2→loc4；`users` 现 `admin`/`test-admin` 的 `location_id` 均为 NULL。
+>
+> 细化 PASS 判据（U = 被测登录用户）：
+>
+> | # | 操作 | PASS 标准 |
+> |---|------|-----------|
+> | 1 | `GET /v1/auth/me` | 200；`locationId` == `SELECT location_id FROM users WHERE username=U`（NULL → `"locationId": null`）；`storeId` == `SELECT src_id FROM location_id_map WHERE src_table='stores_new' AND location_id=(SELECT location_id FROM users WHERE username=U)`（无行 → null）；`storeName` = null（代码级常量） |
+> | 2 | `GET /v1/users/basic-info/{userId}` | `locationId`/`storeId` 同上；`storeName` == `SELECT store_name FROM stores_new WHERE store_id=(反查 src_id)`（门店不存在 → null） |
+> | 3 | 路径验证（先设归属再验）：`PUT /v1/users/{U}/assign-store` body `{"locationId": 1}`（需 `system:user:assign-store`；C3 已 seed 该码但**无角色绑定**——U7 裁定，当前仅 **admin** 经 `*` 通配可执行，建议 U = admin 自身，用自己的 token 调）→ 复验 1/2 | 设后：`locationId=1`、`storeId=1`；`/me` `storeName=null`；basic-info `storeName=<stores_new store_id=1 的 store_name>`；再改 `{"locationId": 4}`（仓库，无 stores_new 映射）→ `locationId=4`、`storeId=null`（显式拒绝语义，无数值兜底）；验证完可 `DELETE /v1/users/{U}/assign-store` 还原（同权限门） |
+> | 4 | 前端已登录态（C9 跟进 `c588476` 消费链） | `permissionStore.userInfo.locationId` 可取（console 或 DevTools） |
+>
+> 原表行 3「与 C9 前完全一致」**废弃**（无 C9 前基线快照，不可执行）；零行为变化主张改由本块代码级锚定承载（契约以 HEAD 代码为准，观测值应与代码一致，偏离即 FAIL）。
+
 #### 批次 B —— P0-SEC-006 L-5 全链路（KL-013 终验；提交点 `64e5d95` + `c588476`）
 
 **V-B1（登录 → /me → 路由跳转 → 按钮渲染，全链路）**
@@ -527,6 +546,12 @@ WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
 
 - **证据齐备标准**：复数表 `to_regclass` = NULL + 应用日志存在 `relation "inventory_warning_records" does not exist`（频率 ≈ 每小时）+ 日志最早时间 = 失败起始时间实证。
 
+> **批次 C 状态更新（2026-10-12 追加，N17 已收口 `9aaa1f0`）**：本批 SQL 的期望值**已变化**——
+> - SQL#1：`to_regclass('inventory_warning_records')` 现返回**非 NULL**（表已建，Flyway rank 214 `20261012.001`，2026-10-12 20:47:02.923 success=t）；
+> - SQL#2：`20261012.001` **已存在**于 `flyway_schema_history`（rank 214）；
+> - 失败窗口**已闭合**：下一小时整点调度周期起 insert 成功落库（可 `SELECT count(*) FROM inventory_warning_records;` 验证 ≥0 且随规则命中增长）；
+> - **历史失败窗口证据（仍有效）**：仅 SQL#3 日志 grep 部分——`relation "inventory_warning_records" does not exist` 的最早一条时间 = 失败起始实证（2026-08-02 后首次应用启动起，至 2026-10-12 20:47 修复）。若应用日志已被滚动清理，则历史起点不可实证，按「失败窗口 ≈ init `dd33ee3` 后」记档即可。
+
 #### 失败处理映射
 
 | 失败项 | 动作 |
@@ -535,3 +560,26 @@ WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
 | V-A3 | 重开 C9（出参契约） |
 | V-B1 | **重开 KL-013** + 按 §7.9b 重审协议处理依赖结论 |
 | V-C | §24.3r（N17，P0）放行实施；失败起始时间回写 §24.3r 卡 |
+
+### §7.11 C3 迁移 P0 缺陷发现与修复（2026-10-12，N17 实施过程中发现，**收口后追加记载**）
+
+**发现（P0，治理级）**：C3 迁移 `V20261009_001__seed_hr_employee_assign_location.sql` 自提交起即含 **PG 42601 语法错误（原 :50）**——`INSERT INTO role_permissions (role_id, permission_id, deleted, create_time)` 的 `SELECT` 提供 **2 个值**对应 **4 列**（缺 `deleted`/`create_time` 值）→ **该迁移从未在任何库应用成功**（发现时活库 `flyway_schema_history` 无 `20261009.001` 行）。
+
+**发现路径（证据链）**：
+1. N17 独立 Flyway runner 应用 `20261012.001` 前，Flyway 先报 `20261009.001` 失败（42601）→ 定位 :50 列值不匹配；
+2. `mvn test` run#0（C3 修复前）`FoodTracePromptServiceTest`（默认 profile → 活库 → Flyway 随上下文加载运行）context 加载失败 4E——**同根因**：Flyway 在 context 加载期撞上坏迁移；
+3. 修复后 run#1：该类 context 加载通过、4 测试 PASS → 62→58 的**全部 4 个 delta 即此**（非新增失败，是既有失败转绿；run#1/run#2/run#3 三次 58 逐测试集合相等，`Compare-Object` 空）。
+
+**影响面（如实登记）**：
+- C3 的 3 个权限码（`hr:employee:assign-location` / `system:user:assign-store` / `system:user:unassign-store`）+ 1 条绑定（`ROLE_HR_DIRECTOR → hr:employee:assign-location`）**在修复前从未在活库生效** → 本卡 V-A1 行 1/2（403/200 权限门验证）在修复前**不可能按预期行为出现**（非 HR 角色调 assign-location = 码不存在 → PermissionAspect 链行为与「403 权限不足」文案依赖码已 seed 的前提）；
+- 不触及 N15/N17（不同迁移、不同表）；不触及任何已提交代码行为（纯 seed 数据面）。
+
+**修复与验证**：
+- 提交 **`697773e`**（1 文件，1+/1−，:50 补齐 4 列值 `SELECT 'ROLE_HR_DIRECTOR', 'PERM_HR_EMP_ASSIGN_LOCATION', 0, NOW()`）；
+- 应用：Flyway rank **213** `20261009.001` success=t（2026-10-12 20:47:02.923）；
+- 活库复核：3 权限行 + 1 绑定行在位（`role_permissions` join `permissions` 查询，`deleted=0`）；`system:user:assign-store`/`system:user:unassign-store` = **seed 在位但无角色绑定**（U7 裁定：仅 admin 经 `*` 使用）；
+- 回归：mvn test run#1（修复后首次）58 F+E，其中 `FoodTracePromptServiceTest` 4 PASS（run#0 时 4E）。
+
+**V-A1 前置条件更新**：V-A1 行 1/2 现可有效执行（权限码 + 绑定已在活库，rank 213）；行 3 审计日志验证不受影响。
+
+**治理注**：C3 卡此前已 ACCEPTED（C1–C10 收口，§7.7/§7.8），其「seed 落库」证据面当时锚定于**迁移文件存在 + 编译/定向测试绿**，未含「活库 flyway 应用成功」一项——本次发现即该缺口。**PG-001 双向锚定规则扩展建议**：凡 seed/建表类迁移，收口证据面须含 `flyway_schema_history` 应用成功行（rank + success=t + installed_on），否则「已落库」声称不成立。
