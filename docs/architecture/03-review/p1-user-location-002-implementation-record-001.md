@@ -374,3 +374,54 @@ ORDER BY e.employee_code;
 - 与 C5 基线全量（`c5-mvn-full.log`，380 tests / 74 失败 / 18 失败类）逐类对比：**新增失败类 = 0**；2 类转绿（`MaterialDeductionAudit*`，环境漂移向好）；+1 测试 = C7 `InventoryTransientFieldMeasureTest`（@Disabled 档案，= Skipped:1）——非 C9 引入。
 - 本卡全部测试类绿：`LocationIdBridgeTest` 6 + `EmployeeAssignLocationEndpointTest` 4 + `EmployeeServiceImplAssignLocationTest` 10 + `EmployeeServiceImplLocationResolveTest` 21 + `InventoryServiceImplLegacyBridgeTest` 7 + `InventoryServiceImplLocationStockTest` 9 + `SalesOrderServiceImplTest` 7 + `PurchaseArrivalReceiverKeyNormalizationTest` 5 + `FoodLegacySyncTest` 5 + `PosOrderCreateServiceFoodIdMapTest` 5 + `PosOrderEnsureLegacyRowTest` 3 + `PurchaseOrderSupplierBindingTest` 2 + `PurchaseReturnServiceImplTest` 5 + `PurchaseStockinServiceImplTest` 8 + `InventoryMovementServiceImplTest` 9 + `InventoryTransferServiceImplTest` 4 + `OrderNewServiceImplDeductTest` 28 + `OrderNewServiceImplOrderNumberA1Test` 3。
 - 62 个失败全部落在 C5 基线既有漂移类（finance 系 / `SysSetting*` / `SysDict*` / `Position*Generator` / `OrderManagement`+`SystemSettings*` 集成 context 加载失败等），与本卡代码路径无交集（C9 触碰的 `AuthServiceImpl`/`UserDataServiceImpl`/2 个 DTO 0 测试引用，§7.7 实证）。
+
+### §7.9 三点全量对比 + SEC-006 补提交 + N15/N16/N17 判档（2026-10-12 Owner 澄清指令）
+
+**背景（Owner 三件澄清）**：① 中间四片提交时是否各跑了全量？没跑则补跑 C6 提交点全量对比 C5；② 74→62 差 12 逐类核对；③ permission.ts 一行（P0-SEC-006 WIP）要么现在合要么排期。
+
+**披露 A——中间片提交时交验 = 定向 only（未跑全量）**：
+- C8：`c8-mvn-targeted.log` 5/5 + `c8patch-mvn-targeted.log` 5/5；
+- C10：`c10-baseline-mvn.log` 7/7 + `c10-verify-mvn.log` 7/7；
+- C7：`c7-mvn.log` 定向批 50/50；
+- C6：纯前端，`vue-tsc` 改动文件 0 错误（无后端改动，无 mvn）。
+
+**披露 B——已提交树不能独立构建（仓库级事实）**：
+- `git status --porcelain -uall -- backend/src` = **39 个未跟踪源文件**（从未提交），被已提交代码引用（`MaterialDeductionContext`、`ReceiptSignatureDTO` 等）。
+- 干净 worktree `dd6ddcc`（补 `backend/lib` 3 个 system jar 后）→ **36 编译错误**（缺类）→ 已提交树不可编译。
+- 当前 39 个未跟踪文件 overlay 到 `dd6ddcc` → 仍 **19 编译错误**（未跟踪文件与当前 tracked 状态耦合，时代错位）。
+- → 「提交点全量」唯一可行配置 = **主工作树（当前 WIP/未跟踪环境不动）+ 卡文件回退到目标提交点**（回退集 = `git diff --name-only <point> HEAD -- backend/src`：C5 点 15 文件、C6 点 4 文件；备份 + `hash-object` 校验恢复 15/15 + 4/4 OK；`git checkout <point> --` 会污染 index，须 `git reset --` 复原）。
+
+**披露 C——原 C5 基线是 PG 宕机下跑的**：`c5-mvn-full.log` 含 **35 处 Connection refused**；`c9-full-mvn.log` 0 处。C5 的 74 失败含环境伪影。
+
+**三点全量对比（均 PG 在线、0 refused、同 WIP/未跟踪环境、仅卡代码不同）**：
+
+| 端点 | 卡代码 | run | 失败测试 | 失败类 | skipped | refused |
+|---|---|---|---|---|---|---|
+| C5 提交点 `563c3e8` | C1–C5 | 380 | 62（18F+44E） | 16 | 0 | 0 |
+| C6 提交点 `dd6ddcc` | +C8/C10/C7/C6 | 381 | 62（18F+44E） | 16 | 1 | 0 |
+| C9 提交点 `803e5ae` | +C9（=C1–C10） | 381 | 62（18F+44E） | 16 | 1 | 0 |
+
+- 日志：`c5point-full-mvn.log` / `c6point-full-mvn.log` / `c9-full-mvn.log`。
+- **16 失败类与逐类 F/E 计数三点一致**：InventoryLogConsumptionStats 2F / InventoryLogFilter 1F / OrderManagement 9E / SystemSettingsDatabase 13E / SystemSettingsIntegration 8E / CostRecord 1F / InvoiceReimbursement$PayTest 1F / Payable 1F / Payment 3E / FoodTracePrompt 4E / SysDict$EdgeCase 1F / SysDict$UpdateDictItem 1E / PositionSorting 5E / SysSettingService 4F / FoodCodeGenerator 3F / PositionCodeGenerator 4F+1E。
+- +1 run/+1 skipped = C7 `InventoryTransientFieldMeasureTest`（@Disabled，§7.8 已登记）。
+- **结论：C8/C10/C7/C6/C9 引入 0 新增失败类、0 新增失败测试**（三点链覆盖中间片，取代此前仅两端点证据）。
+
+**74→62 差 12 逐类核对（全为环境伪影）**：
+- 「2 类转绿」= `MaterialDeductionAuditIntegrationTest` 4E→绿（−4）+ `MaterialDeductionAuditSelfFailureIntegrationTest` 1E→绿（−1）：C5 中为 `Failed to load ApplicationContext`（PG 宕机），PG 在线即绿。
+- `InventoryLogConsumptionStatsIntegrationTest` 6E→2F（−4）：C5 context 加载失败 → PG 在线后 context 通过、剩 2 断言失败（数据漂移：expected -30 actual -40.4000 等）。
+- `InventoryLogFilterIntegrationTest` 4E→1F（−3）：C5 context 加载失败 → 剩 1 断言失败（expected 2 actual 4）。
+- 其余 14 类两端点计数完全一致。5+4+3 = 12 全部归因。
+- 注：InventoryLog 两类残留 2F/1F 为**数据漂移**（fixture 期望 vs 活库数据），属 §24.3e/§24.3f 卡范围，与本卡无关。
+
+**SEC-006 补提交（Owner 指令「要么现在合」→ 合）**：
+- git 事实：`git log --all -- frontend/src/stores/permission.ts` = 仅 `dd33ee3`（init，2026-08-02）→ 任务板 L1981「已提交」声称与 git 不符；修复一直活在未提交 WIP（mtime 2026-09-15）。QA 复审（2026-08-10）当时基于工作树代码评审。
+- 补提交 **`64e5d95`**（2 文件 +100/−67）：`permission.ts`（/me 唯一授权源 + /me 失败登出 fail-closed + mapRoles fail-closed 不降级 EMPLOYEE + 移除 atob 本地解码）+ `api/auth.ts`（Owner WIP `storeId/storeName/departmentId/department` 4 字段 + **保留 C9 `locationId` 防回退**——WIP 版本早于 C9、缺该字段，提交前合并字段集）。
+- 范围纪律：仅 permission.ts + api/auth.ts（与 board 声称范围一致）；`request.ts` token 静默续期 WIP = P1-SEC-004 关联特性，**未纳入**，另行排期（KL-013 登录联调仍开放，Live 由 Owner 执行）。
+- 依赖自洽：permission.ts WIP 全部 import 目标（`types/permission.ts`/`utils/storage.ts`/`api/system/permission-template.ts`/`api/auth.ts`）干净或随提交包含；导出面与 HEAD 一致（枚举/store/return 块相同）；`getCurrentUser()` 在 HEAD auth.ts 已存在。
+- 交验：`vue-tsc --noEmit` 本卡面 0 错误（144 处预存 WIP 错误，计数与基线一致）。
+- **C9 跟进落地 `c588476`**（+3 行）：`permission.ts` UserInfo 接口 +`locationId?: number` + `/me→info` 映射 +`locationId: me.locationId` → §7.7 延后登记销账，D7 前端消费链（/me → authApi → permissionStore.userInfo.locationId）全链可达。vue-tsc 144 = 基线，卡面 0 错误。
+
+**N15/N16/N17 判档（Owner 指令；只判档，不实施）**：
+- **N15 = P1（功能阻断，fail-closed 方向，无越权）**：活库实测 2026-10-12 `permissions` 表 `permission_code LIKE 'order%'` = **0 行** → `order:manage`/`order:view` 不存在、无角色可持有 → SalesOrderController 端点仅 admin `*` 通配可达，**非 admin 用户全部 403**。与 U3（`system:user:assign-store` 未落 seed）同根因家族。修复路径（另卡）：seed 迁移补权限码 + 角色绑定（C3 同款），或端点换用现有码。
+- **N16 = P3（dead code 清理，无运行时影响）**：`LocationGuard` git grep 实测 0 外部调用点（仅类声明/logger/构造器自引用）。修复路径（另卡）：删类，或按设计「收敛到守卫」落地（设计债）。
+- **N17 = P1（运行时必炸链 + 每小时静默失败）**：活库实测 2026-10-12 `inventory_warning%` 表 = `inventory_warning` / `inventory_warning_rule` / `inventory_warning_record` / `inventory_warning_rules`，**无复数 `inventory_warning_records`**、无 Flyway 创建迁移；`InventoryWarningScheduler` `@Scheduled(cron 每小时)`（:47）→ `createWarningRecord` insert（:205）必中 `relation does not exist` → 被外层 `catch`（:79-81）吞 → **预警记录永不落库，且首个失败后该周期剩余规则被跳过**。修复路径（另卡）：Flyway 迁移建 `inventory_warning_records`（单数表列集不同，不可改读单数表）。
