@@ -695,7 +695,7 @@ device-whitelist 限 [OWNER, ADMIN]；company-init 限 [OWNER, ADMIN]；supplier
 3. /me 接口失败 → 登出，不降级放行。
 4. "伪造 token 被后端拒绝"列入渗透测试用例并通过。
 
-**收口状态更正（2026-10-12）**：QA 复审 PASS_WITH_LIMITATION（2026-08-10）当时基于**工作树代码评审**；git 核查证实本卡修复（/me 授权源 + fail-closed）此后**从未提交**——`frontend/src/stores/permission.ts` 在 `64e5d95` 之前仅有 init 提交。已于 2026-10-12 补提交 **`64e5d95`**（`permission.ts` + `api/auth.ts`，范围与本卡 L1981 声称一致；`request.ts` token 静默续期 WIP 属 P1-SEC-004 关联特性，未纳入，排期见 §24.3q）。限制不变：L-2 渗透用例（验收标准 4）→ P1-SEC-009/KL-007；L-5 登录联调（验收标准 1–3）→ KL-013，**Live 验证由 Owner 执行**。详见 §24.3q。
+**收口状态更正（2026-10-12）**：QA 复审 PASS_WITH_LIMITATION（2026-08-10）当时基于**工作树代码评审**；git 核查证实本卡修复（/me 授权源 + fail-closed）此后**从未提交**——`frontend/src/stores/permission.ts` 在 `64e5d95` 之前仅有 init 提交。已于 2026-10-12 补提交 **`64e5d95`**（`permission.ts` + `api/auth.ts`，范围与本卡 L1981 声称一致；`request.ts` token 静默续期 WIP 属 P1-SEC-004 关联特性，未纳入，排期见 §24.3q）。限制项与关闭状态（KL 登记为准，2026-10-12 重审）：L-2 渗透用例（验收标准 4）→ **KL-007 已关闭（2026-08-10，P1-SEC-009 活体渗透 14 用例 PASS）**；L-5 登录联调（验收标准 1–3）→ **KL-013 已关闭（2026-08-11，浏览器冒烟 5/5 PASS）**。⚠️ **重审注意项**：两项关闭证据（08-10/11）均早于该文件最后写入（mtime 2026-09-15），最终提交内容（`64e5d95`）从未 Live 验证 → **终验 = Owner Live（登录→/me→路由跳转→按钮渲染全链路）**，如发现差异则重开 KL-013。详见 §24.3q。
 
 ---
 
@@ -1980,7 +1980,7 @@ handleEdit 中保存请求 ID（对齐 PurchaseRequest.vue 的 editRequestId 模
 | 1 | P0-SEC-003（域权限矩阵默认拒绝） | ✅ PASS | 已提交（guards.ts，仿真 62/62 PASS） | PASS |
 | 2 | P0-SEC-004（菜单-路由权限对齐） | ✅ PASS_WITH_LIMITATION | 已提交（guards.ts DOMAIN_VISIBLE_ROLES 单源表） | PASS_WITH_LIMITATION（L-1：/workspace/material-request 域级并集超放行，低敏感不阻断） |
 | 3 | P0-SEC-005（敏感路由补角色） | ✅ PASS | 已提交（router/index.ts 3 处 meta.roles） | PASS |
-| 4 | P0-SEC-006（权限源统一 /me + fail-closed） | ✅ PASS_WITH_LIMITATION（L-2/L-5） | 已提交（permission.ts + auth.ts，/me 为唯一授权源）⚠️ **2026-10-12 git 复核：此声称此前与 git 不符**——`permission.ts` 在 `64e5d95` 之前仅有 init 提交（`dd33ee3`，2026-08-02），修复一直活在未提交 WIP；QA 复审当时基于工作树代码评审而非提交面。已于 2026-10-12 补提交 `64e5d95`（见 §24.3q） | PASS_WITH_LIMITATION（L-2 渗透用例未执行 → P1-SEC-009/KL-007；L-5 登录联调未执行 → KL-013） |
+| 4 | P0-SEC-006（权限源统一 /me + fail-closed） | ✅ PASS_WITH_LIMITATION（L-2/L-5） | 已提交（permission.ts + auth.ts，/me 为唯一授权源）⚠️ **2026-10-12 git 复核：此声称此前与 git 不符**——`permission.ts` 在 `64e5d95` 之前仅有 init 提交（`dd33ee3`，2026-08-02），修复一直活在未提交 WIP；QA 复审当时基于工作树代码评审而非提交面。已于 2026-10-12 补提交 `64e5d95`（见 §24.3q） | L-2：KL-007 **已关闭（2026-08-10，P1-SEC-009 活体渗透 14 用例 PASS，后端侧证据，不受本卡提交状态影响）**；L-5：KL-013 **已关闭（2026-08-11，浏览器冒烟 5/5 PASS）**——⚠️ 2026-10-12 复议注意项：关闭证据（08-10/11）早于该文件最后写入（mtime 2026-09-15），最终提交内容（`64e5d95`）**从未 Live 验证** → 终验 = Owner Live（登录→/me→路由→按钮渲染），如差异则重开 KL-013 |
 | 5 | P1-SEC-001（三大业务角色补齐域配置） | ✅ PASS | 已提交（guards.ts 三角色域配置） | PASS |
 | 6 | P1-SEC-002（requireAuth 死配置修复） | ✅ PASS | 已提交（guards.ts 公开页判定） | PASS |
 | 7 | P1-SEC-003（权限码注册表统一） | ✅ PASS_WITH_LIMITATION（L-3/L-4/L-6） | 已提交（permissions.ts + 后端 4 文件） | PASS_WITH_LIMITATION（L-3 静态校验缺失 → P2-SEC-007；L-4 权限表数据待联调 → KL-009；L-6 后端 4 文件清单不一致 → KL-014，治理卡 P2-SEC-009） |
@@ -8208,14 +8208,56 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 |---|---|---|
 | ① 中间片全量 | **未跑过——中间片提交时交验 = 定向 only**（C8 定向 5/5×2、C10 定向 7/7×2、C7 定向 50/50、C6 仅 vue-tsc）。已补跑：**三点全量对比 C5 提交点 380/62/16 类 = C6 提交点 381/62/16 类 = C9 提交点 381/62/16 类**（均 PG 在线、0 Connection refused、16 失败类与逐类 F/E 计数三点一致）→ **C8/C10/C7/C6/C9 引入 0 新增失败类、0 新增失败测试**。两项仓库级披露：a) **已提交树不能独立构建**——`backend/src` 有 39 个从未提交的未跟踪源文件被已提交代码引用，`dd6ddcc` 干净 worktree 编译 36 错误、overlay 当前未跟踪文件仍 19 错误 → 提交点全量只能在「工作树 + 卡文件回退到提交点」配置下跑；b) **原 C5 基线 74 失败系 PG 宕机下跑**（35 处 Connection refused） | `c5point-full-mvn.log` / `c6point-full-mvn.log` / `c9-full-mvn.log` / `c6point-worktree-compilefail.log`；实施记录 §7.9 |
 | ② 差 12 逐类 | 全为环境伪影：「2 类转绿」= `MaterialDeductionAuditIntegrationTest` 4E→绿 + `MaterialDeductionAuditSelfFailureIntegrationTest` 1E→绿（−5，PG 宕机→在线）；剩 7 = `InventoryLogConsumptionStats` 6E→2F（−4）+ `InventoryLogFilter` 4E→1F（−3）（context 加载失败→断言失败；残留 3 断言为数据漂移，属 §24.3e/§24.3f 卡范围）。其余 14 类两端点计数一致 | 实施记录 §7.9 逐类清单 |
-| ③ permission.ts | **已合（Owner「要么现在合」）**：补提交 **`64e5d95`**（`permission.ts` + `api/auth.ts`，范围 = L1981 声称；auth.ts 合并版保留 C9 `locationId` 防回退）；C9 跟进 **`c588476`**（+3 行映射透传，§7.7 延后登记销账）。`request.ts` token 静默续期 WIP = P1-SEC-004 关联特性，**未纳入**，另行排期；KL-013 登录联调仍开放（Live 由 Owner 执行）。L1981 已加更正戳（「已提交」声称此前与 git 不符：`64e5d95` 前 `permission.ts` 仅有 init 提交 `dd33ee3`） | `git log --all -- frontend/src/stores/permission.ts`；vue-tsc 144 = 基线、卡面 0 错误 |
+| ③ permission.ts | **已合（Owner「要么现在合」）**：补提交 **`64e5d95`**（`permission.ts` + `api/auth.ts`，范围 = L1981 声称；auth.ts 合并版保留 C9 `locationId` 防回退）；C9 跟进 **`c588476`**（+3 行映射透传，§7.7 延后登记销账）。`request.ts` token 静默续期 WIP = P1-SEC-004 关联特性，**未纳入**，另行排期。L1981 已加更正戳（「已提交」声称此前与 git 不符：`64e5d95` 前 `permission.ts` 仅有 init 提交 `dd33ee3`）。**KL 重审（Owner 指令「KL-013 首当其冲」）**：KL-007（L-2）= **已关闭 2026-08-10**（P1-SEC-009 渗透 14 用例，后端侧证据，不受提交状态影响）；KL-013（L-5）= **已关闭 2026-08-11**（浏览器冒烟 5/5）——⚠️ §24.3q 初稿误记「仍开放」，已更正：关闭证据早于文件最后写入（mtime 09-15），最终提交内容（`64e5d95`）从未 Live 验证 → **终验 = Owner Live（登录→/me→路由→按钮渲染），如差异则重开 KL-013** | `git log --all -- frontend/src/stores/permission.ts`（= dd33ee3 → 64e5d95 → c588476）；`git log --all --oneline \| grep -i SEC-006`（= 仅 64e5d95）；KL 登记 L28/L34/L207-213/L572/L749 |
 
-**N15/N16/N17 判档（只判档，不实施；实施另卡待 Owner 开卡）**：
+**N15/N16/N17 判档（2026-10-12 初判 → Owner 复议后定档；只判档不实施，N15/N17 已开卡）**：
 
-| 编号 | 判档 | 依据（2026-10-12 实测） | 修复路径（另卡） |
+| 编号 | 判档（复议后） | 依据（2026-10-12 实测） | 处置 |
 |---|---|---|---|
-| N15 | **P1**（功能阻断，fail-closed 方向，无越权） | 活库 `permissions` 表 `LIKE 'order%'` = **0 行** → `order:manage`/`order:view` 不存在、无角色持有 → SalesOrderController 仅 admin `*` 通配可达，非 admin 全部 403；与 U3 同根因家族 | seed 迁移补权限码 + 角色绑定（C3 同款）或端点换现有码 |
-| N16 | **P3**（dead code 清理，无运行时影响） | `LocationGuard` git grep 0 外部调用点（仅自引用） | 删类，或按设计「收敛到守卫」落地（设计债） |
-| N17 | **P1**（运行时必炸链 + 每小时静默失败） | 活库无 `inventory_warning_records`（仅单数 `inventory_warning_record` 等 4 表）、无 Flyway 迁移；`InventoryWarningScheduler` `@Scheduled` 每小时（:47）→ insert（:205）必中 `relation does not exist` → 外层 catch（:79-81）吞 → 预警记录永不落库 + 首个失败后该周期剩余规则跳过 | Flyway 建 `inventory_warning_records`（单数表列集不同，不可改读单数表） |
+| N15 | **P1**（Owner 确认 ✅；功能阻断，fail-closed 方向，无越权） | 活库 `permissions` 表 `LIKE 'order%'` = **0 行** → `order:manage`/`order:view` 不存在、无角色持有 → 影响面实测远大于初判：`SalesOrderController` 之外另有 **OrderNewController（16 端点）/ SalesAnalysisController（9）/ OrderTrendsController / LiveMonitorController（4）/ DecisionBoardController（5）/ PosController（2）/ DiningTableController（8）/ CallNumberController（4）** 共 ~10 个控制器 ~50 端点引用该两码，非 admin 全部 403；与 U3 同根因家族。代码侧另有现成入口：`POST /v1/permissions/init`（`PermissionController:331`，admin，幂等 `initPermissions()` 含 order:manage/order:view）从未被调用 | **已开卡 §24.3s P1-ORDER-PERMISSION-SEED-001**（seed 迁移 C3 同款 + 角色清单待 Owner 裁决；或调用现有 init 端点先解阻） |
+| N16 | **P2**（Owner 复议 P3→P2：「设计没落地」，非普通死代码） | `LocationGuard` git grep 0 外部调用点（仅自引用）；设计「收敛到守卫」从未落地（-001 卡设计 :304 引用文件不存在）——属**设计债**而非单纯清理 | 待 Owner 开卡指令（本轮指令仅 N15+N17）；修复 = 删类或按设计落地 |
+| N17 | **P0（生产事故级）**（Owner 复议 P1→P0：「如果生产在跑，这是生产事故级」；如 Owner 确认非生产运行则降紧急 P1） | 活库无 `inventory_warning_records`（仅单数 `inventory_warning_record` 等 4 表）、`V20260629_021` 只建 3 张单数表（grep 全部 212 迁移 0 命中复数）；`InventoryWarningScheduler` `@Scheduled` 每小时（:47）→ insert（:205）必中 `relation does not exist` → 外层 catch（:79-81）吞 → **预警记录永不落库 + 首个失败后该周期剩余规则被跳过**（4 类规则全失效 + 每小时静默失败） | **已开卡 §24.3r P0-INVENTORY-WARNING-TABLE-001（优先于 N15）**（Flyway 建表，列集 = 实体 12 字段；调度器代码零改动） |
 
-*追加：2026-10-12 §24.3q 登记（Owner 澄清指令收口）：补提交 `64e5d95`（P0-SEC-006）+ `c588476`（C9 跟进）；三点全量对比证据链；N15/N16/N17 判档完毕（均另卡，未实施）。Live 验证（C5 UI / C3 A4 HTTP / C9 /me+basic-info / SEC-006 L-5 登录联调）由 Owner 执行。*
+*追加：2026-10-12 §24.3q 登记（Owner 澄清指令收口）：补提交 `64e5d95`（P0-SEC-006）+ `c588476`（C9 跟进）；三点全量对比证据链；N15/N16/N17 判档（初判）。Live 验证（C5 UI / C3 A4 HTTP / C9 /me+basic-info / SEC-006 L-5 登录联调）由 Owner 执行。*
+
+*追加：2026-10-12 Owner 复议 + 并行开卡指令（「并行开卡：N15 + N17，后者优先」）：N15 = P1 ✅；N16 = P3→**P2**（设计没落地，非普通死代码）；N17 = P1→**P0**（生产事故级）。已开卡 **§24.3r P0-INVENTORY-WARNING-TABLE-001（N17，优先）** + **§24.3s P1-ORDER-PERMISSION-SEED-001（N15）**；N16 待 Owner 开卡指令。KL 重审（「KL-013 首当其冲」）：KL-007/KL-013 关闭证据有效，但早于文件最后写入（mtime 2026-09-15）→ 终验 = Owner Live，如差异则重开 KL-013。*
+
+## 24.3r P0-INVENTORY-WARNING-TABLE-001（2026-10-12 Owner 开卡；来源 P1-USER-LOCATION-002 §7.3 N17；**N15+N17 并行开卡中本卡优先**）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P0-INVENTORY-WARNING-TABLE-001** |
+| 状态 | **PENDING（未启动，待 Owner 下达实施）** |
+| 优先级 | **P0（生产事故级）**——Owner 2026-10-12 复议：「每小时必炸 + 静默功能失效，如果生产在跑，这是生产事故级」；如 Owner 确认非生产运行，降**紧急 P1**（可随 Live 验证一并确认） |
+| 来源 | P1-USER-LOCATION-002 §7.3 N17（溯源步骤 5，2026-10-12 活库 + 代码 + 迁移三方实测） |
+| 性质 | 实体指向**从未被创建的表** → 库存预警域整条写链运行时必炸，被外层 catch 静默吞掉 |
+| 现象 | `InventoryWarningScheduler`（`@Component` + `@Scheduled(cron="0 0 * * * ?")`，:47）**每小时**跑 → `createWarningRecord` → `warningRecordMapper.insert`（:205）必中 `relation "inventory_warning_records" does not exist` → 外层 `catch (Exception e)`（:79-81）吞 → **预警记录永不落库 + 首个规则失败后该周期剩余规则被跳过**（部分评估 + 每小时静默失败 + 错误日志刷屏） |
+| 根因 | 实体 `InventoryWarningRecord` `@TableName("inventory_warning_records")`（复数，:15）；活库仅有**单数** `inventory_warning_record`（操作日志表，列集不同，不可混用）与 `inventory_warning`/`inventory_warning_rule`/`inventory_warning_rules`；`V20260629_021__create_inventory_warning_tables.sql` 只建 3 张单数表（grep 全部 212 个迁移，复数表 **0 命中**）——**复数表从未在任何迁移中创建** |
+| 影响面 | 库存预警写链 100% 失效（低库存/高库存/临期/过期 4 类规则）；无数据损坏、无越权（fail-safe 方向），但功能完全不可用 + 每小时必炸 + 静默 |
+| 实施要点 | ① 新增 1 个 Flyway 迁移 `V20261012_001__create_inventory_warning_records_table.sql`：`CREATE TABLE IF NOT EXISTS inventory_warning_records (record_id BIGSERIAL PRIMARY KEY, rule_id BIGINT, inventory_id BIGINT, warehouse_id BIGINT, warning_type INT, current_value NUMERIC, threshold_value NUMERIC, message TEXT, is_handled BOOLEAN DEFAULT false, handle_time TIMESTAMP, create_time TIMESTAMP DEFAULT now(), deleted INT DEFAULT 0)`（列集 = 实体 12 字段，`@TableLogic deleted`，开工时以实体为准复核）② 调度器代码**零改动** ③ 1 条定向单测/活体 insert 验证落库 |
+| 不在本卡 | 不改 `InventoryWarningScheduler` 逻辑；不动单数 `inventory_warning_record`（操作日志表）；不改 `inventory_warning`/`inventory_warning_rule(s)`；不碰 KL-084 财务域同类静默失败（根因不同，另卡） |
+| 验收基准 | ① 迁移干净落库，活库存在复数表（psql `\dt` 验证）② 触发一次预警 → 落 1 行记录（`SELECT` 可查）③ `mvn test` 全量无新增失败（三点基线 381/62/16 不变）④（Owner Live）预警规则触发后 UI 可见记录 |
+| 估算 | 0.5 人天 |
+| 启动条件 | **Owner 已下达开卡指令（2026-10-12）；实施待 Owner 放行（与 §24.3s 并行，本卡优先）** |
+| 关联 | §7.3 N17；KL-084（静默失败模式同类、根因不同） |
+| 回退 | 迁移幂等（`IF NOT EXISTS`）；表原本缺失，回退 = drop table，零数据损失 |
+
+## 24.3s P1-ORDER-PERMISSION-SEED-001（2026-10-12 Owner 开卡；来源 P1-USER-LOCATION-002 §7.3 N15；P1 已确认）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-ORDER-PERMISSION-SEED-001** |
+| 状态 | **PENDING（未启动，待 Owner 下达实施）** |
+| 优先级 | **P1**——Owner 2026-10-12 复议确认：「N15：P1 ✅」（功能阻断，fail-closed 方向，无越权） |
+| 来源 | P1-USER-LOCATION-002 §7.3 N15（溯源步骤 5，2026-10-12 活库 + 代码实测） |
+| 性质 | 权限模型失效：端点引用的权限码在 DB 中**不存在** → 非 admin 全部 403，仅 admin `*` 通配可达（与 U3 同根因家族：权限码从未 seed 落库） |
+| 现象 | 活库 `permissions` 表 `LIKE 'order%'` = **0 行**（2026-10-12 实测），无角色持有 `order:manage`/`order:view`。影响面（2026-10-12 grep 复核，**远大于初判**）：`SalesOrderController`（8 端点）+ **OrderNewController（16）/ SalesAnalysisController（9）/ DiningTableController（8）/ DecisionBoardController（5）/ LiveMonitorController（4）/ CallNumberController（4）/ OrderTrendsController（2）/ PosController（2）** 共 ~10 控制器 ~50 端点引用该两码，非 admin 全 403；admin（`*`）不受影响 |
+| 根因 | `@PreAuthorize("hasAuthority('order:view') or ... or hasAuthority('*')")` 引用的权限码从未落库；代码侧已有现成初始化入口 `POST /v1/permissions/init`（`PermissionController:331`，`hasRole('admin')`，`PermissionInitServiceImpl.initPermissions()` 幂等，含 order:manage/order:view，:139/:143）——**从未被调用** |
+| 影响面 | 全部非 admin 角色的销售订单/订单中心/POS 点单/呼叫号等端点 403（功能阻断；方向 fail-closed，无越权） |
+| 实施要点 | 两路径（Owner 裁决）：① **seed 路径（推荐，C3 同款）**：新增 1 个 Flyway seed 迁移 `V20261012_002__seed_order_permissions.sql`——按 `V20261009_001__seed_hr_employee_assign_location.sql` 模式（`WHERE NOT EXISTS` 幂等）补 `order:manage`/`order:view` 入 `permissions` + 绑定指定角色入 `role_permissions`（**角色清单待 Owner 裁决**，参考 U7 授权面）；代码零改动 ② **init 端点路径（可先解阻）**：admin 调 `POST /v1/permissions/init`（现成、幂等）+ 随后补角色绑定；无审计痕迹，适合应急不适合终态 |
+| 不在本卡 | 不改 `SalesOrderController` 等端点权限注解（seed 路径）；不改权限校验机制（`SecurityUtils`/`@PreAuthorize`）；不碰 P1-SEC-009 渗透基线（本卡不扩大越权面） |
+| 验收基准 | ① 两权限码入活库且绑定指定角色（psql 验证）② 持角色用户访问销售订单端点 200 ③ 无角色用户 403（fail-closed 不变、无越权）④ `mvn test` 全量无新增失败（三点基线 381/62/16 不变）⑤（Owner Live）非 admin 账号 UI 可见订单菜单 + 端点可达 |
+| 估算 | 0.5 人天（seed 路径） |
+| 启动条件 | **Owner 已下达开卡指令（2026-10-12）；实施待 Owner 放行（与 §24.3r 并行，N17 优先）** |
+| 关联 | U3/C3（同模式：seed 迁移补权限码）；§7.3 N15；P1-SEC-009（渗透基线）；`PermissionInitServiceImpl`（现成 init 入口） |
+| 回退 | seed 迁移可回退（按 `permission_code` DELETE），零副作用 |

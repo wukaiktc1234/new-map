@@ -265,6 +265,8 @@ ORDER BY e.employee_code;
 | **N16** | LocationGuard 孤儿类（0 调用点；S4b 7 处全直接抛异常；设计"收敛到守卫"从未落地；设计 :304 引用文件不存在） | 追溯步骤 4 全链 |
 | **N17** | InventoryWarningRecord 表名错位（实体 `@TableName("inventory_warning_records")` 复数——活库无此表、无 Flyway 迁移创建；活库仅单数 `inventory_warning_record`（动作日志表，列集不同）与旧表 `inventory_warning`）→ 调度器 `createWarningRecord` 全链运行时必中 `relation does not exist`，被 `:75` catch 吞 → 每小时静默失败 | `InventoryWarningRecord.java:15`；`InventoryWarningScheduler.java:173/:196`；grep migration 0 命中；psql 实测 |
 
+> **2026-10-12 判档复议（Owner 指令「并行开卡：N15 + N17，后者优先」）**：N15 = **P1 ✅**（Owner 确认）→ **已开卡 board §24.3s**；N16 = P3→**P2**（「设计没落地」，设计债，非普通死代码；待 Owner 开卡指令）；N17 = P1→**P0（生产事故级）**（「如果生产在跑，这是生产事故级」；如确认非生产运行降紧急 P1）→ **已开卡 board §24.3r（优先）**。详见 §7.9/§7.9b。
+
 ### §7.4 C7 前置实测（D4「阶段 3 前置核实项」，2026-10-09 landed）
 
 - **实测方式**：`InventoryTransientFieldMeasureTest`（MP 3.5.5 `MybatisConfiguration` + `MapperBuilderAssistant` + `TableInfoHelper.initTableInfo` 离线初始化 TableInfo，**无 Spring 上下文、无 DB**）→ `mvn test` **MVN_EXIT=0**。
@@ -416,7 +418,7 @@ ORDER BY e.employee_code;
 **SEC-006 补提交（Owner 指令「要么现在合」→ 合）**：
 - git 事实：`git log --all -- frontend/src/stores/permission.ts` = 仅 `dd33ee3`（init，2026-08-02）→ 任务板 L1981「已提交」声称与 git 不符；修复一直活在未提交 WIP（mtime 2026-09-15）。QA 复审（2026-08-10）当时基于工作树代码评审。
 - 补提交 **`64e5d95`**（2 文件 +100/−67）：`permission.ts`（/me 唯一授权源 + /me 失败登出 fail-closed + mapRoles fail-closed 不降级 EMPLOYEE + 移除 atob 本地解码）+ `api/auth.ts`（Owner WIP `storeId/storeName/departmentId/department` 4 字段 + **保留 C9 `locationId` 防回退**——WIP 版本早于 C9、缺该字段，提交前合并字段集）。
-- 范围纪律：仅 permission.ts + api/auth.ts（与 board 声称范围一致）；`request.ts` token 静默续期 WIP = P1-SEC-004 关联特性，**未纳入**，另行排期（KL-013 登录联调仍开放，Live 由 Owner 执行）。
+- 范围纪律：仅 permission.ts + api/auth.ts（与 board 声称范围一致）；`request.ts` token 静默续期 WIP = P1-SEC-004 关联特性，**未纳入**，另行排期（KL-013 = **已关闭 2026-08-11**，版本差注意项见 §7.9b 重审；终验 = Owner Live）。
 - 依赖自洽：permission.ts WIP 全部 import 目标（`types/permission.ts`/`utils/storage.ts`/`api/system/permission-template.ts`/`api/auth.ts`）干净或随提交包含；导出面与 HEAD 一致（枚举/store/return 块相同）；`getCurrentUser()` 在 HEAD auth.ts 已存在。
 - 交验：`vue-tsc --noEmit` 本卡面 0 错误（144 处预存 WIP 错误，计数与基线一致）。
 - **C9 跟进落地 `c588476`**（+3 行）：`permission.ts` UserInfo 接口 +`locationId?: number` + `/me→info` 映射 +`locationId: me.locationId` → §7.7 延后登记销账，D7 前端消费链（/me → authApi → permissionStore.userInfo.locationId）全链可达。vue-tsc 144 = 基线，卡面 0 错误。
@@ -425,3 +427,28 @@ ORDER BY e.employee_code;
 - **N15 = P1（功能阻断，fail-closed 方向，无越权）**：活库实测 2026-10-12 `permissions` 表 `permission_code LIKE 'order%'` = **0 行** → `order:manage`/`order:view` 不存在、无角色可持有 → SalesOrderController 端点仅 admin `*` 通配可达，**非 admin 用户全部 403**。与 U3（`system:user:assign-store` 未落 seed）同根因家族。修复路径（另卡）：seed 迁移补权限码 + 角色绑定（C3 同款），或端点换用现有码。
 - **N16 = P3（dead code 清理，无运行时影响）**：`LocationGuard` git grep 实测 0 外部调用点（仅类声明/logger/构造器自引用）。修复路径（另卡）：删类，或按设计「收敛到守卫」落地（设计债）。
 - **N17 = P1（运行时必炸链 + 每小时静默失败）**：活库实测 2026-10-12 `inventory_warning%` 表 = `inventory_warning` / `inventory_warning_rule` / `inventory_warning_record` / `inventory_warning_rules`，**无复数 `inventory_warning_records`**、无 Flyway 创建迁移；`InventoryWarningScheduler` `@Scheduled(cron 每小时)`（:47）→ `createWarningRecord` insert（:205）必中 `relation does not exist` → 被外层 `catch`（:79-81）吞 → **预警记录永不落库，且首个失败后该周期剩余规则被跳过**。修复路径（另卡）：Flyway 迁移建 `inventory_warning_records`（单数表列集不同，不可改读单数表）。
+
+**N15/N16/N17 判档复议 + 开卡（2026-10-12，Owner 指令「并行开卡：N15 + N17，后者优先」）**：
+- **N15 = P1 ✅（Owner 确认）** → **已开卡 board §24.3s P1-ORDER-PERMISSION-SEED-001**（PENDING 未启动）。影响面复核大于初判：~10 控制器 ~50 端点引用该两码（SalesOrder 8 + OrderNew 16 + SalesAnalysis 9 + DiningTable 8 + DecisionBoard 5 + LiveMonitor 4 + CallNumber 4 + OrderTrends 2 + Pos 2）；代码侧已有现成幂等入口 `POST /v1/permissions/init`（`PermissionController:331`，admin，`initPermissions()` 含 order:manage/order:view，:139/:143）**从未被调用**。
+- **N16 = P3→P2（Owner：「设计没落地」，设计债，非普通死代码）** → 本轮指令仅 N15+N17，**不开卡**，待 Owner 指令。
+- **N17 = P1→P0（生产事故级）（Owner：「每小时必炸 + 静默功能失效，如果生产在跑，这是生产事故级」；如 Owner 确认非生产运行降紧急 P1）** → **已开卡 board §24.3r P0-INVENTORY-WARNING-TABLE-001（优先）**（PENDING 未启动；实施要点 = 1 个 Flyway 建表迁移，列集 = 实体 12 字段，调度器代码零改动）。
+
+**7.9b P0-SEC-006 治理重审（Owner 指令：「列 P0-SEC-006 真实提交点」「基于真实提交点，重审之前所有"依赖 P0-SEC-006 已收口"的结论（KL-013 首当其冲）」）**：
+
+- **真实提交点（Owner 指定命令原始输出，2026-10-12 执行）**：
+  - `git log --all -- frontend/src/stores/permission.ts` = 恰 3 条：`dd33ee3`（init，2026-08-02，atob 版）→ **`64e5d95`**（SEC-006 补提交，2026-10-12 15:48）→ `c588476`（C9 跟进，2026-10-12 15:49）。
+  - `git log --all --oneline | grep -i "SEC-006"` = 单条命中：`64e5d95 fix(P0-SEC-006): 权限源统一 /me + fail-closed 补提交 …`。
+  - **结论：P0-SEC-006 真实提交点 = `64e5d95`（2026-10-12）——全史唯一实质提交；此前 `permission.ts` 仅有 init `dd33ee3`**。2026-08-10（QA 复审）至 2026-10-12 之间一切「已收口」声称均基于工作树 WIP（mtime 2026-09-15），提交锚此前不存在。
+- **时间线对账**：2026-08-10 QA 复审 PASS_WITH_LIMITATION（工作树代码评审；同次实测「0 parseJWTPayload 残留」代码级 → /me 版当时已存在于工作树）→ 2026-08-10 KL-007 关闭（P1-SEC-009 后端渗透 14 用例）→ 2026-08-11 KL-013 关闭（浏览器冒烟 5/5）→ 2026-09-15 文件最后写入（WIP mtime；无版本控制，delta 内容不可证明）→ 2026-10-12 提交 `64e5d95`。
+- **依赖结论逐项重审**：
+
+| 结论 | 证据 | 重审判定 |
+|---|---|---|
+| KL-007（L-2 渗透）已关闭 2026-08-10 | P1-SEC-009 活体渗透 14 用例（后端 HTTP 级）+「0 parseJWTPayload 残留」代码级（与提交内容一致） | **维持**——证据为后端侧 + 代码级，不依赖前端提交状态 |
+| KL-013（L-5 登录联调）已关闭 2026-08-11 | `browser-smoke-sprint3.md` §一.1 5 项 PASS（登录→/me→路由→按钮渲染→401 登出） | **维持（附条件）**——证据链完整，但关闭证据（08-11）**早于文件最后写入（09-15）**，最终提交内容（`64e5d95`）从未 Live 验证 → **终验 = Owner Live（登录→/me→路由跳转→按钮渲染全链路）；如发现差异则重开 KL-013** |
+| REG-SEC-004 / final gate「0 parseJWTPayload 残留」（2026-08-10） | 代码级 grep（与提交内容一致） | **维持** |
+| release-readiness-report L22「KL-013 4/4 闭环」（2026-08-11） | 同 KL-013 | **维持（附条件）**——同版本差注意项 |
+| remediation-roadmap L113「P0-SEC-006 → L-2/L-5」（2026-08-10 历史快照） | KL 状态见上行 | **维持**（KL 现行状态以上行为准） |
+| Board L1981「L-5 登录联调未执行 → KL-013」（2026-08-10 快照行） | KL-013 已于 2026-08-11 关闭 | **更正**——L1981 已改注（L-2/L-5 均已关闭 + 版本差注意项） |
+| 本记录/board §24.3q 初稿「KL-013 仍开放」 | §24.3q 初稿（2026-10-12 当日上午） | **更正**——Agent 误记：仅看 L1981 快照行、未查 KL 登记最新状态；board ③ 行、L698 问题卡更正戳均已改 |
+- **治理教训（登记）**：「已收口」声称须同时锚定 (a) 证据面（QA/冒烟/渗透工件）与 (b) 提交面（git log）。2026-08-10~10-12 期间只有 (a) 无 (b)，故「P0-SEC-006 已收口」对 git 面不成立；后续收口声称重审一律先跑 `git log --all -- <file>` + `git log --all --oneline | grep -i <卡号>`。
