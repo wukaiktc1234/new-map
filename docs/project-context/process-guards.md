@@ -28,7 +28,8 @@
 
 **收口双向锚定 + schema/seed 扩展（2026-10-12 追加，GOV-INCIDENT-003）**：
 1. 任何「已提交/已收口」声称必须同时锚定**证据面 + 提交面**（规则全文：`production-governance-incidents.md` GOV-INCIDENT-003 §治理规则）；
-2. **含 schema/seed 变更的卡，收口必须含 `flyway_schema_history` `success=t` 行**（不是只看提交；Owner 裁定根因：定向测试不覆盖迁移应用；扩展块：同上 §治理规则之后）。
+2. **含 schema/seed 变更的卡，收口必须含 `flyway_schema_history` `success=t` 行**（不是只看提交；Owner 裁定根因：定向测试不覆盖迁移应用；扩展块：同上 §治理规则之后）；
+3. **含 schema/seed 变更的卡，迁移应用必须经独立 Flyway runner**——`mvn test` 上下文不算（条款 2，2026-10-12 Owner 指令，GOV-INCIDENT-004 推论；先例 = rank 213/214 独立 runner 应用）。
 
 ## PG-002 — Repo 状态快照同步
 
