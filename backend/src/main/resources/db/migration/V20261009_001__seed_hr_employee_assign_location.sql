@@ -47,7 +47,7 @@ WHERE NOT EXISTS (
 --        与 UserMapper.xml 的 role_id_str / permission_id_str join 对齐。
 -- ------------------------------------------------------------
 INSERT INTO role_permissions (role_id, permission_id, deleted, create_time)
-SELECT 'ROLE_HR_DIRECTOR', 'PERM_HR_EMP_ASSIGN_LOCATION'
+SELECT 'ROLE_HR_DIRECTOR', 'PERM_HR_EMP_ASSIGN_LOCATION', 0, NOW()
 WHERE NOT EXISTS (
     SELECT 1 FROM role_permissions
     WHERE role_id = 'ROLE_HR_DIRECTOR' AND permission_id = 'PERM_HR_EMP_ASSIGN_LOCATION'
