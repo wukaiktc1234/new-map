@@ -26,6 +26,10 @@
 **生效日期**：2026-09-25（v1：2026-09-24）
 **关联**：ENV-1 / ENV-2 / ENV-3 / ENV-8
 
+**收口双向锚定 + schema/seed 扩展（2026-10-12 追加，GOV-INCIDENT-003）**：
+1. 任何「已提交/已收口」声称必须同时锚定**证据面 + 提交面**（规则全文：`production-governance-incidents.md` GOV-INCIDENT-003 §治理规则）；
+2. **含 schema/seed 变更的卡，收口必须含 `flyway_schema_history` `success=t` 行**（不是只看提交；Owner 裁定根因：定向测试不覆盖迁移应用；扩展块：同上 §治理规则之后）。
+
 ## PG-002 — Repo 状态快照同步
 
 **规则**：每次卡片收口或 push 后，developer 更新
