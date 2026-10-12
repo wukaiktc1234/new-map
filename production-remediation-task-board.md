@@ -8277,3 +8277,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 处置 | **并入 §24.3s 卡（不再单独立卡）**；实施路径待 Owner 裁决：A. 删类（死代码清理，最小） B. 按设计落地（位置权限检查收敛到守卫，设计债偿还，须先做设计复核——:304 引用文件不存在，设计已失真） |
 | 验收基准 | A 路径：全仓 0 引用 + 编译通过 + `mvn test` 全量无新增失败（三点基线 381/62/16 不变）；B 路径：设计复核记录 + 守卫调用点接入 + 单测 + 三点基线不变 |
 | 启动条件 | 随 §24.3s 卡实施放行；路径裁决（A/B）待 Owner |
+
+### §24.3t GOV-INCIDENT-003 恢复方案执行记录（2026-10-12，Owner 指令「方向修正：聚焦治理，暂不打包」第 1 项）
+
+| 步 | 状态 | 结果（证据） |
+|----|------|-------------|
+| 第 1 步 分类 | **完成** | Phase-1 七卡 × 文件逐文件读 diff 分类：**0 纯卡文件**——8 个 WIP 文件（guards.ts / router/index.ts / request.ts / permissions.ts / AdminPermissions.java / TokenServiceImpl / AuthenticationServiceImpl / UserDetailsServiceImpl）全部混杂（每文件含 ≥2 卡或卡+APK 设备特性/未归属改动）；DishPricing.vue 干净（修复已在 HEAD）；分类表全文：`docs/quality/gov-incident-003-wip-classification-20261012.md` §1 |
+| 第 2 步 按卡提交 | **暂停（按 Owner 规则「混杂 → 报告 Owner」，未提交任何文件）** | 待 Owner 三选一裁决：① hunk 级拆分逐卡提交（C3 先例 `git apply --cached`）② 多卡合批 as-is 提交 ③ hold 待 APK 设备特性开卡后整特性提交。**Agent 建议 ③**（8 文件中 6 个与未开卡的 APK 设备特性同文件耦合；拆分将制造提交面/工作树不一致，违反 PG-001 锚定意图）；裁决记录见分类表 §1 末 |
+| 第 3 步 git status 剩余归属 | **完成** | 548 条目（456 M + 91 ?? + 1 D）全部落归属：Top 卡簇分布 + 376 无卡标记文件 + 91 未跟踪特性簇（APK 设备/P1-A/原料扣减/Receipt/本地工具）+ 1 D（recruitment-mock.ts，P1-MOCK）；见分类表 §2-§4 |
+| 活库证据补录 | 完成 | N15/N17 裁决支撑 7 项（order 权限 0 行、无 `*` 通配、admin 持悬空角色 '1'、复数 `inventory_warning_records` 缺失、单数 `inventory_warning_record` 为审计表 schema 不同）；见分类表 §5 |
+| 暂缓项（Owner 指令） | 维持 | 第二阶段 71 Controller 审计（P0-SEC-001）暂缓；P0-WORKSPACE-WIP-CONSOLIDATION-001 暂缓（本分类表为其输入）；全项目冻结不执行（Owner：违反 PG-001） |
