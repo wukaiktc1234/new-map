@@ -3,6 +3,7 @@ import { ref, computed, reactive } from 'vue'
 import type { MenuGroupConfig, MenuOverride, MenuTemplateConfig, ScaleLevel, SubMenuItem } from '@/types/permission'
 import { safeJsonParse } from '@/utils/storage'
 import { permissionTemplateApi, parseRoleConfig } from '@/api/system/permission-template'
+import { authApi } from '@/api/auth'
 
 /**
  * 权限模板后端数据结构（已转换后）
@@ -435,13 +436,23 @@ export const usePermissionStore = defineStore('permission', () => {
    * 无Token或Token无效时保持未登录状态，由路由守卫引导到登录页
    * @param token 可选的Token字符串（默认从localStorage读取）
    */
-  async function initFromToken(token?: string): Promise<void> {
-    if (loading.value) return
+  /** 进行中的初始化Promise（共享：避免并发调用时后到者直接 return 造成登录态竞态） */
+  let initPromise: Promise<void> | null = null
 
+  async function initFromToken(): Promise<void> {
+    // 已有初始化进行中 → 共享同一个 Promise，调用方 await 到真正完成
+    if (initPromise) return initPromise
+    initPromise = runInitFromToken().finally(() => {
+      initPromise = null
+    })
+    return initPromise
+  }
+
+  async function runInitFromToken(): Promise<void> {
     loading.value = true
 
     try {
-      const tokenStr = token || localStorage.getItem('token')
+      const tokenStr = localStorage.getItem('token')
 
       if (!tokenStr) {
         // 无Token：保持未登录状态，由路由守卫跳转登录页
@@ -450,44 +461,42 @@ export const usePermissionStore = defineStore('permission', () => {
         return
       }
 
-      // 解析JWT Token（简化版，仅用于开发环境）
-      const payload = parseJWTPayload(tokenStr)
-
-      if (!payload) {
-        // Token解析失败：清除无效Token，保持未登录状态
-        console.warn('[Permission] Token解析失败，清除认证状态')
+      // ========== P0-SEC-006：权限唯一授权源 = /v1/auth/me ==========
+      // 不再信任本地 atob 解码的 JWT 声明（JWT 不验签可伪造，roles/permissions 声明不可信）。
+      // 登录后 / 刷新页面后统一通过服务端 /me 拉取角色与权限清单。
+      let me: Awaited<ReturnType<typeof authApi.getCurrentUser>>
+      try {
+        me = await authApi.getCurrentUser()
+      } catch (error) {
+        // /me 失败（token 无效/过期/服务异常）→ 登出，fail-closed，绝不降级放行
+        console.warn('[Permission] /v1/auth/me 获取用户信息失败，执行登出（fail-closed）:', error)
         clearUserInfo()
         localStorage.removeItem('token')
         localStorage.removeItem('refresh_token')
         loading.value = false
+        // 跳转登录页（避免当前页面继续以无权限状态渲染）
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
         return
       }
 
-      // 检查Token是否过期
-      if (payload.exp && typeof payload.exp === 'number') {
-        const expiresAt = payload.exp * 1000 // JWT exp 是秒级时间戳
-        if (expiresAt < Date.now()) {
-          // Token已过期：清除认证状态，由路由守卫跳转登录页
-          console.warn('[Permission] Token已过期，清除认证状态')
-          clearUserInfo()
-          localStorage.removeItem('token')
-          localStorage.removeItem('refresh_token')
-          loading.value = false
-          return
-        }
-      }
-
-      const jwtPayload = payload as Record<string, unknown>
+      // 服务端角色 → 前端 UserRole 映射；未识别角色被过滤（mapRoles fail-closed）
+      const userRoles = mapRoles(me.roles || [])
       const info: UserInfo = {
-        userId: (jwtPayload.userId as string | number) || (jwtPayload.sub as string) || '',
-        username: (jwtPayload.username as string) || '',
-        email: jwtPayload.email as string | undefined,
-        roles: mapRoles((jwtPayload.roles as string[]) || []),
-        permissions: (jwtPayload.permissions as string[]) || [],
-        orgLevel: mapOrgLevel((jwtPayload.roles as string[]) || []),
-        dataScope: mapDataScope((jwtPayload.roles as string[]) || []),
-        storeId: jwtPayload.storeId?.toString(),
-        storeName: jwtPayload.storeName as string | undefined,
+        userId: me.id || '',
+        username: me.username || '',
+        fullName: me.name || undefined,
+        email: me.email || undefined,
+        roles: userRoles,
+        // 权限码清单直接采用服务端返回（/me 已展开 admin 通配符）
+        permissions: me.permissions || [],
+        orgLevel: mapOrgLevel(userRoles),
+        dataScope: mapDataScope(userRoles),
+        storeId: me.storeId?.toString(),
+        storeName: me.storeName,
+        departmentId: me.departmentId?.toString(),
+        departmentName: me.department,
       }
 
       setUserInfo(info)
@@ -653,32 +662,19 @@ export const usePermissionStore = defineStore('permission', () => {
   // ========== 辅助函数 ==========
 
   /**
-   * 解析JWT Payload（简化版，不验证签名）
-   */
-  function parseJWTPayload(token: string): Record<string, unknown> | null {
-    try {
-      const parts = token.split('.')
-      if (parts.length !== 3) return null
-      
-      const payload = parts[1]
-      const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-      return JSON.parse(decoded)
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * 映射后端角色到前端UserRole枚举
+   * 映射后端角色到前端UserRole枚举（P0-SEC-006：fail-closed）
    *
    * 兼容多种后端角色格式：
    * - ROLE_ADMIN（数据库原始格式，大写带前缀）
    * - role_admin（JwtUtils 小写化后的格式，见 JwtUtils.generateToken）
    * - admin（无前缀旧格式）
    * - Admin（首字母大写等其他变体）
+   * - 中文角色名（/me 接口返回 role_name，如「超级管理员」「采购部经理」）
    *
-   * 实现方式：将 key 统一为大写格式，查找时也将输入转大写，
-   * 这样可同时兼容大小写、有无 ROLE_ 前缀的各类变体。
+   * 实现方式：将 key 统一为大写格式，查找时也将输入转大写。
+   *
+   * 【fail-closed】未识别/未知角色一律过滤（不降级为 EMPLOYEE），
+   * 使后续所有权限检查返回 false → 默认拒绝全部业务域。
    */
   function mapRoles(backendRoles: string[]): UserRole[] {
     // 角色 → UserRole 映射表（key 统一为大写）
@@ -712,37 +708,66 @@ export const usePermissionStore = defineStore('permission', () => {
       'REGION_MANAGER': UserRole.REGION_MANAGER,
       'AUDITOR': UserRole.AUDITOR,
       'EMPLOYEE': UserRole.EMPLOYEE,
+      // role_code 格式（roles 表 role_code 列）
+      'SUPER_ADMIN': UserRole.ADMIN,
+      'SYSTEM_ADMIN': UserRole.ADMIN,
+      'BOSS': UserRole.OWNER,
+      'OPS_DIRECTOR_CODE': UserRole.OPS_DIRECTOR,
+      // 中文角色名格式（登录/me 接口返回 role_name）
+      '超级管理员': UserRole.ADMIN,
+      '系统管理员': UserRole.ADMIN,
+      '老板': UserRole.OWNER,
+      '老板/超级管理员': UserRole.ADMIN,
+      '运营总监': UserRole.OPS_DIRECTOR,
+      '财务总监': UserRole.FINANCE_DIRECTOR,
+      '财务经理': UserRole.FINANCE_DIRECTOR,
+      'HR总监': UserRole.HR_DIRECTOR,
+      '人事总监': UserRole.HR_DIRECTOR,
+      '采购部经理': UserRole.PURCHASE_MANAGER,
+      '采购经理': UserRole.PURCHASE_MANAGER,
+      '仓储部经理': UserRole.WAREHOUSE_MANAGER,
+      '仓库经理': UserRole.WAREHOUSE_MANAGER,
+      '店长': UserRole.STORE_MANAGER,
+      '门店经理': UserRole.STORE_MANAGER,
+      '店长/门店经理': UserRole.STORE_MANAGER,
+      '组长': UserRole.TEAM_LEADER,
+      '团队负责人': UserRole.TEAM_LEADER,
+      '组长/团队负责人': UserRole.TEAM_LEADER,
+      '排班员': UserRole.SCHEDULER,
+      '区域经理': UserRole.REGION_MANAGER,
+      '稽查专员': UserRole.AUDITOR,
+      '部门经理': UserRole.DEPARTMENT_MANAGER,
+      '普通员工': UserRole.EMPLOYEE,
     }
 
     return backendRoles
-      .map(role => {
-        if (!role) return UserRole.EMPLOYEE
-        // 统一转大写查找，兼容后端 JwtUtils 小写化（role_admin → ROLE_ADMIN）及各类变体
-        return roleMap[role.toUpperCase()] || UserRole.EMPLOYEE
-      })
+      .map(role => role ? roleMap[role.toUpperCase()] : undefined)
+      // fail-closed：未识别角色过滤（不降级为 EMPLOYEE）
+      .filter((v): v is UserRole => !!v)
       .filter((v, i, a) => a.indexOf(v) === i)
   }
 
   /**
-   * 根据角色推断组织层级
+   * 根据（已映射的前端）角色推断组织层级
    */
-  function mapOrgLevel(roles: string[]): OrgLevel {
-    if (roles.includes('ROLE_OWNER') || roles.includes('owner')) return OrgLevel.OWNER
-    if (roles.includes('ROLE_ADMIN') || roles.includes('admin')) return OrgLevel.OWNER
-    if (roles.some(r => ['ROLE_OPS_DIRECTOR', 'ROLE_PURCHASE_MANAGER', 'ROLE_FINANCE_DIRECTOR', 'ROLE_HR_DIRECTOR', 'ROLE_WAREHOUSE_MANAGER'].includes(r))) {
+  function mapOrgLevel(roles: UserRole[]): OrgLevel {
+    if (roles.includes(UserRole.OWNER) || roles.includes(UserRole.ADMIN)) return OrgLevel.OWNER
+    if (roles.some(r => [
+      UserRole.OPS_DIRECTOR, UserRole.PURCHASE_MANAGER, UserRole.FINANCE_DIRECTOR,
+      UserRole.HR_DIRECTOR, UserRole.WAREHOUSE_MANAGER, UserRole.DEPARTMENT_MANAGER,
+    ].includes(r))) {
       return OrgLevel.COMPANY
     }
-    if (roles.includes('ROLE_DEPARTMENT_MANAGER') || roles.includes('department_manager')) return OrgLevel.COMPANY
-    if (roles.some(r => ['ROLE_STORE_MANAGER', 'store_manager'].includes(r))) return OrgLevel.STORE_MGR
-    if (roles.some(r => ['ROLE_TEAM_LEADER', 'team_leader'].includes(r))) return OrgLevel.STORE_MGR
-
+    if (roles.some(r => [UserRole.STORE_MANAGER, UserRole.TEAM_LEADER].includes(r))) {
+      return OrgLevel.STORE_MGR
+    }
     return OrgLevel.STORE_STAFF
   }
 
   /**
    * 根据组织层级推断数据范围
    */
-  function mapDataScope(roles: string[]): DataScope {
+  function mapDataScope(roles: UserRole[]): DataScope {
     const orgLevel = mapOrgLevel(roles)
     
     switch (orgLevel) {

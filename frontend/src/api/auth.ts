@@ -25,6 +25,14 @@ export interface UserInfo {
   avatar?: string
   roles: string[]
   permissions: string[]
+  /** 门店ID（/v1/auth/me 返回） */
+  storeId?: string | number
+  /** 门店名称（/v1/auth/me 返回，用于手持端「门店收货」精确显示） */
+  storeName?: string
+  /** 部门ID（/v1/auth/me 返回） */
+  departmentId?: string | number
+  /** 部门名称 */
+  department?: string
   /** 归属位置ID（C9/D7，P1-USER-LOCATION-002：locations.location_id，/v1/auth/me 返回；新消费点应读本字段；旧门店空间 storeId/storeName 观察期兼容保留） */
   locationId?: number
 }
