@@ -103,6 +103,8 @@ interface UserInfo {
   storeName?: string
   departmentId?: string
   departmentName?: string
+  /** 归属位置ID（C9/D7：locations.location_id 新空间；storeId 为旧空间观察期兼容） */
+  locationId?: number
 }
 
 export const usePermissionStore = defineStore('permission', () => {
@@ -497,6 +499,7 @@ export const usePermissionStore = defineStore('permission', () => {
         storeName: me.storeName,
         departmentId: me.departmentId?.toString(),
         departmentName: me.department,
+        locationId: me.locationId,
       }
 
       setUserInfo(info)
