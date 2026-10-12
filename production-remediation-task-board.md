@@ -8281,6 +8281,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 > - **如实登记**：N15 不修复 `OrderManagementIntegrationTest` 9 失败（401×6/403×3）——该 9 测试为**未认证** MockMvc 请求（不发 token），属既有测试设计问题，run#0 基线即在（62 之一）；
 > - 验收基准 ②③⑤（持角色 200 / 无角色 403 / UI 菜单）= **Owner Live**：持 5 角色之一的非 admin 账号登录 → 访问销售订单端点 200；无该角色账号 403（fail-closed 不变）。
 
+> **范围扩展（2026-10-12 Owner 指令：「order:add 缺口并入 N15 卡范围，不另开」）**：
+> - 卡状态调整：主体（2 码 + 10 绑定）已收口 `f3af724`；**扩展子项 = `order:add` seed（未实施，OPEN）**；
+> - 证据面：`order:add` 被 **1 个端点**引用（`OrderNewController:38`，链 `order:add or order:manage or *`）；**代码权限树已定义该码**（`PermissionInitServiceImpl:140` `createPermission(…, "order:add", "新增订单", 2, "order", 20L, 1)`）→ seed 属代码锚定补齐，非新发明；活库 `permissions` 无该码（2026-10-12 复核：仅 order:manage / order:view 两码）；
+> - **功能影响如实登记**：`:38` 已有 `order:manage` 兜底 → N15 后 5 角色已可创建订单；缺口 = **seed 完整性**（权限树 / 菜单 / 审计面），非功能阻塞；
+> - **待 Owner 裁决**：`order:add` 角色绑定清单（Agent 建议 = 镜像 `order:manage` 的 5 角色，待确认，不猜）；
+> - 验收基准（同主体模式）：迁移提交 + `flyway_schema_history` `success=t` 行（PG-001 扩展）+ 活库复核 + `mvn test` 58 逐测试集合相等。
+
 ### §24.3s-SI-1 子项：N16 LocationGuard 设计未落地（2026-10-12 Owner 指令「N15 开卡时纳入 N16 作子项」）
 
 | 项 | 值 |
