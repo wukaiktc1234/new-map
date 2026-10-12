@@ -452,3 +452,86 @@ ORDER BY e.employee_code;
 | Board L1981「L-5 登录联调未执行 → KL-013」（2026-08-10 快照行） | KL-013 已于 2026-08-11 关闭 | **更正**——L1981 已改注（L-2/L-5 均已关闭 + 版本差注意项） |
 | 本记录/board §24.3q 初稿「KL-013 仍开放」 | §24.3q 初稿（2026-10-12 当日上午） | **更正**——Agent 误记：仅看 L1981 快照行、未查 KL 登记最新状态；board ③ 行、L698 问题卡更正戳均已改 |
 - **治理教训（登记）**：「已收口」声称须同时锚定 (a) 证据面（QA/冒烟/渗透工件）与 (b) 提交面（git log）。2026-08-10~10-12 期间只有 (a) 无 (b)，故「P0-SEC-006 已收口」对 git 面不成立；后续收口声称重审一律先跑 `git log --all -- <file>` + `git log --all --oneline | grep -i <卡号>`。
+
+> **2026-10-12 扩展（Owner 三件追问）**：P0-SEC 全系列提交面核查证实「已提交」声称不符范围远大于 SEC-006 单点——第一阶段 7 卡（SEC-003/004/005、P1-SEC-001/002/003/004）对应文件（guards.ts/router/index.ts/permissions.ts/AdminPermissions/UserDetailsServiceImpl/request.ts）全史仅 init + 工作树 ` M`（backend 209 + frontend 215 = 424 文件 WIP）→ **GOV-INCIDENT-003**（`production-governance-incidents.md`）+ 治理规则 **PG-001 收口双向锚定**（证据面 + 提交面，仅工作树评审 ≠ 提交完成；board 第一阶段表 L1980-1987 已逐行更正戳 + 表下证据注）。
+
+### §7.10 Live 验证标准（Owner 执行，2026-10-12 指令「Live 验证标准，你写完我跑」）
+
+> **通用纪律（全批次适用）**：
+> - 前置：PG 已起（`localhost:5432`，db=`food_traceability`）；后端运行中（Owner 常用 profile）；前端运行中（vite dev/preview）；
+> - 任一项 **FAIL** → **原始输出原样贴出**（HTTP 状态码 + 响应体 / psql 输出 / 浏览器 Network + console）→ 按文末「失败处理映射」重开对应卡/KL；
+> - 每项 **PASS** → 记录实测值（时间戳 + 关键字段值）回写本节对应行。
+> - 禁止为通过验证直接改库（PG-002 纪律）；数据一律走 API。
+
+#### 批次 A —— P1-USER-LOCATION-002（C3/C5/C9，提交面已干净：`ddb7d08`/`e97db65`/`563c3e8`/`803e5ae`/`c588476`）
+
+**V-A1（C3 A4，`PUT /v1/employees/{id}/assign-location`）**
+
+| # | 操作 | PASS 标准 |
+|---|------|-----------|
+| 1 | 无 `hr:employee:assign-location` 权限用户（非 HR 总监/非 admin）调用，body `{"locationId": <有效位置>}` | **403**，响应含「权限不足: hr:employee:assign-location」（PermissionAspect 链） |
+| 2 | `ROLE_HR_DIRECTOR`（或 admin）同调用 | **200**，`Result<Employee>` 返回详情（部门/岗位名称填充） |
+| 3 | `SELECT module, desc, create_time FROM operation_log WHERE module='EMPLOYEE_LOCATION_ASSIGN' ORDER BY create_time DESC LIMIT 3;` | 有新行，`desc` 含**旧值 → 新值**（如「locationId 2 → 500」）+ users 侧同步片段（C4，如「未找到对应用户」/「未重复写」/新值） |
+| 4 | 边界：`{"locationId": <TRANSIT 位置>}` / `{"locationId": 999999}` | 均 **400**（TRANSIT 禁作归属 U9 / 位置不存在） |
+| 5 | 员工不存在 id | **404** |
+
+**V-A2（C5 UI，HREmployee 归属表单）**
+
+| # | 操作 | PASS 标准 |
+|---|------|-----------|
+| 1 | HR 员工列表 → 新建/编辑员工 → 「归属位置」下拉 | 单一下拉，选项 = `locationName（门店/中央仓/仓储仓）` 类型标签（数据源 `GET /v1/locations`） |
+| 2 | 下拉内容 | **无 TRANSIT** 选项 |
+| 3 | 选门店提交 → `SELECT location_id, work_location_type FROM employees WHERE id=<该员工>;` | `location_id` 非 NULL，`work_location_type='STORE'`（C2b 推导） |
+| 4 | 不选位置提交 | `work_location_type='HEADQUARTERS'`（U10） |
+| 5 | 列表「工作归属」列 | 显示位置名称（locations 晚到时响应式刷新，不停在回退值） |
+
+**V-A3（C9，/me + basic-info 出参契约）**
+
+| # | 操作 | PASS 标准 |
+|---|------|-----------|
+| 1 | `GET /v1/auth/me` | 200，含 `locationId`（number，= `users.location_id`）；`storeId`/`storeName` **仍在**（观察期兼容） |
+| 2 | `GET /v1/users/basic-info/{userId}` | 同上两点 |
+| 3 | 对比 | `storeId`/`storeName` 值与 C9 前完全一致（**零行为变化**，消费点 0 切换） |
+| 4 | 前端已登录态（C9 跟进 `c588476` 消费链） | `permissionStore.userInfo.locationId` 可取（console 或 DevTools） |
+
+#### 批次 B —— P0-SEC-006 L-5 全链路（KL-013 终验；提交点 `64e5d95` + `c588476`）
+
+**V-B1（登录 → /me → 路由跳转 → 按钮渲染，全链路）**
+
+| # | 操作 | PASS 标准 |
+|---|------|-----------|
+| 1 | 干净会话（清 cookie 或隐身）→ 登录 admin/Admin@123 | 成功，**跳转 /home**（路由守卫放行） |
+| 2 | Network 面板看 `GET /v1/auth/me` | 200，含 `locationId`（权限源 = /me，非本地 JWT 解析） |
+| 3 | 进入带权限按钮的业务页（如 /finance/ledger 或任一有权限码按钮的页面） | 页面渲染正常，权限按钮按码渲染（有码可见/无码隐藏，与 08-11 冒烟基线一致） |
+| 4 | 已登录会话内篡改 token → 刷新/触发请求 | 401 弹框（标题「登录已过期」，无「留在本页」）→ 确认 → 登出跳 /login（**fail-closed**） |
+
+- **全 PASS** → KL-013 附条件终验完成，条件条款关闭（回写 KL 登记 + release-readiness L22）。
+- **任一项 FAIL** → **重开 KL-013**，原始输出原样贴出 + 核对运行面 `permission.ts` 实际内容 vs `64e5d95` 提交内容（`git show 64e5d95 -- frontend/src/stores/permission.ts`）。
+
+#### 批次 C —— N17 失败证据（Owner 跑 SQL；卡 §24.3r PENDING 待放行）
+
+- 事实基线：`InventoryWarningScheduler` + `InventoryWarningRecord` 实体均**自 init `dd33ee3`（2026-08-02）存在** → **失败窗口 ≈ 2026-08-02 后第一次应用启动起**（复数表从未建，每小时 insert 必中 `relation does not exist`，被 :79-81 catch 吞）。
+- 参考 SQL（Owner 执行，只读）：
+
+```sql
+-- 1) 单数/复数表存在性（期望：单数有、复数 NULL）
+SELECT to_regclass('inventory_warning_record')  AS singular,
+       to_regclass('inventory_warning_records') AS plural_expected_null;
+-- 2) 迁移时间线（V20260629_021 安装时间；§24.3r 建表迁移 20261012.001 当前应不存在）
+SELECT version, description, installed_on FROM flyway_schema_history
+WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
+-- 3) 失败起始时间锚点 = 2026-08-02 后第一次应用启动（应用日志 grep：
+--    "inventory_warning_records" / "relation \"inventory_warning_records\" does not exist"，
+--    频率应 ≈ 每小时 1 次；最早一条日志时间 = 失败起始实证）
+```
+
+- **证据齐备标准**：复数表 `to_regclass` = NULL + 应用日志存在 `relation "inventory_warning_records" does not exist`（频率 ≈ 每小时）+ 日志最早时间 = 失败起始时间实证。
+
+#### 失败处理映射
+
+| 失败项 | 动作 |
+|---|---|
+| V-A1/V-A2 | 重开 C3/C5 对应卡面复核（提交内容 vs 工作树 hunk 级核对，PG-001 协议） |
+| V-A3 | 重开 C9（出参契约） |
+| V-B1 | **重开 KL-013** + 按 §7.9b 重审协议处理依赖结论 |
+| V-C | §24.3r（N17，P0）放行实施；失败起始时间回写 §24.3r 卡 |

@@ -1977,14 +1977,16 @@ handleEdit 中保存请求 ID（对齐 PurchaseRequest.vue 的 editRequestId 模
 
 | 顺序 | 任务 | 状态 | developer 证据 | QA 结论 |
 |---|---|---|---|---|
-| 1 | P0-SEC-003（域权限矩阵默认拒绝） | ✅ PASS | 已提交（guards.ts，仿真 62/62 PASS） | PASS |
-| 2 | P0-SEC-004（菜单-路由权限对齐） | ✅ PASS_WITH_LIMITATION | 已提交（guards.ts DOMAIN_VISIBLE_ROLES 单源表） | PASS_WITH_LIMITATION（L-1：/workspace/material-request 域级并集超放行，低敏感不阻断） |
-| 3 | P0-SEC-005（敏感路由补角色） | ✅ PASS | 已提交（router/index.ts 3 处 meta.roles） | PASS |
+| 1 | P0-SEC-003（域权限矩阵默认拒绝） | ✅ PASS | 已提交（guards.ts，仿真 62/62 PASS）⚠️ **2026-10-12 提交面核查：与 git 不符**——guards.ts 全史仅 init，本卡改动 = 未提交 WIP → GOV-INCIDENT-003 | PASS |
+| 2 | P0-SEC-004（菜单-路由权限对齐） | ✅ PASS_WITH_LIMITATION | 已提交（guards.ts DOMAIN_VISIBLE_ROLES 单源表）⚠️ **2026-10-12 提交面核查：与 git 不符**——guards.ts 全史仅 init，本卡改动 = 未提交 WIP → GOV-INCIDENT-003 | PASS_WITH_LIMITATION（L-1：/workspace/material-request 域级并集超放行，低敏感不阻断） |
+| 3 | P0-SEC-005（敏感路由补角色） | ✅ PASS | 已提交（router/index.ts 3 处 meta.roles）⚠️ **2026-10-12 提交面核查：与 git 不符**——router/index.ts 全史仅 init，本卡改动 = 未提交 WIP → GOV-INCIDENT-003 | PASS |
 | 4 | P0-SEC-006（权限源统一 /me + fail-closed） | ✅ PASS_WITH_LIMITATION（L-2/L-5） | 已提交（permission.ts + auth.ts，/me 为唯一授权源）⚠️ **2026-10-12 git 复核：此声称此前与 git 不符**——`permission.ts` 在 `64e5d95` 之前仅有 init 提交（`dd33ee3`，2026-08-02），修复一直活在未提交 WIP；QA 复审当时基于工作树代码评审而非提交面。已于 2026-10-12 补提交 `64e5d95`（见 §24.3q） | L-2：KL-007 **已关闭（2026-08-10，P1-SEC-009 活体渗透 14 用例 PASS，后端侧证据，不受本卡提交状态影响）**；L-5：KL-013 **已关闭（2026-08-11，浏览器冒烟 5/5 PASS）**——⚠️ 2026-10-12 复议注意项：关闭证据（08-10/11）早于该文件最后写入（mtime 2026-09-15），最终提交内容（`64e5d95`）**从未 Live 验证** → 终验 = Owner Live（登录→/me→路由→按钮渲染），如差异则重开 KL-013 |
-| 5 | P1-SEC-001（三大业务角色补齐域配置） | ✅ PASS | 已提交（guards.ts 三角色域配置） | PASS |
-| 6 | P1-SEC-002（requireAuth 死配置修复） | ✅ PASS | 已提交（guards.ts 公开页判定） | PASS |
-| 7 | P1-SEC-003（权限码注册表统一） | ✅ PASS_WITH_LIMITATION（L-3/L-4/L-6） | 已提交（permissions.ts + 后端 4 文件） | PASS_WITH_LIMITATION（L-3 静态校验缺失 → P2-SEC-007；L-4 权限表数据待联调 → KL-009；L-6 后端 4 文件清单不一致 → KL-014，治理卡 P2-SEC-009） |
-| 8 | P1-SEC-004（401 死会话处理） | ✅ PASS | 已提交（request.ts） | PASS |
+| 5 | P1-SEC-001（三大业务角色补齐域配置） | ✅ PASS | 已提交（guards.ts 三角色域配置）⚠️ **2026-10-12 提交面核查：与 git 不符**——guards.ts 全史仅 init，本卡改动 = 未提交 WIP → GOV-INCIDENT-003 | PASS |
+| 6 | P1-SEC-002（requireAuth 死配置修复） | ✅ PASS | 已提交（guards.ts 公开页判定）⚠️ **2026-10-12 提交面核查：与 git 不符**——guards.ts 全史仅 init，本卡改动 = 未提交 WIP → GOV-INCIDENT-003 | PASS |
+| 7 | P1-SEC-003（权限码注册表统一） | ✅ PASS_WITH_LIMITATION（L-3/L-4/L-6） | 已提交（permissions.ts + 后端 4 文件）⚠️ **2026-10-12 提交面核查：与 git 不符**——utils/permissions.ts、AdminPermissions.java、UserDetailsServiceImpl.java 均为未提交 WIP（` M`）→ GOV-INCIDENT-003 | PASS_WITH_LIMITATION（L-3 静态校验缺失 → P2-SEC-007；L-4 权限表数据待联调 → KL-009；L-6 后端 4 文件清单不一致 → KL-014，治理卡 P2-SEC-009） |
+| 8 | P1-SEC-004（401 死会话处理） | ✅ PASS | 已提交（request.ts）⚠️ **2026-10-12 提交面核查：与 git 不符**——api/request.ts 全史仅 init，本卡改动 = 未提交 WIP（含 Owner token 静默续期 WIP）→ GOV-INCIDENT-003 | PASS |
+
+> **2026-10-12 P0-SEC 全系列提交面核查（Owner 三件追问 #1，Owner 指定命令原始输出存 `production-governance-incidents.md` GOV-INCIDENT-003「事故描述」节）**：`git log --all --oneline | Select-String "P0-SEC"` 全史仅 **2 命中**（`64e5d95` = SEC-006 补提交；`1dad9a9` = SEC-001 扫描脚本登记）。逐文件：`guards.ts`（上表行 1/2/5/6）、`router/index.ts`（行 3）、`utils/permissions.ts` + `AdminPermissions.java` + `UserDetailsServiceImpl.java`（行 7）、`api/request.ts`（行 8）——**全部全史仅 init `dd33ee3`**（permissions.ts/AdminPermissions.java 另有 C3 卡 `ddb7d08`），工作树全部 ` M` 未提交（guards.ts diff **+167 行**，mtime 2026-09-15；`utils/auth.ts` 全史仅 init 且工作树干净——与 KL-007 死代码现状一致）。规模：backend **209** + frontend **215** = **424 个跟踪文件未提交 WIP**。结论：上表行 1/2/3/5/6/7/8 的「已提交」声称**全部与 git 提交面不符**（QA 复审基于 2026-08-10 工作树代码评审）→ **治理问题大于 KL-013 单点**，已登记 **GOV-INCIDENT-003**（`production-governance-incidents.md`）+ 治理规则 **PG-001 收口双向锚定**（证据面 + 提交面；仅工作树评审 ≠ 提交完成）。第二阶段（P0-SEC-001 71 Controller 注解批次，L1993）疑似同模式（含于 209 个 WIP 文件），完整审计待 Owner 指令。
 
 ### 第二阶段（后端安全组，串行于第一阶段，待启动）
 
@@ -8222,6 +8224,8 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 
 *追加：2026-10-12 Owner 复议 + 并行开卡指令（「并行开卡：N15 + N17，后者优先」）：N15 = P1 ✅；N16 = P3→**P2**（设计没落地，非普通死代码）；N17 = P1→**P0**（生产事故级）。已开卡 **§24.3r P0-INVENTORY-WARNING-TABLE-001（N17，优先）** + **§24.3s P1-ORDER-PERMISSION-SEED-001（N15）**；N16 待 Owner 开卡指令。KL 重审（「KL-013 首当其冲」）：KL-007/KL-013 关闭证据有效，但早于文件最后写入（mtime 2026-09-15）→ 终验 = Owner Live，如差异则重开 KL-013。*
 
+*追加：2026-10-12 Owner 三件追问收口：① **P0-SEC 全系列提交面核查**——第一阶段 7 卡（行 1/2/3/5/6/7/8）「已提交」声称全部与 git 不符（guards.ts/router/index.ts/permissions.ts/AdminPermissions/UserDetailsServiceImpl/request.ts 全史仅 init，工作树未提交；backend 209 + frontend 215 = 424 文件 WIP）→ **GOV-INCIDENT-003**（`production-governance-incidents.md`）+ 规则 **PG-001 收口双向锚定**（证据面 + 提交面，仅工作树评审 ≠ 提交完成）；第二阶段（P0-SEC-001 71 Controller）疑似同模式，完整审计待 Owner 指令。② **N16 纳入 §24.3s 作子项 SI-1**（同根因假设：权限码体系洞 + LocationGuard 未落地，实施前先裁决假设）。③ PG-001 规则已登记。Live 验证标准已写入实施记录 §7.10（Owner 执行）；N17 失败起始时间 SQL 由 Owner 跑。*
+
 ## 24.3r P0-INVENTORY-WARNING-TABLE-001（2026-10-12 Owner 开卡；来源 P1-USER-LOCATION-002 §7.3 N17；**N15+N17 并行开卡中本卡优先**）
 
 | 项 | 值 |
@@ -8261,3 +8265,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 启动条件 | **Owner 已下达开卡指令（2026-10-12）；实施待 Owner 放行（与 §24.3r 并行，N17 优先）** |
 | 关联 | U3/C3（同模式：seed 迁移补权限码）；§7.3 N15；P1-SEC-009（渗透基线）；`PermissionInitServiceImpl`（现成 init 入口） |
 | 回退 | seed 迁移可回退（按 `permission_code` DELETE），零副作用 |
+
+### §24.3s-SI-1 子项：N16 LocationGuard 设计未落地（2026-10-12 Owner 指令「N15 开卡时纳入 N16 作子项」）
+
+| 项 | 值 |
+|----|------|
+| 子项编号 | **SI-1（N16）**——LocationGuard 孤儿类（设计没落地） |
+| 优先级 | **P2**（Owner 复议 P3→P2：「设计没落地，不是普通死代码」，设计债） |
+| 证据 | `LocationGuard` git grep **0 外部调用点**（仅类声明/logger/构造器自引用）；S4b 7 处全直接抛异常；设计「收敛到守卫」从未落地（-001 卡设计 :304 引用文件不存在）（记录 §7.3 N16） |
+| 同根因假设（Owner） | 「权限码体系有洞 + LocationGuard 没落地，可能同根因」——均属**设计层访问控制未落地**：N15 = 权限码设计未落地到**数据层**（`permissions` 表 0 行）；N16 = 位置守卫设计未落地到**代码层**（孤儿类）。实施前需先裁决该假设是否成立（查 -001 卡设计原文 :304 上下文 + S4b 7 处抛点是否本应走守卫） |
+| 处置 | **并入 §24.3s 卡（不再单独立卡）**；实施路径待 Owner 裁决：A. 删类（死代码清理，最小） B. 按设计落地（位置权限检查收敛到守卫，设计债偿还，须先做设计复核——:304 引用文件不存在，设计已失真） |
+| 验收基准 | A 路径：全仓 0 引用 + 编译通过 + `mvn test` 全量无新增失败（三点基线 381/62/16 不变）；B 路径：设计复核记录 + 守卫调用点接入 + 单测 + 三点基线不变 |
+| 启动条件 | 随 §24.3s 卡实施放行；路径裁决（A/B）待 Owner |
