@@ -32,8 +32,18 @@
         AND p.STATUS = 1
     </select>
 
+    <!-- 用户 resultMap：列名与实体属性名不一致处显式声明（resultType 自动映射只看属性名，不看 @TableId/@TableField）
+         仅声明 4 处不一致；其余列按 map-underscore-to-camel-case 自动映射
+    -->
+    <resultMap id="UserResultMap" type="com.foodtraceability.entity.User">
+        <id column="user_id" property="id"/>
+        <result column="name" property="fullName"/>
+        <result column="create_time" property="createdTime"/>
+        <result column="update_time" property="updatedTime"/>
+    </resultMap>
+
     <!-- 条件分页查询用户 -->
-    <select id="findUsersByConditionPage" resultType="com.foodtraceability.entity.User">
+    <select id="findUsersByConditionPage" resultMap="UserResultMap">
         SELECT * FROM users
         <where>
             AND deleted = 0
