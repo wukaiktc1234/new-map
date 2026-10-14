@@ -60,6 +60,7 @@ export const systemModules: ModulePermission[] = [
       "product:pricing:view",
       "product:pricing:edit",
       "product:cost-analysis:view",
+      "product:cost:export",
     ],
   },
   {
@@ -526,6 +527,7 @@ export const permissionDescriptions: Record<string, string> = {
   "product:pricing:view": "查看菜品定价",
   "product:pricing:edit": "编辑菜品定价",
   "product:cost-analysis:view": "查看菜品成本分析",
+  "product:cost:export": "导出菜品成本分析报表",
 
   "order:manage": "管理订单相关功能",
   "order:view": "查看订单信息",

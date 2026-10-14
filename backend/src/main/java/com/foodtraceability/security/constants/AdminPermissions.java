@@ -40,7 +40,7 @@ public final class AdminPermissions {
         "product:combo:view", "product:combo:create", "product:combo:update", "product:combo:delete",
         "product:recipe:view", "product:recipe:create", "product:recipe:delete",
         "product:pricing:view", "product:pricing:adjust", "product:pricing:batch",
-        "product:cost:view",
+        "product:cost:view", "product:cost:export",
         // 财务模块细粒度权限
         "finance:voucher:create", "finance:voucher:query", "finance:voucher:update", "finance:voucher:approve",
         "finance:payable:create", "finance:payable:query", "finance:payable:update", "finance:payable:delete", "finance:payable:approve",
