@@ -44,7 +44,13 @@
 
     <!-- 条件分页查询用户 -->
     <select id="findUsersByConditionPage" resultMap="UserResultMap">
-        SELECT * FROM users
+        <!-- N21：显式列清单，排除 password（原 SELECT * 把 password 哈希写进响应体） -->
+        SELECT user_id, username, name, email, phone, status, roles, role_names,
+               department_id, location_id, employee_code, is_locked, lock_time,
+               password_error_count, last_password_error_time, need_change_password,
+               last_password_change_time, last_login_time, last_login_ip, avatar,
+               deleted, create_time, update_time, created_by, updated_by
+        FROM users
         <where>
             AND deleted = 0
             <if test="username != null and username != ''">
