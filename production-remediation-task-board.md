@@ -8372,3 +8372,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 **执行方法注记（只增不改）**：写入统一 UTF-8 无 BOM；过程中两次方法错误已纠正并复核——① `Out-File -Encoding utf8` 加 BOM 致首行 diff 失真；② `Get-Content` 默认 ANSI 读 UTF-8 致中文乱码（commit 3 曾暂存乱码版本，已重建后提交）。commit 2（`c31b752`）已复核：`git show c31b752:frontend/src/router/guards.ts` 中文完整无乱码。
 
 **Live 验证**：归 Owner（批次 A/B/C + N15 Live：持角色 200 / 无角色 403 / UI 菜单）。
+
+### §24.3v P1-APK-DEVICE-001 开卡登记（2026-10-13，Owner 裁决：产品定位 **A 开卡**）
+
+| 项 | 值 |
+|----|------|
+| 卡号 | **P1-APK-DEVICE-001**（建议号，待 Owner 确认；优先级建议 P1，待 Owner 定） |
+| 产品定位裁决 | **A 开卡**（Owner 2026-10-13）——APK 设备门禁 / 设备白名单 / KDS token / 扫码消费者页属**真实产品特性**，非 ENV-4 残留，不走 P0-WORKSPACE-WIP-CONSOLIDATION-001 的「残留清理」路径 |
+| 簇范围（证据：`git status --porcelain` ?? 逐文件，分类表 §3 第 1 簇） | **backend**：`AppDeviceRegistrationController.java` / `AppDeviceRegistration.java` / `AppDeviceRegistrationMapper.java` / `AppDeviceRegistrationService.java` / `AppDeviceRegistrationServiceImpl.java`（5 类）、`security/filter/DeviceWhitelistFilter.java`、`KdsTokenFilter.java`、`KdsAuthProperties.java`、`SecurityConfig.java`（+17 hunk：DeviceWhitelistFilter + KdsTokenFilter + 3 条 permitAll）；**frontend**：`capacitor.config.ts`、`build-apk.bat`、`android/`、`certs/`、`apk-download/`、`frontend/src/api/device-registration.ts`、`frontend/src/utils/device-id.ts`、`views/device-activation/`、`views/device-whitelist/`、`views/verify-code/`、`ReceivingMobile.vue` |
+| 卡面待补（本卡入库时一并收口的已提交面依赖） | ① guards.ts：`isRunningInApp()`、APK 重定向、APK 设备门禁块、APK forced mobile（§24.3u 残留表）；② request.ts：X-Device-Id 头注入 + FormData Content-Type 修复；③ router/index.ts：verify-code / device-activation / device-whitelist 三条路由条目（import 本卡组件）；④ SecurityConfig 3 条 permitAll 与 P1-SEC-002 `meta.requireAuth` 判定的关系需核对（permitAll = 传输层放行，守卫 = 应用层判定，两层口径须一致） |
+| 交叉影响（证据） | **P1-SEC-002 卡面已提交（`eec8fb9`）但其验收标准当前不可验证**：验收要求「未登录访问 /verify-code、/device-activation 不重定向登录页」，而这两条路由条目属本卡簇（未提交）→ 提交面无该路由；Live 验证批次 A/B/C 中 P1-SEC-002 部分须待本卡入库后执行 |
+| 验收基准（建议，待 Owner 确认） | 本卡整批入库后：纯提交树可编译（解除 ENV-10 对本簇的依赖，ENV-10 已列 `MaterialDeduction*` 等同类）+ `vue-tsc` 无新增错误 + 设备门禁行为验证（未注册设备 403 / 已注册 200）+ 三点基线 381/27F/31E/1S 不变 |
+| 启动条件 | Owner 放行（卡号与优先级确认）；实施前需 Owner 确认「整特性提交」口径（本卡文件属 Owner WIP，Agent 不自行暂存） |
