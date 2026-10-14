@@ -126,11 +126,12 @@ export function setupRouterGuards(router: Router): void {
   router.beforeEach(async (to) => {
     const permissionStore = usePermissionStore()
 
-    // 公开路由白名单：始终可访问，不受登录状态影响
+    // 公开路由判定（P1-SEC-002）：读取 meta.requireAuth === false（或旧 meta.public）判定公开页，
+    // 不再使用硬编码双轨白名单；/login、/demo/component-gallery、/verify-code、/device-activation
+    // 等页面已在 router/index.ts 声明 requireAuth: false，此处统一按 meta 判定。
     // 必须在 initFromToken() 之前判断，避免已登录用户访问 /login 时被重定向
-    const publicRoutes = ['/login', '/forgot-password', '/403', '/404', '/demo/component-gallery', '/portal/sign']
-    if (publicRoutes.some(p => to.path.startsWith(p))) {
-      // 已登录访问登录页 → 跳转首页
+    const isPublicRoute = to.meta.requireAuth === false || to.meta.public === true
+    if (isPublicRoute) {
       if (permissionStore.isLoggedIn && to.path === '/login') {
         return { path: '/home' }
       }
