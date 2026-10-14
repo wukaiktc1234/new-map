@@ -595,3 +595,14 @@ WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
 | **动作（2026-10-13，Owner 选 A）** | 5 个 C6 hunks 回贴到工作区文件（**不暂存**）；回贴后 `git diff dd6ddcc` 只剩 7 个 Owner WIP hunk（39+/23−）；vue-tsc 交验：本文件 **0 错误**（全量 144，工作区 WIP 面口径，与 tracked-only 基线 189 不同口径） |
 | **Live 验证跑哪一侧** | 回贴后跑**工作区**（Owner 重启 vite，走 vtest01 路径）；如需验证提交面则用 worktree checkout `dd6ddcc` |
 | **规则归属** | PG-001 **条款 7**（2026-10-13 新增）+ **GOV-INCIDENT-005** |
+
+### §7.13 Live 验证方法学补记 + 第二个 bug（2026-10-15，Owner Live 实测）
+
+| 项 | 内容 |
+|----|----|
+| **方法学（本卡及后续 Live 验证口径）** | V-A1 分两层：<br>- **API 级**（fetch 字符串传 ID）：**PASS**<br>- **UI 级**（点按钮）：**FAIL**（ID 精度）→ 已修 `User.id`<br>API 级直接 fetch、ID 以字符串传入，不经 JS Number → 不丢精度；UI 级由前端 JS `JSON.parse` 得到 number → 19 位雪花 ID 超 2^53-1 被截断。**两层必须分开记录，否则「API PASS」掩盖「UI FAIL」。** |
+| **第一个 bug（已修，Live 复验通过）** | `UserMapper.xml` `findUsersByConditionPage` 无 resultMap → `user_id`→`userId`（实体无此属性）→ `id=null`；`name`→`name`（实体字段是 `fullName`）→ `fullName=null`。修复 = `UserResultMap`（提交 `bd57473`）。Live 复验：`id`/`fullName`/`createdTime` 有值 |
+| **N21（已收口）** | 列表响应体含 `password` 哈希 → 显式列清单排除（`e775c6d`）+ `User.password` `@JsonProperty(access = WRITE_ONLY)` 全覆盖（`c0ca5b9`）。Live 复验：password 消失 |
+| **第二个 bug（本次修）** | `records[0].id` 为 number（无引号）`2110437068670001154` > 2^53-1 → `JSON.parse` 截断 → UI「分配位置」用截断 ID 请求 → 后端「用户不存在」。先例：`Employee.java` L27 有 `@JsonSerialize(ToStringSerializer)`（故 V-A1 UI 侧成功）；`User` 无 → UI 操作全挂。修复 = `User.id` 加 `@JsonSerialize(using = ToStringSerializer.class)`（提交 `1efdc32`，1 文件 4 行，`mvn -q compile` exit 0） |
+| **同族面（实测审计）** | `entity/` 共 293 个 `@TableId` + Long PK 实体：**281 个 `IdType.AUTO`**（值小，不越界）、**12 个显式 `ASSIGN_ID`**（雪花）——其中 3 个有注解（`DepartmentPermission` / `Employee` / `OrganizationChangeLog`），**9 个缺注解**：`DataChangeHistory`、`DataLinkEvent`、`HardwareOperationLog`、`OverAgeWorker`、`PlanItem`、`User`（本次修）、`InvoiceReimbursement`、`InvoiceReimbursementApprovalRecord`、`InvoiceReimbursementItem`。另有全局口径冲突：`WebConfig` L82 自建 `ObjectMapper`（无 Long→String）与 `JacksonConfig` L52–54 的 `ToStringSerializer` 并存 |
+| **状态** | 待 Owner Live：重启后端 + 刷新 → UI「分配位置」应成功；`records[0].id` 应为带引号字符串 |
