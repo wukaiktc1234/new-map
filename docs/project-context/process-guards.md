@@ -31,6 +31,8 @@
 2. **含 schema/seed 变更的卡，收口必须含 `flyway_schema_history` `success=t` 行**（不是只看提交；Owner 裁定根因：定向测试不覆盖迁移应用；扩展块：同上 §治理规则之后）；
 3. **含 schema/seed 变更的卡，迁移应用必须经独立 Flyway runner**——`mvn test` 上下文不算（条款 2，2026-10-12 Owner 指令，GOV-INCIDENT-004 推论；先例 = rank 213/214 独立 runner 应用）。
 
+**条款 7（2026-10-13 追加，GOV-INCIDENT-005；C6 首例）**：凡用 index 手术（`hash-object -w` / `update-index --cacheinfo`）做 hunk 隔离的卡，收口前必须登记**「提交面 vs 工作区差异」**——即 `git diff <提交> -- <文件>` 的实测结果，并说明 **Live 验证跑哪一侧**（提交面 worktree，或回贴后的工作区）。未登记该差异 = 收口不完整；卡收口不得只复核「Owner WIP 留在工作区」，须同时复核「卡 hunks 是否在工作区」。
+
 ## PG-002 — Repo 状态快照同步
 
 **规则**：每次卡片收口或 push 后，developer 更新
