@@ -8442,3 +8442,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **未修面（同族暴露，等 Owner 裁决是否本轮做）** | ① `UserMapper.java` 7 处 `SELECT * FROM users`（L46/52/58/64/70/76/82）仍含 password；② 走 MP 内置方法的三条接口返回实体全字段：`POST /v1/users`（L65）、`GET /v1/users/{id}`（L107）、`PUT /v1/users/{id}`（L119）——响应体同样含哈希。建议一处覆盖全部：`User.password` 加 `@JsonProperty(access = Access.WRITE_ONLY)` |
 | **影响面（实测审计）** | `mapper/*.xml` 共 77 处 `resultType=实体` 查询，仅 **User** 命中（列名≠属性名且无 resultMap）。`PositionMapper.xml` L7 有显式别名 `p.position_id AS id` → 安全；`RoleMapper.xml` L5 有 resultMap；`Employee` 的 id 有字段级 `@JsonSerialize(ToStringSerializer)`（L26–27）→ 与 V-A1 员工编辑 PASS 一致。实体中「PK 列名≠属性 id」共 9 个（AssetMaster/Employee/Member/Notification/Permission/Position/Product/Role/User），走 XML resultType 的只有 User 与 Position（后者已别名） |
 | **状态** | 两提交已入库，待 Owner Live 复验：列表响应无 `password`、`id`/`fullName` 有值、编辑对话框可保存 |
+
+### §24.5a N24（数据口径）：`users.role_names` 为死列（2026-10-15 登记，Owner 裁决；编号按 Owner 指定，N19/N20/N22/N23 未使用）
+
+| 项 | 内容 |
+|----|----|
+| **定义（实测）** | `users.role_names`（VARCHAR(255)）无任何写入点：全仓 `setRoleNames` 仅实体 setter 定义（`User.java` L314），无调用点；`assignRoles`（`UserServiceImpl.java` L366–374）只写 `roles`（JSON ID 数组），`unassignRoles`（L389–394）置 null 亦不写 role_names → 该列恒 NULL |
+| **实测样本** | vtest01（user_id=2110437068670001154）：`roles = ["9"]`，`role_names = NULL` |
+| **读取面** | `UserMapper.xml` L48 显式列清单含 `role_names` → 自动映射到 `roleNames`（`@TableField(exist=false)` 不影响 XML 自动映射），但值恒 NULL；前端 `parseRoleNames`（`UserManagementTab.vue` L172–180）期望 JSON 名称数组 → 恒返回 [] → 列表角色列与详情「角色信息」均显示「未分配」 |
+| **权威口径（已存在，此前未用）** | `GET /v1/users/{id}/role-names`（`UserController.java` L322，类级映射 L44 `/v1/users`）→ `getUserRoleNames`（`UserServiceImpl.java` L430）：`getUserRoles`（L405–412，读 `users.roles` JSON）→ `roleService.getRoleById`（`RoleServiceImpl.java` L132，roles 表 role_id）→ roleName；不过滤角色 status（覆盖禁用角色） |
+| **更正（与「从 user_roles 表查」不符）** | `user_roles` 表存在（16 行）但 `getUserRoleNames` 不读它；该表 `user_id`/`role_id` 均为 `character varying`，role_id 值混用 role_code（如 `ROLE_EMPLOYEE`）与数字（1、999）；vtest01 在 `user_roles` 无行 → 该表为并行/遗留来源，非本链路权威源 |
+| **本轮采纳（Owner 裁决）** | 前端详情页改用 `GET /v1/users/{id}/role-names`，不读 `row.roleNames`；不动后端。提交 `73a84fd`（`user.ts` 新增 `getUserRoleNames`）；`UserManagementTab.vue` 改动落工作区未提交（Owner WIP） |
+| **状态** | 待 Owner Live 复验：详情页角色显示「店长/门店经理」（roles 表 role_id=9 → `store_manager`）。列表角色列口径未定（仍读 roleNames），等裁决：用 roles ID 去 `roleOptions` 查名称，还是同样走 API |
