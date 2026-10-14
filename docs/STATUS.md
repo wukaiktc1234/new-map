@@ -18,7 +18,7 @@
 
 | 卡 | 状态 | 下一个动作 |
 |----|------|-----------|
-| **P1-APK-DEVICE-001** | 开卡登记（§24.3v，Owner 裁产品定位 A）；卡号/优先级待确认 | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
+| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项处置已入卡面范围（`apk-download/` → .gitignore 构建产物、`certs/` → .gitignore 敏感物含私钥、`android/` → 中间产物 .gitignore + 自定义原生代码入库） | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
 | **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | Owner Live 验证：持角色 200 / 无角色 403 / UI 菜单（与批次 A/B/C 同批） |
 | **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**） | 待 Owner 安排执行窗口 |
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
@@ -32,10 +32,11 @@
 | **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 等 Owner 裁决 | 无阻断（Flyway 容忍）；**不 repair**；后续卡顺手修或另开卡 |
 | **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
 | 15 个被忽略 `*.md`（非 production 面） | 等 Owner 裁决 | 是否同属 ENV-4 误伤；`production-*.md` 六个已清（`4c43418` + `8065e84`） |
-| **Owner push**（56 commit，Owner 侧执行） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
+| **Owner push**（58 commit，Owner 侧执行） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
 
 ## 4. 禁区（不该碰）
 
+- **Live 验证环境口径（Owner 选 C：混合快照，2026-10-13）**：= tracked-only worktree + **13 个必要未跟踪类**（最小可编译集）；纯 tracked 树编译不过（ENV-10）。结论须注明「混合快照（tracked + 13 WIP 类）」，**不得声称纯 tracked**。
 - **Owner WIP**：456 M + 92 ?? + 1 D 不暂存；PG-001 精确 `git add <文件>`，禁 `git add .` / `-A` / 目录通配。
 - **`flyway_schema_history`**：禁 `repair`（历史篡改需 Owner 逐次批准）。
 - **`inventory_warning` / `inventory_warning_rule`（单数 legacy 表）**：不碰；现行是复数 `inventory_warning_records`（rank 214）。
