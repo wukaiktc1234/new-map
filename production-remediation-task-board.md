@@ -8417,3 +8417,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | `build.gradle` | 生成模板；`SUB-PROJECT DEPENDENCIES START/END` 之间为空；`PLUGIN GRADLE EXTENSIONS` 仅 apply 上一文件 | 排除（无自定义注册）——**唯一功能性文件**，若你想保留模块配置，它是唯一候选 |
 | **结论** | 5 个全为 Capacitor 自动生成、**无自定义 plugin 注册点** → 按规则全部排除；android 入库候选 **64 → 59** |
 | **保留规则** | `!capacitor-cordova-android-plugins/` 保留（保护未来自定义 plugin 不被静默忽略），另对这 5 个文件加具体排除 |
+
+### §24.3z N18（观察）：归属位置与所属部门语义重叠感（2026-10-13 登记，Owner）
+
+| 项 | 内容 |
+|----|----|
+| **用户视角** | 两个下拉都有「测试门店A」：`departments` 有 dept_name=测试门店A（department_id=624, type=store）；`locations` 有 location_name=测试门店A（location_id=1, type=STORE）→ 同一实体在两处出现 |
+| **设计意图** | 部门带位置；简单场景不冗余（选部门即推出位置）；复杂场景（跨店店长）保留位置字段手动覆盖 |
+| **理想状态（Owner 定义）** | 新建用户 → 选部门 = 测试门店A → 位置自动填 `location_id=1`；简单场景不手选；人事调动改部门 → 位置自动跟；跨店店长等复杂场景仍可手动覆盖 |
+| **当前实现（实测）** | `departments` **无 `location_id` 列**（live 库 17 列，无该列）；`location_id_map` 仅 `stores_new`(3) / `warehouses`(2)，**无 departments 条目**；`departments.store_id` 存在但 38 行全 NULL（死列，M6 计划 DROP）→ **M6 未做** |
+| **人事调动阻碍（实测）** | 两字段无级联：后端 `UserCreateDTO` 有 `departmentId` 与 `locationId` 两个独立字段，`UserServiceImpl` 无任何 department→location 推导；前端表单两字段并列、无 watch/computed 联动 |
+| **处置** | 归 **M6 批次**（`V__departments_location.sql`：departments 加 location_id、DROP 死列 store_id、store/warehouse 型节点回填 —— `docs/design/location-organization-separation-design-001.md` L189）；**M6 实施前 UI 加说明文字引导用户**（过渡措施） |
+| **M6 状态** | M1–M4 已实施；**M5–M6 未实施**（§24.3g 基准 ⑤），落地后需复演回滚 |
+| **命名歧义（防误读）** | 「M6」在本仓库另有三处不同含义：会员链 M6（paymentStatus 补状态）、audit backlog M6（mock 文件替换）、real-world-acceptance-plan M6-01–04（异常与回归测试）。本条所指 = **location-organization-separation-design-001 的 M6（组织层挂接）** |
+| **状态** | 观察项，**不开修复卡**；M6 实施时一并解决；UI 过渡说明文字待 Owner 批准落点 |
