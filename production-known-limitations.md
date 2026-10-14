@@ -1112,3 +1112,25 @@ ENV-8 — post-commit hook 静默 auto-push（每次 commit 自动 `git push ori
 *追加：2026-09-30 登记 **ENV-8**（来源：本次会话 M3-M4 收口 commit 后自动 push 暴露 + Owner 指令"补 ENV-8 + 注明 hook 加入时间先于本次会话 + 实测 9/10 后自动 push 范围"）：主表新增 **ENV-8** 一行 + 独立详情块——`.git/hooks/post-commit`（加入 **2026-09-10 19:20:51，先于本次会话**）在每次 commit 后静默执行 `git push origin master`，未经 Owner 逐次指令即推送远程；**自动 push 范围（实测）**：hook 加入后 9/11–9/22 无 commit，首个 post-hook commit `7f40ab7`（9/23）至 `b2cad36`（9/30）共 **97 个 commit** 均被自动推送至 origin；`4ccf353`（删 hook 后提交）未推（本地独有）。ENV-8 为独立 ENV 编号序列，不占 KL 编号。处置（Owner 批准 2026-09-30）：删除 post-commit hook + 审计确认无其它 auto-push 机制 + **PG-001 新增"禁静默 auto-push 类 hook"规则**。planner 仅登记 + 删 hook + 改 PG-001，未改业务代码、未改 git 历史（删 hook 为 Owner 批准）。*
 
 *追加：2026-10-13 **ENV-14 处置路径确认**（Owner 裁决）：**顺手修，不另开卡**——等下一个触碰 `flyway_schema_history` 的卡（例如未来某次 migration 卡）时一并处理。在此之前仍**禁 `repair`**（历史篡改需 Owner 逐次批准），所有独立 Flyway runner 调用须显式 `validateOnMigrate=false` 并在记录中注明。ENV-14 原行内容零修改；本条为处置路径确认。*
+
+*追加：2026-10-13 **ENV-4 被忽略 `*.md` 逐条清单**（Owner 指令：不批量，逐条看；实测 `.gitignore` md 规则 17 条，其中 4 条通配无对应文件 → 磁盘上实际被忽略 **13 个**）。*
+
+| 路径 | 一行说明 | 判定 |
+|----|----|----|
+| `release-package-index.md` | 发布包索引（L802） | 清（明显该入库） |
+| `release-readiness-report.md` | 发布就绪报告（L803） | 清 |
+| `sprint-2-task-cards.md` | Sprint-2 执行任务卡（L819） | 清 |
+| `sprint-2c-execution-list.md` | Sprint-2C 最终执行清单·范围校验版（L818） | 清 |
+| `sprint-3-final-snapshot.md` | Sprint-3 最终快照·阶段封存（L820） | 清 |
+| `sprint-4-final-snapshot.md` | Sprint-4 最终快照·阶段封存（L821） | 清 |
+| `项目里程碑 M1.md` | 2026-08-10 生产整改最终总结（L824） | 清 |
+| `P盘分出200GB给Linux-操作方案.md` | 已完成的一次性磁盘操作方案（L254 通配命中）；性质是环境操作记录，若入库建议归 `docs/ops/` | 清（按"方案"类） |
+| `debug-backend-startup-500-logs.md` | Debug Session 记录（后端启动 500 日志）（L203） | 留（真残留） |
+| `debug-position-employee-empty-error.md` | Debug Session 记录（岗位员工为空报错）（L203） | 留（真残留） |
+| `oic-1-task-board.md` | OIC-1 任务池（生产运营期小批次改善）（L798） | **待 Owner 逐条裁**——同族不一致：`oic-be-task-board.md` 已 tracked |
+| `oic-2-task-board.md` | OIC-2 任务池（多客户端治理轨）（L799） | **待裁**——同上 |
+| `product-decision-backlog.md` | 产品决策池（L800） | **待裁**——决策记录属治理面 |
+| `product-decision-request.md` | 产品决策请求（L801） | **待裁**——同上 |
+| `frontend-improvement-backlog.md` | 前端体验优化清单（L796） | **待裁**——backlog 属产品面 |
+
+*通配规则问题：`/*计划*.md`、`/*报告*.md`、`/*指南*.md`、`/*说明*.md` 四条无对应文件，是 ENV-4 误伤根源（会误伤未来任何治理文档）；建议逐条改为具体路径或删除，只保留 `/debug-*.md`。待 Owner 裁决后执行。*
