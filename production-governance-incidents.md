@@ -363,3 +363,19 @@ OPEN（待 Owner 路径裁决；PG-001 规则已即时生效）
 ### 状态
 
 OPEN（处置与开卡待 Owner；本条目 + ENV-13 镜像 = 双登记，提交面锚定经 ENV-13 行）
+
+---
+
+## GOV-INCIDENT-005：hunk 隔离方法的系统性盲区（2026-10-13 登记，Owner 指令）
+
+| 项 | 内容 |
+|----|----|
+| **编号** | GOV-INCIDENT-005 |
+| **类型** | 流程缺陷（非代码缺陷、非数据篡改、非提交面造假） |
+| **现象** | 用 index 手术做 hunk 隔离时，**提交面 = HEAD + 卡 hunks**，**工作区 = Owner WIP**，两者差异**从未登记**。收口只复核「Owner WIP 仍完整留在工作区」，不复核「卡 hunks 是否在工作区」 |
+| **首例** | **C6**（`dd6ddcc`，`frontend/src/views/system/components/UserManagementTab.vue`）：提交面有 5 个 C6 hunk，工作区无 → Owner Live 实测「新增用户」表单无「归属位置」字段 |
+| **范围** | **C1–C10 每片都可能**——凡用 `hash-object -w` / `update-index --cacheinfo` 构造提交面的卡，工作区都可能不含卡 hunks |
+| **建议规则（已落 PG-001 条款 7）** | index 手术后必跑 `git diff <提交> -- <文件>`，记录「提交面 vs 工作区」差异，并说明 Live 验证跑哪一侧 |
+| **状态** | **OPEN**（规则已落 PG-001 条款 7；C6 已按 Owner 选 A 回贴 5 hunks 到工作区、未暂存；其余片是否同样存在差异 = 待逐片核对） |
+
+*本条为追加记载；文件中部「事件状态表」未改动（只增不改）。状态表对应行：GOV-INCIDENT-005 | OPEN | Owner 裁决 | 逐片核对 C1–C10 提交面 vs 工作区差异；Live 验证按 PG-001 条款 7 声明跑哪一侧。*
