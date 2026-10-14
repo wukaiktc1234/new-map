@@ -8325,3 +8325,50 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 第 3 步 git status 剩余归属 | **完成** | 548 条目（456 M + 91 ?? + 1 D）全部落归属：Top 卡簇分布 + 376 无卡标记文件 + 91 未跟踪特性簇（APK 设备/P1-A/原料扣减/Receipt/本地工具）+ 1 D（recruitment-mock.ts，P1-MOCK）；见分类表 §2-§4 |
 | 活库证据补录 | 完成 | N15/N17 裁决支撑 7 项（order 权限 0 行、无 `*` 通配、admin 持悬空角色 '1'、复数 `inventory_warning_records` 缺失、单数 `inventory_warning_record` 为审计表 schema 不同）；见分类表 §5 |
 | 暂缓项（Owner 指令） | 维持 | 第二阶段 71 Controller 审计（P0-SEC-001）暂缓；P0-WORKSPACE-WIP-CONSOLIDATION-001 暂缓（本分类表为其输入）；全项目冻结不执行（Owner：违反 PG-001） |
+
+### §24.3u GOV-INCIDENT-003 Step 2 执行记录（2026-10-13，Owner 指令路径 A「hunk 拆分」；Owner 兜底规则「不确定 → 默认 A（不阻塞、不烂尾）」）
+
+**逐卡提交（7 片，每片独立交验，禁止合并提交）**
+
+| # | commit | 卡 | 文件 | 变更 |
+|----|--------|----|------|------|
+| 1 | `09bb762` | P0-SEC-004 域矩阵单源 + meta.roles 分支 | frontend/src/router/guards.ts | +58 −14 |
+| 2 | `c31b752` | P0-SEC-003 默认拒绝实现 | frontend/src/router/guards.ts | +11 −22 |
+| 3 | `712d4f7` | P1-SEC-001 三大业务角色补入矩阵 | frontend/src/router/guards.ts | +4 −4 |
+| 4 | `eec8fb9` | P1-SEC-002 meta 化公开路由判定 | frontend/src/router/guards.ts | +5 −4 |
+| 5 | `8438db7` | P0-SEC-005 敏感路由显式 meta.roles | frontend/src/router/index.ts | +2 −2 |
+| 6 | `f67523d` | P1-SEC-004 token 静默续期 + 会话过期 fail-closed | frontend/src/api/request.ts | +123 −9 |
+| 7 | `93d82f6` | P1-SEC-003 product:cost:export 权限注册 | frontend/src/utils/permissions.ts + AdminPermissions.java + TokenServiceImpl + AuthenticationServiceImpl + UserDetailsServiceImpl | +6 −4 |
+
+**逐片交验方法**：每片以 diff 逐行选择重建 blob（`git hash-object -w` + `git update-index --cacheinfo`），提交前 `git diff --cached` 与卡面行集逐行核对 = 仅该卡行；Owner WIP 全程未暂存（工作树 456 M + 91 ?? + 1 D 保持原状）。
+
+**聚合构建交验（2026-10-13，独立 worktree 仅含跟踪文件 = 快照；基线 = `61a4d5d`，即 commit 1 之前，同法对照）**
+
+| 面 | 基线 | 快照 | 结论 |
+|----|------|------|------|
+| backend `mvn -o compile` | 36 唯一错误 | 36 唯一错误 | **SET-EQUAL → 7 提交引入 0 编译错误** |
+| frontend `vue-tsc --noEmit` | 189 唯一错误 | 189 唯一错误 | **SET-EQUAL → 7 提交引入 0 类型错误**（差异仅 permissions.ts 3 条 TS1117 的行号平移） |
+
+- backend 两侧同一失败根因（既有状态，非本次提交造成）：跟踪文件引用未跟踪类——`OrderNewServiceImpl` / `PosOrderCreateServiceImpl` / `ReceiptConfirmationServiceImpl` 引用 `MaterialDeductionContext`、`MaterialDeductionFailureException`、`MaterialConsumptionAuditService` 等 ?? 文件 → **HEAD 单独不可编译**；
+- frontend 唯一涉及提交文件的 3 条错误为 HEAD 既有缺陷（`permissionDescriptions` 重复键 `hr:organization:manage` / `hr:attendance:manage` / `hr:recruitment:manage`），与 commit 7 卡面无关（卡面新增 `product:cost:export` 非重复键）。
+
+**不可拆残留（登记，未提交，不烂尾）**
+
+| 文件 | 残留内容 | 不可拆原因 |
+|----|------|------|
+| guards.ts | `isRunningInApp()`、APK 重定向、APK 设备门禁块、APK forced mobile | 属未开卡的 APK 设备特性；门禁块 import ?? `@/utils/device-id`、`@/api/device-registration` |
+| router/index.ts | verify-code / device-activation 路由、device-whitelist 路由、receiving-mobile、P1-A bank 路由、PD-004 三处路由删除、P1-FIN-RVT-001 注释 | 路由 import ?? 未跟踪组件；device-whitelist 单行混合路由+roles 不可拆 |
+| api/request.ts | X-Device-Id 注入、FormData Content-Type 修复 | import ?? `@/utils/device-id`；属 APK 设备特性 |
+| utils/permissions.ts | `product:pricing:batch`（属 P1-UI-CORE-006）、purchase 两 hunk（terminate/freeze/cancel 描述） | 属其他卡/未归属改动 |
+| AdminPermissions.java | P1-A bank/balance/tax、purchase 行、P0-SEC-001-D system 行、finance:payment | 属其他卡/未归属改动 |
+| TokenServiceImpl / AuthenticationServiceImpl / UserDetailsServiceImpl | P1-A bank/balance 行 | 属其他卡/未归属改动 |
+
+**待 Owner 裁决（本记录登记，Agent 未自行处置）**
+
+1. 同批被误伤文档：`.gitignore` L802 `production-audit-report.md`、L804 `production-pwl-closeout.md`（GBK 2026-09-15 从未提交，与 `d96b94f` 同批）——是否同样解除忽略；
+2. flyway history 异常：`20260922.001` installed checksum = NULL（本地 1500608167）、缺 V999（resolved not applied）——Agent 未 `repair`（历史篡改需 Owner）；app 靠 pg profile `validate-on-migrate=false` 容忍；
+3. 上述 ?? 特性簇是否开卡提交（backend 快照不可编译的直接原因）。
+
+**执行方法注记（只增不改）**：写入统一 UTF-8 无 BOM；过程中两次方法错误已纠正并复核——① `Out-File -Encoding utf8` 加 BOM 致首行 diff 失真；② `Get-Content` 默认 ANSI 读 UTF-8 致中文乱码（commit 3 曾暂存乱码版本，已重建后提交）。commit 2（`c31b752`）已复核：`git show c31b752:frontend/src/router/guards.ts` 中文完整无乱码。
+
+**Live 验证**：归 Owner（批次 A/B/C + N15 Live：持角色 200 / 无角色 403 / UI 菜单）。
