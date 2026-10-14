@@ -53,10 +53,16 @@ const DOMAIN_VISIBLE_ROLES: Record<string, UserRole[]> = {
   'system': [UserRole.OWNER, UserRole.ADMIN],
 }
 
+/**
+ * 获取角色在指定域的访问级别（P0-SEC-003：默认拒绝）
+ *
+ * 访问级别说明：
+ * - 'FULL'：完全访问（读+写），仅当域-角色组合在 DOMAIN_VISIBLE_ROLES 中显式配置
+ * - undefined：未显式配置 → 拒绝访问（fail-closed）
  *
  * @param role 用户角色
  * @param domain 域标识符
- * @returns 访问级别字符串（'FULL' | 'READ_ONLY' | 'LIMITED' | 'HIDDEN'）或 undefined
+ * @returns 访问级别字符串（'FULL'）或 undefined
  */
 function getRoleDomainAccessLevel(role: UserRole, domain: string): string | undefined {
   // 超级管理员对所有域拥有完全访问权限
@@ -64,30 +70,13 @@ function getRoleDomainAccessLevel(role: UserRole, domain: string): string | unde
     return 'FULL'
   }
 
-  // 各角色拥有完全访问权限的域清单，未列出的域默认 READ_ONLY
-  const roleFullDomains: Partial<Record<UserRole, string[]>> = {
-    // 运营总监：门店运营、产品、订单、运营中心、会员管理
-    [UserRole.OPS_DIRECTOR]: ['workspace', 'store-ops', 'product', 'order', 'operations', 'member'],
-    // 财务总监：财务中心
-    [UserRole.FINANCE_DIRECTOR]: ['workspace', 'finance'],
-    // HR总监：人事管理
-    [UserRole.HR_DIRECTOR]: ['workspace', 'hr'],
-    // 店长：门店运营、产品、订单、会员管理
-    [UserRole.STORE_MANAGER]: ['workspace', 'store-ops', 'product', 'order', 'member'],
-    [UserRole.TEAM_LEADER]: ['workspace'],
-    [UserRole.REGION_MANAGER]: ['workspace'],
-    [UserRole.AUDITOR]: ['workspace'],
-    [UserRole.EMPLOYEE]: ['workspace'],
-    [UserRole.SCHEDULER]: ['workspace'],
-  }
-
-  const fullDomains = roleFullDomains[role]
-  if (!fullDomains) {
-    // 未知角色，拒绝访问
+  // 默认拒绝：未显式配置的域返回 undefined，checkDomainAccess 据此拒绝
+  const visibleRoles = DOMAIN_VISIBLE_ROLES[domain]
+  if (!visibleRoles) {
     return undefined
   }
 
-  return fullDomains.includes(domain) ? 'FULL' : 'READ_ONLY'
+  return visibleRoles.includes(role) ? 'FULL' : undefined
 }
 
 /**
