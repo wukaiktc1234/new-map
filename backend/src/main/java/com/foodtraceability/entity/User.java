@@ -1,6 +1,7 @@
 package com.foodtraceability.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.foodtraceability.annotation.Desensitize;
 import com.foodtraceability.annotation.DesensitizeType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -35,6 +36,8 @@ public class User {
      * 密码（已加密）
      */
     @Schema(description = "密码（已加密）", example = "$2a$10$...")
+    // N21 全覆盖：序列化侧永不输出 password（XML resultType / MP 内置 / Response Body 三条路径共用同一 Jackson 注解）
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**
