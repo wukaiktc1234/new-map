@@ -13,9 +13,10 @@
  */
 
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import logger from '@/utils/logger'
+import { getRefreshToken, setToken, getTokenRemainingTime } from '@/utils/auth'
 
 // ============================================================
 // 配置常量
@@ -102,6 +103,103 @@ function clearAuthAndRedirect(): void {
 }
 
 // ============================================================
+// Token 静默续期
+// ============================================================
+
+/** 剩余多少秒时提前静默刷新（5 分钟） */
+const TOKEN_PREFRESH_SECONDS = 300
+
+/** 并发去重：同一时刻只发起一次刷新请求 */
+let refreshPromise: Promise<string> | null = null
+
+/** 弹框去重：同一会话只弹一次"登录已过期"确认框 */
+let sessionExpiredPrompting = false
+
+/** 是否为登录接口请求（其业务 401 = 密码错误，非会话过期） */
+function isLoginRequest(url: string | undefined): boolean {
+  if (!url) return false
+  return url.includes('/v1/auth/login') || url.includes('/auth/login')
+}
+
+/**
+ * 用 refresh_token 静默换取新 token（使用原生 axios，避免递归走本实例拦截器）
+ * 成功后自动更新 localStorage 中的 token 与过期时间
+ */
+async function refreshTokenSilently(): Promise<string> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) {
+    throw new Error('无 refresh_token，无法续期')
+  }
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post<{ code?: number; message?: string; data?: string }>(
+        `${API_BASE_URL}/v1/auth/refresh`,
+        {},
+        { headers: { Authorization: `Bearer ${refreshToken}` } },
+      )
+      .then((res) => {
+        const body = res.data
+        if (body?.code !== undefined && body.code !== 0) {
+          throw new Error(body.message || '刷新令牌失败')
+        }
+        const token = body?.data
+        if (!token) {
+          throw new Error('刷新令牌响应为空')
+        }
+        setToken(token)
+        return token
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+/**
+ * 处理会话过期（401）：
+ * 1. 先尝试静默刷新并重放原请求（用户无感，不丢数据）
+ * 2. 刷新失败则提示并自动登出（P1-SEC-004）：
+ *    - 取消「留在本页」选项：死会话不再允许继续交互，避免用户输入丢失且毫不知情
+ *    - 弹框关闭（X/遮罩）同样强制登出（fail-closed）
+ *    - sessionExpiredPrompting 防重：连续 401 只弹一次
+ */
+async function handleSessionExpired(
+  originalConfig?: InternalAxiosRequestConfig & { _retried?: boolean },
+): Promise<never> {
+  if (originalConfig && !originalConfig._retried) {
+    try {
+      await refreshTokenSilently()
+      originalConfig._retried = true
+      return request(originalConfig) as Promise<never>
+    } catch {
+      // 刷新失败，走登出提示
+    }
+  }
+  if (sessionExpiredPrompting) {
+    return Promise.reject(new Error('登录已过期，请重新登录'))
+  }
+  sessionExpiredPrompting = true
+  try {
+    await ElMessageBox.confirm(
+      '登录已过期，请重新登录。当前页面未保存的修改可能丢失。',
+      '登录已过期',
+      {
+        confirmButtonText: '重新登录',
+        showCancelButton: false,
+        closeOnClickModal: false,
+        closeOnPressEscape: false,
+      },
+    )
+  } catch {
+    // 用户关闭弹框：同样强制登出，不允许停留在死会话
+  } finally {
+    sessionExpiredPrompting = false
+  }
+  clearAuthAndRedirect()
+  return Promise.reject(new Error('登录已过期，请重新登录'))
+}
+// ============================================================
 // 创建 Axios 实例
 // ============================================================
 
@@ -118,11 +216,20 @@ const request: AxiosInstance = axios.create({
 // ============================================================
 
 request.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // 添加认证 Token
+  async (config: InternalAxiosRequestConfig) => {
+    // 添加认证 Token；token 即将过期时先静默续期，避免保存/提交时突然 401
     const token = localStorage.getItem('token')
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`
+      try {
+        if (getTokenRemainingTime(token) < TOKEN_PREFRESH_SECONDS && getRefreshToken()) {
+          const fresh = await refreshTokenSilently()
+          config.headers.Authorization = `Bearer ${fresh}`
+        } else {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+      } catch {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
 
     // 添加请求日志
@@ -162,10 +269,17 @@ request.interceptors.response.use(
       // 特殊错误码处理
       switch (res.code) {
         case 401:
+          // 登录接口的业务 401 = 用户名或密码错误（后端返回 HTTP 200 + code 401），
+          // 不是会话过期：直接透出后端 message，避免误报"登录已过期"
+          if (isLoginRequest(response.config.url)) {
+            ElMessage.error(errorMessage)
+            return Promise.reject(new Error(errorMessage))
+          }
           if (import.meta.env.PROD) {
-            // 生产环境：清除认证状态并跳转登录页
-            ElMessage.error('登录已过期，请重新登录')
-            clearAuthAndRedirect()
+            // 先尝试静默刷新并重放请求；失败则弹确认框后再跳转，避免用户数据丢失
+            return handleSessionExpired(
+              response.config as InternalAxiosRequestConfig & { _retried?: boolean },
+            )
           }
           // 开发环境：不跳转、不清空标签页，让 silentGet 走 mock 回退
           // 原因：开发模式无真实 token，后端必然返回 401，若跳转会清空 tab-bar-tabs 导致标签页丢失
@@ -217,8 +331,8 @@ request.interceptors.response.use(
         case 401:
           errorMessage = '登录已过期，请重新登录'
           if (import.meta.env.PROD) {
-            // 生产环境：清除认证状态并跳转登录页
-            clearAuthAndRedirect()
+            // 先尝试静默刷新并重放请求；失败则弹确认框后再跳转，避免用户数据丢失
+            return handleSessionExpired(error.config)
           }
           // 开发环境：不跳转、不清空标签页，让 silentGet 走 mock 回退
           // 原因：开发模式无真实 token，后端必然返回 401，若跳转会清空 tab-bar-tabs 导致标签页丢失
