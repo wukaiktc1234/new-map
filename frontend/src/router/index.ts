@@ -14,7 +14,7 @@ const router = createRouter({
     { path: '/login', name: 'Login', component: () => import('@/views/login/LoginPage.vue'), meta: { title: '登录', requireAuth: false } },
     { path: '/', redirect: '/home' },
     { path: '/home', name: 'Home', component: () => import('@/views/dashboard/index.vue'), meta: { title: '工作台' } },
-    { path: '/company-init', name: 'CompanyInit', component: () => import('@/views/company/CompanyInit.vue'), meta: { title: '公司初始化向导', domain: 'system' } },
+    { path: '/company-init', name: 'CompanyInit', component: () => import('@/views/company/CompanyInit.vue'), meta: { title: '公司初始化向导', domain: 'system', roles: [UserRole.OWNER, UserRole.ADMIN] } },
     { path: '/demo/component-gallery', name: 'ComponentGallery', component: () => import('@/demo/ComponentGallery.vue'), meta: { title: 'UI组件参考手册', requireAuth: false } },
 
     // ========== 产品中心 ==========
@@ -187,7 +187,7 @@ const router = createRouter({
     { path: '/seal/management', name: 'SealManagement', component: () => import('@/views/seal/SealManagement.vue'), meta: { title: '印章管理', domain: 'system', roles: [UserRole.OWNER, UserRole.ADMIN, UserRole.HR_DIRECTOR, UserRole.FINANCE_DIRECTOR, UserRole.OPS_DIRECTOR] } },
 
     // ========== 供应商签署门户 ==========
-    { path: '/supplier-portal/links', name: 'SignLinkManagement', component: () => import('@/views/supplier-portal/SignLinkManagement.vue'), meta: { title: '签署链接', domain: 'purchase' } },
+    { path: '/supplier-portal/links', name: 'SignLinkManagement', component: () => import('@/views/supplier-portal/SignLinkManagement.vue'), meta: { title: '签署链接', domain: 'purchase', roles: [UserRole.OWNER, UserRole.ADMIN, UserRole.PURCHASE_MANAGER] } },
     // H5签署页面（无需登录，通过token鉴权）
     { path: '/portal/sign', name: 'SupplierSignPortal', component: () => import('@/views/supplier-portal/SupplierSignPortal.vue'), meta: { title: '供应商签署', public: true } },
 
