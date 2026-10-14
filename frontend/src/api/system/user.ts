@@ -235,6 +235,15 @@ export const userApi = {
   },
 
   /**
+   * 获取用户的角色名称列表
+   * 对应 GET /v1/users/{id}/role-names
+   * 数据源：users.roles（JSON ID 数组）→ roles 表；不读 users.role_names（死列，见 N24）
+   */
+  async getUserRoleNames(id: number): Promise<string[]> {
+    return await get<string[]>(`/v1/users/${id}/role-names`) || []
+  },
+
+  /**
    * 获取所有活跃门店列表（用于分配门店下拉）
    * 对应 GET /v1/users/stores
    */
