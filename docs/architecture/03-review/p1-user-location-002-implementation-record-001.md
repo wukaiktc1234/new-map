@@ -583,3 +583,15 @@ WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
 **V-A1 前置条件更新**：V-A1 行 1/2 现可有效执行（权限码 + 绑定已在活库，rank 213）；行 3 审计日志验证不受影响。
 
 **治理注**：C3 卡此前已 ACCEPTED（C1–C10 收口，§7.7/§7.8），其「seed 落库」证据面当时锚定于**迁移文件存在 + 编译/定向测试绿**，未含「活库 flyway 应用成功」一项——本次发现即该缺口。**PG-001 双向锚定规则扩展建议**：凡 seed/建表类迁移，收口证据面须含 `flyway_schema_history` 应用成功行（rank + success=t + installed_on），否则「已落库」声称不成立。
+
+### §7.12 C6 追加记载（2026-10-13，Live 验证发现）——§7.6 的 index 手术使工作区不含 C6 hunks
+
+| 项 | 内容 |
+|----|----|
+| **事实** | §7.6 的 C6 提交（`dd6ddcc`）经 index 手术构造提交面（`git show HEAD:` 基线 + 5 hunks → blob `4612b7a` → `update-index --cacheinfo`）；**工作区文件从未被写入这 5 个 hunks**，保持 Owner WIP 版本 |
+| **证据（2026-10-13 实测）** | 回贴前 `git diff dd6ddcc -- frontend/src/views/system/components/UserManagementTab.vue` = **39+/56−**，其中 56− 全部是 C6 的 5 个 hunk；`frontend/src/api/system/user.ts` 工作区 = 提交面（无 diff）→ 只有 .vue 不一致 |
+| **后果** | Live 跑工作区 → 「新增用户」表单无「归属位置」字段（Owner Live 实测）。§7.6 当时只复核「Owner WIP 6 个 hunk 仍完整留在工作区」，未复核「卡 hunks 是否在工作区」这一侧 |
+| **三选一判定** | ①未实施（只登记）——不成立：提交面有代码；②需重启 vite——不成立：工作区无此代码，且 `user.ts` 工作区 = 提交面；③做在编辑对话框——不成立：C6 hunk 是 `v-if="dialogType === 'create'"`（编辑模式故意不加内联入口，仍走 `PUT /v1/users/{id}/assign-store`）；实际 = **第 4 种：提交面在位、工作区不在位** |
+| **动作（2026-10-13，Owner 选 A）** | 5 个 C6 hunks 回贴到工作区文件（**不暂存**）；回贴后 `git diff dd6ddcc` 只剩 7 个 Owner WIP hunk（39+/23−）；vue-tsc 交验：本文件 **0 错误**（全量 144，工作区 WIP 面口径，与 tracked-only 基线 189 不同口径） |
+| **Live 验证跑哪一侧** | 回贴后跑**工作区**（Owner 重启 vite，走 vtest01 路径）；如需验证提交面则用 worktree checkout `dd6ddcc` |
+| **规则归属** | PG-001 **条款 7**（2026-10-13 新增）+ **GOV-INCIDENT-005** |
