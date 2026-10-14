@@ -1,5 +1,7 @@
 # Production Known Limitations（生产已知限制清单）
 
+> **状态见 [docs/STATUS.md](docs/STATUS.md)（单一真相源）**——本文件是限制明细登记，不复述状态。
+
 > 用途：收录当前 Sprint-2、Sprint-3A、Sprint-3B-1 与 Sprint-3B-2 已知限制，作为发布评审输入。
 > 维护规则：只增不改；限制解除后更新"状态"，不删除历史行。
 > 关联文档：`sprint-2c-execution-list.md`、`product-decision-backlog.md`、`production-remediation-task-board.md`、`docs/quality/sprint-3a-phase1-qa-report.md`、`docs/quality/sprint-3a-security-qa-report.md`、`docs/quality/sprint-3b1-qa-report.md`、`docs/quality/sprint-3b2-qa-report.md`

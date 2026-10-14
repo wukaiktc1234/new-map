@@ -1,5 +1,7 @@
 # 整体整改路线图（Remediation Roadmap）
 
+> **状态见 [docs/STATUS.md](docs/STATUS.md)（单一真相源）**——本文件不复述状态。
+
 > 更新日期：2026-09-30
 > 维护人：研发负责人 + QA Lead
 > 任务源：`production-remediation-task-board.md`（72 任务池：P0=20 / P1=31 / P2=21）

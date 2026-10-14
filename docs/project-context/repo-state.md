@@ -1,5 +1,7 @@
 # Repo 状态快照（repo-state.md）
 
+> **状态见 [../STATUS.md](../STATUS.md)（单一真相源）**——本文件是历史快照视图，不复述当前状态。
+
 > **性质声明**：本文档为**视图层快照，非权威来源**。与 git 实际状态不一致时，**以 git 为准**。
 > 同步责任：PG-002（见同目录 `process-guards.md`）——每次卡片收口或 push 后由 developer 更新本文件。
 > 快照时点：2026-09-30（M3-M4 S5–S9c 收口 `b2cad36` → KL-084 `4ccf353` → ENV-8 + PG-001 规则6 `d86f0be` → PG-006 `1b3d7e3` → **P1-D 实现 `916c0b6`** → **M3-M4 正式收口 `CLOSED_WITH_REGISTERED_LIMITATION` `b2e1313` + 已 push**；local = origin = `b2e1313`，**ahead=0 / behind=0**）

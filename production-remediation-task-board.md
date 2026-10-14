@@ -1,5 +1,7 @@
 # 生产整改任务池（Production Remediation Task Board）
 
+> **状态见 [docs/STATUS.md](docs/STATUS.md)（单一真相源）**——本文件是任务池 + 只增不改的执行记录，不复述状态。
+
 > 生成日期：2026-08-10
 > 输入：`production-audit-report.md`（前端 664 文件）+ `docs/quality/data-authenticity-audit-20260810.md`（前后端 3,400 文件）
 > 定位：任务拆解文档。本文件不修改任何代码，仅输出可执行任务池。
