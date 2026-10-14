@@ -8396,3 +8396,12 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **三项处置（纳入 P1-APK-DEVICE-001 卡面范围）** | ① `frontend/apk-download/` → `.gitignore`（构建产物；实测 1 文件 `app-debug.apk` 13,271,880 bytes）② `frontend/certs/` → `.gitignore`（敏感物：`ca.pem` / `cert.pem` / `key.pem`，含私钥；同 **KL-077** 凭据治理口径）③ `frontend/android/` → 分类：中间产物 `.gitignore`（实测 1860 文件中 **1432** 在 `build/`/`.gradle/`；`android/.gitignore` 已覆盖 `build/`、`.gradle/`、`local.properties`、`*.apk`、`capacitor-cordova-android-plugins`、`app/src/main/assets/public`）+ 自定义原生代码入库（`git add --dry-run` 实测 **59** 候选，其中 4 个自定义 java：`BarcodeScannerPlugin` / `MainActivity` / `ScannerActivity` / `ScreenOrientationPlugin`，其余为 gradle 配置、res 资源、wrapper） |
 | **卡号 / 优先级（Owner 确认 2026-10-13）** | **P1-APK-DEVICE-001 / P1 / 整特性一次入库**；certs / apk-download / android 按上处置 |
 | **push 状态（实测）** | 未 push：**ahead=58 / behind=0**（`origin/master` = `671d87f`）；`.git/hooks` 无 `post-commit`（PG-001 规则 6）；push 由 Owner 执行 |
+
+### §24.3x P1-SEC-009 执行窗口裁决（2026-10-13，Owner）
+
+| 项 | 值 |
+|----|----|
+| **裁决** | P1-SEC-009 渗透验证**排在 P1-APK-DEVICE-001 入库后一起跑** |
+| **理由（Owner）** | APK 簇含 `device-whitelist`、`verify-code` 等安全面，渗透应覆盖它们；这些面当前只在未跟踪工作区，跑渗透覆盖不到提交面 |
+| **覆盖项追加（证据）** | `frontend/android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml` 含 `android:usesCleartextTraffic="true"`（允许明文 HTTP）→ 建议纳入渗透范围 |
+| **门禁属性** | 不变：**发布门禁前必须关闭**；排期变化不改变门禁属性 |
