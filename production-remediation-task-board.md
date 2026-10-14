@@ -8431,3 +8431,14 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **M6 状态** | M1–M4 已实施；**M5–M6 未实施**（§24.3g 基准 ⑤），落地后需复演回滚 |
 | **命名歧义（防误读）** | 「M6」在本仓库另有三处不同含义：会员链 M6（paymentStatus 补状态）、audit backlog M6（mock 文件替换）、real-world-acceptance-plan M6-01–04（异常与回归测试）。本条所指 = **location-organization-separation-design-001 的 M6（组织层挂接）** |
 | **状态** | 观察项，**不开修复卡**；M6 实施时一并解决；UI 过渡说明文字待 Owner 批准落点 |
+### §24.4a N21（安全）：用户列表接口泄漏 password 哈希（2026-10-15 登记，Owner Live 抓包）
+
+| 项 | 内容 |
+|----|----|
+| **触发（实测）** | Owner 抓包 `GET /api/v1/users/list` 响应体含 `"password": "$2a$12$XDhV..."` |
+| **根源（实测）** | `UserMapper.xml` `findUsersByConditionPage` 原为 `SELECT * FROM users`；实体 `User.password`（L38）无 `@JsonIgnore` → 哈希进响应体 |
+| **同批主修（编辑链路 bug 补修，按 Owner 裁决不登记卡）** | `UserResultMap` 提交 `bd57473`：显式声明 4 处列名≠属性名（`user_id→id`、`name→fullName`、`create_time→createdTime`、`update_time→updatedTime`）。`resultType` 自动映射只看属性名、不看 `@TableId`/`@TableField` → `user_id`→`userId`（实体无此属性）→ `id=null`；`name`→`name`（实体字段是 `fullName`）→ `fullName=null`。链条：`row.id=null` → `editingId=null` → `UserManagementTab.vue` L381 `return` → 保存静默 no-op（日志无 PUT）；角色请求 `GET /api/v1/users/null/roles` → 400 参数类型不匹配：id（日志 L12105 / L12489） |
+| **N21 已修** | 提交 `e775c6d`：`findUsersByConditionPage` 改显式列清单（25 列），排除 `password` |
+| **未修面（同族暴露，等 Owner 裁决是否本轮做）** | ① `UserMapper.java` 7 处 `SELECT * FROM users`（L46/52/58/64/70/76/82）仍含 password；② 走 MP 内置方法的三条接口返回实体全字段：`POST /v1/users`（L65）、`GET /v1/users/{id}`（L107）、`PUT /v1/users/{id}`（L119）——响应体同样含哈希。建议一处覆盖全部：`User.password` 加 `@JsonProperty(access = Access.WRITE_ONLY)` |
+| **影响面（实测审计）** | `mapper/*.xml` 共 77 处 `resultType=实体` 查询，仅 **User** 命中（列名≠属性名且无 resultMap）。`PositionMapper.xml` L7 有显式别名 `p.position_id AS id` → 安全；`RoleMapper.xml` L5 有 resultMap；`Employee` 的 id 有字段级 `@JsonSerialize(ToStringSerializer)`（L26–27）→ 与 V-A1 员工编辑 PASS 一致。实体中「PK 列名≠属性 id」共 9 个（AssetMaster/Employee/Member/Notification/Permission/Position/Product/Role/User），走 XML resultType 的只有 User 与 Position（后者已别名） |
+| **状态** | 两提交已入库，待 Owner Live 复验：列表响应无 `password`、`id`/`fullName` 有值、编辑对话框可保存 |
