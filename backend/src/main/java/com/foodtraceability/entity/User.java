@@ -2,6 +2,8 @@ package com.foodtraceability.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.foodtraceability.annotation.Desensitize;
 import com.foodtraceability.annotation.DesensitizeType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -24,6 +26,8 @@ public class User {
      */
     @TableId(type = IdType.ASSIGN_ID, value = "user_id")
     @Schema(description = "用户ID", example = "1234567890")
+    // 雪花 ID 精度：ASSIGN_ID 生成的 19 位 Long 超 JS Number 安全上限（2^53-1），JSON 输出必须为字符串（先例：Employee.java L27）
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
     /**
