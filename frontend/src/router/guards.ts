@@ -2,22 +2,57 @@ import type { Router } from 'vue-router'
 import { usePermissionStore, UserRole, OrgLevel } from '@/stores/permission'
 
 /**
- * 获取角色在指定域的访问级别
+/**
+ * 域权限矩阵（单源：与各模块 menu.ts 的 visibleRoles 对齐，P0-SEC-004）
  *
- * 基于角色域权限矩阵的默认实现，待后端权限中心 API 落地后替换为真实接口调用。
+ * 域 → 可见角色清单。设计原则（P0-SEC-003 默认拒绝）：
+ * - 只放行【显式配置】的域-角色组合；未列入本表的域 → undefined（拒绝访问）
+ * - 不再有 READ_ONLY 兜底，未配置即拒绝（fail-closed）
  *
- * 访问级别说明：
- * - 'FULL'：完全访问（读+写）
- * - 'READ_ONLY'：只读访问（可查看页面，不可修改）
- * - 'LIMITED'：受限访问
- * - 'HIDDEN'：不可访问
- * - undefined：未知角色，拒绝访问
+ * 与菜单对齐依据（各 menu.ts visibleRoles）：
+ * - workspace  ：工作台（workspace/menu.ts 全员）+ 物资需求提报（request-center/menu.ts
+ *                [OWNER,ADMIN,STORE_MANAGER,TEAM_LEADER,DEPARTMENT_MANAGER,EMPLOYEE]）
+ * - store-ops  ：store-management/menu.ts [STORE_MANAGER,TEAM_LEADER,OWNER,ADMIN,OPS_DIRECTOR]
+ * - product    ：product/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,STORE_MANAGER]
+ * - order      ：order/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,STORE_MANAGER]
+ * - operations ：operations/menu.ts [OWNER,ADMIN,OPS_DIRECTOR]
+ * - purchase   ：purchase/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,PURCHASE_MANAGER,STORE_MANAGER]
+ * - warehouse  ：warehouse/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,WAREHOUSE_MANAGER,STORE_MANAGER]
+ * - member     ：member/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,STORE_MANAGER]
+ * - finance    ：finance/menu.ts [OWNER,ADMIN,FINANCE_DIRECTOR]
+ * - hr         ：hr/menu.ts [OWNER,ADMIN,HR_DIRECTOR]
+ * - traceability：traceability/menu.ts [OWNER,ADMIN,OPS_DIRECTOR,STORE_MANAGER]
+ * - device     ：device/menu.ts [OWNER,ADMIN]
+ * - asset      ：asset/menu.ts [OWNER,ADMIN]
+ * - system     ：system/menu.ts [OWNER,ADMIN]
  *
- * 矩阵设计原则：
- * - owner/admin 对所有域拥有 FULL 权限
- * - 各总监角色对其主管业务域拥有 FULL，其他域 READ_ONLY（可跨域查看）
- * - 门店级角色聚焦门店运营相关域
- * - 基层员工仅可访问工作台
+ * 注：seal（电子签章）路由 /seal/management 的 meta.domain 为 'system'，
+ * 但其菜单 seal/menu.ts 可见角色为 [OWNER,ADMIN,HR_DIRECTOR,FINANCE_DIRECTOR,OPS_DIRECTOR]，
+ * 因此该路由已在 router/index.ts 声明精确 meta.roles，守卫对显式声明 roles 的路由
+ * 以路由声明为准（见 beforeEach 中 hasExplicitRouteRoles 分支），避免域矩阵误拦。
+ */
+const DOMAIN_VISIBLE_ROLES: Record<string, UserRole[]> = {
+  'workspace': [
+    UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.FINANCE_DIRECTOR,
+    UserRole.HR_DIRECTOR,
+    UserRole.STORE_MANAGER, UserRole.TEAM_LEADER,
+    UserRole.SCHEDULER, UserRole.REGION_MANAGER, UserRole.AUDITOR, UserRole.EMPLOYEE,
+  ],
+  'store-ops': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER, UserRole.TEAM_LEADER],
+  'product': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'order': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'operations': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR],
+  'purchase': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'warehouse': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'member': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'finance': [UserRole.OWNER, UserRole.ADMIN, UserRole.FINANCE_DIRECTOR],
+  'hr': [UserRole.OWNER, UserRole.ADMIN, UserRole.HR_DIRECTOR],
+  'traceability': [UserRole.OWNER, UserRole.ADMIN, UserRole.OPS_DIRECTOR, UserRole.STORE_MANAGER],
+  'device': [UserRole.OWNER, UserRole.ADMIN],
+  'asset': [UserRole.OWNER, UserRole.ADMIN],
+  'system': [UserRole.OWNER, UserRole.ADMIN],
+}
+
  *
  * @param role 用户角色
  * @param domain 域标识符
@@ -156,7 +191,16 @@ export function setupRouterGuards(router: Router): void {
     }
 
     if (domain) {
-      if (!checkDomainAccess(permissionStore, domain)) {
+      // P0-SEC-004：路由若显式声明 meta.roles，则以其为单源精确校验（如 /seal/management、
+      // /system/device-whitelist、/company-init、/supplier-portal/links 等敏感路由）；
+      // 未显式声明的业务域路由 → 走域矩阵 DOMAIN_VISIBLE_ROLES 强制校验（默认拒绝）。
+      const routeRoles = to.meta.roles as UserRole[] | undefined
+      if (Array.isArray(routeRoles) && routeRoles.length > 0) {
+        if (!checkRoutePermission(permissionStore, { roles: routeRoles })) {
+          handleAccessDenied(to.path, to.meta.title as string || '该页面')
+          return false
+        }
+      } else if (!checkDomainAccess(permissionStore, domain)) {
         const domainName = DOMAIN_NAMES[domain] || domain
         handleAccessDenied(to.path, domainName)
         return false
