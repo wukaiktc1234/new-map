@@ -18,9 +18,9 @@
 
 | 卡 | 状态 | 下一个动作 |
 |----|------|-----------|
-| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；`capacitor-cordova-android-plugins` 已放行（`!` 规则在未跟踪的 `frontend/android/.gitignore` 内，随卡提交） | Owner 放行后整特性入库（放行后实测 64 候选），含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
+| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；`capacitor-cordova-android-plugins` 已放行（`!` 保护规则在未跟踪的 `frontend/android/.gitignore` 内，随卡提交），5 个文件判定为生成模板无 plugin 注册点 → **排除**（§24.3y），候选回到 **59** | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
 | **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | Owner Live 验证：持角色 200 / 无角色 403 / UI 菜单（与批次 A/B/C 同批） |
-| **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**） | 待 Owner 安排执行窗口 |
+| **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**）；执行窗口已裁决（§24.3x）：**排在 P1-APK-DEVICE-001 入库后一起跑** | 覆盖 device-whitelist / verify-code / `usesCleartextTraffic="true"`；Owner 安排窗口 |
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
 | **P0-WORKSPACE-WIP-CONSOLIDATION-001** | **暂缓**（GOV-003 分类表为其输入） | Owner 裁决五批入库 |
 
@@ -29,10 +29,10 @@
 | 项 | 类型 | 说明 |
 |----|------|------|
 | Live 验证批次 A/B/C + N15 Live | 等 Owner 执行 | Agent 不跑 Live 验证 |
-| **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 等 Owner 裁决 | 无阻断（Flyway 容忍）；**不 repair**；后续卡顺手修或另开卡 |
+| **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 已裁决（2026-10-13） | 无阻断（Flyway 容忍）；**不 repair**；**顺手修，不另开卡**——等下一个碰 `flyway_schema_history` 的卡（如未来某次 migration 卡）一并处理 |
 | **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
-| 15 个被忽略 `*.md`（非 production 面） | 等 Owner 裁决 | 是否同属 ENV-4 误伤；`production-*.md` 六个已清（`4c43418` + `8065e84`） |
-| **Owner push**（**第一优先级**；commit 数以 `git rev-list --count origin/master..HEAD` 为准） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
+| 被忽略 `*.md`（非 production 面）——**实测 13 个**（不是 15） | 等 Owner 逐条裁 | 8 清（release-* / sprint-* / 方案 / 里程碑）+ 2 留（debug-*）+ 5 待裁（oic-1 / oic-2 / product-decision-* / frontend-improvement-backlog；同族不一致：`oic-be-task-board.md` 已 tracked）；4 条通配无对应文件为误伤根源。逐条清单已登记 KL 追加 |
+| **Owner push**（**第一优先级**；commit 数以 `git rev-list --count origin/master..HEAD` 为准） | 持续项 | 2026-10-13 已 push 64 commit（`671d87f` → 当时 HEAD），现 ahead=0；本文件之后的 commit 仍需 Owner push；无 auto-push hook（PG-001 规则 6） |
 
 ## 4. 禁区（不该碰）
 
@@ -52,5 +52,5 @@
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
 3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–004）。
-4. 读任务板**尾部**最新追加段（当前 §24.3u / §24.3v）——只增不改，读尾部而非中部。
+4. 读任务板**尾部**最新追加段（当前 §24.3w–§24.3y）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
