@@ -12,13 +12,13 @@
 | HEAD | **上次同步时点：2026-10-13**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准（上次同步时点 `671d87f`） |
 | 同步 | 以 `git rev-list --count origin/master..HEAD` 实测为准（上次同步时点 ahead=57 / behind=0，未 push；push 由 Owner 执行）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
-| 工作区 | **549 条目 = 456 M + 92 ?? + 1 D**（Owner WIP，留盘不暂存） |
+| 工作区 | **548 条目 = 457 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本次 `.gitignore` 提交后 `apk-download/`、`certs/` 不再出现在 `??`，故 92 → 90） |
 
 ## 2. 活跃卡（只列 5）
 
 | 卡 | 状态 | 下一个动作 |
 |----|------|-----------|
-| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项处置已入卡面范围（`apk-download/` → .gitignore 构建产物、`certs/` → .gitignore 敏感物含私钥、`android/` → 中间产物 .gitignore + 自定义原生代码入库） | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
+| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；`capacitor-cordova-android-plugins` 已放行（`!` 规则在未跟踪的 `frontend/android/.gitignore` 内，随卡提交） | Owner 放行后整特性入库（放行后实测 64 候选），含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
 | **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | Owner Live 验证：持角色 200 / 无角色 403 / UI 菜单（与批次 A/B/C 同批） |
 | **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**） | 待 Owner 安排执行窗口 |
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
@@ -32,7 +32,7 @@
 | **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 等 Owner 裁决 | 无阻断（Flyway 容忍）；**不 repair**；后续卡顺手修或另开卡 |
 | **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
 | 15 个被忽略 `*.md`（非 production 面） | 等 Owner 裁决 | 是否同属 ENV-4 误伤；`production-*.md` 六个已清（`4c43418` + `8065e84`） |
-| **Owner push**（commit 数以 `git rev-list --count origin/master..HEAD` 为准；上次同步时点 58） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
+| **Owner push**（**第一优先级**；commit 数以 `git rev-list --count origin/master..HEAD` 为准） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
 
 ## 4. 禁区（不该碰）
 
