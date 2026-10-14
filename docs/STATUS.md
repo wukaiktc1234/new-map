@@ -41,6 +41,7 @@
 - **`flyway_schema_history`**：禁 `repair`（历史篡改需 Owner 逐次批准）。
 - **`inventory_warning` / `inventory_warning_rule`（单数 legacy 表）**：不碰；现行是复数 `inventory_warning_records`（rank 214）。
 - **治理文档历史面**：任务板 / KL / incidents / 实施记录 = **只增不改**。
+- **hunk 隔离（index 手术）**：PG-001 **条款 7**（2026-10-13，GOV-INCIDENT-005）——凡用 index 手术做 hunk 隔离的卡，收口前必须登记「提交面 vs 工作区差异」并说明 Live 验证跑哪一侧。C6 首例（`dd6ddcc` 提交面有 5 hunks、工作区无 → 2026-10-13 已回贴到工作区，**未暂存**）。
 - **KL-085 / KL-086 冻结项**：不解冻；`DEFAULT_STORE_ID` 8 行使用点维持冻结。
 - **`.gitignore` ENV-4 残留专用段**：不批量改，逐条经 Owner 裁决。
 - **未跟踪特性簇**（APK 设备 / P1-A 银行 / 原料扣减 / Receipt）：属 Owner WIP，不自行提交。
@@ -51,6 +52,6 @@
 
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
-3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–004）。
+3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–005）。
 4. 读任务板**尾部**最新追加段（当前 §24.3w–§24.3y）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
