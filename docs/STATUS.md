@@ -11,8 +11,8 @@
 | 分支 | `master`（单分支工作流） |
 | HEAD | **上次同步时点：2026-10-13**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准（上次同步时点 `671d87f`） |
-| 同步 | 以 `git rev-list --count origin/master..HEAD` 实测为准（上次同步时点 ahead=57 / behind=0，未 push；push 由 Owner 执行）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
-| 工作区 | **548 条目 = 457 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本次 `.gitignore` 提交后 `apk-download/`、`certs/` 不再出现在 `??`，故 92 → 90） |
+| 同步 | **已 push（2026-10-13，64 commit：`671d87f` → 当时 HEAD）**；现 **ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
+| 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；`.gitignore` 提交后 `apk-download/`、`certs/` 不再出现在 `??`，故 92 → 90） |
 
 ## 2. 活跃卡（只列 5）
 
@@ -37,7 +37,7 @@
 ## 4. 禁区（不该碰）
 
 - **Live 验证环境口径（Owner 选 C：混合快照，2026-10-13）**：= tracked-only worktree + **13 个必要未跟踪类**（最小可编译集）；纯 tracked 树编译不过（ENV-10）。结论须注明「混合快照（tracked + 13 WIP 类）」，**不得声称纯 tracked**。
-- **Owner WIP**：456 M + 92 ?? + 1 D 不暂存；PG-001 精确 `git add <文件>`，禁 `git add .` / `-A` / 目录通配。
+- **Owner WIP**：456 M + 90 ?? + 1 D 不暂存（与第 1 节同一口径）；PG-001 精确 `git add <文件>`，禁 `git add .` / `-A` / 目录通配。
 - **`flyway_schema_history`**：禁 `repair`（历史篡改需 Owner 逐次批准）。
 - **`inventory_warning` / `inventory_warning_rule`（单数 legacy 表）**：不碰；现行是复数 `inventory_warning_records`（rank 214）。
 - **治理文档历史面**：任务板 / KL / incidents / 实施记录 = **只增不改**。
