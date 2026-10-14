@@ -9,9 +9,9 @@
 | 项 | 值 |
 |----|----|
 | 分支 | `master`（单分支工作流） |
-| HEAD | `3efc963` — PG-002 扩展（STATUS.md 同步规则）；本文件三次提交：`7096c26` 建立 → `fad2a65` 五处指针 → `3efc963` PG-002 扩展（本文件的同步提交本身会推进 HEAD，以 `git rev-parse HEAD` 为准） |
+| HEAD | `fb02b70` — 本文件同步提交；提交链：`7096c26` 建立 → `fad2a65` 五处指针 → `3efc963` PG-002 扩展 → `fb02b70`（本文件的同步提交本身会推进 HEAD，以 `git rev-parse HEAD` 为准） |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git，`origin/master` = `671d87f` |
-| 同步 | **ahead=52 / behind=0**（本地领先，未 push）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
+| 同步 | **ahead=56 / behind=0**（2026-10-13 实测，含本文件提交链；未 push）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **549 条目 = 456 M + 92 ?? + 1 D**（Owner WIP，留盘不暂存） |
 
 ## 2. 活跃卡（只列 5）
