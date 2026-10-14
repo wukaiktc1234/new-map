@@ -9,9 +9,9 @@
 | 项 | 值 |
 |----|----|
 | 分支 | `master`（单分支工作流） |
-| HEAD | `fb02b70` — 本文件同步提交；提交链：`7096c26` 建立 → `fad2a65` 五处指针 → `3efc963` PG-002 扩展 → `fb02b70`（本文件的同步提交本身会推进 HEAD，以 `git rev-parse HEAD` 为准） |
-| 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git，`origin/master` = `671d87f` |
-| 同步 | **ahead=56 / behind=0**（2026-10-13 实测，含本文件提交链；未 push）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
+| HEAD | **上次同步时点：2026-10-13**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
+| 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准（上次同步时点 `671d87f`） |
+| 同步 | 以 `git rev-list --count origin/master..HEAD` 实测为准（上次同步时点 ahead=57 / behind=0，未 push；push 由 Owner 执行）；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **549 条目 = 456 M + 92 ?? + 1 D**（Owner WIP，留盘不暂存） |
 
 ## 2. 活跃卡（只列 5）
@@ -30,9 +30,9 @@
 |----|------|------|
 | Live 验证批次 A/B/C + N15 Live | 等 Owner 执行 | Agent 不跑 Live 验证 |
 | **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 等 Owner 裁决 | 无阻断（Flyway 容忍）；**不 repair**；后续卡顺手修或另开卡 |
-| P1-SEC-002 验收当前不可执行 | 等 P1-APK-DEVICE-001 | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由 |
+| **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
 | 15 个被忽略 `*.md`（非 production 面） | 等 Owner 裁决 | 是否同属 ENV-4 误伤；`production-*.md` 六个已清（`4c43418` + `8065e84`） |
-| 本地 ahead=52 未 push | 等 Owner 指令 | 无 auto-push hook；commit 与 push 分离 |
+| **Owner push**（56 commit，Owner 侧执行） | 等外部 | 无 auto-push hook（PG-001 规则 6）；commit 与 push 分离；push 后按 PG-002 刷新本文件第 1 节 |
 
 ## 4. 禁区（不该碰）
 
