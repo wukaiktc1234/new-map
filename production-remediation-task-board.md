@@ -8386,3 +8386,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 交叉影响（证据） | **P1-SEC-002 卡面已提交（`eec8fb9`）但其验收标准当前不可验证**：验收要求「未登录访问 /verify-code、/device-activation 不重定向登录页」，而这两条路由条目属本卡簇（未提交）→ 提交面无该路由；Live 验证批次 A/B/C 中 P1-SEC-002 部分须待本卡入库后执行 |
 | 验收基准（建议，待 Owner 确认） | 本卡整批入库后：纯提交树可编译（解除 ENV-10 对本簇的依赖，ENV-10 已列 `MaterialDeduction*` 等同类）+ `vue-tsc` 无新增错误 + 设备门禁行为验证（未注册设备 403 / 已注册 200）+ 三点基线 381/27F/31E/1S 不变 |
 | 启动条件 | Owner 放行（卡号与优先级确认）；实施前需 Owner 确认「整特性提交」口径（本卡文件属 Owner WIP，Agent 不自行暂存） |
+
+### §24.3w Live 环境口径 C（混合快照）登记 + P1-APK-DEVICE-001 卡面三项处置（2026-10-13，Owner 裁决）
+
+| 项 | 值 |
+|----|------|
+| **Live 环境口径（Owner 选 C：混合快照）** | Live 验证运行环境 = **tracked-only worktree + 13 个必要未跟踪类**（最小可编译集）。**不假装是纯 tracked**：纯 tracked 树编译不过（ENV-10）。所有 Live 结论须注明「混合快照（tracked + 13 WIP 类）」 |
+| **数字修正（证据，`.git\mvn-compile-snapshot.log` 实测）** | 此前记录的「36」是**去重后的错误位置数**（72 行 ERROR → 36 去重位置，分布在 3 个 tracked 文件：`OrderNewServiceImpl` / `PosOrderCreateServiceImpl` / `ReceiptConfirmationServiceImpl`）；**去重后实际引用的未跟踪类 = 13 个文件**：`CanonicalOrderCommand`、`CanonicalOrderItemCommand`、`MaterialConsumptionAuditService`、`MaterialDeductionContext`、`MaterialDeductionFailureException`、`ReceiptEvidence`(+`Mapper`)、`ReceiptPrintLog`(+`Mapper`)、`ReceiptSignature`(+`Mapper`)、`ReceiptSignatureDTO`、`ReceiptVerifyVO`。这 13 个文件的 import 不再引用其他未跟踪类（**无传递依赖**）→ 最小可编译集 = tracked + 这 13 个文件 |
+| **三项处置（纳入 P1-APK-DEVICE-001 卡面范围）** | ① `frontend/apk-download/` → `.gitignore`（构建产物；实测 1 文件 `app-debug.apk` 13,271,880 bytes）② `frontend/certs/` → `.gitignore`（敏感物：`ca.pem` / `cert.pem` / `key.pem`，含私钥；同 **KL-077** 凭据治理口径）③ `frontend/android/` → 分类：中间产物 `.gitignore`（实测 1860 文件中 **1432** 在 `build/`/`.gradle/`；`android/.gitignore` 已覆盖 `build/`、`.gradle/`、`local.properties`、`*.apk`、`capacitor-cordova-android-plugins`、`app/src/main/assets/public`）+ 自定义原生代码入库（`git add --dry-run` 实测 **59** 候选，其中 4 个自定义 java：`BarcodeScannerPlugin` / `MainActivity` / `ScannerActivity` / `ScreenOrientationPlugin`，其余为 gradle 配置、res 资源、wrapper） |
+| **卡号 / 优先级（Owner 确认 2026-10-13）** | **P1-APK-DEVICE-001 / P1 / 整特性一次入库**；certs / apk-download / android 按上处置 |
+| **push 状态（实测）** | 未 push：**ahead=58 / behind=0**（`origin/master` = `671d87f`）；`.git/hooks` 无 `post-commit`（PG-001 规则 6）；push 由 Owner 执行 |
