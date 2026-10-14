@@ -42,6 +42,14 @@
 
 **生效日期**：2026-09-25
 
+**扩展（2026-10-13，Owner 指令：单一真相源，只增不改）**：
+1. 单一真相源 = `docs/STATUS.md`（轻档）。每次卡片收口或 push 后**必改 `docs/STATUS.md`**。
+2. 五处入口（`docs/INDEX.md` / `remediation-roadmap.md` / `production-remediation-task-board.md` / `production-known-limitations.md` / `docs/project-context/repo-state.md`）只保留指向 STATUS.md 的指针，**不改状态**；其历史行仍按只增不改。
+3. 分歧处理：入口文档与 STATUS.md 不一致 → 以 STATUS.md 为准；STATUS.md 与 git 不一致 → 以 git 为准（视图层性质不变）。
+4. `repo-state.md` 角色收窄为**历史快照**（不再作当前状态源）；原"更新 repo-state.md"的同步动作改为"更新 STATUS.md"。
+
+**生效日期（扩展）**：2026-10-13
+
 ## PG-003 — Schema 单一真相源（Flyway）
 
 **规则**：
