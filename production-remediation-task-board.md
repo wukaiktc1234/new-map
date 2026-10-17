@@ -8497,3 +8497,13 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 验收基准 | 待 Owner 定权威源后补（本卡当前无验收基准，不预先写） |
 | 启动条件 | Owner 放行 |
 | 关联 | §24.6a N25 / §24.5a N24 / §24.3m C10 / P1-ORDER-PERMISSION-SEED-001（§24.3s，N15 同族） |
+
+### §24.9a N27（同族精度 bug，观察项）：`RoleManagementTab.vue` 对雪花 ID 调 `Number()`（2026-10-15 登记，Owner 裁决；该文件属 Owner WIP，暂不修）
+
+| 项 | 内容 |
+|----|----|
+| 现象 | `RoleManagementTab.vue` L382 `userApi.assignRoles(Number(userId), [String(userRoleId.value)])` —— `selectedUserIds` 声明为 `string[]`（L57），`Number(19位雪花字符串)` 超 2^53-1 → 丢精度 → 传给后端的 ID 与真实 ID 不符。全文件 `Number(` 仅此 1 处（grep 实测） |
+| 触发证据 | vue-tsc 基线 144 → 145（exit 2 不变），新增 1 条：`RoleManagementTab.vue(382,27)` error TS2345 —— Argument of type 'number' is not assignable to parameter of type 'string'（因 `user.ts` 的 `assignRoles(id: string)` 已改，提交 `6482e35`） |
+| 同族 | 实施记录 §7.13 第二个 bug（`User.id` 无 `@JsonSerialize` → `JSON.parse` 截断 → UI 用截断 ID 请求 → 后端「用户不存在」）；本条是同一类 bug 的**前端调用侧写法**，与实体侧注解互补 |
+| 建议修法（待 Owner 放行） | `Number(userId)` → `userId`（已是 string）或 `String(userId)`；改后该文件 vue-tsc 错误回到 144 |
+| 状态 | **观察项，本轮未改、未提交**——该文件是 Owner WIP（未暂存），Agent 不改不提交；等 Owner 放行后随卡处理 |
