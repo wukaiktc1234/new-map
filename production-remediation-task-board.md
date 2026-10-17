@@ -8454,3 +8454,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **更正（与「从 user_roles 表查」不符）** | `user_roles` 表存在（16 行）但 `getUserRoleNames` 不读它；该表 `user_id`/`role_id` 均为 `character varying`，role_id 值混用 role_code（如 `ROLE_EMPLOYEE`）与数字（1、999）；vtest01 在 `user_roles` 无行 → 该表为并行/遗留来源，非本链路权威源 |
 | **本轮采纳（Owner 裁决）** | 前端详情页改用 `GET /v1/users/{id}/role-names`，不读 `row.roleNames`；不动后端。提交 `73a84fd`（`user.ts` 新增 `getUserRoleNames`）；`UserManagementTab.vue` 改动落工作区未提交（Owner WIP） |
 | **状态** | 待 Owner Live 复验：详情页角色显示「店长/门店经理」（roles 表 role_id=9 → `store_manager`）。列表角色列口径未定（仍读 roleNames），等裁决：用 roles ID 去 `roleOptions` 查名称，还是同样走 API |
+### §24.6a N25（数据口径）：`user_roles` 状态未知 —— 有写有读，与 `users.roles` 并存（2026-10-15 登记，Owner 裁决）
+
+| 项 | 内容 |
+|----|----|
+| **判定（按 Owner 三分类）** | **有写有读 → 双权威源并存 = 数据漂移源**（不是「无写无读→废弃」，也不是「有写无读」） |
+| **写（实测调用点）** | `PermissionAutoAssignServiceImpl` L240–242（`LambdaUpdateWrapper<UserRole>` delete，逻辑删）+ L249–259（selectCount 去重后 `userRoleMapper.insert`），来源为 `position_role_mapping`。`UserServiceImpl.assignRoles`（L366–374）只写 `users.roles` JSON，**不写 user_roles** → 两条写入路径互不覆盖 |
+| **读（实测调用点）** | `UserMapper.getUserRoles` L31（`r.role_id_str = ur.ROLE_ID`）→ 11 处调用：`AuthenticationServiceImpl` L127、`TokenServiceImpl` L130、`AuthServiceImpl` L337/L696、`DataExportServiceImpl` L63/L101、`PermissionVerifyServiceImpl` L296/L338/L365、`UserDetailsServiceImpl` L97/L144；`RoleMapper.findUserIdsByRoleId` L132 → `RoleServiceImpl` L285；`UserMapper.findUserIdsByStoreIdAndRoleCode` L167 / `findUserIdsByRoleCode` L182 → `UserServiceImpl` L485/L491；`UserRoleMapper.getRoleIdsByUserId`（XML L7）**无调用点** |
+| **冲突面（口径分裂）** | 权限/登录态走 `user_roles`（上列 11 处）；UI 角色显示与 `getUserRoleNames`（L430）走 `users.roles` JSON → 同一用户两个口径。实测样本 vtest01：`users.roles = ["9"]`（UI 显示「店长/门店经理」）但 `user_roles` **无行** → 走 user_roles 的权限路径查不到该用户角色 |
+| **类型面（实测）** | `user_roles.user_id`/`role_id` 均为 `character varying`；`role_id` 值混用 role_code（`ROLE_EMPLOYEE`、`ROLE_STORE_MANAGER`）与数字（`1`、`999`）；`UserMapper` L27 注释声明 role_id 存 `roles.role_id_str`（带 ROLE_ 前缀），但 L160/L177 用 `ur.role_id::bigint = r.role_id` → 同一张表两种关联假设，role_code 形态的行在 `::bigint` 转换下会报错 |
+| **实体↔列不一致（代码级，未 Live 验证）** | `UserRole.roleId` 为 `Long`（L11）而列为 varchar；`UserRole.createdAt`（L12）按驼峰→下划线映射为 `created_at`，活体列为 `create_time`（`V999__create_test_admin_user.sql` L10 注释明确「旧版 created_at 不存在」）→ `userRoleMapper.insert` 生成的列名与活体 schema 不符 |
+| **本轮未动** | 后端未改。前端按 Owner 裁决改显示口径：列表列 `roles` ID → `roleOptions` 查名称，查不到显示 `角色#ID`；详情页走 API（覆盖禁用角色）。改动落工作区未提交（Owner WIP） |
+| **状态** | 等 Owner 裁决以哪侧为权威（`users.roles` JSON 还是 `user_roles` 表）；若定 user_roles 为权威需补 `assignRoles` 写入 + 类型统一。本轮 psql 连接被拒（server refused），`position_role_mapping.role_id` 类型与 `roles.role_id_str` 样本未取到 |
