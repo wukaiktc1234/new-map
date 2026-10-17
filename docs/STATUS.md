@@ -52,6 +52,6 @@
 
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
-3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–005）。
-4. 读任务板**尾部**最新追加段（当前 §24.8a–§24.9a）——只增不改，读尾部而非中部。
+3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–006）。
+4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.12a）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
