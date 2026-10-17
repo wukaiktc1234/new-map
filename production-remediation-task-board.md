@@ -8553,3 +8553,5 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 影响 | 刷新前标签栏仍显示旧标签；不刷新直接重新登录 → 跨账号标签残留 |
 | 建议修法（待 Owner 放行） | tab store 暴露 `clearTabs()`（`tabs.value = [默认]` 或 `[]` + `removeItem`），`logout()` 内调用；或 `TopNavbar` 登出时显式调用 |
 | 状态 | **观察项，本轮未改、未提交** |
+
+> **§24.10a 应急 SQL 更正（2026-10-15 追加，只增不改）**：`user_roles.id` 为 `bigint NOT NULL` 且**无 default**（information_schema 实测：`id | bigint | (column_default 空) | NO`；`deleted` default `0`；`create_time` default `CURRENT_TIMESTAMP`）→ 卡面 SQL 省略 `id` 会报 `null value in column "id" violates not-null constraint`。可用版本（现 `max(id)=2327`，16 行）：`INSERT INTO user_roles (id, user_id, role_id, deleted, create_time) SELECT 2328, '2110437068670001154', 'ROLE_STORE_MANAGER', 0, now() WHERE NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = '2110437068670001154' AND role_id = 'ROLE_STORE_MANAGER');`
