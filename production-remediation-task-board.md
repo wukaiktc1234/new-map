@@ -8507,3 +8507,24 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 同族 | 实施记录 §7.13 第二个 bug（`User.id` 无 `@JsonSerialize` → `JSON.parse` 截断 → UI 用截断 ID 请求 → 后端「用户不存在」）；本条是同一类 bug 的**前端调用侧写法**，与实体侧注解互补 |
 | 建议修法（待 Owner 放行） | `Number(userId)` → `userId`（已是 string）或 `String(userId)`；改后该文件 vue-tsc 错误回到 144 |
 | 状态 | **观察项，本轮未改、未提交**——该文件是 Owner WIP（未暂存），Agent 不改不提交；等 Owner 放行后随卡处理 |
+
+## 24.10a P1-AUTH-CHAIN-001（2026-10-15 Owner 开卡；来源 N15 Live 失败实测；**N15 从 §24.3s 剥离挂起**）
+
+| 项 | 内容 |
+|----|------|
+| Task ID | **P1-AUTH-CHAIN-001** |
+| 状态 | **PENDING（未启动，待 Owner 下达实施）**；N15 从 P1-ORDER-PERMISSION-SEED-001（§24.3s）**剥离挂起**，不卡整体进度 |
+| 优先级 | 待 Owner 定（建议 P1：功能阻断，方向 fail-closed，无越权） |
+| 来源 | 2026-10-15 N15 Live 失败（Owner 抓包 `GET /api/v1/auth/me`：`permissions: []` → 订单端点 403）；关联 §24.3s、§24.6a N25、实施记录 §7.15 |
+| 性质 | **授权读取链路断裂**：N15 seed 已正确落库，但「用户 → 角色」这一跳缺桥（`user_roles` 无行）→ 权限查询恒为空。seed 不是根因 |
+| 根因 | `UserMapper.xml` `getUserRolePermissions`（L21–33）：`FROM user_roles ur INNER JOIN roles r ON ur.ROLE_ID = r.role_id_str INNER JOIN role_permissions rp ON r.role_id_str = rp.ROLE_ID INNER JOIN permissions p ON rp.PERMISSION_ID = p.permission_id_str WHERE ur.USER_ID::bigint = #{userId}` —— **必须有 `user_roles` 行**；vtest01（user_id=2110437068670001154）在 `user_roles` **0 行** → INNER JOIN 空 → `permissions: []` → `hasAuthority('order:manage')` 失败 → 403 |
+| 活库实测（2026-10-15，逐条复现 mapper） | ① `user_permissions` 全表 **0 行**（直接权限路径对所有人恒空）② `user_roles` 16 行，vtest01 **0 行** ③ N15 seed 的 10 条 `role_permissions` 全部在库（create_time `2026-10-12 21:10:51.089228`，role_id=`ROLE_STORE_MANAGER`）④ 对照：按 `role_id='ROLE_STORE_MANAGER'` 直查 `role_permissions` 返回 12 码，含 `order:manage`/`order:view`/`order:add` → **seed 有效，桥不存在** |
+| 读取面（三处，同一断点） | `UserDetailsServiceImpl.getMergedPermissions` L129–167（catch 内 fail-closed 返回空）；`AuthServiceImpl.getUserPermissions` L760–774（登录与 `/me` 共用）；`PermissionVerifyServiceImpl.loadPermissionsFromDatabase` L252–272（`PermissionAspect` 走这条） |
+| 写入面（桥为何不存在） | `UserServiceImpl.assignRoles` L366–374 只写 `users.roles` JSON、不写 `user_roles`（§24.6a N25）→ UI 授权后桥仍为空 |
+| 附带发现（本次实测，是否单列 N 待 Owner 裁） | `user_roles.role_id` 与 `roles.role_code` **0 命中**（8 个 distinct 值：7 个 `ROLE_XXX` 只能匹配 `role_id_str`，`1` 两边都不匹配）→ `PermissionVerifyServiceImpl.hasRole`/`hasAnyRole`（L402–429，按 role_code 比较）对全部真实用户恒 false；`SecurityUser.getAuthorities` L52–56 不剥前缀，对 `ROLE_STORE_MANAGER` 生成 `ROLE_ROLE_STORE_MANAGER`（JWT claim 已 lowercase，`JwtUtils` L169–178 → `ROLE_role_store_manager`），Spring `hasRole('store_manager')` 找 `ROLE_STORE_MANAGER` → 不匹配。全仓 `hasRole(`/`hasAnyRole(` 412 处调用点依赖这条；仅 admin（登录硬编码 `roles=["admin","user"]`，`AuthServiceImpl` L692）能命中 |
+| 应急 SQL（交 Owner 跑，Live 由 Owner 执行；不属本卡实施） | `INSERT INTO user_roles (user_id, role_id, deleted, create_time) SELECT '2110437068670001154', 'ROLE_STORE_MANAGER', 0, now() WHERE NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = '2110437068670001154' AND role_id = 'ROLE_STORE_MANAGER');` —— 跑后须**重新登录**（JWT claim 是登录时快照：`JwtUtils` L178/L183 写入，`JwtAuthenticationFilter` L138 用 claim 建 authorities） |
+| 实施要点（待 Owner 裁决） | ① 定权威源（与 P1-PERM-CONSOLIDATION-001 同一裁决，二选一）② 若定 `user_roles`：补 `assignRoles`/`unassignRoles` 写入 + 存量 `users.roles` 迁移 ③ 若定 `users.roles`：三处读取点改源或加双读兜底 ④ `role_id` 取值口径统一（`role_id_str` / `role_code` / 数字三者混用）⑤ `hasRole` 比较面与 `getAuthorities` 前缀口径统一 |
+| 不在本卡 | 不改 `@PreAuthorize` 注解面；不碰 P1-SEC-009 渗透基线；不回退 §24.3m C10；不跑 Flyway repair（ENV-14） |
+| 验收基准 | ①（Owner Live）补桥后重新登录，`GET /api/v1/auth/me` 的 `permissions` 含 `order:manage`/`order:view` ② 订单端点 200 ③ 无角色账号仍 403（fail-closed 不变、无越权）④ 权威源裁决后 UI 授权与权限查询口径一致 |
+| 启动条件 | Owner 放行 |
+| 关联 | §24.3s P1-ORDER-PERMISSION-SEED-001（N15）/ §24.6a N25 / §24.8a P1-PERM-CONSOLIDATION-001 / §24.11a N28 / 实施记录 §7.15 |
