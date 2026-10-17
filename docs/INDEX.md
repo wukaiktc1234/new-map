@@ -34,6 +34,7 @@
 - 路线图：[../remediation-roadmap.md](../remediation-roadmap.md)
 - 治理规则：[project-context/process-guards.md](project-context/process-guards.md)
 - schema 治理：[project-context/schema-governance.md](project-context/schema-governance.md)
+- 开发与排障避坑指南（联调生效法则 / 雪花 ID 19 位 Long 全链路 / 下拉回退裸 ID 根因 / API 级 PASS ≠ UI 级 PASS）：[project-context/dev-troubleshooting-guide.md](project-context/dev-troubleshooting-guide.md)
 
 ## 业务逻辑（长期有效）
 - [business-logic/README.md](business-logic/README.md) + 01~04（采购 / POS 点单 / 食材与配方 / 单位与换算约定）
