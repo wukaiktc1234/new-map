@@ -1,6 +1,8 @@
 package com.foodtraceability.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -18,6 +20,7 @@ public class DataLinkEvent implements Serializable {
      */
     @TableId(value = "event_id", type = IdType.ASSIGN_ID)
     @Schema(description = "事件ID", example = "1")
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long eventId;
     /**
      * 源系统标识

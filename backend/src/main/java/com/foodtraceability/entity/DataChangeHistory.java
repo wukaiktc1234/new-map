@@ -1,6 +1,8 @@
 package com.foodtraceability.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -18,6 +20,7 @@ public class DataChangeHistory implements Serializable {
      */
     @TableId(value = "history_id", type = IdType.ASSIGN_ID)
     @Schema(description = "历史ID", example = "1")
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long historyId;
     /**
      * 表名
