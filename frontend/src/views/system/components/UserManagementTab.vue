@@ -28,6 +28,7 @@ interface UserFormData {
   phone: string
   email: string
   departmentId: string
+  position: string
   roleIds: string[]
   status: number
   /** 归属位置（C6/D6，可选；locations.location_id；创建后仍可在编辑模式经「分配位置」修改） */
@@ -79,7 +80,7 @@ const users = ref<UserItem[]>([])
 /** 新增/编辑对话框 */
 const dialogVisible = ref(false)
 const dialogType = ref<'create' | 'edit'>('create')
-const editingId = ref<string | null>(null)
+const editingId = ref<number | null>(null)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
 
@@ -91,6 +92,7 @@ const formData = reactive<UserFormData>({
   phone: '',
   email: '',
   departmentId: '',
+  position: '',
   roleIds: [],
   status: 1,
   locationId: null,
@@ -120,7 +122,7 @@ const formRules = reactive<FormRules>({
 
 /** 重置密码对话框 */
 const resetPasswordVisible = ref(false)
-const resetPasswordUserId = ref<string | null>(null)
+const resetPasswordUserId = ref<number | null>(null)
 const resetPasswordUserName = ref('')
 const resetPasswordForm = reactive<ResetPasswordForm>({
   newPassword: '',
@@ -314,6 +316,7 @@ function handleCreate() {
     phone: '',
     email: '',
     departmentId: '',
+    position: '',
     roleIds: [],
     status: 1,
     locationId: null,
@@ -340,6 +343,7 @@ function handleEdit(row: UserItem) {
     // Bug 1：tree 节点 id 为 string（departments/tree），list 的 departmentId 为 number
     // el-tree-select 用严格 === 匹配 option → 归一为 string（后端 Spring 自动转 Long，不影响）
     departmentId: row.departmentId ? String(row.departmentId) : '',
+    position: '',
     roleIds: [],
     status: row.status ?? 1,
   })
@@ -351,7 +355,7 @@ function handleEdit(row: UserItem) {
 /**
  * 加载用户角色
  */
-async function loadUserRoles(userId: string) {
+async function loadUserRoles(userId: number) {
   try {
     const roles = await userApi.getUserRoles(userId)
     formData.roleIds = roles || []
@@ -895,7 +899,15 @@ onMounted(() => {
               />
             </el-form-item>
           </el-col>
-          <!-- N26（Owner 裁决）：职位属人事域（employees.position_id），用户管理弹窗不再维护 → 输入框移除，不做回显 -->
+          <el-col :span="12">
+            <el-form-item label="职位">
+              <el-input
+                v-model="formData.position"
+                placeholder="请输入职位"
+                maxlength="50"
+              />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <!-- C6 (D6)：创建表单归属位置（可选）——复用「分配位置」对话框的 useLocationOptions 数据源；

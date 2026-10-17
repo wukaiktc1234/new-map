@@ -6,16 +6,15 @@
  * - 1: 正常/启用（前端语义：active）
  * - 0: 禁用（前端语义：inactive）
  *
- * 注意：用户 ID 在后端为 Long（雪花 19 位 > JS 安全整数 2^53-1），经字段级 @JsonSerialize(ToStringSerializer)
- *       以 string 进响应体 → 前端类型对齐运行时，用 string（见避坑指南 §2 / 实施记录 §7.13）。
+ * 注意：用户 ID 在后端为 Long，前端使用 number 类型（与 role.ts 保持一致）。
  *       用户名/邮箱/手机号唯一性检查为公开接口，无需登录即可调用。
  */
 import { get, post, put, del } from '../request'
 
 /** 后端返回的用户 VO */
 export interface UserItem {
-  /** 用户ID（后端 Long 雪花 ID，经 ToStringSerializer 以 string 进响应体） */
-  id: string
+  /** 用户ID */
+  id: number
   /** 用户名（登录名） */
   username: string
   /** 用户姓名 */
@@ -154,7 +153,7 @@ export const userApi = {
    * 根据ID查询用户
    * 对应 GET /v1/users/{id}
    */
-  async getById(id: string): Promise<UserItem | null> {
+  async getById(id: number): Promise<UserItem | null> {
     return await get<UserItem | null>(`/v1/users/${id}`)
   },
 
@@ -171,7 +170,7 @@ export const userApi = {
    * 对应 PUT /v1/users/{id}
    * 注意：username 和 password 不可通过此接口修改
    */
-  async update(id: string, data: UserUpdateDTO): Promise<UserItem> {
+  async update(id: number, data: UserUpdateDTO): Promise<UserItem> {
     return await put<UserItem>(`/v1/users/${id}`, data)
   },
 
@@ -180,7 +179,7 @@ export const userApi = {
    * 对应 PUT /v1/users/{id}/reset-password
    * @param newPassword 新密码（6-100字符）
    */
-  async resetPassword(id: string, newPassword: string): Promise<void> {
+  async resetPassword(id: number, newPassword: string): Promise<void> {
     await put<void>(`/v1/users/${id}/reset-password`, { newPassword })
   },
 
@@ -189,7 +188,7 @@ export const userApi = {
    * 对应 PUT /v1/users/{id}/status
    * @param status 1 启用 / 0 禁用
    */
-  async toggleStatus(id: string, status: number): Promise<void> {
+  async toggleStatus(id: number, status: number): Promise<void> {
     await put<void>(`/v1/users/${id}/status`, { status })
   },
 
@@ -198,7 +197,7 @@ export const userApi = {
    * 对应 PUT /v1/users/{id}/assign-store
    * Body 字段名与取值空间按 design-002 §5 修订一：{@code locationId} = locations.location_id
    */
-  async assignStore(id: string, locationId: string): Promise<void> {
+  async assignStore(id: number, locationId: string): Promise<void> {
     await put<void>(`/v1/users/${id}/assign-store`, { locationId })
   },
 
@@ -206,7 +205,7 @@ export const userApi = {
    * 取消用户的门店分配
    * 对应 DELETE /v1/users/{id}/assign-store
    */
-  async unassignStore(id: string): Promise<void> {
+  async unassignStore(id: number): Promise<void> {
     await del<void>(`/v1/users/${id}/assign-store`)
   },
 
@@ -215,7 +214,7 @@ export const userApi = {
    * 对应 PUT /v1/users/{id}/assign-roles
    * @param roleIds 角色ID列表
    */
-  async assignRoles(id: string, roleIds: string[]): Promise<void> {
+  async assignRoles(id: number, roleIds: string[]): Promise<void> {
     await put<void>(`/v1/users/${id}/assign-roles`, { roleIds })
   },
 
@@ -223,7 +222,7 @@ export const userApi = {
    * 取消用户的角色分配
    * 对应 DELETE /v1/users/{id}/assign-roles
    */
-  async unassignRoles(id: string): Promise<void> {
+  async unassignRoles(id: number): Promise<void> {
     await del<void>(`/v1/users/${id}/assign-roles`)
   },
 
@@ -231,7 +230,7 @@ export const userApi = {
    * 获取用户的角色ID列表
    * 对应 GET /v1/users/{id}/roles
    */
-  async getUserRoles(id: string): Promise<string[]> {
+  async getUserRoles(id: number): Promise<string[]> {
     return await get<string[]>(`/v1/users/${id}/roles`) || []
   },
 
@@ -240,7 +239,7 @@ export const userApi = {
    * 对应 GET /v1/users/{id}/role-names
    * 数据源：users.roles（JSON ID 数组）→ roles 表；不读 users.role_names（死列，见 N24）
    */
-  async getUserRoleNames(id: string): Promise<string[]> {
+  async getUserRoleNames(id: number): Promise<string[]> {
     return await get<string[]>(`/v1/users/${id}/role-names`) || []
   },
 
