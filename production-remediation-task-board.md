@@ -8541,3 +8541,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 风险（不可控面） | ① 字典是硬编码，运行时新建角色不在字典 → L748–749 fail-closed 过滤 → `roles = []` → `hasRole`/`hasAnyRole`/`hasAllRoles`（L585/592/602）、`mapOrgLevel`（L756–774）、`mapDataScope`（L773）、路由守卫 `meta.roles`（`router/guards.ts` L235、`router/index.ts` L17/21/189–198）、`SelfServicePortal.vue` L56–59 全部退化。活库已有不在字典的角色：`roles` 4209–4211（`FINQA Register Role` / `FINQA Confirm Role` / `FINQA No Permission Role`）② `utils/auth.ts` L211 `roles: payload.roles \|\| []` 直取 JWT claim，**不经 `mapRoles`**；JWT claim 的 roles 来自登录时表路径（vtest01 为空）→ 两条前端口径不一致 |
 | 建议修法（待 Owner 裁决） | `/me` 的 `roles` 改返回 `role_code`（或同时返回 code 与 name），前端字典降级为兼容层；不改前端字典本身 |
 | 状态 | **观察项，本轮未改、未提交** |
+
+### §24.12a N29（现象 2）：退出登录未清理标签页（2026-10-15 登记，Owner 发现）
+
+| 项 | 内容 |
+|----|------|
+| 现象 | 退出登录后标签页未清理；同一 SPA 会话内重新登录仍残留上一账号的标签 |
+| 代码出处 | `stores/permission.ts` `logout()` L557–574：注释写「含标签页」，实际只 `localStorage.removeItem('tab-bar-tabs')`（L570），**未清 tab store 的内存态** |
+| 断点 | `stores/tab.ts` L38 `tabs = ref(loadTabs())`（内存态，仅 store 初始化时读一次 localStorage）；L46 `watch(tabs, saveTabs, {deep: true})` → 登出后任何标签变动会把旧标签写回 localStorage，撤销 L570 的清除 |
+| 调用面 | `components/layout/TopNavbar.vue` L208–224 `handleCommand('logout')`：只调 `permissionStore.logout()` + `clearAllTokens()` + `router.push('/login')`，未调 tab store 清理（tab store 当前没有对外清理函数） |
+| 影响 | 刷新前标签栏仍显示旧标签；不刷新直接重新登录 → 跨账号标签残留 |
+| 建议修法（待 Owner 放行） | tab store 暴露 `clearTabs()`（`tabs.value = [默认]` 或 `[]` + `removeItem`），`logout()` 内调用；或 `TopNavbar` 登出时显式调用 |
+| 状态 | **观察项，本轮未改、未提交** |
