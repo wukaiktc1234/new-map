@@ -8528,3 +8528,16 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 验收基准 | ①（Owner Live）补桥后重新登录，`GET /api/v1/auth/me` 的 `permissions` 含 `order:manage`/`order:view` ② 订单端点 200 ③ 无角色账号仍 403（fail-closed 不变、无越权）④ 权威源裁决后 UI 授权与权限查询口径一致 |
 | 启动条件 | Owner 放行 |
 | 关联 | §24.3s P1-ORDER-PERMISSION-SEED-001（N15）/ §24.6a N25 / §24.8a P1-PERM-CONSOLIDATION-001 / §24.11a N28 / 实施记录 §7.15 |
+
+### §24.11a N28（现象 1）：`/me` 的 `roles` 返回 `role_name`（中文名）而非 role_code（2026-10-15 登记，Owner 发现）
+
+| 项 | 内容 |
+|----|------|
+| 现象 | `GET /api/v1/auth/me` 返回 `roles: ["店长/门店经理"]`，即 `roles.role_name`，不是 `store_manager` |
+| 代码出处 | `AuthServiceImpl.getUserInfo` L330 → `UserServiceImpl.getUserRoleNames` L430–443 → `role.getRoleName()`；另一条 `UserPermissionCacheServiceImpl.buildUserPermissionInfo` L156–172 同样取 `role.getRoleName()` |
+| 为什么是中文名 | 该用户角色来自 `users.roles` JSON（`["9"]`）→ `roleService.getRoleById(9)` → `role_name`。显示口径（JSON）与授权口径（`user_roles` 表）不同源，见 §24.6a N25 |
+| 附带（同一函数） | `UserPermissionCacheServiceImpl.buildUserPermissionInfo` L169–178 的 `permissions` 恒为 `new ArrayList<>()`（L173），**不查任何权限表**；`DataPermissionAspect` L78–111 走这条缓存 → 数据权限过滤拿不到权限码 |
+| 前端依赖面（实测） | `stores/permission.ts` L487 `mapRoles(me.roles)` → 硬编码字典 L695–744（25 条中文 → `UserRole`）；`'店长/门店经理'` 在字典 L735 → **当前账号侥幸能映射回 `STORE_MANAGER`** |
+| 风险（不可控面） | ① 字典是硬编码，运行时新建角色不在字典 → L748–749 fail-closed 过滤 → `roles = []` → `hasRole`/`hasAnyRole`/`hasAllRoles`（L585/592/602）、`mapOrgLevel`（L756–774）、`mapDataScope`（L773）、路由守卫 `meta.roles`（`router/guards.ts` L235、`router/index.ts` L17/21/189–198）、`SelfServicePortal.vue` L56–59 全部退化。活库已有不在字典的角色：`roles` 4209–4211（`FINQA Register Role` / `FINQA Confirm Role` / `FINQA No Permission Role`）② `utils/auth.ts` L211 `roles: payload.roles \|\| []` 直取 JWT claim，**不经 `mapRoles`**；JWT claim 的 roles 来自登录时表路径（vtest01 为空）→ 两条前端口径不一致 |
+| 建议修法（待 Owner 裁决） | `/me` 的 `roles` 改返回 `role_code`（或同时返回 code 与 name），前端字典降级为兼容层；不改前端字典本身 |
+| 状态 | **观察项，本轮未改、未提交** |
