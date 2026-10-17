@@ -8466,3 +8466,15 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **实体↔列不一致（代码级，未 Live 验证）** | `UserRole.roleId` 为 `Long`（L11）而列为 varchar；`UserRole.createdAt`（L12）按驼峰→下划线映射为 `created_at`，活体列为 `create_time`（`V999__create_test_admin_user.sql` L10 注释明确「旧版 created_at 不存在」）→ `userRoleMapper.insert` 生成的列名与活体 schema 不符 |
 | **本轮未动** | 后端未改。前端按 Owner 裁决改显示口径：列表列 `roles` ID → `roleOptions` 查名称，查不到显示 `角色#ID`；详情页走 API（覆盖禁用角色）。改动落工作区未提交（Owner WIP） |
 | **状态** | 等 Owner 裁决以哪侧为权威（`users.roles` JSON 还是 `user_roles` 表）；若定 user_roles 为权威需补 `assignRoles` 写入 + 类型统一。本轮 psql 连接被拒（server refused），`position_role_mapping.role_id` 类型与 `roles.role_id_str` 样本未取到 |
+### §24.7a N26（UI/领域边界）：用户管理弹窗「职位」是死字段 —— 人事域与权限域 UI 混用（2026-10-15 登记，Owner 发现，暂不阻塞）
+
+| 项 | 内容 |
+|----|----|
+| **现象（Owner 实测）** | 编辑用户弹窗「职位」为空，但「角色」已分配「店长」。职位属人事域（跟 employees 走），角色属权限域（跟 users 走），两者在同一弹窗并列易误导用户在此填职位 |
+| **users 表（实测 information_schema.columns）** | **无 position 列**。实有列：`role`（varchar）、`role_names`（varchar，死列见 §24.5a）、`roles`（varchar，JSON ID 数组）、`department_id`（bigint）、`location_id`（bigint）、`employee_code`（varchar）等 25 列 |
+| **职位真实落点（实测）** | `employees.position_id`（bigint）→ 人事域，应在「员工管理」维护；用户与员工靠 `users.employee_code` 关联 |
+| **前端提交面（实测）** | `UserManagementTab.vue` 的 `UserFormData.position`（L31，**本地 interface 字段**，不在 `user.ts` 的 `UserCreateDTO`/`UserUpdateDTO`）→ `handleSubmit`（L370–409）create 与 update 两处 payload **均不含 position** → 输入值不提交、不持久；`handleEdit` L346 每次重置为空字符串，故弹窗永远显示空 |
+| **前端读取面（实测）** | `UserItem.position`（`user.ts` L31）为幻影字段：后端 `User` 实体无 position、`UserMapper.xml` 显式列清单无 position → 响应体无该字段；用户列表亦无职位列 |
+| **结论** | 「职位」= 纯 UI 死字段（有 UI、无提交、无数据来源），非显示 bug |
+| **建议（待 Owner 裁决）** | 从用户管理弹窗移除「职位」输入框，或改为从员工档案只读回显（读 `employees.position_id` → positions 名称） |
+| **状态** | 观察项，本轮未改代码；与 §24.3z「M6 命名歧义」无关 |
