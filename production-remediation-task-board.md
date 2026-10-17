@@ -8478,3 +8478,22 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **结论** | 「职位」= 纯 UI 死字段（有 UI、无提交、无数据来源），非显示 bug |
 | **建议（待 Owner 裁决）** | 从用户管理弹窗移除「职位」输入框，或改为从员工档案只读回显（读 `employees.position_id` → positions 名称） |
 | **状态** | 观察项，本轮未改代码；与 §24.3z「M6 命名歧义」无关 |
+
+> **收口记录（2026-10-15 追加，只增不改）**：Owner 裁决 = **从用户管理弹窗移除「职位」输入框，不做回显**（不选只读回显方案）。实施提交 `64fa0e3`（提交面 4 增 / 16 删：输入框整块 9 行 → 1 行注释；`UserFormData.position` 本地字段 + 3 处空串初始化一并删除）。工作区剩余 43 增 / 24 删 = Owner WIP，未入提交面。
+
+## 24.8a P1-PERM-CONSOLIDATION-001（2026-10-15 Owner 开卡；来源 §24.6a N25 双权威源；**当前不动**）
+
+| 项 | 值 |
+|----|------|
+| Task ID | **P1-PERM-CONSOLIDATION-001** |
+| 状态 | **PENDING（未启动，待 Owner 下达实施）**——本轮按 Owner 裁决**只登记、不动代码** |
+| 优先级 | 待 Owner 定（建议 P1，理由见「性质」） |
+| 来源 | §24.6a N25（2026-10-15 实测）；关联 §24.5a N24（`users.role_names` 死列） |
+| 性质 | 同一用户的角色存在**两个权威源**：`users.roles`（JSON ID 数组，UI 显示与 `getUserRoleNames` 走这条）与 `user_roles` 表（权限/登录态 11 处读取走这条）；两条写入路径互不覆盖（`UserServiceImpl.assignRoles` L366–374 只写 JSON；`PermissionAutoAssignServiceImpl` L240–259 只写表）→ **数据漂移源**，同一用户两个口径可互相矛盾 |
+| 实测样本 | vtest01（user_id=2110437068670001154）：`users.roles = ["9"]`、`role_names = NULL`，`user_roles` **无行**（该表共 16 行）→ UI 显示「店长/门店经理」，但走 `user_roles` 的权限路径查不到该用户角色 |
+| 类型面（实测） | `user_roles.user_id`/`role_id` 均为 `character varying`；`role_id` 值混用 role_code（`ROLE_EMPLOYEE`、`ROLE_STORE_MANAGER`）与数字（`1`、`999`）；`UserMapper` L27 注释声明存 `roles.role_id_str`，但 L160/L177 用 `ur.role_id::bigint = r.role_id` → 同一张表两种关联假设，role_code 形态行在 `::bigint` 下报错；`UserRole.roleId` 为 `Long`（L11）与 varchar 列不符；`UserRole.createdAt`（L12）驼峰→`created_at` 而活体列为 `create_time` → `insert` 生成列名与 schema 不符 |
+| 实施要点（待 Owner 裁决） | ① 定权威源（二选一）② 若定 `user_roles`：补 `assignRoles`/`unassignRoles` 写入 + `UserRole` 类型与列名对齐 + 存量 `users.roles` 迁移 ③ 若定 `users.roles`：11 处读取点改源或加双读兜底 ④ `users.role_names` 死列（§24.5a）一并处置 |
+| 不在本卡 | 不改权限校验机制（`SecurityUtils`/`@PreAuthorize`）；不碰 P1-SEC-009 渗透基线；不回退 §24.3m C10 已裁决结论 |
+| 验收基准 | 待 Owner 定权威源后补（本卡当前无验收基准，不预先写） |
+| 启动条件 | Owner 放行 |
+| 关联 | §24.6a N25 / §24.5a N24 / §24.3m C10 / P1-ORDER-PERMISSION-SEED-001（§24.3s，N15 同族） |
