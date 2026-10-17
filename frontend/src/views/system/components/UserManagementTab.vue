@@ -64,7 +64,7 @@ const searchForm = reactive<UserQueryParams>({
 /** 部门选项列表（从真实 API 加载，使用共享 composable，autoLoad 自动加载）
  *  el-tree-select 使用 departmentTree（树结构），el-select 使用 departmentOptions（扁平结构）
  */
-const { departmentTree } = useDepartmentOptions(true)
+const { departmentTree, getDepartmentName } = useDepartmentOptions(true)
 
 /** 门店选项列表（从真实 API 加载，使用共享 composable，autoLoad 自动加载） */
 const { storeOptions } = useStoreOptions(true)
@@ -155,6 +155,8 @@ const resetPasswordRules = reactive<FormRules>({
 /** 用户详情对话框 */
 const detailVisible = ref(false)
 const currentUser = ref<UserItem | null>(null)
+/** 角色名称：走 GET /v1/users/{id}/role-names（权威口径），不读 roleNames 死列（N24） */
+const currentUserRoleNames = ref<string[]>([])
 
 // ==================== 工具函数 ====================
 
@@ -177,6 +179,19 @@ function parseRoleNames(roleNames: string): string[] {
   } catch {
     return []
   }
+}
+
+/**
+ * 列表角色列：读 roles 列（JSON ID 数组）→ roleOptions 查名称
+ * roleOptions 来自 roleApi.getActive()（仅启用角色），查不到时回退显示 角色#ID
+ * 不读 roleNames 死列（N24）
+ */
+function resolveRoleNames(rolesJson: string): string[] {
+  return parseRoleNames(rolesJson).map((id) => {
+    const key = String(id)
+    const found = roleOptions.value.find((r) => String(r.id) === key)
+    return found?.roleName || `角色#${key}`
+  })
 }
 
 // ==================== 表格列定义 ====================
@@ -325,7 +340,9 @@ function handleEdit(row: UserItem) {
     fullName: row.fullName || '',
     phone: row.phone || '',
     email: row.email || '',
-    departmentId: row.departmentId || '',
+    // Bug 1：tree 节点 id 为 string（departments/tree），list 的 departmentId 为 number
+    // el-tree-select 用严格 === 匹配 option → 归一为 string（后端 Spring 自动转 Long，不影响）
+    departmentId: row.departmentId ? String(row.departmentId) : '',
     position: '',
     roleIds: [],
     status: row.status ?? 1,
@@ -404,9 +421,16 @@ async function handleSubmit() {
 /**
  * 查看详情
  */
-function handleView(row: UserItem) {
+async function handleView(row: UserItem) {
   currentUser.value = row
+  currentUserRoleNames.value = []
   detailVisible.value = true
+  try {
+    currentUserRoleNames.value = await userApi.getUserRoleNames(row.id)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[UserManagementTab] 获取角色名称失败:', err)
+  }
 }
 
 // ==================== 重置密码操作 ====================
@@ -617,6 +641,7 @@ onMounted(() => {
           v-model="searchForm.department"
           :data="departmentTree"
           :props="{ label: 'name', value: 'id', children: 'children' }"
+          node-key="id"
           placeholder="选择部门"
           clearable
           check-strictly
@@ -683,9 +708,9 @@ onMounted(() => {
         <!-- 部门列 -->
         <template #department="{ row }">
           <StatusTag
-            v-if="row.department"
+            v-if="row.departmentId"
             category="department"
-            :label="row.department"
+            :label="getDepartmentName(row.departmentId)"
             size="small"
           />
           <span v-else class="text-muted">未分配</span>
@@ -693,9 +718,9 @@ onMounted(() => {
 
         <!-- 角色列 -->
         <template #roleNames="{ row }">
-          <template v-if="parseRoleNames(row.roleNames).length > 0">
+          <template v-if="resolveRoleNames(row.roles).length > 0">
             <StatusTag
-              v-for="name in parseRoleNames(row.roleNames).slice(0, 2)"
+              v-for="name in resolveRoleNames(row.roles).slice(0, 2)"
               :key="name"
               status="info"
               :label="name"
@@ -703,11 +728,11 @@ onMounted(() => {
               class="role-tag"
             />
             <el-tooltip
-              v-if="parseRoleNames(row.roleNames).length > 2"
-              :content="parseRoleNames(row.roleNames).join('、')"
+              v-if="resolveRoleNames(row.roles).length > 2"
+              :content="resolveRoleNames(row.roles).join('、')"
               placement="top"
             >
-              <span class="more-roles">+{{ parseRoleNames(row.roleNames).length - 2 }}</span>
+              <span class="more-roles">+{{ resolveRoleNames(row.roles).length - 2 }}</span>
             </el-tooltip>
           </template>
           <span v-else class="text-muted">未分配</span>
@@ -865,6 +890,7 @@ onMounted(() => {
                 v-model="formData.departmentId"
                 :data="departmentTree"
                 :props="{ label: 'name', value: 'id', children: 'children' }"
+                node-key="id"
                 placeholder="请选择所属部门"
                 clearable
                 check-strictly
@@ -1004,7 +1030,7 @@ onMounted(() => {
             <el-descriptions-item label="用户姓名">{{ currentUser.fullName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="手机号">{{ currentUser.phone || '-' }}</el-descriptions-item>
             <el-descriptions-item label="邮箱">{{ currentUser.email || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="所属部门">{{ currentUser.department || '未分配' }}</el-descriptions-item>
+            <el-descriptions-item label="所属部门">{{ currentUser.departmentId ? getDepartmentName(currentUser.departmentId) : '未分配' }}</el-descriptions-item>
             <el-descriptions-item label="状态">
               <StatusTag :status="getStatusType(currentUser.status)" size="small" />
             </el-descriptions-item>
@@ -1015,14 +1041,14 @@ onMounted(() => {
           <div class="section-title">角色信息</div>
           <div class="role-list">
             <StatusTag
-              v-for="name in parseRoleNames(currentUser.roleNames)"
+              v-for="name in currentUserRoleNames"
               :key="name"
               status="info"
               :label="name"
               size="small"
               class="role-tag"
             />
-            <span v-if="parseRoleNames(currentUser.roleNames).length === 0" class="text-muted">未分配角色</span>
+            <span v-if="currentUserRoleNames.length === 0" class="text-muted">未分配角色</span>
           </div>
         </div>
 
