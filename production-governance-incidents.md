@@ -381,3 +381,18 @@ OPEN（处置与开卡待 Owner；本条目 + ENV-13 镜像 = 双登记，提交
 *本条为追加记载；文件中部「事件状态表」未改动（只增不改）。状态表对应行：GOV-INCIDENT-005 | OPEN | Owner 裁决 | 逐片核对 C1–C10 提交面 vs 工作区差异；Live 验证按 PG-001 条款 7 声明跑哪一侧。*
 
 > **追加（2026-10-15，Owner 裁决）**：**已逐片核对：仅 C6 命中**（C1–C10 逐片跑 `git diff <提交> -- <文件>`）。本条状态不变（OPEN，规则已落 PG-001 条款 7）。
+
+## GOV-INCIDENT-006：commit message 含半角双引号导致两片合并提交（2026-10-15 登记，Owner 裁决）
+
+| 项 | 内容 |
+|----|----|
+| **编号** | GOV-INCIDENT-006 |
+| **类型** | 流程缺陷（提交面打包错误）——非代码缺陷、非数据篡改、非提交面造假；两片内容本身无误 |
+| **现象** | 裁决 2（`frontend/src/api/system/user.ts`）与裁决 3（`frontend/src/views/system/components/UserManagementTab.vue`）被合入同一个提交 `774b6ea`（2 files, 18 增 / 29 删），违反「每片独立提交 + 独立交验，禁止合并提交」 |
+| **原始报错（逐字）** | `error: pathspec 'number' did not match any file(s) known to git` —— commit message 含半角双引号（`"前端使用 number 类型"`），PowerShell 把 `-m` 参数拆断：第一条提交未落地，第二条把两片一起入库 |
+| **触发条件** | commit message 含半角双引号（或任何会被 shell 重新分词的字符）。PowerShell 单引号字符串内的双引号在传给外部程序时不保证保持为单一参数 |
+| **修正（Owner 裁决 2026-10-15 = 不改历史）** | `git revert 774b6ea` 被脏工作区拒绝：`error: Your local changes to the following files would be overwritten by merge`（Owner WIP 在 `UserManagementTab.vue`）→ 改为在**暂存面**把两文件还原到 `f105b3f` 内容 → 提交 `cb3092a`（29 增 / 18 删，不动工作区）→ 再按两片各自独立提交 `6482e35`（user.ts，14 增 / 13 删）与 `64fa0e3`（`.vue`，4 增 / 16 删）。`774b6ea` 保留在历史，不 amend、不重写 |
+| **建议规则** | ① commit message 不得含半角双引号，改用「」或全角引号；② 每次 commit 后必跑 `git show --stat` 复核提交面文件数与预期一致（本例预期 1 文件、实际 2 文件） |
+| **状态** | **CLOSED**（事实已登记，修正已落地）；历史保留 `774b6ea` + `cb3092a` 两条 |
+
+*本条为追加记载；文件中部「事件状态表」未改动（只增不改）。状态表对应行：GOV-INCIDENT-006 | CLOSED | 已落地 | commit message 禁半角双引号 + commit 后 `git show --stat` 复核提交面文件数。*
