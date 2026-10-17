@@ -619,3 +619,16 @@ WHERE version IN ('20260629.021','20261012.001') ORDER BY installed_rank;
 | **裁决 5（双权威源）** | 登记为独立卡 **P1-PERM-CONSOLIDATION-001**（board §24.8a），当前不动代码 |
 | **违规记录（本段，事实与修正）** | 提交 `774b6ea` 把裁决 2（`user.ts`）与裁决 3（`UserManagementTab.vue`）两片合入一个提交，违反「每片独立提交、禁止合并提交」。原始输出：`error: pathspec 'number' did not match any file(s) known to git` —— commit message 含半角双引号，PowerShell 把 `-m` 参数拆断，第一条提交未落地，第二条把两片一起入库。Owner 裁决 = 不改历史：`git revert` 被脏工作区（Owner WIP）拒绝（`error: Your local changes to the following files would be overwritten by merge`），改为在**暂存面**把两文件还原到 `f105b3f` 内容 → 提交 `cb3092a`（29 增 / 18 删，不动工作区），再按两片各自独立提交 `6482e35` / `64fa0e3` |
 | **状态** | 待 Owner Live：N15 权限验证（找持店长角色的账号进订单页）——本卡最后一项 Live。通过后统一 push（当前 ahead 29 / behind 0） |
+
+### §7.15 N15 Live 失败根因调查（2026-10-15，Owner 抓包 + Agent 代码/活库双实测；只增不改）
+
+| 项 | 内容 |
+|----|------|
+| **触发** | N15 Live 失败（Owner 抓包 `GET /api/v1/auth/me`）：`permissions: []` → 订单端点 403；`roles: ["店长/门店经理"]` 返回中文名而非 role_code |
+| **问题 1 答复（seed 为什么查不到）** | seed 无问题。`V20261012_002` 的 10 条 `role_permissions` 全部在库（create_time `2026-10-12 21:10:51.089228`，role_id=`ROLE_STORE_MANAGER`）。断点在「用户 → 角色」这一跳：`UserMapper.xml` `getUserRolePermissions`（L21–33）要求 `user_roles` 行；vtest01（user_id=2110437068670001154）在 `user_roles` **0 行** → INNER JOIN 空 → `permissions: []`。`user_permissions` 全表 **0 行** → 直接权限路径对所有人恒空 |
+| **逐条复现（psql 实测，2026-10-15）** | `getUserPermissions`（vtest01）= **0**；`getUserRolePermissions`（vtest01）= **0**；`user_roles` 计数（vtest01）= **0**；对照 `role_permissions WHERE role_id='ROLE_STORE_MANAGER'` = **12 码**（hr:health-certificate:view, inventory:query, order:add, order:manage, order:view, purchase:arrival:confirm, purchase:request:approve, purchase:request:create, purchase:request:delete, purchase:request:edit, purchase:request:view, warehouse:query） |
+| **问题 2 答复（角色解析用哪个字段）** | 两条互不相通的解析路径：**显示路径** = `users.roles` JSON `["9"]` → `roleService.getRoleById(9)`（数字 role_id）→ `role_name`；**授权路径** = `user_roles` 表 → `ur.ROLE_ID = r.role_id_str`（字符串）→ `role_permissions.role_id = r.role_id_str`。`users.roles` 存数字、`user_roles` 存 `ROLE_XXX`、`role_permissions` 混用（`'1'` 与 `ROLE_XXX`）；写入侧 `UserServiceImpl.assignRoles` L366–374 只写 JSON、`PermissionAutoAssignServiceImpl` L240–259 只写表 → 两边永不同步（§24.6a N25） |
+| **问题 3 答复（为什么是中文名）** | `AuthServiceImpl.getUserInfo` L330 → `UserServiceImpl.getUserRoleNames` L430–443 → `role.getRoleName()`。前端 `permission.ts` L487 `mapRoles` 有硬编码中文→code 字典（L695–744），`'店长/门店经理'` 在 L735 → 当前账号侥幸可映射；运行时新建角色不在字典 → L748–749 fail-closed → `roles = []` → 菜单/仪表盘/数据范围/路由守卫退化。风险面登记为 §24.11a N28 |
+| **附带发现（代码推导 + 活库实测）** | `user_roles.role_id` 与 `roles.role_code` **0 命中**（8 个 distinct 值全部不匹配）→ `PermissionVerifyServiceImpl.hasRole`/`hasAnyRole`（L402–429）对全部真实用户恒 false；`SecurityUser.getAuthorities` L52–56 不剥 `ROLE_` 前缀，对 `ROLE_STORE_MANAGER` 生成 `ROLE_ROLE_STORE_MANAGER`（JWT claim 已 lowercase）→ Spring `hasRole('store_manager')` 找 `ROLE_STORE_MANAGER` 不匹配。412 处 `hasRole(`/`hasAnyRole(` 调用点依赖此路径；仅 admin（登录硬编码 roles）能命中。是否单列 N 待 Owner 裁 |
+| **处置** | 登记 **P1-AUTH-CHAIN-001**（board §24.10a），N15 从 §24.3s 剥离挂起；N28（§24.11a）、N29（§24.12a）已登记。应急 SQL（补 `user_roles` 行）写入卡面，**由 Owner 跑**；Agent 未写活库 |
+| **状态** | 调查完成，**代码零改动**；本轮文档 5 片（§24.10a / §24.11a / §24.12a / 本段 / STATUS.md 指针）；Live 由 Owner 跑 |
