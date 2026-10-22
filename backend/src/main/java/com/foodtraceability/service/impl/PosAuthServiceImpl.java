@@ -10,6 +10,7 @@ import com.foodtraceability.mapper.PosShiftMapper;
 import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.security.model.SecurityUser;
 import com.foodtraceability.security.utils.JwtUtils;
+import com.foodtraceability.security.utils.RoleCodeNormalizer;
 import com.foodtraceability.service.PosAuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +61,15 @@ public class PosAuthServiceImpl implements PosAuthService {
     private final UserMapper userMapper;
 
     private final PasswordEncoder passwordEncoder;
+
+    /**
+     * POS 端允许登录的角色码（归一化后的小写码）。
+     * 与 POS 控制器白名单对齐：ROLE_ADMIN / ROLE_STORE_MANAGER / ROLE_CASHIER / ROLE_POS_OPERATOR。
+     * owner 由 admin 同级授权一并放行（超级管理员）。
+     */
+    private static final Set<String> POS_ALLOWED_ROLE_CODES =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+                    "admin", "owner", "store_manager", "cashier", "pos_operator")));
 
     @Override
     public Map<String, Object> login(String employeeId, String password, String terminalId) {
@@ -367,19 +377,31 @@ public class PosAuthServiceImpl implements PosAuthService {
             return true;
         }
 
-        // 检查角色字段（roles是JSON格式存储的角色ID列表）
-        String roles = user.getRoles();
-        if (roles != null && !roles.isEmpty()) {
-            // 简单检查是否包含pos_cashier或admin等关键词
-            roles = roles.toLowerCase();
-            if (roles.contains("admin") || roles.contains("cashier") ||
-                roles.contains("pos") || roles.contains("operator")) {
-                return true;
+        // 2026-10-15 修复：原实现读 user.getRoles()（users.roles 列，存的是【数字角色 ID】，
+        // 如 vtest01=["9"]、vcashier01=["4216"]），再对该字符串做 contains("cashier") 之类的匹配；
+        // 数字 ID 里永远不含这些字母 → 除 admin 外所有账号（含真正的收银员）都会被拒并抛
+        // 「无收银操作权限」。现改为读授权权威源：user_roles → roles.role_id_str（如 ROLE_CASHIER）。
+        //
+        // 放行集合与 POS 控制器既有白名单严格对齐：
+        //   PosApiController / PosOrderController / PosCouponController / YoloProductRecognitionController
+        //   = hasAnyAuthority('ROLE_ADMIN','ROLE_STORE_MANAGER','ROLE_CASHIER','ROLE_POS_OPERATOR','*')
+        try {
+            List<String> roleCodes = userMapper.getUserRoles(user.getId());
+            if (roleCodes != null) {
+                for (String roleCode : roleCodes) {
+                    String normalized = RoleCodeNormalizer.normalize(roleCode);
+                    if (normalized != null && POS_ALLOWED_ROLE_CODES.contains(normalized)) {
+                        return true;
+                    }
+                }
             }
+        } catch (Exception e) {
+            // 查询异常按 fail-closed 处理，不放行
+            logger.warn("POS 角色判定异常，按 fail-closed 拒绝: userId={}, error={}", user.getId(), e.getMessage());
         }
 
         // 安全默认：拒绝（fail-closed）。非收银角色用户禁止登录POS终端。
-        // 如需开放更多角色，应在 roles 字段中显式声明，而非默认放行。
+        // 如需开放更多角色，须同时改本集合与控制器白名单，避免两处口径不一致。
         return false;
     }
 
