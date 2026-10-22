@@ -17,7 +17,7 @@
 | 循环 | 内容 | 状态 | 证据 |
 |------|------|------|------|
 | B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **7 个类 / 96 个用例全绿**，每类一提交 |
-| C | 前端 TypeScript 报错清洗 | 进行中（仅 clean 文件） | 145 → 126（队友第 1 轮），基线 62 文件里 52 个带 Owner WIP 不可碰 |
+| C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
 | A | API 契约静态比对报告 | 进行中 | 队友 `api-contract-audit` → `docs/night-patrol/api-contract-diff.md` |
 | D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
 
@@ -33,6 +33,9 @@
 | B-6 | `42dbf37` | `StockForecastServiceImplTest`（10 用例） | 10/0/0 |
 | B-7 | `e80c3a0` | `InventoryLocationServiceImplTest`（13 用例） | 13/0/0 |
 | D-1 | `2c7e3e9` | 删除零引用 `util/PasswordGenerator`、`util/LabelRenderConfig` | `mvn -o compile` BUILD SUCCESS |
+| B-8 | `eec8b6b` | `TableReservationNewServiceImplTest`（14 用例） | 14/0/0 |
+| C-1 | `d4d7ff0` | 前端 21 文件类型清洗（共享 types 放宽 + 缺失 import + `types/capacitor.d.ts` + 无效图标/spread no-op） | `npx vue-tsc --noEmit` → **93** error TS（基线 145） |
+| LOG | `0c9eb24` | `WORKER_LOG.md` 建档 | — |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
@@ -42,8 +45,10 @@
 
 ## 3. 进行中
 
-- B-8：继续挑选下一个无单测 ServiceImpl（全仓 **324 个** ServiceImpl 无对应测试类，池子远未掏空）。
-- C：队友 `frontend-types` 第 2 轮（打共享 `types/*.ts`，让脏 vue 的 `Property X does not exist` 根因消失）。
+- B-9：继续挑选下一个无单测 ServiceImpl（全仓 **324 个** ServiceImpl 无对应测试类，池子远未掏空；已交付 8 类 / 110 用例）。
+- C-2（待 Owner 放行）：剩余 93 条全部根因在 Owner 脏文件，**本轮一律未动**。队友已给出两条"一改消多条"的批量线索：
+  1. `DataTable.vue:22` 把 `align?: 'left'|'center'|'right'` 放宽为 `string` → 一次消 10 条（7 份脏 vue 的本地 ColumnDef 都只差这一个字段）；
+  2. 9 条是脏 vue 引用了不存在的 element-plus 图标（Points/Coupon/TrendingUp/BankCard/Refund/DatePicker/Transfer/Copy），对应关系：Coin/Ticket/TrendCharts/CreditCard/RefreshLeft/Calendar/Sort/DocumentCopy。
 - A：队友 `api-contract-audit` 扫描中。
 
 ## 4. 待办队列（按优先级）
