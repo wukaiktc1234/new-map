@@ -4,69 +4,75 @@
 
     <!--
         按支付方式聚合订单数据
-        支付方式：0=微信(wechat), 1=支付宝(alipay), 2=现金(cash), 4=会员余额(memberBalance)
+        支付方式：1=现金(cash), 2=微信(wechat), 3=支付宝(alipay), 4=银行卡, 5=积分, 6=混合支付
         返回每种支付方式的实际支付金额总和（分）和订单数
-        只统计已支付/已完成订单（ORDER_STATUS IN (1, 4)）
+        只统计已支付订单（payment_status = 2）
+        从orders表关联order_payment_records表获取支付方式
     -->
     <select id="aggregateByPaymentMethod" resultType="java.util.HashMap">
         SELECT
-            PAYMENT_METHOD AS payment_method,
-            COALESCE(SUM(CAST(ACTUAL_AMOUNT * 100 AS BIGINT)), 0) AS total_amount,
-            COUNT(*) AS order_count
-        FROM orders_legacy
-        WHERE MERCHANT_ID = #{storeId}
-          AND CREATE_TIME &gt;= #{startTime}
-          AND CREATE_TIME &lt; #{endTime}
-          AND ORDER_STATUS IN (1, 4)
-          AND DELETED = 0
-        GROUP BY PAYMENT_METHOD
-        ORDER BY PAYMENT_METHOD
+            opr.payment_method AS payment_method,
+            COALESCE(SUM(opr.payment_amount), 0) AS total_amount,
+            COUNT(DISTINCT o.order_id) AS order_count
+        FROM orders o
+        INNER JOIN order_payment_records opr ON o.order_id = opr.order_id
+        WHERE o.store_id = #{storeId}
+          AND o.create_time &gt;= #{startTime}
+          AND o.create_time &lt; #{endTime}
+          AND o.payment_status = 2
+          AND o.deleted = 0
+          AND opr.deleted = 0
+        GROUP BY opr.payment_method
+        ORDER BY opr.payment_method
     </select>
 
     <!--
         汇总优惠金额
-        计算指定时间范围内所有有效订单的DISCOUNT_AMOUNT总和（转换为分）
+        计算指定时间范围内所有有效订单的DISCOUNT_AMOUNT总和（单位：分）
+        从orders表读取discount_amount字段（已是分）
     -->
     <select id="sumDiscountAmount" resultType="java.lang.Long">
-        SELECT COALESCE(SUM(CAST(DISCOUNT_AMOUNT * 100 AS BIGINT)), 0)
-        FROM orders_legacy
-        WHERE MERCHANT_ID = #{storeId}
-          AND CREATE_TIME &gt;= #{startTime}
-          AND CREATE_TIME &lt; #{endTime}
-          AND ORDER_STATUS IN (1, 4)
-          AND DELETED = 0
+        SELECT COALESCE(SUM(discount_amount), 0)
+        FROM orders
+        WHERE store_id = #{storeId}
+          AND create_time &gt;= #{startTime}
+          AND create_time &lt; #{endTime}
+          AND payment_status = 2
+          AND deleted = 0
     </select>
 
     <!--
         聚合退款数据
-        统计已退款订单（ORDER_STATUS=7）的退款总金额（分）和笔数
+        统计已退款订单（canonical：payment_status=3 已退款 / order_status=5 全额退款）的退款总金额（分）和笔数
+        从orders表读取refund_amount字段（已是分）
     -->
     <select id="aggregateRefunds" resultType="java.util.HashMap">
         SELECT
-            COALESCE(SUM(CAST(REFUND_AMOUNT * 100 AS BIGINT)), 0) AS total_refund_amount,
+            COALESCE(SUM(refund_amount), 0) AS total_refund_amount,
             COUNT(*) AS refund_count
-        FROM orders_legacy
-        WHERE MERCHANT_ID = #{storeId}
-          AND CREATE_TIME &gt;= #{startTime}
-          AND CREATE_TIME &lt; #{endTime}
-          AND ORDER_STATUS = 7
-          AND DELETED = 0
+        FROM orders
+        WHERE store_id = #{storeId}
+          AND create_time &gt;= #{startTime}
+          AND create_time &lt; #{endTime}
+          AND (payment_status = 3 OR order_status = 5)
+          AND deleted = 0
     </select>
 
     <!--
         聚合作废订单数据
-        统计已作废订单（ORDER_STATUS=5）的订单总金额（分）和笔数
+        统计已取消订单（canonical：order_status=3 已取消）的订单总金额（分）和笔数
+        从orders表读取total_amount字段（已是分）
     -->
     <select id="aggregateCancelled" resultType="java.util.HashMap">
         SELECT
-            COALESCE(SUM(CAST(ORDER_AMOUNT * 100 AS BIGINT)), 0) AS total_cancelled_amount,
+            COALESCE(SUM(total_amount), 0) AS total_cancelled_amount,
             COUNT(*) AS cancelled_count
-        FROM orders_legacy
-        WHERE MERCHANT_ID = #{storeId}
-          AND CREATE_TIME &gt;= #{startTime}
-          AND CREATE_TIME &lt; #{endTime}
-          AND ORDER_STATUS = 5
-          AND DELETED = 0
+        FROM orders
+        WHERE store_id = #{storeId}
+          AND create_time &gt;= #{startTime}
+          AND create_time &lt; #{endTime}
+          AND order_status = 3
+          AND deleted = 0
     </select>
 
 </mapper>
