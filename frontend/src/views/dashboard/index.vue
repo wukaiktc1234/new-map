@@ -72,7 +72,9 @@ onMounted(() => {
     />
 
     <!-- 统计卡片区域 -->
-    <section class="stats-section" v-loading="loading">
+    <!-- N31 / P1-DASHBOARD-FILTER-001：无 operations:dashboard:view 的角色不渲染任何统计卡片
+         （statsCards 为空），此时整块区域直接不占位，避免留下一片空白框或误以为"加载失败"。 -->
+    <section class="stats-section" v-if="statsCards.length > 0" v-loading="loading">
       <div v-for="card in statsCards" :key="card.key" class="stat-card-wrapper">
         <StatCard
           :icon="card.icon"
