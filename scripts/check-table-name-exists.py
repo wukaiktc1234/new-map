@@ -47,7 +47,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 ROOT = Path(__file__).resolve().parent.parent
 ENTITY_DIR = ROOT / "backend" / "src" / "main" / "java" / "com" / "foodtraceability" / "entity"
-BASELINE = ROOT / "docs" / "night-patrol" / "schema-drift-baseline.txt"
+# 注意：仓库 .gitignore:238 有全局 `*.txt` 规则（ENV-4 残留，禁止批量改），
+# 基线文件因此用 .md 扩展名，避免被忽略而无法入库。
+BASELINE = ROOT / "docs" / "night-patrol" / "schema-drift-baseline.md"
 
 PSQL_CANDIDATES = [
     os.environ.get("PSQL_BIN", ""),
