@@ -65,7 +65,7 @@ public class RecruitmentFeedbackController {
      */
     @Operation(summary = "HR 提交招聘需求反馈", description = "支持 approve/feedback/reject 三种反馈类型")
     @PostMapping
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<RecruitmentFeedback> submitFeedback(@Valid @RequestBody RecruitmentFeedbackCreateDTO dto) {
         Long operatorId = SecurityUtils.getCurrentUserId();
         RecruitmentFeedback feedback = feedbackService.submitFeedback(dto, operatorId);
@@ -80,7 +80,7 @@ public class RecruitmentFeedbackController {
      */
     @Operation(summary = "查询招聘需求反馈历史")
     @GetMapping("/requirement/{requirementId}")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER', 'STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('hr_director', 'STORE_MANAGER')")
     public Result<List<RecruitmentFeedbackVO>> getFeedbackHistory(
             @Parameter(description = "招聘需求 ID", required = true) @PathVariable String requirementId) {
         List<RecruitmentFeedbackVO> history = feedbackService.getFeedbackHistory(requirementId);

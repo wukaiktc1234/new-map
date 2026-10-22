@@ -51,7 +51,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资记录列表")
     @GetMapping("/records")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<IPage<SalaryRecord>> getSalaryRecords(Page<SalaryRecord> page, @RequestParam(required = false) String employeeName, @RequestParam(required = false) String salaryMonth) {
         IPage<SalaryRecord> salaryRecords = salaryRecordService.page(page);
         return Result.success(salaryRecords);
@@ -59,7 +59,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资记录详情")
     @GetMapping("/records/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<SalaryRecord> getSalaryRecordById(@PathVariable Long id) {
         SalaryRecord salaryRecord = salaryRecordService.getById(id);
         if (salaryRecord == null) {
@@ -70,7 +70,7 @@ public class SalaryController {
 
     @Operation(summary = "创建薪资记录")
     @PostMapping("/records")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryRecord> createSalaryRecord(@Valid @RequestBody SalaryRecord salaryRecord) {
         salaryRecordService.save(salaryRecord);
         return Result.success(salaryRecord);
@@ -78,7 +78,7 @@ public class SalaryController {
 
     @Operation(summary = "更新薪资记录")
     @PutMapping("/records/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryRecord> updateSalaryRecord(@PathVariable Long id, @Valid @RequestBody SalaryRecord salaryRecord) {
         salaryRecord.setId(id);
         salaryRecordService.updateById(salaryRecord);
@@ -87,7 +87,7 @@ public class SalaryController {
 
     @Operation(summary = "删除薪资记录")
     @DeleteMapping("/records/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteSalaryRecord(@PathVariable Long id) {
         salaryRecordService.removeById(id);
         return Result.success();
@@ -95,7 +95,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资规则列表")
     @GetMapping("/rules")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<List<SalaryRule>> getSalaryRules() {
         List<SalaryRule> salaryRules = salaryRuleService.list();
         return Result.success(salaryRules);
@@ -103,7 +103,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资规则详情")
     @GetMapping("/rules/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<SalaryRule> getSalaryRuleById(@PathVariable Long id) {
         SalaryRule salaryRule = salaryRuleService.getById(id);
         if (salaryRule == null) {
@@ -114,7 +114,7 @@ public class SalaryController {
 
     @Operation(summary = "创建薪资规则")
     @PostMapping("/rules")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryRule> createSalaryRule(@Valid @RequestBody SalaryRule salaryRule) {
         salaryRuleService.save(salaryRule);
         return Result.success(salaryRule);
@@ -122,7 +122,7 @@ public class SalaryController {
 
     @Operation(summary = "更新薪资规则")
     @PutMapping("/rules/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryRule> updateSalaryRule(@PathVariable Long id, @Valid @RequestBody SalaryRule salaryRule) {
         salaryRule.setId(id);
         salaryRuleService.updateById(salaryRule);
@@ -131,7 +131,7 @@ public class SalaryController {
 
     @Operation(summary = "删除薪资规则")
     @DeleteMapping("/rules/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteSalaryRule(@PathVariable Long id) {
         salaryRuleService.removeById(id);
         return Result.success();
@@ -139,7 +139,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资调整列表")
     @GetMapping("/adjustments")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<List<SalaryAdjustment>> getSalaryAdjustments() {
         List<SalaryAdjustment> salaryAdjustments = salaryAdjustmentService.list();
         return Result.success(salaryAdjustments);
@@ -147,7 +147,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资调整详情")
     @GetMapping("/adjustments/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<SalaryAdjustment> getSalaryAdjustmentById(@PathVariable Long id) {
         SalaryAdjustment salaryAdjustment = salaryAdjustmentService.getById(id);
         if (salaryAdjustment == null) {
@@ -158,7 +158,7 @@ public class SalaryController {
 
     @Operation(summary = "创建薪资调整")
     @PostMapping("/adjustments")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryAdjustment> createSalaryAdjustment(@Valid @RequestBody SalaryAdjustment salaryAdjustment) {
         salaryAdjustment.setAdjustmentAmount(salaryAdjustment.getNewSalary().subtract(salaryAdjustment.getOldSalary()));
         salaryAdjustmentService.save(salaryAdjustment);
@@ -167,7 +167,7 @@ public class SalaryController {
 
     @Operation(summary = "更新薪资调整")
     @PutMapping("/adjustments/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<SalaryAdjustment> updateSalaryAdjustment(@PathVariable Long id, @Valid @RequestBody SalaryAdjustment salaryAdjustment) {
         salaryAdjustment.setId(id);
         salaryAdjustment.setAdjustmentAmount(salaryAdjustment.getNewSalary().subtract(salaryAdjustment.getOldSalary()));
@@ -177,7 +177,7 @@ public class SalaryController {
 
     @Operation(summary = "删除薪资调整")
     @DeleteMapping("/adjustments/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteSalaryAdjustment(@PathVariable Long id) {
         salaryAdjustmentService.removeById(id);
         return Result.success();
@@ -185,7 +185,7 @@ public class SalaryController {
 
     @Operation(summary = "生成薪资记录")
     @PostMapping("/generate")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     @Transactional(rollbackFor = Exception.class)
     public Result<Integer> generateSalary(@RequestParam String year, @RequestParam String month) {
         List<User> activeUsers = salaryService.findUsersByStatus("active");
@@ -231,7 +231,7 @@ public class SalaryController {
 
     @Operation(summary = "确认薪资发放")
     @PostMapping("/confirm/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
     public Result<SalaryRecord> confirmSalary(@PathVariable Long id) {
         SalaryRecord salaryRecord = salaryRecordService.getById(id);
         if (salaryRecord == null) {

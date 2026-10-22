@@ -25,7 +25,7 @@ public class ResumeController {
 
     @Operation(summary = "获取简历列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getResumes(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
@@ -37,7 +37,7 @@ public class ResumeController {
 
     @Operation(summary = "获取简历详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Resume> getResume(@PathVariable String id) {
         Resume resume = resumeService.getById(id);
         return Result.success(resume);
@@ -45,7 +45,7 @@ public class ResumeController {
 
     @Operation(summary = "创建简历")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Resume> createResume(@RequestBody Resume resume) {
         Resume created = resumeService.createResume(resume);
         return Result.success(created);
@@ -53,7 +53,7 @@ public class ResumeController {
 
     @Operation(summary = "更新简历")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Resume> updateResume(
             @PathVariable String id,
             @RequestBody Resume resume) {
@@ -63,7 +63,7 @@ public class ResumeController {
 
     @Operation(summary = "删除简历")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteResume(@PathVariable String id) {
         resumeService.deleteResume(id);
         return Result.success();
@@ -71,7 +71,7 @@ public class ResumeController {
 
     @Operation(summary = "更新简历状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Void> updateResumeStatus(
             @PathVariable String id,
             @RequestParam String status) {
@@ -81,7 +81,7 @@ public class ResumeController {
 
     @Operation(summary = "获取招聘需求的简历列表")
     @GetMapping("/requirement/{requirementId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<Resume>> getResumesByRequirement(@PathVariable String requirementId) {
         List<Resume> resumes = resumeService.getResumesByRequirement(requirementId);
         return Result.success(resumes);

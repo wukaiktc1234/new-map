@@ -168,7 +168,7 @@ public class EmployeeApprovalController {
      */
     @Operation(summary = "通过审批", description = "审批人通过该审批申请")
     @PutMapping("/{approvalId}/approve")
-    @PreAuthorize("hasAnyRole('manager', 'hr', 'admin')")
+    @PreAuthorize("hasAnyRole('manager', 'hr_director', 'admin')")
     public Result<Void> approve(
             @Parameter(description = "审批ID") @PathVariable String approvalId,
             @RequestBody Map<String, String> body) {
@@ -199,7 +199,7 @@ public class EmployeeApprovalController {
      */
     @Operation(summary = "驳回审批", description = "审批人驳回该审批申请")
     @PutMapping("/{approvalId}/reject")
-    @PreAuthorize("hasAnyRole('manager', 'hr', 'admin')")
+    @PreAuthorize("hasAnyRole('manager', 'hr_director', 'admin')")
     public Result<Void> reject(
             @Parameter(description = "审批ID") @PathVariable String approvalId,
             @RequestBody Map<String, String> body) {

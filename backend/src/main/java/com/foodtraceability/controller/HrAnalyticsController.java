@@ -43,7 +43,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/overview")
     @Operation(summary = "获取人事概览", description = "获取员工总数/在职/离职/本月入职/本月离职等概览数据")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getOverview() {
         log.info("获取人事概览数据");
         try {
@@ -57,7 +57,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/departments")
     @Operation(summary = "获取部门人事统计", description = "按部门分组聚合人数/性别/薪资/流动情况，支持分页和筛选")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getDepartmentStats(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页数量") @RequestParam(defaultValue = "10") int pageSize,
@@ -75,7 +75,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/turnover-rate")
     @Operation(summary = "获取员工流动率分析", description = "获取入职率、离职率、净增长率及月度趋势")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getTurnoverRate() {
         log.info("获取员工流动率分析");
         try {
@@ -89,7 +89,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/performance")
     @Operation(summary = "获取绩效分析", description = "获取绩效分布、各部门绩效均值、绩效趋势")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getPerformance() {
         log.info("获取绩效分析数据");
         try {
@@ -103,7 +103,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/training-effect")
     @Operation(summary = "获取培训效果分析", description = "获取培训完成率、培训场次、人均培训时长、培训满意度")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getTrainingEffect() {
         log.info("获取培训效果分析数据");
         try {
@@ -117,7 +117,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/recruitment-funnel")
     @Operation(summary = "获取招聘漏斗", description = "获取各招聘阶段人数：简历投递→初筛→面试→录用→入职")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getRecruitmentFunnel() {
         log.info("获取招聘漏斗数据");
         try {
@@ -131,7 +131,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/attendance")
     @Operation(summary = "获取考勤分析", description = "获取出勤率、迟到次数、早退次数、缺勤次数、加班时长分布")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getAttendance() {
         log.info("获取考勤分析数据");
         try {
@@ -145,7 +145,7 @@ public class HrAnalyticsController {
 
     @GetMapping("/salary-distribution")
     @Operation(summary = "获取薪资分布分析", description = "获取薪资区间分布、各部门薪资均值、薪资分位数")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getSalaryDistribution() {
         log.info("获取薪资分布分析数据");
         try {

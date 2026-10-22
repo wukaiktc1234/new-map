@@ -61,7 +61,7 @@ public class JobOfferController {
      */
     @Operation(summary = "创建录用 Offer", description = "HR 创建录用 Offer，状态为 pending，发送时才触发 offer.sent 事件")
     @PostMapping
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<JobOffer> createOffer(@Valid @RequestBody JobOfferCreateDTO dto) {
         Long operatorId = SecurityUtils.getCurrentUserId();
         JobOffer offer = jobOfferService.createOffer(dto, operatorId);
@@ -76,7 +76,7 @@ public class JobOfferController {
      */
     @Operation(summary = "查询 Offer 详情")
     @GetMapping("/{offerId}")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<JobOffer> getOfferById(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId) {
         JobOffer offer = jobOfferService.getOfferById(offerId);
@@ -91,7 +91,7 @@ public class JobOfferController {
      */
     @Operation(summary = "分页查询 Offer 列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<IPage<JobOfferVO>> listOffers(@Valid JobOfferQueryDTO query) {
         IPage<JobOfferVO> page = jobOfferService.listOffers(query);
         return Result.success(page);
@@ -107,7 +107,7 @@ public class JobOfferController {
      */
     @Operation(summary = "发送 Offer", description = "HR 发送 Offer 给候选人，状态 pending → sent")
     @PutMapping("/{offerId}/send")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<Boolean> sendOffer(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId) {
         Long operatorId = SecurityUtils.getCurrentUserId();
@@ -125,7 +125,7 @@ public class JobOfferController {
      */
     @Operation(summary = "候选人接受 Offer", description = "候选人接受 Offer（暂由 HR 代操作），状态 sent → accepted")
     @PutMapping("/{offerId}/accept")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<Boolean> acceptOffer(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId) {
         Long operatorId = SecurityUtils.getCurrentUserId();
@@ -144,7 +144,7 @@ public class JobOfferController {
      */
     @Operation(summary = "候选人拒绝 Offer", description = "候选人拒绝 Offer（暂由 HR 代操作），状态 sent → rejected")
     @PutMapping("/{offerId}/reject")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<Boolean> rejectOffer(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId,
             @RequestBody(required = false) OfferRejectDTO dto) {
@@ -163,7 +163,7 @@ public class JobOfferController {
      */
     @Operation(summary = "HR 撤回 Offer", description = "HR 撤回 Offer，状态 sent/pending → withdrawn")
     @PutMapping("/{offerId}/withdraw")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER')")
+    @PreAuthorize("hasAnyRole('hr_director')")
     public Result<Boolean> withdrawOffer(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId) {
         Long operatorId = SecurityUtils.getCurrentUserId();
@@ -184,7 +184,7 @@ public class JobOfferController {
      */
     @Operation(summary = "转入职", description = "接受 Offer 后办理转入职，生成 OnboardingRecord，状态 accepted → onboarded")
     @PostMapping("/{offerId}/convert-to-onboarding")
-    @PreAuthorize("hasRole('HR_MANAGER')")
+    @PreAuthorize("hasRole('hr_director')")
     public Result<OnboardingRecord> convertToOnboarding(
             @Parameter(description = "Offer ID", required = true) @PathVariable Long offerId) {
         Long operatorId = SecurityUtils.getCurrentUserId();

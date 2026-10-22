@@ -72,7 +72,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "HR 创建并下发招聘名额", description = "HR 按年度/季度向门店下发招聘名额")
     @PostMapping
-    @PreAuthorize("hasRole('HR_MANAGER')")
+    @PreAuthorize("hasRole('hr_director')")
     public Result<RecruitmentQuota> issueQuota(@Valid @RequestBody RecruitmentQuotaCreateDTO dto) {
         Long operatorId = SecurityUtils.getCurrentUserId();
         RecruitmentQuota quota = quotaService.issueQuota(dto, operatorId);
@@ -87,7 +87,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "查询招聘名额详情")
     @GetMapping("/{quotaId}")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER', 'STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('hr_director', 'STORE_MANAGER')")
     public Result<RecruitmentQuota> getQuotaById(
             @Parameter(description = "名额 ID", required = true) @PathVariable Long quotaId) {
         RecruitmentQuota quota = quotaService.getQuotaById(quotaId);
@@ -102,7 +102,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "分页查询招聘名额列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER', 'STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('hr_director', 'STORE_MANAGER')")
     public Result<IPage<RecruitmentQuotaVO>> listQuotas(@Valid RecruitmentQuotaQueryDTO query) {
         IPage<RecruitmentQuotaVO> page = quotaService.listQuotas(query);
         return Result.success(page);
@@ -177,7 +177,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "HR 审核名额追加申请")
     @PutMapping("/{quotaId}/approve-adjustment")
-    @PreAuthorize("hasRole('HR_MANAGER')")
+    @PreAuthorize("hasRole('hr_director')")
     public Result<Boolean> approveAdjustment(
             @Parameter(description = "名额 ID", required = true) @PathVariable Long quotaId,
             @Valid @RequestBody QuotaAdjustmentReviewDTO dto) {
@@ -196,7 +196,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "HR 关闭招聘名额")
     @PutMapping("/{quotaId}/close")
-    @PreAuthorize("hasRole('HR_MANAGER')")
+    @PreAuthorize("hasRole('hr_director')")
     public Result<Boolean> closeQuota(
             @Parameter(description = "名额 ID", required = true) @PathVariable Long quotaId) {
         Long operatorId = SecurityUtils.getCurrentUserId();
@@ -212,7 +212,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "按门店查询可用名额")
     @GetMapping("/store/{storeId}")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('hr_director', 'STORE_MANAGER')")
     public Result<List<RecruitmentQuotaVO>> getAvailableQuotasByStore(
             @Parameter(description = "门店 ID", required = true) @PathVariable Long storeId) {
         List<RecruitmentQuotaVO> quotas = quotaService.getAvailableQuotasByStore(storeId);
@@ -228,7 +228,7 @@ public class RecruitmentQuotaController {
      */
     @Operation(summary = "校验名额可用性")
     @PostMapping("/{quotaId}/validate")
-    @PreAuthorize("hasAnyRole('HR_MANAGER', 'HR_RECRUITER', 'STORE_MANAGER')")
+    @PreAuthorize("hasAnyRole('hr_director', 'STORE_MANAGER')")
     public Result<QuotaValidateResult> validateQuota(
             @Parameter(description = "名额 ID", required = true) @PathVariable Long quotaId,
             @Parameter(description = "本次需要的名额数（默认 1）")

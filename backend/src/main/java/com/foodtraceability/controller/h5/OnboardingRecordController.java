@@ -24,7 +24,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "获取入职记录列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getOnboardingRecords(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
@@ -36,7 +36,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "创建入职记录")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<OnboardingRecord> createOnboardingRecord(@RequestBody OnboardingRecord record) {
         OnboardingRecord created = onboardingRecordService.createOnboardingRecord(record);
         return Result.success(created);
@@ -44,7 +44,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "更新入职状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Void> updateOnboardingStatus(
             @PathVariable String id,
             @RequestParam String status) {
@@ -54,7 +54,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "生成注册码")
     @PostMapping("/{id}/registration-code")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<String> generateRegistrationCode(@PathVariable String id) {
         String code = onboardingRecordService.generateRegistrationCode(id);
         return Result.success(code);
@@ -62,7 +62,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "根据面试ID获取入职记录")
     @GetMapping("/interview/{interviewId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<OnboardingRecord> getOnboardingByInterviewId(@PathVariable String interviewId) {
         OnboardingRecord record = onboardingRecordService.getOnboardingByInterviewId(interviewId);
         return Result.success(record);
@@ -70,7 +70,7 @@ public class OnboardingRecordController {
     
     @Operation(summary = "完成入职")
     @PostMapping("/{id}/complete")
-    @PreAuthorize("hasAnyRole('admin', 'HR')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> completeOnboarding(@PathVariable String id) {
         onboardingRecordService.completeOnboarding(id);
         return Result.success();

@@ -69,7 +69,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/list")
     @Operation(summary = "获取合同列表", description = "分页获取劳动合同列表，支持按员工ID筛选")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<Map<String, Object>> listContracts(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页数量") @RequestParam(defaultValue = "10") int size,
@@ -103,7 +103,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/statistics")
     @Operation(summary = "获取合同统计", description = "获取合同各状态数量统计")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<Map<String, Integer>> getStatistics() {
         log.info("获取合同统计");
         Map<String, Integer> statistics = new HashMap<>();
@@ -116,7 +116,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/pending")
     @Operation(summary = "获取待签署合同列表", description = "获取所有待签署的劳动合同")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<List<EmployeeLaborContract>> getPendingContracts() {
         List<EmployeeLaborContract> contracts = contractService.getPendingContracts();
         return Result.success(contracts);
@@ -126,7 +126,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping
     @Operation(summary = "创建劳动合同", description = "手动创建劳动合同（不通过入职档案流程）")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<EmployeeLaborContract> createContract(@Valid @RequestBody EmployeeLaborContractCreateDTO dto) {
         if (dto == null) {
             return Result.error("请求体不能为空");
@@ -149,7 +149,7 @@ public class EmployeeLaborContractController {
 
     @PutMapping("/{id}")
     @Operation(summary = "更新劳动合同", description = "更新劳动合同信息（不含状态变更）")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<EmployeeLaborContract> updateContract(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Valid @RequestBody EmployeeLaborContractUpdateDTO dto) {
@@ -174,7 +174,7 @@ public class EmployeeLaborContractController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "删除劳动合同", description = "逻辑删除劳动合同")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> deleteContract(@Parameter(description = "合同ID") @PathVariable Long id) {
         log.info("删除劳动合同，合同ID：{}", id);
         try {
@@ -191,7 +191,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}")
     @Operation(summary = "获取合同详情", description = "根据合同ID获取详情")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<EmployeeLaborContract> getContractById(@Parameter(description = "合同ID") @PathVariable Long id) {
         EmployeeLaborContract contract = contractService.getById(id);
         if (contract == null) {
@@ -202,7 +202,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/archive/{archiveId}")
     @Operation(summary = "根据档案ID获取合同", description = "根据入职档案ID获取对应的劳动合同")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<EmployeeLaborContract> getContractByArchiveId(@Parameter(description = "档案ID") @PathVariable Long archiveId) {
         EmployeeLaborContract contract = contractService.getByArchiveId(archiveId);
         if (contract == null) {
@@ -213,7 +213,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/sign")
     @Operation(summary = "签署合同", description = "员工签署劳动合同")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> signContract(@Parameter(description = "合同ID") @PathVariable Long id, @RequestBody(required = false) ContractSignDTO dto) {
         String signDate = dto != null ? dto.getSignDate() : null;
         boolean success = contractService.signContract(id, signDate);
@@ -234,7 +234,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/extend")
     @Operation(summary = "延长合同期限", description = "延长劳动合同期限")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> extendContract(@Parameter(description = "合同ID") @PathVariable Long id, @RequestBody(required = false) ContractExtendDTO dto) {
         int months = dto != null && dto.getMonths() != null ? dto.getMonths() : 12;
         boolean success = contractService.extendContract(id, months);
@@ -247,7 +247,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/terminate")
     @Operation(summary = "终止合同", description = "终止劳动合同")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> terminateContract(@Parameter(description = "合同ID") @PathVariable Long id, @RequestBody ContractTerminateDTO dto) {
         if (dto == null || dto.getReason() == null || dto.getReason().trim().isEmpty()) {
             return Result.error("请提供终止原因");
@@ -264,7 +264,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}/document")
     @Operation(summary = "获取合同当前正文", description = "根据合同ID获取当前版本的合同正文")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<ContractDocumentDTO> getCurrentDocument(@Parameter(description = "合同ID") @PathVariable Long id) {
         log.info("获取合同当前正文，合同ID：{}", id);
         ContractDocument document = contractDocumentService.getCurrentDocument(id);
@@ -276,7 +276,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}/document/history")
     @Operation(summary = "获取版本历史", description = "获取合同正文的所有版本历史，按版本号倒序")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<ContractDocumentDTO>> getDocumentHistory(@Parameter(description = "合同ID") @PathVariable Long id) {
         log.info("获取合同正文版本历史，合同ID：{}", id);
         List<ContractDocument> history = contractDocumentService.getDocumentHistory(id);
@@ -288,7 +288,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}/document/{version}")
     @Operation(summary = "获取指定版本", description = "根据合同ID和版本号获取指定版本的合同正文")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<ContractDocumentDTO> getDocumentByVersion(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Parameter(description = "版本号") @PathVariable Integer version) {
@@ -302,7 +302,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/document")
     @Operation(summary = "保存合同正文", description = "保存合同正文，创建新版本，旧版本自动归档")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<ContractDocumentDTO> saveDocument(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Valid @RequestBody ContractDocumentEditDTO dto) {
@@ -328,7 +328,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}/signatures")
     @Operation(summary = "获取合同签署记录列表", description = "根据合同ID获取所有签署记录")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<ElectronicSignature>> getSignatures(@Parameter(description = "合同ID") @PathVariable Long id) {
         log.info("获取合同签署记录列表，合同ID：{}", id);
         List<ElectronicSignature> signatures = signatureService.getSignaturesByContractId(id);
@@ -337,7 +337,7 @@ public class EmployeeLaborContractController {
 
     @GetMapping("/{id}/signature-status")
     @Operation(summary = "获取合同签署状态看板", description = "获取合同签署进度看板数据，包含各方签署详情")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<SignatureStatusDTO> getSignatureStatus(@Parameter(description = "合同ID") @PathVariable Long id) {
         log.info("获取合同签署状态看板，合同ID：{}", id);
         SignatureStatusDTO status = signatureService.getSignatureStatus(id);
@@ -349,7 +349,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/init-signatures")
     @Operation(summary = "初始化合同签署记录", description = "创建多方签署记录（公司方+员工方），状态为待签")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<List<ElectronicSignature>> initSignatures(@Parameter(description = "合同ID") @PathVariable Long id) {
         String operator = getCurrentOperator();
         log.info("初始化合同签署记录，合同ID：{}，操作人：{}", id, operator);
@@ -367,7 +367,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/sign-with-signature")
     @Operation(summary = "签署合同（带签名数据）", description = "签署方提交签名数据和验证码完成签署，全部签署完成后自动更新合同状态")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> signWithSignature(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Valid @RequestBody ContractSignRequestDTO dto) {
@@ -399,7 +399,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/reject-signature")
     @Operation(summary = "拒绝签署", description = "签署方拒绝签署合同，需提供拒绝原因")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> rejectSignature(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Valid @RequestBody ContractRejectDTO dto) {
@@ -429,7 +429,7 @@ public class EmployeeLaborContractController {
 
     @PostMapping("/{id}/send-verify-code")
     @Operation(summary = "发送验证码", description = "向指定签署方发送验证码，实际项目应通过短信/邮件发送")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<VerifyCodeResponseDTO> sendVerifyCode(
             @Parameter(description = "合同ID") @PathVariable Long id,
             @Parameter(description = "签署人类型: employee-员工, company-公司") @RequestParam String signerType) {

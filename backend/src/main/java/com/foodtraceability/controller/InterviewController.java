@@ -33,7 +33,7 @@ public class InterviewController {
     
     @Operation(summary = "获取面试列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getInterviews(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
@@ -45,7 +45,7 @@ public class InterviewController {
     
     @Operation(summary = "创建面试")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Interview> createInterview(@RequestBody Interview interview) {
         Interview created = interviewService.createInterview(interview);
         return Result.success(created);
@@ -53,7 +53,7 @@ public class InterviewController {
     
     @Operation(summary = "更新面试状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Void> updateInterviewStatus(
             @PathVariable String id,
             @RequestParam String status) {
@@ -63,7 +63,7 @@ public class InterviewController {
     
     @Operation(summary = "更新面试结果")
     @PutMapping("/{id}/result")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Void> updateInterviewResult(
             @PathVariable String id,
             @RequestParam String result,
@@ -74,7 +74,7 @@ public class InterviewController {
     
     @Operation(summary = "根据简历ID获取面试记录")
     @GetMapping("/resume/{resumeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Interview> getInterviewByResumeId(@PathVariable String resumeId) {
         Interview interview = interviewService.getInterviewByResumeId(resumeId);
         return Result.success(interview);
@@ -82,7 +82,7 @@ public class InterviewController {
 
     @Operation(summary = "根据ID获取面试记录")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Interview> getInterviewById(@PathVariable String id) {
         Interview interview = interviewService.getInterviewById(id);
         return Result.success(interview);
@@ -120,7 +120,7 @@ public class InterviewController {
      */
     @Operation(summary = "创建人事面谈")
     @PostMapping("/{interviewId}/hr-interview")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Interview> createHrInterview(
             @PathVariable String interviewId,
             @RequestParam String hrInterviewerId,
@@ -139,7 +139,7 @@ public class InterviewController {
      */
     @Operation(summary = "提交人事面评")
     @PutMapping("/{interviewId}/hr-evaluation")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Interview> submitHrEvaluation(
             @PathVariable String interviewId,
             @Valid @RequestBody HrEvaluationDTO dto) {

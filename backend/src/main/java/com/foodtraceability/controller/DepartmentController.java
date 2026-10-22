@@ -65,7 +65,7 @@ public class DepartmentController {
      */
     @Operation(summary = "获取部门列表")
     @GetMapping("/page")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<List<Department>> getDepartments(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size) {
@@ -96,7 +96,7 @@ public class DepartmentController {
      */
     @Operation(summary = "获取部门详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Department> getDepartment(@PathVariable Long id) {
         Department department = departmentService.getDepartmentById(id);
         if (department == null) {
@@ -110,7 +110,7 @@ public class DepartmentController {
      */
     @Operation(summary = "创建部门")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Department> createDepartment(@Valid @RequestBody Department department) {
         Department created = departmentService.createDepartment(department);
         return Result.success(created);
@@ -121,7 +121,7 @@ public class DepartmentController {
      */
     @Operation(summary = "更新部门")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Department> updateDepartment(
             @PathVariable Long id,
             @Valid @RequestBody DepartmentDTO departmentDTO) {
@@ -152,7 +152,7 @@ public class DepartmentController {
      */
     @Operation(summary = "删除部门")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteDepartment(@PathVariable Long id) {
         departmentService.deleteDepartment(id);
         return Result.success();
@@ -163,7 +163,7 @@ public class DepartmentController {
      */
     @Operation(summary = "更新部门状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> updateDepartmentStatus(
             @PathVariable Long id,
             @RequestBody Map<String, String> body) {
@@ -178,7 +178,7 @@ public class DepartmentController {
      */
     @Operation(summary = "更新部门状态（级联）")
     @PutMapping("/{id}/status/cascade")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> updateDepartmentStatusWithCascade(
             @PathVariable Long id,
             @RequestBody Map<String, String> body) {
@@ -193,7 +193,7 @@ public class DepartmentController {
      */
     @Operation(summary = "更新部门排序")
     @PutMapping("/{id}/sort")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> updateDepartmentSortOrder(
             @PathVariable Long id,
             @RequestBody Map<String, Integer> body) {
@@ -210,7 +210,7 @@ public class DepartmentController {
      */
     @Operation(summary = "获取子部门（懒加载）")
     @GetMapping("/{parentId}/children")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<DepartmentDTO>> getChildrenDepartments(@PathVariable Long parentId) {
         List<DepartmentDTO> children = departmentService.getChildrenDepartments(parentId);
         return Result.success(children);

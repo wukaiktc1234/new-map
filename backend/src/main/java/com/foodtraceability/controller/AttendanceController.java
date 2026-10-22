@@ -38,7 +38,7 @@ public class AttendanceController {
 
     @Operation(summary = "分页查询考勤记录")
     @GetMapping("/page")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getAttendancePage(AttendanceRecordQueryDTO queryDTO) {
         try {
             Map<String, Object> result = attendanceRecordService.getAttendancePage(queryDTO);
@@ -83,7 +83,7 @@ public class AttendanceController {
 
     @Operation(summary = "获取考勤记录详情")
     @GetMapping("/{recordId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<AttendanceRecordVO> getAttendanceDetail(
             @Parameter(description = "考勤记录ID") @PathVariable Long recordId) {
         try {
@@ -100,7 +100,7 @@ public class AttendanceController {
 
     @Operation(summary = "创建考勤记录", description = "手动创建或补录考勤记录")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<AttendanceRecord> createAttendance(
             @Parameter(description = "考勤信息") @Valid @RequestBody AttendanceRecordCreateDTO createDTO) {
         try {
@@ -117,7 +117,7 @@ public class AttendanceController {
 
     @Operation(summary = "更新考勤记录")
     @PutMapping("/{recordId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<AttendanceRecord> updateAttendance(
             @Parameter(description = "考勤记录ID") @PathVariable Long recordId,
             @Parameter(description = "更新信息") @Valid @RequestBody AttendanceRecordUpdateDTO updateDTO) {
@@ -135,7 +135,7 @@ public class AttendanceController {
 
     @Operation(summary = "上班打卡", description = "员工进行上班签到")
     @PostMapping("/clock-in/{employeeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr') or #employeeId == authentication.principal")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director') or #employeeId == authentication.principal")
     public Result<AttendanceRecord> clockIn(
             @Parameter(description = "员工ID") @PathVariable String employeeId) {
         try {
@@ -152,7 +152,7 @@ public class AttendanceController {
 
     @Operation(summary = "下班打卡", description = "员工进行下班签退")
     @PostMapping("/clock-out/{employeeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr') or #employeeId == authentication.principal")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director') or #employeeId == authentication.principal")
     public Result<AttendanceRecord> clockOut(
             @Parameter(description = "员工ID") @PathVariable String employeeId) {
         try {
@@ -169,7 +169,7 @@ public class AttendanceController {
 
     @Operation(summary = "请假申请", description = "员工提交请假申请")
     @PostMapping("/leave/{employeeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<List<AttendanceRecord>> applyLeave(
             @Parameter(description = "员工ID") @PathVariable String employeeId,
             @RequestParam Integer leaveType,
@@ -189,7 +189,7 @@ public class AttendanceController {
 
     @Operation(summary = "加班登记", description = "登记员工加班信息")
     @PostMapping("/overtime/{employeeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<AttendanceRecord> registerOvertime(
             @Parameter(description = "员工ID") @PathVariable String employeeId,
             @RequestParam BigDecimal overtimeHours,
@@ -207,7 +207,7 @@ public class AttendanceController {
 
     @Operation(summary = "获取月度考勤统计", description = "查询指定员工的月度考勤汇总数据")
     @GetMapping("/monthly-summary/{employeeId}/{yearMonth}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getMonthlySummary(
             @Parameter(description = "员工ID") @PathVariable String employeeId,
             @Parameter(description = "年月（格式：2026-04）") @PathVariable String yearMonth) {
@@ -222,7 +222,7 @@ public class AttendanceController {
 
     @Operation(summary = "获取部门当日考勤", description = "查询某部门所有员工在指定日期的考勤情况")
     @GetMapping("/department/{departmentId}/daily")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<AttendanceRecordVO>> getDepartmentDailyAttendance(
             @Parameter(description = "部门ID") @PathVariable String departmentId,
             @RequestParam @org.springframework.format.annotation.DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date) {

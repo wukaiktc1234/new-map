@@ -33,7 +33,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "获取招聘需求列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getRequirements(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
@@ -50,7 +50,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "获取招聘需求详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<RecruitmentRequirement> getRequirement(@PathVariable String id) {
         RecruitmentRequirement requirement = recruitmentRequirementService.getById(id);
         return Result.success(requirement);
@@ -58,7 +58,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "创建招聘需求")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<RecruitmentRequirement> createRequirement(@RequestBody RecruitmentRequirement requirement) {
         RecruitmentRequirement created = recruitmentRequirementService.createRequirement(requirement);
         return Result.success(created);
@@ -66,7 +66,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "更新招聘需求")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<RecruitmentRequirement> updateRequirement(
             @PathVariable String id,
             @RequestBody RecruitmentRequirement requirement) {
@@ -76,7 +76,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "删除招聘需求")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> deleteRequirement(@PathVariable String id) {
         recruitmentRequirementService.deleteRequirement(id);
         return Result.success();
@@ -84,7 +84,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "审批招聘需求")
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Void> approveRequirement(
             @PathVariable String id,
             @RequestParam String approvalStatus) {
@@ -94,7 +94,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "获取门店招聘需求")
     @GetMapping("/store/{storeId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<RecruitmentRequirement>> getRequirementsByStore(@PathVariable String storeId) {
         List<RecruitmentRequirement> requirements = recruitmentRequirementService.getRequirementsByStore(storeId);
         return Result.success(requirements);
@@ -102,7 +102,7 @@ public class RecruitmentRequirementController {
 
     @Operation(summary = "获取部门招聘需求")
     @GetMapping("/department/{departmentId}")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<List<RecruitmentRequirement>> getRequirementsByDepartment(@PathVariable String departmentId) {
         List<RecruitmentRequirement> requirements = recruitmentRequirementService.getRequirementsByDepartment(departmentId);
         return Result.success(requirements);

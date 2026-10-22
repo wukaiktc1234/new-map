@@ -42,7 +42,7 @@ public class HrStubController {
      */
     @GetMapping("/organizations/tree")
     @Operation(summary = "获取组织架构树", description = "返回组织架构树结构（占位接口，返回空数据）")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<List<Map<String, Object>>> getOrganizationTree() {
         return Result.success(new ArrayList<>());
     }
@@ -54,7 +54,7 @@ public class HrStubController {
      */
     @GetMapping("/config/sick-pay")
     @Operation(summary = "获取病假扣薪配置", description = "返回病假扣薪配置（占位接口，返回默认配置）")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Map<String, Object>> getSickPayConfig() {
         Map<String, Object> config = new HashMap<>();
         config.put("id", "default");
@@ -83,7 +83,7 @@ public class HrStubController {
      */
     @GetMapping("/config/deduction")
     @Operation(summary = "获取扣薪规则配置", description = "返回扣薪规则配置（占位接口，返回默认配置）")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Map<String, Object>> getDeductionConfig() {
         Map<String, Object> config = new HashMap<>();
         config.put("id", "deduction_default");
@@ -102,7 +102,7 @@ public class HrStubController {
      */
     @GetMapping("/config/overtime")
     @Operation(summary = "获取加班调休配置", description = "返回加班调休配置（占位接口，返回默认配置）")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Map<String, Object>> getOvertimeConfig() {
         Map<String, Object> config = new HashMap<>();
         config.put("id", "overtime_default");
@@ -121,7 +121,7 @@ public class HrStubController {
      */
     @GetMapping("/config/tax")
     @Operation(summary = "获取个税计算配置", description = "返回个税计算配置（占位接口，返回默认配置）")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Map<String, Object>> getTaxConfig() {
         Map<String, Object> config = new HashMap<>();
         config.put("id", "tax_default");
@@ -140,7 +140,7 @@ public class HrStubController {
      */
     @GetMapping("/approvals")
     @Operation(summary = "获取HR审批列表", description = "分页返回HR审批记录（占位接口，返回空数据）")
-    @PreAuthorize("hasAnyRole('admin', 'hr', 'store_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'store_manager')")
     public Result<Map<String, Object>> getApprovals(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize) {
@@ -160,7 +160,7 @@ public class HrStubController {
      */
     @GetMapping("/invitation-codes")
     @Operation(summary = "获取邀请码列表", description = "分页返回邀请码列表（占位接口，返回空数据）")
-    @PreAuthorize("hasAnyRole('admin', 'hr')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director')")
     public Result<Map<String, Object>> getInvitationCodes(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize) {

@@ -34,7 +34,7 @@ public class PositionController {
 
     @Operation(summary = "生成职位编码", description = "根据部门和职位名称生成完整的职位编码")
     @GetMapping("/code/generate")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<String> generatePositionCode(@Parameter(description = "部门ID") @RequestParam(required = false) String departmentId, @Parameter(description = "职位名称") @RequestParam String positionName) {
         try {
             String code = positionService.generatePositionCode(departmentId, positionName);
@@ -47,7 +47,7 @@ public class PositionController {
 
     @Operation(summary = "生成职位编码序号", description = "根据部门和职位名称生成职位编码的序号部分")
     @GetMapping("/seq/generate")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Integer> generatePositionCodeSeq(@Parameter(description = "部门ID") @RequestParam(required = false) String departmentId, @Parameter(description = "职位名称") @RequestParam String positionName) {
         try {
             String positionPrefix = positionService.getPositionCodePrefix(positionName);
@@ -63,7 +63,7 @@ public class PositionController {
 
     @Operation(summary = "获取职位列表")
     @GetMapping("/page")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<Map<String, Object>> getPositions(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size,
@@ -81,7 +81,7 @@ public class PositionController {
      */
     @Operation(summary = "获取所有职位（不分页）", description = "返回所有职位列表，不进行分页")
     @GetMapping("/all")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<List<Position>> getAllPositions() {
         List<Position> positions = positionService.getAllPositions();
         return Result.success(positions);
@@ -89,7 +89,7 @@ public class PositionController {
 
     @Operation(summary = "获取职位详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<Position> getPosition(@PathVariable Long id) {
         Position position = positionService.getPositionById(id);
         if (position == null) {
@@ -100,7 +100,7 @@ public class PositionController {
 
     @Operation(summary = "创建职位")
     @PostMapping
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Position> createPosition(@RequestBody Position position) {
         Position created = positionService.createPosition(position);
         log.info("创建职位成功，职位ID：{}", created.getId());
@@ -109,7 +109,7 @@ public class PositionController {
 
     @Operation(summary = "更新职位")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Position> updatePosition(@PathVariable Long id, @RequestBody Position position) {
         Position updated = positionService.updatePosition(id, position);
         log.info("更新职位成功，职位ID：{}", id);
@@ -118,7 +118,7 @@ public class PositionController {
 
     @Operation(summary = "删除职位")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> deletePosition(@PathVariable Long id) {
         positionService.deletePosition(id);
         log.info("删除职位成功，职位ID：{}", id);
@@ -140,7 +140,7 @@ public class PositionController {
 
     @Operation(summary = "更新职位状态")
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Void> updatePositionStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         String status = body.get("status");
         Boolean statusValue = "active".equals(status);
@@ -151,7 +151,7 @@ public class PositionController {
 
     @Operation(summary = "根据部门获取职位列表")
     @GetMapping("/departments/{departmentId}/positions")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<List<Position>> getPositionsByDepartment(@PathVariable Long departmentId) {
         List<Position> positions = positionService.getPositionsByDepartment(departmentId);
         return Result.success(positions);
@@ -168,7 +168,7 @@ public class PositionController {
 
     @Operation(summary = "批量获取职位基本信息", description = "根据职位ID列表批量获取职位基本信息")
     @PostMapping("/batch/basic-info")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<Map<Long, PositionBasicInfo>> batchGetPositionBasicInfo(@Parameter(description = "职位ID列表") @RequestBody List<String> positionIds) {
         try {
             List<Long> longIds = positionIds.stream().map(id -> {
@@ -188,7 +188,7 @@ public class PositionController {
 
     @Operation(summary = "获取职位基本信息", description = "根据职位ID获取职位基本信息")
     @GetMapping("/basic-info/{positionId}")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\', \'store_manager\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")
     public Result<PositionBasicInfo> getPositionBasicInfo(@Parameter(description = "职位ID") @PathVariable Long positionId) {
         try {
             PositionBasicInfo result = positionDataService.getPositionBasicInfo(positionId);
@@ -204,7 +204,7 @@ public class PositionController {
 
     @Operation(summary = "批量更新职位编码", description = "根据当前的全局编码规则批量更新所有职位的编码")
     @PostMapping("/batch-update-codes")
-    @PreAuthorize("hasAnyRole(\'admin\', \'hr\')")
+    @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\')")
     public Result<Map<String, Object>> batchUpdatePositionCodes() {
         try {
             Map<String, Object> result = positionService.batchUpdatePositionCodes();

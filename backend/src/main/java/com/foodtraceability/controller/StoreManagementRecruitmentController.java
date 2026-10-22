@@ -66,7 +66,7 @@ public class StoreManagementRecruitmentController {
      */
     @GetMapping("/approvals")
     @Operation(summary = "招聘审批列表", description = "分页查询招聘审批记录列表")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'HR_MANAGER', 'HR_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'hr_director', 'HR_DIRECTOR', 'ADMIN', 'admin')")
     public Result<Map<String, Object>> getApprovalList(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer pageSize) {
@@ -101,7 +101,7 @@ public class StoreManagementRecruitmentController {
      */
     @GetMapping("/approvals/pending-me")
     @Operation(summary = "待我审批", description = "查询当前用户待处理的审批记录")
-    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'HR_MANAGER', 'HR_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'hr_director', 'HR_DIRECTOR', 'ADMIN', 'admin')")
     public Result<List<RecruitmentApprovalVO>> getPendingApprovals(Principal principal) {
         // 根据用户角色确定当前审批层级
         Integer currentLevel = determineCurrentLevel(principal);
@@ -116,7 +116,7 @@ public class StoreManagementRecruitmentController {
      */
     @PutMapping("/approvals/{id}/approve")
     @Operation(summary = "审批通过", description = "通过当前层级的审批")
-    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'HR_MANAGER', 'HR_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'hr_director', 'HR_DIRECTOR', 'ADMIN', 'admin')")
     public Result<Void> approve(@PathVariable String id, Principal principal) {
         recruitmentApprovalService.approve(id, principal.getName());
         return Result.success();
@@ -128,7 +128,7 @@ public class StoreManagementRecruitmentController {
      */
     @PutMapping("/approvals/{id}/reject")
     @Operation(summary = "审批驳回", description = "驳回当前的招聘申请")
-    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'HR_MANAGER', 'HR_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('REGIONAL_MANAGER', 'hr_director', 'HR_DIRECTOR', 'ADMIN', 'admin')")
     public Result<Void> reject(@PathVariable String id,
                                @Valid @RequestBody RecruitmentApprovalUpdateDTO dto,
                                Principal principal) {
