@@ -92,6 +92,10 @@ public class DesensitizeUtils {
             return null;
         }
         
+        if (type == null) {
+            return value;  // 未指定脱敏类型时按原值返回，避免 switch(null) 抛 NPE
+        }
+
         switch (type) {
             case PHONE:
                 return desensitizePhone(value);

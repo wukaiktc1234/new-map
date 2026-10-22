@@ -89,7 +89,7 @@ public class ImageUploadUtils {
     }
 
     private static void validateFile(MultipartFile file) throws IOException {
-        if (file.isEmpty()) {
+        if (file == null || file.isEmpty()) {
             throw new IOException("文件不能为空");
         }
 

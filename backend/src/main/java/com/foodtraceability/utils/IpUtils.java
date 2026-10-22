@@ -83,11 +83,23 @@ public class IpUtils {
             return false;
         }
 
-        return ip.startsWith("127.") ||
-               ip.startsWith("192.168.") ||
-               ip.startsWith("10.") ||
-               (ip.startsWith("172.") &&
-                Integer.parseInt(ip.split("\\.")[1]) >= 16 &&
-                Integer.parseInt(ip.split("\\.")[1]) <= 31);
+        if (ip.startsWith("127.") || ip.startsWith("192.168.") || ip.startsWith("10.")) {
+            return true;
+        }
+        if (!ip.startsWith("172.")) {
+            return false;
+        }
+        // 172.16.0.0/12：第二段必须是 16~31 的十进制数
+        // X-Forwarded-For 等请求头可控，形如 "172." / "172.abc" 时不得抛越界或数字格式异常
+        String[] parts = ip.split("\\.");
+        if (parts.length < 2) {
+            return false;
+        }
+        try {
+            int secondSegment = Integer.parseInt(parts[1]);
+            return secondSegment >= 16 && secondSegment <= 31;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 }

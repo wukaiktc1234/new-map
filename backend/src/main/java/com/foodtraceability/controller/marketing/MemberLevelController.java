@@ -116,7 +116,7 @@ public class MemberLevelController {
             return Result.error(4004, "等级不存在");
         }
         // 切换状态：1→0，0→1
-        Integer newStatus = level.getStatus() == 1 ? 0 : 1;
+        Integer newStatus = Integer.valueOf(1).equals(level.getStatus()) ? 0 : 1;
         level.setStatus(newStatus);
         level.setUpdateTime(LocalDateTime.now());
         boolean success = memberLevelService.updateById(level);

@@ -144,8 +144,19 @@ public class FinanceAssetController {
     @PreAuthorize("hasAuthority('finance:asset:manage')")
     public Result<Map<String, Object>> calculateDepreciation(@RequestBody Map<String, Object> data) {
         Long assetId = data.get("assetId") != null ? Long.valueOf(data.get("assetId").toString()) : null;
+        if (assetId == null) {
+            // 原实现把 null 透传到 service，getById(null) 后抛 RuntimeException 被兜成 500「系统繁忙」
+            return Result.error(400, "资产ID不能为空");
+        }
         String method = (String) data.getOrDefault("method", "straight_line");
-        int months = data.get("months") != null ? Integer.parseInt(data.get("months").toString()) : 1;
+        // months 可能是 JSON 整数(Integer/Long)、浮点(Double) 或字符串，统一按 Number 读取，避免 "12.0" 触发 NumberFormatException
+        Object monthsRaw = data.get("months");
+        int months = 1;
+        if (monthsRaw instanceof Number) {
+            months = ((Number) monthsRaw).intValue();
+        } else if (monthsRaw != null) {
+            months = Integer.parseInt(monthsRaw.toString().trim());
+        }
         return Result.success(assetMasterService.calculateDepreciation(assetId, method, months));
     }
 

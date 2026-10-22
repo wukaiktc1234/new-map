@@ -215,7 +215,11 @@ public class JwtUtil {
         if (claims == null) {
             return true;  // 无效Token视为已过期
         }
-        return claims.getExpiration().before(new Date());
+        Date expiration = claims.getExpiration();
+        if (expiration == null) {
+            return true;  // 无 exp 声明的Token一律视为已过期
+        }
+        return expiration.before(new Date());
     }
 
     /**
@@ -247,7 +251,8 @@ public class JwtUtil {
         }
 
         // 验证未过期
-        if (claims.getExpiration().before(new Date())) {
+        Date expiration = claims.getExpiration();
+        if (expiration == null || expiration.before(new Date())) {
             logger.warn("Token已过期: username={}", username);
             return false;
         }

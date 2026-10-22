@@ -31,7 +31,7 @@ public class DepartmentConverter {
         dto.setManager(department.getManagerName());
         // 使用实体 type 字段；为兼容历史数据，type 为空时按 code 推断默认值
         dto.setType(department.getType() != null ? department.getType() : (department.getDepartmentCode() != null ? "department" : "other"));
-        dto.setStatus(department.getStatus() == 1 ? "active" : "inactive");
+        dto.setStatus(Integer.valueOf(1).equals(department.getStatus()) ? "active" : "inactive");
         dto.setSort(department.getSortOrder());
         dto.setRemark(department.getDescription());
 
@@ -72,7 +72,7 @@ public class DepartmentConverter {
             dto.setManager(department.getManagerName());
             // 使用实体 type 字段；为兼容历史数据，type 为空时按 code 推断默认值
             dto.setType(department.getType() != null ? department.getType() : (department.getDepartmentCode() != null ? "department" : "other"));
-            dto.setStatus(department.getStatus() == 1 ? "active" : "inactive");
+            dto.setStatus(Integer.valueOf(1).equals(department.getStatus()) ? "active" : "inactive");
             dto.setSort(department.getSortOrder());
             dto.setRemark(department.getDescription());
             dto.setHasChildren(true); // 懒加载模式下，默认认为有子节点
