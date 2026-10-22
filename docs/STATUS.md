@@ -2,25 +2,26 @@
 
 > **本文件是唯一状态源。** 其他入口（`docs/INDEX.md` / `remediation-roadmap.md` / `production-remediation-task-board.md` / `production-known-limitations.md` / `docs/project-context/repo-state.md`）只放指向本文件的指针，不各自维护状态。
 > **同步规则（PG-002 扩展）**：每次卡片收口或 push 后必改本文件；其他入口不改状态。
-> **性质**：视图层快照，非权威；与 git 不一致时以 git 为准。快照时点：2026-10-13。
+> **性质**：视图层快照，非权威；与 git 不一致时以 git 为准。快照时点：2026-10-15。
 
 ## 1. 当前 HEAD 与同步状态
 
 | 项 | 值 |
 |----|----|
 | 分支 | `master`（单分支工作流） |
-| HEAD | **上次同步时点：2026-10-13**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
-| 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准（上次同步时点 `671d87f`） |
-| 同步 | **2026-10-15 Owner 指令 push 已执行**（本轮 43 commit，含 §24.10a–§24.13a / record §7.15 / STATUS 指针）；push 后 **ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
-| 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；`.gitignore` 提交后 `apk-download/`、`certs/` 不再出现在 `??`，故 92 → 90） |
+| HEAD | **上次同步时点：2026-10-15**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
+| 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准 |
+| 同步 | **2026-10-15 Owner 指令 push 已执行**：本轮（N30 → N31 收口）全部提交已推送，**ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
+| 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本轮全程未变） |
 
-## 2. 活跃卡（只列 6）
+## 2. 活跃卡（只列 7）
 
 | 卡 | 状态 | 下一个动作 |
 |----|------|-----------|
-| **P1-AUTH-CHAIN-001**（**下一主战场**） | 卡面已立（§24.10a）；**核心修复目标 = N30（§24.13a）**：412 处 `hasRole`/`hasAnyRole` 对非 admin 全失效——除 admin 外按角色码校验的端点全被拒（fail-closed，无越权） | 下个会话开卡实施：定权威源 + `user_roles.role_id` 口径归一 + `getAuthorities` 剥 `ROLE_` 前缀 + 补单测；本轮先由 Owner 跑应急 SQL（补 `user_roles` 行）解阻 N15 |
-| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；`capacitor-cordova-android-plugins` 已放行（`!` 保护规则在未跟踪的 `frontend/android/.gitignore` 内，随卡提交），5 个文件判定为生成模板无 plugin 注册点 → **排除**（§24.3y），候选回到 **59** | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
-| **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | **已剥离，被 P1-AUTH-CHAIN-001 阻塞**（原 Live 项作废，待该卡收口后重跑） |
+| **P1-AUTH-CHAIN-001**（**本轮收口：A+B 完成，C 待启动**） | **N30 已修**（A 卡 `RoleCodeNormalizer` 剥前缀 + 三处比较面归一，15 单测）；**N31 已修**（B 卡四片 239 处幻码 + Flyway 补 286 码入目录到 418 + admin 全局兜底 `AdminPermissionCatalog` + 补建 4 角色 + 前端字典）；活体已验：admin 5 个 API 全 200；**C 卡（废弃 `users.roles` 鉴权、彻底单向化）未启动** | 下轮开 C 卡；另 `getUserRoleNames` 仍返回中文名（N28），前端靠字典兼容 |
+| **P1-DASHBOARD-FILTER-001**（**新增，P1 越权风险**） | 卡面已立（§24.18a）：`DashboardController` 全端点仅校验 `operations:dashboard:view`，**无门店级数据过滤**；本轮以「撤销 13 个业务角色误授 + 前端按权限隐藏卡片」规避，根因未修 | Owner 放行后实施：4 端点接数据权限过滤 + 修 `DashboardServiceImpl:114` 的 500 + 完成后按角色重新授权 |
+| **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；5 个生成模板文件已排除（§24.3y），候选 **59** | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
+| **§24.3s（N15 order:add）** | 实施 CLOSED；应急补桥已 Live 通过（`user_roles` id=2329，`/me` 返回 12 码） | **已收口**（原「被 P1-AUTH-CHAIN-001 阻塞」已解除） |
 | **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**）；执行窗口已裁决（§24.3x）：**排在 P1-APK-DEVICE-001 入库后一起跑** | 覆盖 device-whitelist / verify-code / `usesCleartextTraffic="true"`；Owner 安排窗口 |
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
 | **P0-WORKSPACE-WIP-CONSOLIDATION-001** | **暂缓**（GOV-003 分类表为其输入） | Owner 裁决五批入库 |
@@ -54,5 +55,5 @@
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
 3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–006）。
-4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.13a）——只增不改，读尾部而非中部。
+4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.18a）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
