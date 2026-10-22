@@ -82,6 +82,14 @@ public class TrayServiceImpl implements TrayService {
     }
 
     @Override
+    public List<Tray> findIdleTraysByStore(Long storeId, int limit) {
+        if (storeId == null) {
+            return trayMapper.findIdleTrays(limit);
+        }
+        return trayMapper.findIdleTraysByStore(storeId, limit);
+    }
+
+    @Override
     public List<Tray> findIdleTrays(int limit) {
         return trayMapper.findIdleTrays(limit);
     }

@@ -15,6 +15,14 @@ public interface TrayMapper extends BaseMapper<Tray> {
     @Select("SELECT * FROM tray WHERE status = #{status} AND deleted = 0 ORDER BY tray_code")
     List<Tray> findByStatus(@Param("status") String status);
 
+    /**
+     * 按门店查询空闲托盘（2026-10-23：KDS 端必须只看本店托盘，
+     * 原 findIdleTrays 无门店过滤 → 门店1的 KDS 会看到门店2的托盘，
+     * 选中后绑定必然被「KDS 凭据门店与托盘门店不匹配」拒绝，属交互陷阱）。
+     */
+    @Select("SELECT * FROM tray WHERE status = 'idle' AND deleted = 0 AND store_id = #{storeId} " +
+            "ORDER BY tray_code LIMIT #{limit}")
+    List<Tray> findIdleTraysByStore(@Param("storeId") Long storeId, @Param("limit") int limit);
     @Select("SELECT * FROM tray WHERE status = 'idle' AND deleted = 0 ORDER BY tray_code LIMIT #{limit}")
     List<Tray> findIdleTrays(@Param("limit") int limit);
 

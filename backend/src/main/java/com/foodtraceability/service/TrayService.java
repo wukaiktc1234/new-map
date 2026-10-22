@@ -12,6 +12,9 @@ public interface TrayService {
 
     List<Tray> findIdleTrays(int limit);
 
+    /** 按门店查询空闲托盘（KDS 端使用，避免跨店误选） */
+    List<Tray> findIdleTraysByStore(Long storeId, int limit);
+
     List<Tray> findAll();
 
     Tray createTray(Tray tray);
