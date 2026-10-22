@@ -3,6 +3,10 @@ package com.foodtraceability.service.impl;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.KitchenOrder;
+import com.foodtraceability.entity.OrderNew;
+import com.foodtraceability.entity.OrderPaymentRecordNew;
+import com.foodtraceability.mapper.OrderNewMapper;
+import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.service.KitchenOrderService;
 import com.foodtraceability.service.OrderLifecycleService;
@@ -39,13 +43,19 @@ public class OrderLifecycleServiceImpl implements OrderLifecycleService {
     private final KitchenOrderService kitchenOrderService;
     private final OrderNewService orderNewService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final OrderNewMapper orderNewMapper;
+    private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
 
     public OrderLifecycleServiceImpl(KitchenOrderService kitchenOrderService,
                                      OrderNewService orderNewService,
-                                     ApplicationEventPublisher applicationEventPublisher) {
+                                     ApplicationEventPublisher applicationEventPublisher,
+                                     OrderNewMapper orderNewMapper,
+                                     OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
         this.kitchenOrderService = kitchenOrderService;
         this.orderNewService = orderNewService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.orderNewMapper = orderNewMapper;
+        this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
     }
 
     @Override
@@ -88,7 +98,7 @@ public class OrderLifecycleServiceImpl implements OrderLifecycleService {
 
         // 4) 事务内发布完成事件 —— 必须是本事务边界内发布，
         //    监听器 @TransactionalEventListener(AFTER_COMMIT) 才不会被静默丢弃
-        publishCompletedEvent(kitchenOrder);
+        publishCompletedEvent(kitchenOrder, totalCostFen);
 
         log.info("订单生命周期：完成制作闭环成功, kitchenOrderId={}, orderId={}",
                 kitchenOrderId, kitchenOrder.getOrderId());
@@ -96,9 +106,19 @@ public class OrderLifecycleServiceImpl implements OrderLifecycleService {
     }
 
     /**
-     * 构造并发布订单完成事件。金额字段单位为「元」（事件语义），后厨单 totalAmount 亦按元传入。
+     * 构造并发布订单完成事件。
+     *
+     * <p>2026-10-23 修复：金额改为以 canonical {@code orders} 为唯一权威来源
+     * （{@code orders.final_amount}，单位分 → 事件单位元）。
+     * 原实现取 {@code kitchen_order.totalAmount}，而该列在后厨单创建时从未写入，
+     * 导致事件金额恒为 null → 财务收入记录 0 → 应收挂账 0。</p>
+     *
+     * <p>关于 {@code materialCost}：**刻意不设置**。成本已由
+     * {@code persistOrderCostFromDeduction} 在同一事务内写入 {@code cost_records}；
+     * 而监听器 {@code recordOrderCost} 一旦发现 materialCost > 0 会再写一条，
+     * 造成成本重复入账。此处仅通过 {@code totalCost} 携带成本供日志/下游参考。</p>
      */
-    private void publishCompletedEvent(KitchenOrder kitchenOrder) {
+    private void publishCompletedEvent(KitchenOrder kitchenOrder, long totalCostFen) {
         OrderCompletedEvent event = new OrderCompletedEvent();
         event.setEventId("EVT" + System.currentTimeMillis());
         event.setOrderId(kitchenOrder.getOrderId());
@@ -110,16 +130,44 @@ public class OrderLifecycleServiceImpl implements OrderLifecycleService {
         event.setCompleteTime(LocalDateTime.now());
         event.setOrderTime(kitchenOrder.getCreateTime());
 
-        if (kitchenOrder.getTotalAmount() != null) {
-            // 后厨单 totalAmount 为元（BigDecimal）；事件语义同为元
-            BigDecimal amount = kitchenOrder.getTotalAmount()
-                    .setScale(2, RoundingMode.HALF_UP);
-            event.setOrderAmount(amount);
-            event.setActualAmount(amount);
+        // 金额：以 orders.final_amount 为准（分 → 元）
+        BigDecimal amountYuan = BigDecimal.ZERO;
+        OrderNew order = kitchenOrder.getOrderId() == null ? null
+                : orderNewMapper.selectById(kitchenOrder.getOrderId());
+        if (order != null && order.getFinalAmount() != null) {
+            amountYuan = BigDecimal.valueOf(order.getFinalAmount())
+                    .divide(BigDecimal.valueOf(100L), 2, RoundingMode.HALF_UP);
+        } else if (kitchenOrder.getTotalAmount() != null) {
+            // 兜底：orders 缺失时退回后厨单金额（可能为 null 场景，保持兼容）
+            amountYuan = kitchenOrder.getTotalAmount().setScale(2, RoundingMode.HALF_UP);
+        }
+        event.setOrderAmount(amountYuan);
+        event.setActualAmount(amountYuan);
+
+        // 支付方式：取 order_payment_records 最早一条（支付流水）
+        if (kitchenOrder.getOrderId() != null) {
+            try {
+                java.util.List<OrderPaymentRecordNew> payments =
+                        orderPaymentRecordNewMapper.selectByOrderId(kitchenOrder.getOrderId());
+                if (payments != null && !payments.isEmpty()
+                        && payments.get(0).getPaymentMethod() != null) {
+                    event.setPaymentMethod(payments.get(0).getPaymentMethod());
+                }
+            } catch (Exception e) {
+                log.warn("读取支付方式失败（不影响主流程）: orderId={}, error={}",
+                        kitchenOrder.getOrderId(), e.getMessage());
+            }
+        }
+
+        // 成本（分 → 元），仅供参考；materialCost 保持 null 以避免重复入账
+        if (totalCostFen > 0L) {
+            event.setTotalCost(BigDecimal.valueOf(totalCostFen)
+                    .divide(BigDecimal.valueOf(100L), 2, RoundingMode.HALF_UP));
         }
 
         applicationEventPublisher.publishEvent(event);
-        log.info("订单完成事件已发布（事务内）, kitchenOrderId={}, orderId={}",
-                kitchenOrder.getKitchenOrderId(), kitchenOrder.getOrderId());
+        log.info("订单完成事件已发布（事务内）, kitchenOrderId={}, orderId={}, amountYuan={}, paymentMethod={}, totalCostYuan={}",
+                kitchenOrder.getKitchenOrderId(), kitchenOrder.getOrderId(), amountYuan,
+                event.getPaymentMethod(), event.getTotalCost());
     }
 }
