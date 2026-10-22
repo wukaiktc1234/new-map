@@ -89,7 +89,9 @@ public class BudgetServiceImpl extends ServiceImpl<BudgetMapper, Budget>
         if (dto.getBudgetAmount() != null) {
             updateEntity.setBudgetAmount(dto.getBudgetAmount());
             // 重新计算差异和差异率
-            updateEntity.setVariance(dto.getBudgetAmount() - existing.getActualAmount());
+            // actual_amount 列可空（bigint），直接参与减法会在拆箱时抛 NPE
+            long actualAmount = existing.getActualAmount() != null ? existing.getActualAmount() : 0L;
+            updateEntity.setVariance(dto.getBudgetAmount() - actualAmount);
             if (dto.getBudgetAmount() > 0) {
                 updateEntity.setVarianceRate(
                         BigDecimal.valueOf(updateEntity.getVariance())
@@ -156,14 +158,16 @@ public class BudgetServiceImpl extends ServiceImpl<BudgetMapper, Budget>
         Budget updateEntity = new Budget();
         updateEntity.setBudgetId(budgetId);
         updateEntity.setActualAmount(actualAmount != null ? actualAmount : 0L);
-        updateEntity.setVariance(existing.getBudgetAmount() - updateEntity.getActualAmount());
+        // budget_amount 列可空（numeric），直接参与减法/比较会在拆箱时抛 NPE
+        long budgetAmount = existing.getBudgetAmount() != null ? existing.getBudgetAmount() : 0L;
+        updateEntity.setVariance(budgetAmount - updateEntity.getActualAmount());
 
         // 计算差异率: (预算-实际)/预算 * 100%
-        if (existing.getBudgetAmount() > 0) {
+        if (budgetAmount > 0) {
             updateEntity.setVarianceRate(
                     BigDecimal.valueOf(updateEntity.getVariance())
                             .multiply(BigDecimal.valueOf(100))
-                            .divide(BigDecimal.valueOf(existing.getBudgetAmount()), 4, RoundingMode.HALF_UP)
+                            .divide(BigDecimal.valueOf(budgetAmount), 4, RoundingMode.HALF_UP)
             );
         } else {
             updateEntity.setVarianceRate(BigDecimal.ZERO);

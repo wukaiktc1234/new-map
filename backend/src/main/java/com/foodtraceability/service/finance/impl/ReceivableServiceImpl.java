@@ -282,8 +282,13 @@ public class ReceivableServiceImpl extends ServiceImpl<ReceivableMapper, Receiva
         Receivable last = this.getOne(wrapper, false);
 
         int seq = 1;
-        if (last != null && last.getReceivableNo() != null) {
-            seq = Integer.parseInt(last.getReceivableNo().substring(last.getReceivableNo().length() - 4)) + 1;
+        if (last != null && last.getReceivableNo() != null && last.getReceivableNo().length() >= 4) {
+            // 历史/导入数据可能带非数字尾段，解析失败时退回序号 1
+            try {
+                seq = Integer.parseInt(last.getReceivableNo().substring(last.getReceivableNo().length() - 4)) + 1;
+            } catch (NumberFormatException e) {
+                seq = 1;
+            }
         }
         return String.format("YS%s%04d", datePart, seq);
     }

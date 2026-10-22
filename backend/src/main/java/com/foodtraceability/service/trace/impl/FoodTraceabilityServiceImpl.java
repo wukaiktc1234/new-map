@@ -465,7 +465,7 @@ public class FoodTraceabilityServiceImpl extends ServiceImpl<TraceCodeMapper, Tr
 
         traceCode.setRiskLevel(newRiskLevel);
         // 根据风险等级同步更新状态
-        if (newRiskLevel >= 3 && traceCode.getStatus() == 1) {
+        if (newRiskLevel >= 3 && Integer.valueOf(1).equals(traceCode.getStatus())) {
             traceCode.setStatus(daysUntilExpiry < 0 ? 3 : 2); // 已过期或即将过期
         }
         updateById(traceCode);

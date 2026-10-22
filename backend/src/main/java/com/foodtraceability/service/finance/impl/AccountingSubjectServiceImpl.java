@@ -163,7 +163,7 @@ public class AccountingSubjectServiceImpl extends ServiceImpl<AccountingSubjectM
             throw new BusinessException("科目不存在");
         }
 
-        Integer newStatus = entity.getStatus() == 1 ? 0 : 1;
+        Integer newStatus = Integer.valueOf(1).equals(entity.getStatus()) ? 0 : 1;
         entity.setStatus(newStatus);
         return baseMapper.updateById(entity) > 0;
     }
