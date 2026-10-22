@@ -8571,3 +8571,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 状态 | **登记项，本轮不改代码**；随 P1-AUTH-CHAIN-001 实施，是该卡首要修复目标 |
 
 > **§24.10a 应急 SQL 二次更正（2026-10-15 追加，只增不改；⚠ 推翻上一条更正）**：`user_roles.id` 是 **`GENERATED ALWAYS AS IDENTITY`** 列（`information_schema` 实测：`is_identity=YES`、`identity_generation=ALWAYS`、`identity_start=1`、`identity_increment=1`；序号对象 `public.user_roles_id_seq`，`last_value=2328`、`is_called=t` → 下一个 nextval = **2329**，且无任何既有行 `id >= 2328` → 自动生成不会撞键）。上一条「必须显式给 id」的说法**错误**：Owner 在 pgAdmin4 实跑报 `ERROR: cannot insert a non-DEFAULT value into column "id"` / `SQL 状态 428C9` / `Column "id" is an identity column defined as GENERATED ALWAYS`。**正确版本（省略 id，交给 identity 生成）**：`INSERT INTO user_roles (user_id, role_id, deleted, create_time) SELECT '2110437068670001154', 'ROLE_STORE_MANAGER', 0, now() WHERE NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = '2110437068670001154' AND role_id = 'ROLE_STORE_MANAGER');` —— 执行后该行 id 应为 **2329**。若确需指定 id，须写 `INSERT INTO user_roles (id, user_id, role_id, deleted, create_time) OVERRIDING SYSTEM VALUE SELECT 2328, '2110437068670001154', 'ROLE_STORE_MANAGER', 0, now() WHERE NOT EXISTS (...)`（`OVERRIDING SYSTEM VALUE` 即报错提示所给解法）
+
+> **§24.13a N30 证据追加（2026-10-15 追加，只增不改；Owner 问「是否需系统性修复」后实测）**
+>
+> **① 计数口径更正**：N30 卡面记的「412 处」是**按行计**（同一行同时含 `hasRole`/`hasAnyRole` 只算 1）。按**出现次数**实测：`hasRole(` **168** + `hasAnyRole(` **303** = **471 处**，分布在 **37 个文件**；对照 `hasAuthority(` **2411** 处 → 角色码校验占权限注解总量约 16%。
+>
+> **② 第三层缺陷（新发现）：注解引用幻码 —— 19 个 distinct 角色码在 `roles` 表根本不存在**。实测提取全部注解内角色字符串并归一（去 `ROLE_` 前缀 + 小写）后比对活库：命中 13（`admin` / `store_manager` / `purchase_manager` / `hr_director` / `finance_director` / `finance_manager` / `warehouse_manager` / `department_manager` / `employee` / `owner` / `ROLE_ADMIN` 等），**未命中 19**：`hr`（**110 次引用，最重**）、`HR_MANAGER`(21)、`HR_RECRUITER`(12)、`regional_manager`(10)、`purchaser`(9)、`manager`(7)、`finance`(12)、`CASHIER`(2)、`qc_user`(2)、`general_manager`(2)、`warehouse_keeper`(3)、`store_employee`(1)、`USER`(1)、`ROLE_HOST` / `ROLE_CASHIER` / `ROLE_MANAGER` / `ROLE_REGIONAL_MANAGER` / `ROLE_OPERATIONS_DIRECTOR`。其中 `regional_manager` → 真实码是 **`region_manager`**、`purchaser` → 真实码是 **`purchase_manager`**，属可机械纠正的笔误；`hr` / `HR_MANAGER` / `HR_RECRUITER` 是**从未存在的角色**（活库 HR 域只有 `hr_director`）
+>
+> **③ 即使前缀修好也救不了**：`hasRole('ROLE_ADMIN')`（4 处）在 Spring 侧要求 authority 为 `ROLE_ROLE_ADMIN`，**连 admin 自己都过不了**；`hasRole('HR_MANAGER')` 等幻码无论怎么归一都不可能有 authority
+>
+> **④ 影响面精修（修正 N30 卡面「近乎裸奔」的过强表述）**：471 处里相当一部分集中在**运维类控制器**（`SystemInitController` 26 / `DatabaseBackupController` 24 / `TransferTemplateController` 12 / `DataFixController` 10 / `EncodingFixController` 6 / `CacheController` / `PerformanceMonitorController` / `ExceptionMonitoringController`），这些本就只应 admin 触达，非 admin 无感；**真正伤业务的是业务控制器**：`RecruitmentQuotaController` L121/140/160 `hasRole('STORE_MANAGER')`（大小写不符 + 双前缀，店长必 403）、`RefundController`(9)、`EmployeeApprovalController`(6)、`HealthCheckController`(6) 等
+>
+> **⑤ `users.roles` 三种格式并存（活库 20 行实测）**：`["9"]` / `["ROLE_ADMIN"]`（JSON 字符串数组，14 行）、`[14]` `[323]` `[6]` `[7]` `[8]`（JSON **裸数字**数组，5 行，Jackson 可强转故可用）、`{ROLE_FINQA_REGISTER}`（**Postgres 数组字面量非 JSON**，3 行：`finqa_register` / `finqa_confirm` / `finqa_noperm`）→ 第三种走 `UserServiceImpl.getUserRoles` L414–425 容错分支：不以 `[` 开头且不匹配 `\d+` → **返回空列表**（`/me` 里这 3 个账号 roles 为空，静默降级）
+>
+> **⑥ 补桥后的实际覆盖**：活库 20 个存活用户，现 17 个有 `user_roles` 行；**仅剩 3 个无桥 = 上述 3 个 FINQA 测试账号**（`2080170081205395460/461/462`）。即「权限码」路径对 17/20 已通；**但角色码路径（471 处）对 20/20 全不通**（admin 除 `hasRole('admin')` 外亦不通）
