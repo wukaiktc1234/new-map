@@ -13,7 +13,7 @@
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准 |
 | 同步 | **2026-10-15 Owner 指令 push 已执行**：本轮（N30 → N31 收口）全部提交已推送，**ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本轮全程未变） |
-| 现场修复轮（2026-10-23） | POS/KDS 链路：`§24.19a N33`（POS 登录闸门）→ `§24.20a N34`（后厨未认证定性 + 三处链路缺陷 + E2E 脚本）→ `§24.21a N35`（dish_items 键名 canonical + 门店归属）。后端需重启生效；迁移 V005/V006 已用 psql 落库，`flyway_schema_history` 待下次启动登记 |
+| 现场修复轮（2026-10-23） | POS/KDS 全链路收口：`§24.19a N33` POS 登录闸门 → `§24.20a N34` 后厨 401 定性 + 三处链路缺陷 + E2E 脚本 → `§24.21a N35` dish_items canonical + 门店归属 → `§24.22a N36` KDS 前端凭证接线 → `§24.23a N37` 状态机闭环（OrderLifecycleService / 日结口径 / 状态码归一 / cost_record）。**主链路已实测闭环**：点单→支付→后厨→出餐→扣料→追溯→成本入账。迁移 V004–V007 已用 psql 落库，`flyway_schema_history` 待下次启动统一登记 |
 
 ## 2. 活跃卡（只列 7）
 
@@ -27,10 +27,14 @@
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
 | **P0-WORKSPACE-WIP-CONSOLIDATION-001** | **暂缓**（GOV-003 分类表为其输入） | Owner 裁决五批入库 |
 
-## 3. 挂起项（只列 5）
+## 3. 挂起项（只列 9）
 
 | 项 | 类型 | 说明 |
 |----|------|------|
+| **TECH-DEBT-001** 单/复数双表清理 | 新增（2026-10-23） | 库内并存 `cost_record`(空) / `cost_records`(实体实际用)、`tray` / `trays`、`dish_recipe` / `dish_recipes`、`order_material_requirement` 等；`dining_table` 实为**视图**而非表。需逐一核对实体 `@TableName` 与真实对象，清理遗留空表，避免再次"查对表名却查空" |
+| **ARCH-EVENT-002** 事件 outbox | 新增（2026-10-23） | `OrderCompletedEvent` 现已在事务内发布（AFTER_COMMIT 能触发），但仍是"发出去不管"：进程崩溃/异步失败即丢事件（财务收入、应收、成本联动丢失且无痕）。建议加 `event_outbox` 表：事务内落库 + 异步投递 + 重试 |
+| **OPS-BOM-003** BOM 缺失可视化 | 新增（2026-10-23） | 已裁决「无 BOM 硬拒出餐」（P0 严格版）。现仅抛 `FOOD_NO_RECIPE` 错误，缺运维入口：应提供"缺配方菜品清单"报表/告警，让厨师长主动补 BOM，而不是等出餐失败才发现 |
+| **DATA-004** 桌台基线数据为空 | 新增（2026-10-23） | `dining_tables` 当前 0 行；锁桌/解锁语义已修复（列类型 varchar）并经 SQL 事务验证，但无真实桌台可做端到端验证。需先导入门店桌台配置，或走桌台管理 API 建桌后再复验 |
 | Live 验证批次 A/B/C + N15 Live | 等 Owner 执行 | Agent 不跑 Live 验证 |
 | **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 已裁决（2026-10-13） | 无阻断（Flyway 容忍）；**不 repair**；**顺手修，不另开卡**——等下一个碰 `flyway_schema_history` 的卡（如未来某次 migration 卡）一并处理 |
 | **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
