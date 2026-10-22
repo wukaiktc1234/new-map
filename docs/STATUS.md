@@ -13,6 +13,7 @@
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准 |
 | 同步 | **2026-10-15 Owner 指令 push 已执行**：本轮（N30 → N31 收口）全部提交已推送，**ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本轮全程未变） |
+| **会话收口（2026-10-23）** | POS/KDS 主链路全线闭环并实测通过：点单 → 支付 → 后厨接单 → 开始制作 → 完成制作（出餐）→ 扣料 → 追溯码 → 成本入账 → 财务收入（幂等防重）。**E2E 断言三端一致**（`order_status=2` / `payment_status=2` / `kds=completed` / `material_consumed=1`）。本轮共 20+ 提交，最新见 `git log`。收口快照：orders 82 / kitchen_order 83 / food_trace_code 14 / cost_records 33 / finance_records 32 / tray 13 / dining_tables 0 |
 | 现场修复轮（2026-10-23） | POS/KDS 全链路收口：`§24.19a N33` POS 登录闸门 → `§24.20a N34` 后厨 401 定性 + 三处链路缺陷 + E2E 脚本 → `§24.21a N35` dish_items canonical + 门店归属 → `§24.22a N36` KDS 前端凭证接线 → `§24.23a N37` 状态机闭环（OrderLifecycleService / 日结口径 / 状态码归一 / cost_record）。**主链路已实测闭环**：点单→支付→后厨→出餐→扣料→追溯→成本入账。迁移 V004–V007 已用 psql 落库，`flyway_schema_history` 待下次启动统一登记 |
 
 ## 2. 活跃卡（只列 7）
@@ -27,14 +28,18 @@
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
 | **P0-WORKSPACE-WIP-CONSOLIDATION-001** | **暂缓**（GOV-003 分类表为其输入） | Owner 裁决五批入库 |
 
-## 3. 挂起项（只列 9）
+## 3. 挂起项（只列 13）
 
 | 项 | 类型 | 说明 |
 |----|------|------|
+| **TRAY-005** 托盘门店归属管理缺失 | 新增（2026-10-23，待裁决） | ① 库内 2 个 `store_id=NULL` 托盘永久不可用（KDS 被门店校验拒绝、管理端无分配入口）→ 建议加「托盘分配门店」功能，**不建议**"KDS 首次绑定自动认领"（静默改写归属）② 若连锁门店间会调拨托盘，硬隔离不可行 → 建议独立「托盘调拨」业务动作（换店 + 审计），而非直接改 `store_id` |
+| **TRAY-006** 手动流转轨生产收敛 | 新增（2026-10-23，待裁决） | 新增手动轨 `POST /v1/tray/manual-transition` 当前仅需 `kitchen:edit`。生产建议加开关 `app.tray.manual-override-enabled`（dev 开 / prod 关），或收敛到 admin。已内置：理由必填、写 `tray_scan_record(scan_type=MANUAL)`、跃迁白名单、**禁止手动置 served**（承载扣料+追溯码+成本） |
+| **DATA-006** 历史 0 元财务流水 | 新增（2026-10-23，待执行） | `finance_records` 有 10 条 `amount=0` 的「订单收入」流水（`SZ202609170001`/`SZ202609210001`/`SZ202609250002`/`SZ202609260002`/`SZ202609300002`/`SZ202609300005`/`SZ202609300008`/`SZ202609300011`/`SZ202610230005`/`SZ202610230007`），均产生于事件金额修复前。建议软删（`deleted=1`）避免污染报表 |
+| **CODE-007** 死代码 `recordOrderCost` | 新增（2026-10-23） | `OrderCompletedEventListener.recordOrderCost` 依赖恒为 null 的 `event.materialCost`（成本由 lifecycle 同步写 `cost_records` 以避免重复入账）。建议下轮删除，防止将来有人填 `materialCost` 造成成本重复 |
 | **TECH-DEBT-001** 单/复数双表清理 | 新增（2026-10-23） | 库内并存 `cost_record`(空) / `cost_records`(实体实际用)、`tray` / `trays`、`dish_recipe` / `dish_recipes`、`order_material_requirement` 等；`dining_table` 实为**视图**而非表。需逐一核对实体 `@TableName` 与真实对象，清理遗留空表，避免再次"查对表名却查空" |
 | **ARCH-EVENT-002** 事件 outbox | 新增（2026-10-23） | `OrderCompletedEvent` 现已在事务内发布（AFTER_COMMIT 能触发），但仍是"发出去不管"：进程崩溃/异步失败即丢事件（财务收入、应收、成本联动丢失且无痕）。建议加 `event_outbox` 表：事务内落库 + 异步投递 + 重试 |
 | **OPS-BOM-003** BOM 缺失可视化 | 新增（2026-10-23） | 已裁决「无 BOM 硬拒出餐」（P0 严格版）。现仅抛 `FOOD_NO_RECIPE` 错误，缺运维入口：应提供"缺配方菜品清单"报表/告警，让厨师长主动补 BOM，而不是等出餐失败才发现 |
-| **DATA-004** 桌台基线数据为空 | 新增（2026-10-23） | `dining_tables` 当前 0 行；锁桌/解锁语义已修复（列类型 varchar）并经 SQL 事务验证，但无真实桌台可做端到端验证。需先导入门店桌台配置，或走桌台管理 API 建桌后再复验 |
+| **DATA-004** 桌台基线数据为空 | 新增（2026-10-23） | `dining_tables` 当前 0 行；锁桌/解锁语义已修复（列类型 varchar(50)，含依赖视图 `dining_table` 重建）并经 SQL 事务验证，但无真实桌台可做端到端验证。需先导入门店桌台配置，或走桌台管理 API 建桌后再复验 |
 | Live 验证批次 A/B/C + N15 Live | 等 Owner 执行 | Agent 不跑 Live 验证 |
 | **ENV-14** `flyway_schema_history` 卫生异常（20260922.001 checksum=NULL + 缺 V999） | 已裁决（2026-10-13） | 无阻断（Flyway 容忍）；**不 repair**；**顺手修，不另开卡**——等下一个碰 `flyway_schema_history` 的卡（如未来某次 migration 卡）一并处理 |
 | **P1-SEC-002** | **部分收口（验收依赖 P1-APK-DEVICE-001）** | 卡面已提交（`eec8fb9`），但 `/verify-code`、`/device-activation` 路由条目属该卡簇 → 提交面无该路由，验收标准（未登录不重定向）不可执行；Live 验证须待该卡入库 |
@@ -60,5 +65,5 @@
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
 3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–006）。
-4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.18a）——只增不改，读尾部而非中部。
+4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.24a）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。

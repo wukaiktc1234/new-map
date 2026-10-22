@@ -8747,3 +8747,20 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **新发现缺陷（现场阻断）** | 出餐报 `PSQLException: 操作符不存在: bigint = character varying`。根因：`dining_tables.current_order_id` 为 **bigint**，而 `orders.order_id` 为 `O...` 字符串 → `unlockTableByOrderId` 必然类型冲突。**且该列全表 150+ 行皆为 NULL** → 桌台锁定/解锁功能从未真正生效（既存缺陷，被本次状态机闭环首次触发暴露）。已改为 `current_order_id::text = #{orderId}` 类型安全写法（语义不变、不再 500）。**遗留**：桌台与订单的关联需重新设计（bigint↔varchar），建议独立卡处理 |
 | 验证状态 | ① 支付步骤实测通过（`POST /v1/pos/orders/order/pay` → code=0）② 后厨接单/开始制作实测通过 ③ 完成制作在修复前因上述类型冲突 500，修复后需重启后端复验 ④ E2E 已内置三端一致性断言（kds completed + material_consumed=1；orders order_status=2 + payment_status=2） |
 | 关联 | §24.20a N34 / §24.21a N35 / §24.22a N36 |
+
+### §24.24a N38（会话收口）：托盘双轨（扫码自动 + 手动兜底）+ 跨店托盘列表缺陷 + 三项待裁决
+
+| 项 | 内容 |
+|----|------|
+| 触发 | Owner 后厨实测：手工可绑定托盘，但 bound→making→ready 只能靠扫码设备推进，无设备时无法继续测试；同时发现门店1的 KDS 列表里出现门店2的托盘 `KDS-TEST-002`，选中即被「门店不匹配」拒绝 |
+| **缺陷 1（设计，非脏数据）** | `GET /v1/tray/idle` 原为 `SELECT * FROM tray WHERE status='idle' AND deleted=0` —— **无任何门店过滤**，KDS 会看到全部门店托盘；绑定校验拒绝是正确的，错在"展示了不可用的选项"。**修复**：服务端按调用方身份收敛 —— KDS 凭证（`KdsPrincipal.storeId`）强制生效并**忽略客户端传参**（防越权查询）；管理端可显式传 `storeId`。新增 `TrayMapper.findIdleTraysByStore` / `TrayService.findIdleTraysByStore` |
+| 缺陷 2（提示不可操作） | 两句错误信息仅陈述失败，未给下一步。**修复**：`KDS 凭据门店(1)与托盘 KDS-TEST-002 所属门店(2)不一致，请选择本店托盘` / `托盘 X 未分配门店，请在管理端为该托盘分配门店后再使用` |
+| **设计新增：双轨制** | Owner 明确提出「扫码自动」与「手动兜底/测试」两套并存。核查结论：**后端分步入口原本就有**（`bind-order` / `scan-kitchen-in` / `scan-kitchen-out` / `scan-serve` / `release`），缺的是前端按钮 —— 中间两态（making/ready）无 UI 入口。**实现**：新增 `POST /v1/tray/manual-transition`（轨二）+ KDS 订单卡片「手动流转」按钮与弹窗 |
+| 手动轨的安全边界（关键设计） | ① **理由必填**，空理由拒绝 ② 写入 `tray_scan_record`，`scan_type='MANUAL'` → 自动/手动同一张审计表，可按类型区分统计 ③ **状态跃迁白名单**（bound→making/idle/cleaning；making→ready/idle/cleaning；ready→idle/cleaning；served→idle/cleaning；cleaning→idle），不允许跳步 ④ **禁止手动置 `served`** —— 该跃迁承载扣料 + 追溯码 + 成本入账，手动跳过会导致库存与成本漏记，必须走出餐确认 ⑤ 同步 `kitchen_order.status`，避免托盘与订单两套真相 ⑥ 目标态==当前态时幂等返回 ⑦ `log.warn` 记录，使手动操作在日志中天然醒目 |
+| 验证 | ① `mvn -o compile` exit 0 ② `frontend-kitchen` `vue-tsc --noEmit` **0 错误** ③ E2E 复跑全链路 PASS（`T20261023018`：`order_status=2` / `payment_status=2` / `kds=completed` / `material_consumed=1`） |
+| E2E 库存耗尽 | 反复下单使 `foods.stock` 归零 → 下单报「菜品库存不足」。已补货至 50；脚本新增**自动补货 SQL 提示**，避免同类问题再次消耗排查时间。注意区分：`foods.stock`（菜品份数，POS 下单扣）与 `inventory`（原料库存，出餐扣料扣）是两套独立库存 |
+| **待 Owner 裁决 1（TRAY-006）** | 手动轨当前仅需 `kitchen:edit` 即可调用。生产环境建议加开关 `app.tray.manual-override-enabled`（dev 开、prod 关），或收敛到 admin 角色 |
+| **待 Owner 裁决 2（TRAY-005）** | 库内 2 个 `store_id=NULL` 的托盘永久不可用（KDS 被门店校验拒绝、管理端无分配入口）。建议加「托盘分配门店」管理功能；不建议"KDS 首次绑定自动认领"（会静默改写归属） |
+| **待 Owner 裁决 3（TRAY-005）** | 连锁门店间若存在托盘调拨，硬隔离不可行。建议做独立的「托盘调拨」业务动作（换店 + 审计），而非直接改 `store_id` |
+| 收口快照（2026-10-23） | `orders` 82 / `kitchen_order` 83 / `food_trace_code` 14 / `cost_records` 33 / `finance_records` 32 / `tray` 13 / `dining_tables` 0（桌台基线数据为空，见 STATUS `DATA-004`） |
+| 关联 | §24.23a N37（状态机闭环） / §24.22a N36（KDS 凭证接线） |
