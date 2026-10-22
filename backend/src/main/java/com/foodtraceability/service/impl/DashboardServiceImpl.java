@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.DashboardConfig;
+import com.foodtraceability.entity.SalesOrder;
 import com.foodtraceability.entity.SalesAnalysisReport;
 import com.foodtraceability.entity.InventoryAnalysisReport;
 import com.foodtraceability.entity.CustomerAnalysisReport;
@@ -90,27 +91,34 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
         Map<String, Object> result = new HashMap<>();
         LocalDate today = LocalDate.now();
         LocalDateTime startOfDay = today.atStartOfDay();
-        LocalDateTime endOfDay = today.atTime(23, 59, 59);
+        LocalDateTime startOfTomorrow = today.plusDays(1).atStartOfDay();
+        LocalDateTime startOfYesterday = today.minusDays(1).atStartOfDay();
 
         try {
-            // 查询今日订单统计（通过SalesOrderMapper读取销售模块数据）
-            Long todayOrderCount = salesOrderMapper.selectCount(
-                    new QueryWrapper<com.foodtraceability.entity.SalesOrder>()
-                            .ge("order_time", startOfDay)
-                            .le("order_time", endOfDay)
-                            .eq("status", "completed") // 已完成
-            );
+            // 2026-10-15 修复（原 OICBE-B1-002 / KL-054 的历史决策已失效）：
+            // SalesOrder 实体已按 OICBE-B2-001 对齐到 orders 表，真实列是 create_time / total_amount，
+            // 旧代码仍用 sales_order.order_time + status（表与列均不存在）→ 必然抛异常 → 500。
+            //
+            // 口径说明（不猜语义）：
+            //   · 今日订单数 = create_time ∈ [今日 00:00, 明日 00:00) 的订单数，**不做状态过滤**。
+            //     原因：orders.order_status 存在两套互相冲突的定义
+            //     （Order.java「4=已完成」 vs OrderQueryDTO「2=已完成」），且活库当前只有 0/1/2 三种取值，
+            //     无证据可判定，故按"今日全部订单"统计，状态口径待 PD-015 / PD-019 裁决后再收窄。
+            //   · 今日销售额 = SUM(total_amount)，单位**分**（与前端 formatCurrency(fen) 约定一致）。
+            //   · 环比 = 与昨日订单数比较的百分比。
+            long todayOrderCount = countOrders(startOfDay, startOfTomorrow);
+            long yesterdayOrderCount = countOrders(startOfYesterday, startOfDay);
+            long todayAmountFen = sumAmountFen(startOfDay, startOfTomorrow);
 
-            result.put("todayOrderCount", todayOrderCount != null ? todayOrderCount : 0);
-            result.put("todayAmount", 0); // TODO: 聚合计算今日销售额
-            result.put("yesterdayGrowth", 0); // TODO: 计算环比增长
+            result.put("todayOrderCount", todayOrderCount);
+            result.put("todayAmount", todayAmountFen);
+            result.put("yesterdayGrowth", calcGrowth(yesterdayOrderCount, todayOrderCount));
 
-            logger.info("获取今日销售概览成功");
+            logger.info("获取今日销售概览成功: todayOrderCount={}, todayAmountFen={}, yesterdayGrowth={}",
+                    todayOrderCount, todayAmountFen, result.get("yesterdayGrowth"));
         } catch (Exception e) {
-            // OICBE-B1-002（KL-054）catch 先行：销售概览数据源（sales_order 表）未对齐，
-            // 明确错误态替代假空——不再吞错降级为 todayOrderCount=0 的成功响应（code:0 假成功）。
-            // 失败透传至 DashboardController catch -> code:500 明确错误响应，待 PD-015 结构裁决后恢复真实数据。
-            logger.error("获取今日销售概览失败：销售概览数据暂不可用（数据源 sales_order 未对齐，禁止降级为假空 0 值）", e);
+            // 保持 KL-054 的原则：数据源真异常时明确报错，不降级为假空 0 值。
+            logger.error("获取今日销售概览失败：orders 表查询异常", e);
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "今日销售概览数据暂不可用");
         }
 
@@ -118,7 +126,43 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
     }
 
     /**
+     * 统计 [from, to) 区间内的订单数（orders.create_time，不按状态过滤，口径见 getTodaySalesOverview 注释）。
+     */
+    private long countOrders(LocalDateTime from, LocalDateTime to) {
+        Long count = salesOrderMapper.selectCount(new QueryWrapper<SalesOrder>()
+                .ge("create_time", from)
+                .lt("create_time", to));
+        return count == null ? 0L : count;
+    }
+
+    /**
+     * 汇总 [from, to) 区间内订单金额，单位：分（orders.total_amount 为 bigint 分）。
+     */
+    private long sumAmountFen(LocalDateTime from, LocalDateTime to) {
+        List<Object> objs = salesOrderMapper.selectObjs(new QueryWrapper<SalesOrder>()
+                .select("COALESCE(SUM(total_amount), 0)")
+                .ge("create_time", from)
+                .lt("create_time", to));
+        if (objs == null || objs.isEmpty() || objs.get(0) == null) {
+            return 0L;
+        }
+        return ((Number) objs.get(0)).longValue();
+    }
+
+    /**
+     * 环比增长百分比（与昨日订单数比较），保留 1 位小数。
+     */
+    private double calcGrowth(long yesterday, long today) {
+        if (yesterday <= 0L) {
+            return today > 0L ? 100.0 : 0.0;
+        }
+        double growth = (today - yesterday) * 100.0 / yesterday;
+        return Math.round(growth * 10.0) / 10.0;
+    }
+
+    /**
      * 获取库存预警信息
+     *
      * @return 库存预警列表
      */
     @Override
