@@ -109,7 +109,7 @@ public class PurchaseArrivalController {
      * 到货单质检（1通过/2失败）
      */
     @PutMapping("/{arrivalId}/quality-check")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'qc_user')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     @Operation(summary = "到货单质检（1通过/2失败）")
     public Result<PurchaseArrival> qualityCheck(
             @Parameter(description = "到货单ID") @PathVariable Long arrivalId,

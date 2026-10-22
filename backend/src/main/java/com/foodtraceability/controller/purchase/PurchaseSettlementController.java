@@ -107,7 +107,7 @@ public class PurchaseSettlementController {
      */
     @Operation(summary = "创建采购结算", description = "新增一条采购结算记录，结算单编号由后端自动生成")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'finance_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'finance_manager', 'purchase_manager')")
     public Result<PurchaseSettlementDTO> create(@Valid @RequestBody PurchaseSettlementCreateDTO createDTO) {
         try {
             PurchaseSettlement settlement = purchaseSettlementService.createSettlement(createDTO);
@@ -126,7 +126,7 @@ public class PurchaseSettlementController {
      */
     @Operation(summary = "更新采购结算", description = "根据ID更新采购结算信息（仅待结算/部分结算状态可更新）")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'finance_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'finance_manager', 'purchase_manager')")
     public Result<PurchaseSettlementDTO> update(@PathVariable Long id,
                                                   @Valid @RequestBody PurchaseSettlementUpdateDTO updateDTO) {
         try {

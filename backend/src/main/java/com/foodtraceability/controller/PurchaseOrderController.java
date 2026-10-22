@@ -66,7 +66,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "创建采购订单（草稿，多供应商自动拆分）")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<java.util.List<PurchaseOrder>> createOrder(@Valid @RequestBody PurchaseOrderCreateDTO createDTO) {
         try {
             java.util.List<PurchaseOrder> orders = purchaseOrderService.createOrder(createDTO);
@@ -79,7 +79,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "更新采购订单（仅草稿/已取消状态）")
     @PutMapping("/{orderId}")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<PurchaseOrder> updateOrder(@PathVariable Long orderId,
                                                @Valid @RequestBody PurchaseOrderUpdateDTO updateDTO) {
         try {
@@ -93,7 +93,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "提交审核（草稿 -> 待审核）")
     @PutMapping("/{orderId}/submit")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<PurchaseOrder> submitOrder(@PathVariable Long orderId) {
         try {
             PurchaseOrder order = purchaseOrderService.submitOrder(orderId);
@@ -158,7 +158,7 @@ public class PurchaseOrderController {
 
     @Operation(summary = "取消订单（草稿/待审核 -> 已取消）")
     @PutMapping("/{orderId}/cancel")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<PurchaseOrder> cancelOrder(@PathVariable Long orderId,
                                                 @Parameter(description = "取消原因") @RequestParam String reason) {
         try {

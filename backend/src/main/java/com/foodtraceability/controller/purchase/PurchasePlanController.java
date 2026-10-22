@@ -135,7 +135,7 @@ public class PurchasePlanController {
 
     @Operation(summary = "审批通过（待审批 → 已审批）")
     @PutMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'general_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'owner')")
     public Result<Void> approvePlan(@Parameter(description = "计划ID") @PathVariable Long id,
                                       @Parameter(description = "审批人") @RequestParam(required = false) String approvedBy) {
         try {
@@ -149,7 +149,7 @@ public class PurchasePlanController {
 
     @Operation(summary = "审批拒绝（待审批 → 已拒绝）")
     @PutMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'general_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'owner')")
     public Result<Void> rejectPlan(@Parameter(description = "计划ID") @PathVariable Long id,
                                       @Parameter(description = "拒绝原因") @RequestParam String reason) {
         try {

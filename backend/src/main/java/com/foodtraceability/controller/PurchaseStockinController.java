@@ -70,7 +70,7 @@ public class PurchaseStockinController {
 
     @Operation(summary = "创建入库单")
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_keeper')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     public Result<PurchaseStockin> createStockin(@Valid @RequestBody PurchaseStockinCreateDTO createDTO) {
         try {
             PurchaseStockin stockin = purchaseStockinService.createStockin(createDTO);
@@ -83,7 +83,7 @@ public class PurchaseStockinController {
 
     @Operation(summary = "质检操作")
     @PutMapping("/{stockinId}/quality-check")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'qc_user')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     public Result<PurchaseStockin> qualityCheck(@PathVariable Long stockinId,
                                                   @Valid @RequestBody PurchaseQualityCheckDTO qualityCheckDTO) {
         try {
@@ -97,7 +97,7 @@ public class PurchaseStockinController {
 
     @Operation(summary = "确认入库")
     @PutMapping("/{stockinId}/confirm")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_keeper')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     public Result<PurchaseStockin> confirmStockin(@PathVariable Long stockinId) {
         try {
             PurchaseStockin stockin = purchaseStockinService.confirmStockin(stockinId);
@@ -110,7 +110,7 @@ public class PurchaseStockinController {
 
     @Operation(summary = "作废入库单", description = "作废已入库的入库单，联动回滚库存、订单已收货数量及未付款应付账款")
     @PostMapping("/{stockinId}/void")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_keeper')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     public Result<PurchaseStockin> voidStockin(@PathVariable Long stockinId,
                                                 @RequestBody(required = false) java.util.Map<String, Object> body) {
         try {
@@ -129,7 +129,7 @@ public class PurchaseStockinController {
      */
     @Operation(summary = "更新入库单", description = "更新采购收货入库单信息")
     @PutMapping("/{stockinId}")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser', 'warehouse_manager')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'warehouse_manager')")
     public Result<PurchaseStockin> updateStockin(
             @PathVariable Long stockinId,
             @RequestBody Map<String, Object> data) {

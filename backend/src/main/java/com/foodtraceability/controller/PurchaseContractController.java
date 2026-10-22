@@ -39,14 +39,14 @@ public class PurchaseContractController {
 
     @PostMapping
     @Operation(summary = "创建采购合同")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<PurchaseContract> createPurchaseContract(@RequestBody PurchaseContract purchaseContract) {
         return Result.success(purchaseContractService.createPurchaseContract(purchaseContract));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "更新采购合同")
-    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'purchaser')")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<PurchaseContract> updatePurchaseContract(@PathVariable Long id, @RequestBody PurchaseContract purchaseContract) {
         return Result.success(purchaseContractService.updatePurchaseContract(id, purchaseContract));
     }
