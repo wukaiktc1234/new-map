@@ -14,14 +14,13 @@ import com.foodtraceability.dto.KitchenStatsDTO;
 import com.foodtraceability.dto.MaterialScanConsumeDTO;
 import com.foodtraceability.entity.CallRecord;
 import com.foodtraceability.entity.KitchenOrder;
-import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.mapper.CallRecordMapper;
 import com.foodtraceability.mapper.KitchenOrderMapper;
 import com.foodtraceability.service.KitchenOrderService;
+import com.foodtraceability.service.OrderLifecycleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -38,23 +37,23 @@ import java.util.Map;
 public class KitchenOrderController {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(KitchenOrderController.class);
 
-    public KitchenOrderController(@Lazy KitchenOrderService kitchenOrderService, KitchenOrderMapper kitchenOrderMapper, OrderWebSocketController orderWebSocketController, ApplicationEventPublisher eventPublisher, JdbcTemplate jdbcTemplate, CallRecordMapper callRecordMapper, SimpMessagingTemplate messagingTemplate) {
+    public KitchenOrderController(@Lazy KitchenOrderService kitchenOrderService, KitchenOrderMapper kitchenOrderMapper, OrderWebSocketController orderWebSocketController, JdbcTemplate jdbcTemplate, CallRecordMapper callRecordMapper, SimpMessagingTemplate messagingTemplate, OrderLifecycleService orderLifecycleService) {
         this.kitchenOrderService = kitchenOrderService;
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderWebSocketController = orderWebSocketController;
-        this.eventPublisher = eventPublisher;
         this.jdbcTemplate = jdbcTemplate;
         this.callRecordMapper = callRecordMapper;
         this.messagingTemplate = messagingTemplate;
+        this.orderLifecycleService = orderLifecycleService;
     }
 
     private final KitchenOrderService kitchenOrderService;
     private final KitchenOrderMapper kitchenOrderMapper;
     private final OrderWebSocketController orderWebSocketController;
-    private final ApplicationEventPublisher eventPublisher;
     private final JdbcTemplate jdbcTemplate;
     private final CallRecordMapper callRecordMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final OrderLifecycleService orderLifecycleService;
 
     @PostMapping("/create")
     @Operation(summary = "创建后厨订单")
@@ -257,28 +256,14 @@ public class KitchenOrderController {
                 return Result.error("订单不存在");
             }
             String previousStatus = order.getStatus();
-            boolean result = kitchenOrderService.completeMake(kitchenOrderId);
+            // 2026-10-23 状态机闭环：完成制作 = 后厨完成 + 扣料 + 主订单完成 + 事件（全部在 OrderLifecycleService 的单一事务内）
+            boolean result = orderLifecycleService.onKitchenCompleted(kitchenOrderId);
             if (result) {
                 KitchenOrder updatedOrder = kitchenOrderService.getByKitchenOrderId(kitchenOrderId);
                 log.info("制作完成，食品追溯码已在事务内生成: {}", kitchenOrderId);
                 orderWebSocketController.pushOrderStatusChange(updatedOrder, previousStatus);
                 orderWebSocketController.pushReadyForPickup(updatedOrder);
                 try { createCallRecord(updatedOrder); } catch (Exception crEx) { log.warn("创建叫号记录异常（不回滚）: {}", crEx.getMessage()); }
-                try {
-                    OrderCompletedEvent event = new OrderCompletedEvent();
-                    event.setEventId("EVT" + System.currentTimeMillis());
-                    event.setOrderId(updatedOrder.getOrderId());
-                    event.setOrderNumber(updatedOrder.getOrderNumber());
-                    event.setOrderType(updatedOrder.getOrderType());
-                    event.setStoreId(updatedOrder.getStoreId());
-                    event.setStoreName(updatedOrder.getStoreName());
-                    event.setTableNumber(updatedOrder.getTableNumber());
-                    event.setCompleteTime(LocalDateTime.now());
-                    event.setActualAmount(updatedOrder.getTotalAmount());
-                    event.setOrderAmount(updatedOrder.getTotalAmount());
-                    eventPublisher.publishEvent(event);
-                    log.info("完成制作事件已发布: {}", updatedOrder.getKitchenOrderId());
-                } catch (Exception evtEx) { log.warn("完成制件事件发布异常: {}", evtEx.getMessage()); }
             }
             return Result.success(result);
         } catch (Exception e) {

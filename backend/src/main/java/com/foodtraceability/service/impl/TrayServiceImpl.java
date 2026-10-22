@@ -342,10 +342,16 @@ public class TrayServiceImpl implements TrayService {
         kitchenOrderMapper.updateById(order);
 
         // 扣减原料库存（出餐时扣料，P0 严格版：幂等占位 + 整体失败回滚 + REQUIRES_NEW 失败审计）
-        orderNewService.deductMaterialsForServe(
-                order.getKitchenOrderId(),
-                "KDS出餐扣料 - 订单:" + order.getOrderNumber(),
-                tray.getTrayCode());
+        // 2026-10-23 口径 A（Owner 裁决）：扣料已在「完成制作」触发（material_consumed 由 0 → 1）。
+        // deductMaterialsForServe 对已扣料的单会抛「原料已被扣减」硬错，故此处必须先判幂等位再决定是否扣料。
+        if (order.getMaterialConsumed() != null && order.getMaterialConsumed() == 1) {
+            log.info("出餐确认：原料已在完成制作时扣减，跳过重复扣料, kitchenOrderId={}", order.getKitchenOrderId());
+        } else {
+            orderNewService.deductMaterialsForServe(
+                    order.getKitchenOrderId(),
+                    "KDS出餐扣料 - 订单:" + order.getOrderNumber(),
+                    tray.getTrayCode());
+        }
 
         // 记录扫码
         recordScan(tray, "SERVE", "ready", "served", now, debounce.prevScanTime(),
