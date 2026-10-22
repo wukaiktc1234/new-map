@@ -8,6 +8,7 @@ import com.foodtraceability.dto.KitchenOrderCreateDTO;
 import com.foodtraceability.dto.KitchenOrderWithWaitTimeDTO;
 import com.foodtraceability.dto.KitchenStatsDTO;
 import com.foodtraceability.dto.MaterialScanConsumeDTO;
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.entity.KitchenOrder;
 import com.foodtraceability.mapper.KitchenOrderMapper;
 import com.foodtraceability.service.KitchenOrderService;
@@ -41,11 +42,12 @@ public class KitchenOrderServiceImpl extends ServiceImpl<KitchenOrderMapper, Kit
      * 使用 ObjectProvider 替代 @Lazy 注解，避免 Spring 6 虚拟线程环境下
      * 代理创建时序问题导致的 Bean 注册失败
      */
-    public KitchenOrderServiceImpl(KitchenOrderMapper kitchenOrderMapper, ObjectMapper objectMapper, ObjectProvider<MaterialConsumptionService> materialConsumptionServiceProvider, ObjectProvider<FoodTraceCodeService> foodTraceCodeServiceProvider) {
+    public KitchenOrderServiceImpl(KitchenOrderMapper kitchenOrderMapper, ObjectMapper objectMapper, ObjectProvider<MaterialConsumptionService> materialConsumptionServiceProvider, ObjectProvider<FoodTraceCodeService> foodTraceCodeServiceProvider, com.foodtraceability.mapper.EmployeeMapper employeeMapper) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.objectMapper = objectMapper;
         this.materialConsumptionServiceProvider = materialConsumptionServiceProvider;
         this.foodTraceCodeServiceProvider = foodTraceCodeServiceProvider;
+        this.employeeMapper = employeeMapper;
     }
 
     private final KitchenOrderMapper kitchenOrderMapper;
@@ -55,6 +57,8 @@ public class KitchenOrderServiceImpl extends ServiceImpl<KitchenOrderMapper, Kit
     private final ObjectProvider<MaterialConsumptionService> materialConsumptionServiceProvider;
 
     private final ObjectProvider<FoodTraceCodeService> foodTraceCodeServiceProvider;
+
+    private final com.foodtraceability.mapper.EmployeeMapper employeeMapper;
 
     private static final String PREFIX = "KO";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -116,7 +120,21 @@ public class KitchenOrderServiceImpl extends ServiceImpl<KitchenOrderMapper, Kit
         if (order == null || !"pending".equals(order.getStatus())) {
             return false;
         }
-        
+
+        // 2026-10-23 现场修复：接单即校验厨师是否真实存在。
+        // 此前非法 chefId 可一路带到出餐，在 food_trace_code 外键 fk_ftc_chef_id 处爆炸并毒化事务，
+        // 前端只看到 25P02 掩盖的「完成制作失败」。现在在最早环节明确拒绝。
+        if (chefId == null) {
+            throw new BusinessException(com.foodtraceability.common.exception.ErrorCode.PARAM_ERROR,
+                    "接单失败：chefId 不能为空");
+        }
+        Long exists = employeeMapper.countById(chefId);
+        if (exists == null || exists == 0L) {
+            log.error("接单失败：厨师不存在, chefId={}, kitchenOrderId={}", chefId, kitchenOrderId);
+            throw new BusinessException(com.foodtraceability.common.exception.ErrorCode.PARAM_ERROR,
+                    "接单失败：厨师ID不存在（chefId=" + chefId + "），请先在员工管理中维护该员工");
+        }
+
         order.setStatus("received");
         order.setReceiveTime(LocalDateTime.now());
         order.setChefId(chefId);
@@ -274,7 +292,16 @@ public class KitchenOrderServiceImpl extends ServiceImpl<KitchenOrderMapper, Kit
             updateById(order);
             
         } catch (Exception e) {
-            return false;
+            // 2026-10-23 现场修复：原实现静默 `return false`，异常被吞但 PostgreSQL 事务已被毒化，
+            // 后续任何 SQL 都会报 25P02「当前事务被终止」，把真凶（如 food_trace_code 外键
+            // fk_ftc_chef_id 冲突）彻底掩盖。现改为 ERROR 记录 + 明确抛出，
+            // 让上层 / 前端看到可读原因，而不是模糊的「完成制作失败: ### Error updating database」。
+            log.error("生成食品追溯码失败: kitchenOrderId={}, orderId={}, chefId={}, error={}",
+                    kitchenOrderId, order.getId(), order.getChefId(), e.getMessage(), e);
+            throw new BusinessException(com.foodtraceability.common.exception.ErrorCode.INTERNAL_SERVER_ERROR,
+                    "生成食品追溯码失败：" + e.getMessage()
+                            + "（kitchenOrderId=" + kitchenOrderId
+                            + ", chefId=" + order.getChefId() + "）");
         }
         
         return true;

@@ -24,4 +24,10 @@ public interface EmployeeMapper extends BaseMapper<Employee> {
      */
     @Select("SELECT COUNT(*) FROM employees WHERE department_id = CAST(#{departmentId} AS BIGINT) AND status IN (1, 2) AND deleted = 0")
     int countActiveByDepartmentId(@Param("departmentId") String departmentId);
+
+    /**
+     * 校验员工是否存在（2026-10-23：接单/追溯码外键前置校验用）。
+     */
+    @Select("SELECT COUNT(*) FROM employees WHERE employee_id = #{id} AND deleted = 0")
+    Long countById(@Param("id") Long id);
 }
