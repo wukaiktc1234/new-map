@@ -512,27 +512,43 @@ export const usePermissionStore = defineStore('permission', () => {
 
       setUserInfo(info)
 
+      // N31 现场修复（2026-10-15）：权限模板接口只对 system:permission:manage（管理端）开放：
+      //   GET /v1/system-config/permission-template  -> 403
+      //   GET /v1/permission-templates/system        -> 403
+      // 原实现在登录时对所有角色无条件请求这两个接口 —— 任何非管理角色（收银员/员工等）
+      // 每次登录都会稳定打出 2 个 403，既污染控制台又拖慢首屏。此处先按已获取的权限码判断。
+      const perms = me.permissions || []
+      const canReadPermissionTemplates =
+        perms.includes('system:permission:manage') ||
+        perms.includes('*') ||
+        userRoles.includes(UserRole.ADMIN) ||
+        userRoles.includes(UserRole.OWNER)
+
       // 恢复用户菜单覆盖和模板配置
       restoreMenuOverrides()
       const savedTpl = localStorage.getItem('menu-template')
       if (!savedTpl) {
         // 服务端激活模板兜底（2026-08-02 修复）：上线新环境/新浏览器 localStorage 为空时，
         // 从后端读取持久化的激活模板（默认 centralized-single），保证预设权限模板开箱生效。
-        try {
-          const activeCode = await permissionTemplateApi.getActiveTemplate()
-          if (activeCode) {
-            currentTemplate.value = activeCode
-            localStorage.setItem('menu-template', activeCode)
+        if (canReadPermissionTemplates) {
+          try {
+            const activeCode = await permissionTemplateApi.getActiveTemplate()
+            if (activeCode) {
+              currentTemplate.value = activeCode
+              localStorage.setItem('menu-template', activeCode)
+            }
+          } catch (e) {
+            console.warn('[Permission] 读取服务端激活模板失败，本次不应用模板:', e)
           }
-        } catch (e) {
-          console.warn('[Permission] 读取服务端激活模板失败，本次不应用模板:', e)
         }
       } else {
         currentTemplate.value = savedTpl
       }
 
       // 预加载权限模板（菜单按模板 admin 域列表派生，必须提前加载；异步不阻塞登录）
-      fetchPermissionTemplates().catch(() => {})
+      if (canReadPermissionTemplates) {
+        fetchPermissionTemplates().catch(() => {})
+      }
     } catch (error) {
       console.error('[Permission] 初始化失败:', error)
       // 异常时清除认证状态，不授予任何权限
