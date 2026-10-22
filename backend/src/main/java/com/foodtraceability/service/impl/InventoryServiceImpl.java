@@ -518,7 +518,13 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             }
             // 按当前单位成本结转出库成本（现状迁移）
             long currentUnitCost = (current.getUnitCost() != null) ? current.getUnitCost() : 0L;
-            long outgoingTotalCost = currentUnitCost * quantity.longValue();
+            // 2026-10-23 修复：原为 currentUnitCost * quantity.longValue()，
+            // 小数用量（如 0.4）被 longValue() 截断为 0 → 出库成本恒为 0，
+            // 导致 cost_record 永远不落、inventory.total_cost 不减（成本链路整条失效）。
+            long outgoingTotalCost = BigDecimal.valueOf(currentUnitCost)
+                    .multiply(quantity)
+                    .setScale(0, java.math.RoundingMode.HALF_UP)
+                    .longValue();
             BigDecimal beforeStock = currentStock;
             long beforeTotalCost = (current.getTotalCost() != null) ? current.getTotalCost() : 0L;
             BigDecimal afterStock = currentStock.subtract(quantity);
