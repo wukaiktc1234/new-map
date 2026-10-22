@@ -169,6 +169,72 @@ class Runner:
             print("       返回: " + brief(body))
         return ok
 
+    # 2.5 支付（关键：不支付则 orders.payment_status 永远为 0，日结无法计入营收）
+    def pay_order(self):
+        print("\n[2.5/5] POS 支付订单")
+        if not self.a.pay:
+            self.step("支付订单（已跳过 --no-pay）", True, "跳过")
+            return True
+        payload = {
+            "orderId": self.order_id or self.order_number,
+            "paymentMethod": self.a.pay_method,
+            "amount": round(self.a.food_price * self.a.quantity, 2),
+        }
+        st, body = call("POST", "/v1/pos/orders/order/pay", token=self.token, body=payload)
+        data = body.get("data") if isinstance(body, dict) else None
+        code = body.get("code") if isinstance(body, dict) else None
+        ok = st == 200 and code in (0, 200)
+        self.step("支付订单（%s）" % self.a.pay_method, ok,
+                  "HTTP %s code=%s %s" % (st, code, "" if ok else brief(data if data is not None else body, 160)))
+        return ok
+
+    # 6 断言：三端状态一致（后厨 / 主订单 / 支付）
+    def verify_consistency(self):
+        print("\n[6/6] 三端一致性断言")
+        ok_all = True
+
+        # 6.1 后厨单：completed + 已扣料
+        st, body = call("GET", "/v1/kitchen/orders/%s" % self.kitchen_order_id, token=self.a.kds_token)
+        kds = body.get("data") if isinstance(body, dict) else None
+        if isinstance(kds, dict):
+            kds_status = kds.get("status")
+            consumed = kds.get("materialConsumed")
+            ok1 = (kds_status == "completed") and (consumed == 1)
+            ok_all = ok_all and ok1
+            self.step("后厨单 status=completed 且 material_consumed=1", ok1,
+                      "status=%s materialConsumed=%s" % (kds_status, consumed))
+            if isinstance(kds.get("orderId"), str) and kds.get("orderId"):
+                self.order_id = kds.get("orderId") or self.order_id
+        else:
+            ok_all = False
+            self.step("后厨单查询", False, "HTTP %s %s" % (st, brief(body, 120)))
+
+        # 6.2 主订单：order_status=2（已完成）+ payment_status=2（已支付）
+        #     需要 order:view/order:manage 权限（--mint 默认 '*' 有；收银员真实 token 无则 SKIP 不算失败）
+        if self.order_id:
+            st, body = call("GET", "/v1/orders/%s" % self.order_id, token=self.token)
+            code = body.get("code") if isinstance(body, dict) else None
+            order = body.get("data") if isinstance(body, dict) else None
+            if st == 200 and isinstance(order, dict):
+                o_st = order.get("orderStatus")
+                p_st = order.get("paymentStatus")
+                ok2 = (o_st == 2) and (p_st == 2)
+                ok_all = ok_all and ok2
+                self.step("主订单 order_status=2 且 payment_status=2", ok2,
+                          "orderStatus=%s paymentStatus=%s" % (o_st, p_st))
+            else:
+                self.step("主订单状态断言", True,
+                          "SKIP（无 order:view 权限或接口不可用：HTTP %s code=%s）" % (st, code))
+
+        # 6.3 POS 侧订单详情状态（收银员视角）
+        if self.order_number:
+            st, body = call("GET", "/v1/pos/orders/order/%s" % self.order_number, token=self.token)
+            detail = body.get("data") if isinstance(body, dict) else None
+            if isinstance(detail, dict):
+                self.step("POS 订单详情状态", True,
+                          "status=%s kitchenStatus=%s" % (detail.get("status"), detail.get("kitchenStatus")))
+        return ok_all
+
     # 3. 后厨单：POS 下单时后端会自动生成一条，优先复用；没有才创建
     def create_kitchen_order(self):
         print("\n[3/5] 获取后厨单（KDS 视角）")
@@ -245,28 +311,45 @@ class Runner:
             print("       返回: " + brief(body))
         return ok
 
-    # 5. 后厨流转
+    # 5. 后厨流转（状态感知：前置状态不满足的步骤记为 SKIP，而不是 FAIL）
     def kitchen_flow(self):
-        print("\n[5/5] 后厨流转：接单 -> 开始制作 -> 完成制作（出餐）")
+        print("\n[5/6] 后厨流转：接单 -> 开始制作 -> 完成制作（出餐）")
         ok_all = True
         # receive 需要 chefId + chefName（@RequestParam 必填），其余两步无需额外参数
         steps = [
-            ("receive?chefId=%s&chefName=%s" % (self.a.chef_id, urllib.parse.quote(self.a.chef_name)), "接单"),
-            ("start-make", "开始制作"),
-            ("complete-make", "完成制作/出餐"),
+            ("receive?chefId=%s&chefName=%s" % (self.a.chef_id, urllib.parse.quote(self.a.chef_name)),
+             "接单", ("pending",)),
+            ("start-make", "开始制作", ("received", "making")),
+            ("complete-make", "完成制作/出餐", ("making",)),
         ]
-        for action, label in steps:
+        for action, label, allowed_status in steps:
+            cur = self.fetch_kitchen_status()
+            if cur is not None and cur not in allowed_status:
+                self.step("后厨 %s" % label, True, "SKIP（前置状态不满足，当前=%s）" % cur)
+                continue
             st, body = call("POST", "/v1/kitchen/orders/%s/%s" % (self.kitchen_order_id, action),
                             token=self.a.kds_token)
             data = body.get("data") if isinstance(body, dict) else None
             code = body.get("code") if isinstance(body, dict) else None
-            # data=False 表示服务层拒绝（状态不允许），同样视为失败
+            # data=False 表示服务层拒绝（状态不允许）
             ok = st == 200 and code in (0, 200) and data is not False
+            if not ok:
+                after = self.fetch_kitchen_status()
+                if after is not None and after not in allowed_status:
+                    self.step("后厨 %s" % label, True, "SKIP（请求前状态已变更为 %s）" % after)
+                    continue
             ok_all = ok_all and ok
             self.step("后厨 %s" % label, ok,
                       "HTTP %s code=%s data=%s %s" % (st, code, data,
                                                       "" if ok else brief(body.get("message") if isinstance(body, dict) else body, 120)))
         return ok_all
+
+    def fetch_kitchen_status(self):
+        st, body = call("GET", "/v1/kitchen/orders/%s" % self.kitchen_order_id, token=self.a.kds_token)
+        data = body.get("data") if isinstance(body, dict) else None
+        if isinstance(data, dict):
+            return data.get("status")
+        return None
 
     def run(self):
         print("=" * 78)
@@ -274,11 +357,13 @@ class Runner:
         print("base=%s  user=%s  store=%s  tray=%s  kds_token=%s" %
               (DEFAULT_BASE, self.a.username, self.a.store_id, self.a.tray, self.a.kds_token))
         print("=" * 78)
-        # --kitchen-order 模式：只对一张已存在的后厨单跑流转（无需下单，便于复现/复验）
+        # --kitchen-order 模式：只对一张已存在的后厨单跑流转（状态感知：不满足前置状态的步骤记为 SKIP）
         if self.a.kitchen_order:
             self.kitchen_order_id = self.a.kitchen_order
             self.step("指定后厨单", True, self.kitchen_order_id)
             if not self.kitchen_flow():
+                return self.summary(False)
+            if not self.verify_consistency():
                 return self.summary(False)
             return self.summary(True)
 
@@ -286,11 +371,15 @@ class Runner:
             return self.summary(False)
         if not self.create_order():
             return self.summary(False)
+        if not self.pay_order():
+            return self.summary(False)
         if not self.create_kitchen_order():
             return self.summary(False)
         if not self.bind_tray():
             return self.summary(False)
         if not self.kitchen_flow():
+            return self.summary(False)
+        if not self.verify_consistency():
             return self.summary(False)
         return self.summary(True)
 
@@ -323,6 +412,9 @@ def main():
     p.add_argument("--quantity", type=int, default=1)
     p.add_argument("--table-number", type=int, default=1, help="桌号（后端校验必须 >0）")
     p.add_argument("--kds-token", default=DEFAULT_KDS_TOKEN)
+    p.add_argument("--no-pay", dest="pay", action="store_false", help="跳过支付步骤（默认执行支付）")
+    p.add_argument("--pay-method", default="cash", help="支付方式：cash/wechat/alipay/card")
+    p.set_defaults(pay=True)
     p.add_argument("--kitchen-order", default=None, help="只对指定后厨单（KO...）跑流转，跳过下单/绑定")
     p.add_argument("--chef-id", type=int, default=1, help="后厨接单必填：厨师ID")
     p.add_argument("--chef-name", default="E2E-CHEF", help="后厨接单必填：厨师姓名")
