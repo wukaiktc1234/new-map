@@ -1,6 +1,6 @@
 # 全仓注解权限字面量核对报告（N31 / N32）
 
-> **扫描器**：`tools/scan_auth_annotations.py`（可复跑，见 §10 复现命令）
+> **扫描器**：`scripts/scan_auth_annotations.py`（可复跑，见 §10 复现命令）
 > **扫描面**：`backend/src/main/java` 全部 `.java`
 > **比对基准**（活库 `food_traceability`，2026-10-15 时点）：`roles.role_code` ∪ `roles.role_id_str` → **19** 个归一化角色码；`permissions.permission_code` → **132** 个权限码；`AdminPermissions.ALL`（硬编码）→ **352** 个码
 > **原始数据**：`docs/audit/auth-annotation-literal-audit-001-raw.md`（分类明细）、`auth-annotation-literal-audit-001.json`（逐条机器可读）
@@ -147,7 +147,7 @@ ScheduledTaskController.java:273    @PreAuthorize("hasAuthority('scheduler:task:
 
 ```powershell
 $env:PGPASSWORD="123456"
-python tools/scan_auth_annotations.py `
+python scripts/scan_auth_annotations.py `
   --root backend/src/main/java `
   --psql "P:\my-new-project\PostgreSQL\18\bin\psql.exe" `
   --dbname food_traceability --dbuser postgres `
