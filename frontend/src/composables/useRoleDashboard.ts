@@ -154,12 +154,18 @@ function formatStatDisplay(value: number, format?: 'number' | 'currency' | 'perc
  * 检测角色组需要加载哪些数据源
  * @returns 需要加载的 API 集合
  */
-function detectRequiredApis(profile: RoleProfile): {
+function detectRequiredApis(profile: RoleProfile, canViewOperationsDashboard = true): {
   needTodaySales: boolean
   needInventory: boolean
   needMember: boolean
   needFinance: boolean
 } {
+  // N31 / P1-DASHBOARD-FILTER-001：DashboardController 的 4 个数据端点统一要求
+  // operations:dashboard:view；无该权限时**一律不发请求**（否则稳定 403/500），
+  // 对应卡片也不渲染。
+  if (!canViewOperationsDashboard) {
+    return { needTodaySales: false, needInventory: false, needMember: false, needFinance: false }
+  }
   const sources = new Set(profile.statsCards.map(c => c.dataSource))
   return {
     needTodaySales: [...sources].some(s => s.startsWith('todaySales.')),
@@ -263,7 +269,15 @@ export function useRoleDashboard(): UseRoleDashboardReturn {
     errorMessage.value = ''
 
     try {
-      const required = detectRequiredApis(profile.value)
+      // N31 / P1-DASHBOARD-FILTER-001：无 operations:dashboard:view 的角色
+      // 不请求任何 Dashboard 数据端点，也不渲染依赖这些数据的卡片。
+      const canViewOpsDashboard = permissionStore.hasPermission('operations:dashboard:view')
+      const required = detectRequiredApis(profile.value, canViewOpsDashboard)
+      if (!canViewOpsDashboard) {
+        statsCards.value = []
+        alerts.value = []
+        return
+      }
 
       // 并行加载所有需要的数据源
       // 失败的 API 返回 null，不影响其他卡片展示

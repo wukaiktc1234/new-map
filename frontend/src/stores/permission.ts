@@ -1133,6 +1133,13 @@ export const usePermissionStore = defineStore('permission', () => {
   async function fetchPermissionTemplates(force = false): Promise<void> {
     if (templatesLoaded.value && !force) return
     if (templatesLoading.value) return
+    // N31 现场修复：该接口只对 system:permission:manage（管理端）开放，
+    // 非管理角色（router/guards.ts 每次进入路由都会调用本函数）必然 403；
+    // 在此处做单一收口，避免调用方遗漏判断。
+    const permissionCodes = userInfo.value?.permissions || []
+    if (!permissionCodes.includes('system:permission:manage') && !permissionCodes.includes('*')) {
+      return
+    }
 
     templatesLoading.value = true
     try {
