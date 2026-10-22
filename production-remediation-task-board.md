@@ -8585,3 +8585,18 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 > **⑤ `users.roles` 三种格式并存（活库 20 行实测）**：`["9"]` / `["ROLE_ADMIN"]`（JSON 字符串数组，14 行）、`[14]` `[323]` `[6]` `[7]` `[8]`（JSON **裸数字**数组，5 行，Jackson 可强转故可用）、`{ROLE_FINQA_REGISTER}`（**Postgres 数组字面量非 JSON**，3 行：`finqa_register` / `finqa_confirm` / `finqa_noperm`）→ 第三种走 `UserServiceImpl.getUserRoles` L414–425 容错分支：不以 `[` 开头且不匹配 `\d+` → **返回空列表**（`/me` 里这 3 个账号 roles 为空，静默降级）
 >
 > **⑥ 补桥后的实际覆盖**：活库 20 个存活用户，现 17 个有 `user_roles` 行；**仅剩 3 个无桥 = 上述 3 个 FINQA 测试账号**（`2080170081205395460/461/462`）。即「权限码」路径对 17/20 已通；**但角色码路径（471 处）对 20/20 全不通**（admin 除 `hasRole('admin')` 外亦不通）
+
+### §24.14a P1-AUTH-CHAIN-001 正式启动：权威源裁决 + 三拆卡登记（2026-10-15 Owner 拍板）
+
+> **前置事实**：应急补桥已 **Live 通过**——vtest01 `GET /api/v1/auth/me` 返回 12 个权限码（含 `order:add`/`order:manage`/`order:view`），订单页放行；活库桥行 `id=2329 | user_id=2110437068670001154 | role_id=ROLE_STORE_MANAGER | deleted=0` 已核。**但 N30 不绕过**，本卡照开。
+
+| 项 | 内容 |
+|----|------|
+| 权威源裁决 | **选 A：`user_roles` 表 = 授权唯一权威源；`users.roles` 降级为仅展示用，不参与鉴权**（Owner 2026-10-15 拍板）→ 同时关闭 §24.8a P1-PERM-CONSOLIDATION-001 的「权威源二选一」悬置 |
+| 规模（实测） | `hasRole(` 168 + `hasAnyRole(` 303 = **471 处 / 37 文件**；其中幻码 **239 处 / 18 distinct / 27 文件** |
+| **001-A（止血 + 比较侧归一）** | 新增 `RoleCodeNormalizer`（去 `ROLE_` 前缀 + trim + 大小写不敏感）；改 `SecurityUser.getAuthorities`（L38–101）与 `PermissionVerifyServiceImpl.hasRole/hasAnyRole/hasAllRoles`（L402–429）；**纯代码、零数据改动、可单测**；Owner 指令「立刻执行」 |
+| **001-B（清洗存量 + 修正幻码）** | 输入件 = `docs/architecture/03-review/p1-auth-chain-001-a-n30-phantom-role-codes.md`（**A 栏 4 码可机械纠正 24 处**：`regional_manager`→`region_manager`、`ROLE_REGIONAL_MANAGER`、`purchaser`→`purchase_manager`、`ROLE_OPERATIONS_DIRECTOR`→`ops_director`；**B 栏 14 码 215 处待 Owner 裁决**，其中 `hr` 一项 148 处占 62%）；另含 `user_roles.role_id` 规范化迁移 + `users.roles` 三种格式统一 |
+| **001-C（单向化）** | 废弃 `users.roles` 鉴权能力：`assignRoles`/`unassignRoles` 改为只写 `user_roles`；`users.roles` 保留为展示缓存并由写入侧同步；`getUserRoles` 读取面改造 |
+| 执行顺序 | A → B → C；**B 的幻码裁决不阻塞 A 开工** |
+| 口径说明 | 上一轮口述「19 个幻码」→ 真值 **18 个**（第 19 个 `hr\` 是转义残留，与 `hr` 同一个）；「412 处」→ 按出现次数 **471 处** |
+| 关联 | §24.10a P1-AUTH-CHAIN-001 / §24.13a N30 / §24.6a N25 / §24.8a P1-PERM-CONSOLIDATION-001 |
