@@ -26,7 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/v1/pos/orders")
 @Tag(name = "收银终端API", description = "收银终端专用接口")
-@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
 public class PosOrderController {
 
     private static final Logger log = LoggerFactory.getLogger(PosOrderController.class);

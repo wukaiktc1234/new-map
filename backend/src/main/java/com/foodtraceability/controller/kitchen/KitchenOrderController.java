@@ -433,7 +433,7 @@ public class KitchenOrderController {
 
     @GetMapping("/orders/sorted")
     @Operation(summary = "智能排序查询订单（支持排序和筛选）")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<List<KitchenOrderWithWaitTimeDTO>> getSortedOrders(
             @Parameter(description = "状态过滤: pending/making/completed/served/all") @RequestParam(defaultValue = "all") String status,
             @Parameter(description = "排序字段: waitTime/orderTime/quantity") @RequestParam(defaultValue = "waitTime") String sort,
@@ -450,7 +450,7 @@ public class KitchenOrderController {
 
     @PutMapping("/orders/batch-status")
     @Operation(summary = "批量更新订单状态")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<Map<String, Object>> batchUpdateStatus(@RequestBody BatchStatusUpdateDTO dto) {
         try {
             int successCount = kitchenOrderService.batchUpdateStatus(dto);
@@ -466,7 +466,7 @@ public class KitchenOrderController {
 
     @GetMapping("/stats")
     @Operation(summary = "获取厨房统计面板数据")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<KitchenStatsDTO> getKitchenStats(
             @Parameter(description = "日期: today或yyyy-MM-dd格式") @RequestParam(defaultValue = "today") String date) {
         try {
@@ -479,7 +479,7 @@ public class KitchenOrderController {
 
     @GetMapping("/orders/overdue")
     @Operation(summary = "获取超时预警订单列表")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<List<KitchenOrder>> getOverdueOrders(
             @Parameter(description = "超时阈值（分钟）") @RequestParam(defaultValue = "15") Integer threshold) {
         try {
@@ -492,7 +492,7 @@ public class KitchenOrderController {
 
     @GetMapping("/orders/grouped-by-food")
     @Operation(summary = "按菜品聚合订单视图")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<List<FoodGroupedOrderDTO>> getOrdersGroupedByFood(
             @Parameter(description = "状态过滤") @RequestParam(required = false) String status) {
         try {

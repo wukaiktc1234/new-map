@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/v1/pos/yolo")
 @Tag(name = "YOLO 辅助收银API", description = "YOLO 商品识别接口")
-@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
 public class YoloProductRecognitionController {
 
     private final YoloProductRecognitionService recognitionService;

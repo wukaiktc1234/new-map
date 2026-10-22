@@ -84,7 +84,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
      * 订单支付
      * 包含CAS锁机制、状态管理、余额支付、交易ID生成等完整流程
      */
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR')")
     @Transactional(rollbackFor = Exception.class)
     public Result<OrderResultDTO> payOrder(PayRequestDTO request) {
         log.info("开始处理订单支付: orderId={}", request.getOrderId());
@@ -249,7 +249,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
      * 订单退款
      * 包含库存回补、后厨通知、日志记录等完整流程
      */
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER')")
     @Transactional(rollbackFor = Exception.class)
     public Result<Boolean> refundOrder(String orderNumber, String refundReason, HttpServletRequest request) {
         log.info("处理退款请求: orderNumber={}, reason={}", orderNumber, refundReason);
@@ -633,7 +633,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
      * @param qrTransactionId 扫码支付交易号
      * @return 订单结果
      */
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR')")
     @Transactional(rollbackFor = Exception.class)
     public Result<OrderResultDTO> confirmQrPayment(String qrTransactionId) {
         log.info("确认扫码支付完成: transactionId={}", qrTransactionId);

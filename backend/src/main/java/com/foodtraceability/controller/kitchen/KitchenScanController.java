@@ -200,7 +200,7 @@ public class KitchenScanController {
 
     @GetMapping("/stats")
     @Operation(summary = "获取厨房统计面板数据")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<KitchenStatsDTO> getKitchenStats(
             @io.swagger.v3.oas.annotations.Parameter(description = "日期: today或yyyy-MM-dd格式") @RequestParam(defaultValue = "today") String date) {
         try {
@@ -214,7 +214,7 @@ public class KitchenScanController {
 
     @GetMapping("/orders/overdue")
     @Operation(summary = "获取超时预警订单列表")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CHEF', 'ROLE_KITCHEN')")
     public Result<List<KitchenOrder>> getOverdueOrders(
             @io.swagger.v3.oas.annotations.Parameter(description = "超时阈值（分钟）") @RequestParam(defaultValue = "15") Integer thresholdMinutes) {
         try {

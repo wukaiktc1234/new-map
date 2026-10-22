@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/v1/pos/coupons")
 @Tag(name = "优惠券API", description = "优惠券相关接口")
-@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_STORE_MANAGER', 'ROLE_CASHIER', 'ROLE_POS_OPERATOR', '*')")
 public class PosCouponController {
 
     private static final Logger log = LoggerFactory.getLogger(PosCouponController.class);
