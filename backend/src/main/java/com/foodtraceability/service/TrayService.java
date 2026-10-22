@@ -29,6 +29,24 @@ public interface TrayService {
      * <p>触发条件：托盘经过后厨入口扫码设备</p>
      * <p>语义：后厨接过托盘，可以开始制作餐品</p>
      */
+    /**
+     * 手动流转托盘状态（兜底 / 测试轨，与扫码自动轨并存）。
+     *
+     * <p>2026-10-23 设计：后端原本只有"扫码驱动"的分步入口（scan-kitchen-in / scan-kitchen-out / scan-serve），
+     * 没有扫码设备时无法推进状态，测试与现场兜底都走不通。此入口允许人工推进状态，
+     * 但强制要求填写理由，并写入 {@code tray_scan_record}（scan_type=MANUAL）留痕。</p>
+     *
+     * <p><b>允许的目标状态</b>：making / ready / cleaning / idle。
+     * <b>不允许</b>直接置 served —— 该跃迁承载扣料与追溯码生成，必须走 {@link #scanServe}。</p>
+     *
+     * @param trayCode      托盘码
+     * @param targetStatus  目标状态
+     * @param reason        操作理由（必填，写入审计）
+     * @param operatorId    操作人ID（可空）
+     * @param operatorName  操作人姓名（可空）
+     */
+    Result<Tray> manualTransition(String trayCode, String targetStatus, String reason,
+                                  String operatorId, String operatorName);
     Result<Tray> scanKitchenIn(String trayCode, Long scanDeviceId, String scanDeviceCode,
                                 String operatorId, String operatorName);
 

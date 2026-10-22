@@ -170,6 +170,21 @@ public class TrayController {
         return trayService.scanServe(trayCode, operatorId, operatorName);
     }
 
+    @PostMapping("/manual-transition")
+    @Operation(summary = "手动流转托盘状态（兜底/测试轨）",
+            description = "与扫码自动轨并存。必填理由并写入 tray_scan_record(scan_type=MANUAL)。"
+                    + "仅允许 making/ready/cleaning/idle；served 必须走出餐确认以触发扣料与追溯码")
+    @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")
+    public Result<Tray> manualTransition(
+            @Parameter(description = "托盘码") @RequestParam String trayCode,
+            @Parameter(description = "目标状态：making/ready/cleaning/idle") @RequestParam String targetStatus,
+            @Parameter(description = "操作理由（必填，写入审计）") @RequestParam String reason,
+            @Parameter(description = "操作人ID") @RequestParam(required = false) String operatorId,
+            @Parameter(description = "操作人姓名") @RequestParam(required = false) String operatorName) {
+        log.warn("[手动流转] trayCode={}, target={}, operator={}, reason={}",
+                trayCode, targetStatus, operatorName, reason);
+        return trayService.manualTransition(trayCode, targetStatus, reason, operatorId, operatorName);
+    }
     @PostMapping("/release")
     @Operation(summary = "释放托盘")
     @PreAuthorize("hasAuthority('kitchen:edit') or hasAuthority('*')")

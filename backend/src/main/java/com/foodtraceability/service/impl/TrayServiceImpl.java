@@ -179,6 +179,85 @@ public class TrayServiceImpl implements TrayService {
         return Result.success(updatedTray);
     }
 
+    // ==================== 手动流转轨（与扫码自动轨并存，兜底/测试用） ====================
+
+    /** 手动流转允许的目标状态（served 除外：承载扣料与追溯码，必须走 scanServe）。 */
+    private static final java.util.Set<String> MANUAL_ALLOWED_TARGETS =
+            java.util.Set.of("making", "ready", "cleaning", "idle");
+
+    /** 手动流转允许的状态跃迁表。 */
+    private static final java.util.Map<String, java.util.Set<String>> MANUAL_TRANSITIONS = java.util.Map.of(
+            "bound",    java.util.Set.of("making", "idle", "cleaning"),
+            "making",   java.util.Set.of("ready", "idle", "cleaning"),
+            "ready",    java.util.Set.of("idle", "cleaning"),
+            "served",   java.util.Set.of("idle", "cleaning"),
+            "cleaning", java.util.Set.of("idle"),
+            "idle",     java.util.Set.of("cleaning")
+    );
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Tray> manualTransition(String trayCode, String targetStatus, String reason,
+                                         String operatorId, String operatorName) {
+        if (trayCode == null || trayCode.isBlank()) {
+            return Result.error("托盘码不能为空");
+        }
+        if (reason == null || reason.isBlank()) {
+            return Result.error("手动操作必须填写理由（将写入审计记录）");
+        }
+        if (targetStatus == null || !MANUAL_ALLOWED_TARGETS.contains(targetStatus)) {
+            return Result.error("不支持的目标状态: " + targetStatus
+                    + "（允许 making/ready/cleaning/idle；served 请走出餐确认接口以触发扣料与追溯码）");
+        }
+
+        Tray tray = trayMapper.findByTrayCode(trayCode);
+        if (tray == null) {
+            return Result.error("托盘不存在: " + trayCode);
+        }
+        String fromStatus = tray.getStatus();
+        if (targetStatus.equals(fromStatus)) {
+            return Result.success(tray);
+        }
+        java.util.Set<String> allowed = MANUAL_TRANSITIONS.getOrDefault(fromStatus, java.util.Set.of());
+        if (!allowed.contains(targetStatus)) {
+            return Result.error("不允许的状态跃迁: " + fromStatus + " → " + targetStatus
+                    + "（该状态机允许: " + allowed + "）");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        switch (targetStatus) {
+            case "making" -> trayMapper.updateToMaking(tray.getId(), null);
+            case "ready" -> trayMapper.updateToReady(tray.getId(), null, null);
+            case "idle" -> trayMapper.releaseTray(tray.getId());
+            case "cleaning" -> trayMapper.startCleaning(tray.getId());
+            default -> { }
+        }
+
+        // 同步后厨单状态（与扫码轨一致，避免托盘与订单状态错位）
+        if (tray.getCurrentKitchenOrderId() != null
+                && ("making".equals(targetStatus) || "ready".equals(targetStatus))) {
+            KitchenOrder ko = kitchenOrderMapper.selectById(tray.getCurrentKitchenOrderId());
+            if (ko != null) {
+                ko.setStatus(targetStatus);
+                if ("making".equals(targetStatus) && ko.getMakingStartTime() == null) {
+                    ko.setMakingStartTime(now);
+                }
+                ko.setUpdateTime(now);
+                kitchenOrderMapper.updateById(ko);
+                messagingTemplate.convertAndSend("/topic/orders/status", ko);
+            }
+        }
+
+        Tray updated = trayMapper.selectById(tray.getId());
+        recordScan(tray, "MANUAL", fromStatus, targetStatus, now, null,
+                null, null, operatorId, operatorName, null, null, null, false,
+                "手动流转：" + reason);
+        messagingTemplate.convertAndSend("/topic/tray/status", updated);
+        log.warn("手动流转托盘成功: trayCode={}, {} → {}, operator={}, reason={}",
+                trayCode, fromStatus, targetStatus, operatorName, reason);
+        return Result.success(updated);
+    }
+
     /**
      * 后厨一次扫码：托盘 bound → making（含防抖 ≥3s）
      */
