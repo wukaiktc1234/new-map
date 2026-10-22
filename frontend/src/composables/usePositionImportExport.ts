@@ -78,7 +78,7 @@ export function usePositionImportExport(
         return
       }
       const allDepartments = flattenDepartments(departmentTreeRef.value)
-      const rows = jsonRows.slice(1) as unknown[][]
+      const rows = jsonRows.slice(1) as unknown as unknown[][]
       let success = 0
       let fail = 0
       const errors: string[] = []

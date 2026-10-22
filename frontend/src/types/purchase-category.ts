@@ -52,6 +52,8 @@ export interface MaterialCategoryQueryForm {
  * 商品分类表单数据（新建/编辑）
  */
 export interface MaterialCategoryFormData {
+  /** 分类ID（编辑时回填主键） */
+  categoryId?: string;
   /** 分类名称 */
   categoryName: string;
   /** 分类编码 */

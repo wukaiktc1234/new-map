@@ -221,7 +221,8 @@ export interface OrderQueryForm {
   size?: number
   orderCode?: string
   orderType?: number
-  orderStatus?: OrderStatusValue | null
+  /** 订单状态（'' 表示不筛选，与搜索表单空选项对齐） */
+  orderStatus?: OrderStatusValue | '' | null
   paymentStatus?: number
   customerName?: string
   customerPhone?: string
@@ -235,8 +236,8 @@ export interface OrderQueryForm {
   dateRange?: string[]
   /** 门店ID（用于按门店筛选订单） */
   storeId?: string
-  /** 支付方式（数字编码） */
-  paymentMethod?: number
+  /** 支付方式（数字编码；搜索表单绑定的是字符串选项值，提交前由调用方 Number() 转换） */
+  paymentMethod?: number | string
 }
 
 // ============================================================

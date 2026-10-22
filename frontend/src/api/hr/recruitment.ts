@@ -23,6 +23,7 @@ import type {
   HireQueryParams,
   RecruitmentStatistics,
   HrEvaluationSubmitDTO,
+  EducationRequirement,
 } from '../../types/hr/recruitment'
 import { RecruitmentStatus, ResumeStatus } from '../../types/hr/recruitment'
 

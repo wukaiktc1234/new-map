@@ -37,7 +37,7 @@ interface ColumnDef {
   fixed?: 'left' | 'right'
   slot?: string
   ellipsis?: boolean
-  align?: string
+  align?: 'left' | 'center' | 'right'
 }
 
 // ==================== 响应式数据 ====================

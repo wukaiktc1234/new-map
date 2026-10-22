@@ -89,6 +89,8 @@ export interface PurchaseContractQueryForm {
  * 采购合同表单数据（新建/编辑）
  */
 export interface PurchaseContractFormData {
+  /** 合同ID（编辑时回填主键） */
+  contractId?: string;
   /** 合同名称 */
   contractName: string;
   /** 供应商ID */

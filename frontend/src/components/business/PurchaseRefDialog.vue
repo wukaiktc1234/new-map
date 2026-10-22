@@ -44,7 +44,12 @@ async function loadDetail(): Promise<void> {
       const res = await purchaseRequestApi.getById(props.bizId)
       detail.value = res
     } else if (props.bizType === 'purchase_arrival' && props.bizNo) {
-      const list = await purchaseArrivalApi.getList({ orderNo: props.bizNo, page: 1, size: 1 })
+      // PurchaseArrivalQueryForm 尚未声明 orderNo（类型定义待补齐），
+      // 此处仅做类型收敛，实际请求参数与运行时行为不变
+      const params = { orderNo: props.bizNo, page: 1, size: 1 } as unknown as Parameters<
+        typeof purchaseArrivalApi.getList
+      >[0]
+      const list = await purchaseArrivalApi.getList(params)
       arrivalDetail.value = list.records?.[0] ?? null
     }
   } catch {

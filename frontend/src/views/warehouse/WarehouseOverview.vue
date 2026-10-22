@@ -312,7 +312,6 @@ function getTrendChartOption(): EChartsOption {
   return {
     ...tooltipOption.value,
     tooltip: {
-      ...tooltipOption.value.tooltip,
       trigger: 'axis',
     },
     legend: {
@@ -381,7 +380,6 @@ function getPieChartOption(): EChartsOption {
   return {
     ...tooltipOption.value,
     tooltip: {
-      ...tooltipOption.value.tooltip,
       trigger: 'item',
       formatter: '{b}: ¥{c} ({d}%)',
     },
@@ -435,7 +433,6 @@ function getBarChartOption(): EChartsOption {
   return {
     ...tooltipOption.value,
     tooltip: {
-      ...tooltipOption.value.tooltip,
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
     },
@@ -491,7 +488,6 @@ function getIOChartOption(): EChartsOption {
   return {
     ...tooltipOption.value,
     tooltip: {
-      ...tooltipOption.value.tooltip,
       trigger: 'axis',
     },
     legend: {

@@ -332,7 +332,7 @@ export const purchasePlanApi = {
   async exportExcel(params: PurchasePlanQueryForm & { page?: number; size?: number }): Promise<void> {
     const query = new URLSearchParams()
     if (params.planNo) query.set('planNo', params.planNo)
-    if (params.status != null && params.status !== '') query.set('status', String(params.status))
+    if (params.status != null) query.set('status', String(params.status))
     if (params.keyword) query.set('keyword', params.keyword)
     const token = getToken()
     const resp = await fetch(`/api/v1/purchase/plans/export?${query.toString()}`, {

@@ -8,7 +8,7 @@
  * - 转换逻辑统一委托给 utils/money
  */
 
-import { fenToYuan, yuanToFen } from '@/utils/money'
+import { fenToYuan, fenToYuanNumber, yuanToFen } from '@/utils/money'
 import type {
   Food,
   FoodBackend,
@@ -332,8 +332,9 @@ export const productDataConverter = {
       isRequired: backend.isRequired ?? true,
       maxSelect: backend.maxSelect ?? 0,
       sortOrder: backend.sortOrder ?? 0,
-      unitPrice: fenToYuan(backend.unitPrice),
-      subtotal: fenToYuan(backend.subtotal),
+      // ComboIngredient.unitPrice/subtotal 声明为元（number），且表格侧调用 toFixed(2)
+      unitPrice: fenToYuanNumber(backend.unitPrice),
+      subtotal: fenToYuanNumber(backend.subtotal),
     }
   },
 

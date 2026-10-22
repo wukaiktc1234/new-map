@@ -9,6 +9,8 @@ export type PersonnelType = 'social' | 'school' | 'intern' | 'returnee'
 
 export interface OnboardingArchive {
   id?: number;
+  /** 员工工号（入职登记完成后由后端分配） */
+  employeeCode?: string;
   candidateName: string;
   email: string;
   phone?: string;

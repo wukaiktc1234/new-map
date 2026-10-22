@@ -29,6 +29,13 @@ const roleDisplayMap: Record<UserRole, string> = {
   [UserRole.REGION_MANAGER]: '区域经理',
   [UserRole.AUDITOR]: '稽查专员',
   [UserRole.EMPLOYEE]: '普通员工',
+  [UserRole.PURCHASE_MANAGER]: '采购部经理',
+  [UserRole.DEPARTMENT_MANAGER]: '部门经理',
+  [UserRole.WAREHOUSE_MANAGER]: '仓储部经理',
+  [UserRole.CASHIER]: '收银员',
+  [UserRole.POS_OPERATOR]: '点单操作员',
+  [UserRole.CHEF]: '厨师',
+  [UserRole.KITCHEN]: '后厨人员',
 }
 
 const orgLevelDisplayMap: Record<OrgLevel, string> = {

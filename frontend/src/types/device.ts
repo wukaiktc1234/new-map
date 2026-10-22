@@ -74,6 +74,8 @@ export interface DeviceInfo {
  * 设备表单数据（用于新建/编辑）
  */
 export interface DeviceFormData {
+  /** 设备ID（编辑时回填主键） */
+  deviceId?: number;
   /** 设备编号 */
   deviceCode: string;
   /** 设备名称 */
@@ -94,6 +96,12 @@ export interface DeviceFormData {
   location: string;
   /** 所属门店ID */
   storeId: number;
+  /** 安装日期 */
+  installDate?: string;
+  /** 维护周期（天） */
+  maintenanceCycle?: number;
+  /** 上次维护时间 */
+  lastMaintenanceDate?: string;
   /** 备注 */
   remark: string;
 }

@@ -113,7 +113,7 @@ function handleMoreAction(cmd: string) {
       <button class="action-btn action-btn--edit" title="编辑" @click="$emit('edit', node)">
         <el-icon :size="12"><Edit /></el-icon>
       </button>
-      <el-dropdown trigger="click" @command="(cmd) => handleMoreAction(cmd)">
+      <el-dropdown trigger="click" @command="(cmd: string) => handleMoreAction(cmd)">
         <button class="action-btn action-btn--more" title="更多操作" @click.stop>
           <el-icon :size="12"><MoreFilled /></el-icon>
         </button>

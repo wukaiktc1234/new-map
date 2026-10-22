@@ -155,6 +155,10 @@ export interface PurchaseStockinQueryForm {
   startDate?: string;
   /** 结束日期 */
   endDate?: string;
+  /** 采购订单号（后端支持模糊查询） */
+  orderNo?: string;
+  /** 供应商名称（后端支持模糊查询） */
+  supplierName?: string;
   /** 搜索关键词 */
   keyword?: string;
 }

@@ -109,6 +109,8 @@ export interface KnowledgeArticle {
 
 /** 知识库文章表单数据 */
 export interface KnowledgeArticleFormData {
+  /** 文章ID（编辑时回填主键） */
+  id?: string
   title: string
   summary: string
   category: KnowledgeCategory

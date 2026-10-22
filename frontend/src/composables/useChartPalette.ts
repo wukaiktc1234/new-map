@@ -104,14 +104,15 @@ export function formatWan(v: number, unit = ''): string {
 }
 
 /** 为柱状数组设置圆角（只对顶部两个角） */
-export function withBarRadius<T extends { itemStyle?: { borderRadius?: [number, number, number, number] } }>(
+export function withBarRadius<T extends object>(
   data: T[],
   radius = [6, 6, 0, 0] as [number, number, number, number]
 ): T[] {
+  // 约束放宽为 object：入参常见为 { value: number }[] 这类无 itemStyle 的弱类型
   return data.map(d => ({
     ...d,
     itemStyle: {
-      ...(d.itemStyle ?? {}),
+      ...((d as { itemStyle?: Record<string, unknown> }).itemStyle ?? {}),
       borderRadius: radius,
     },
   }))

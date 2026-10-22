@@ -506,6 +506,8 @@ export interface EmployeeContract {
 
 /** 合同表单数据 */
 export interface ContractFormData {
+  /** 合同ID（编辑时回填主键） */
+  id?: string
   employeeId: string
   contractType: ContractType
   contractNo: string
@@ -1092,6 +1094,8 @@ export interface ContractTemplate {
 
 /** 合同模板表单数据 */
 export interface ContractTemplateFormData {
+  /** 模板ID（编辑时回填主键） */
+  id?: string
   templateCode: string
   templateName: string
   contractType: ContractType

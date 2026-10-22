@@ -73,8 +73,8 @@ export interface ElectronicContractInfo {
 export interface ElectronicContractQueryForm {
   /** 电子合同编号 */
   eContractNo?: string;
-  /** 状态 */
-  status?: ElectronicContractStatus | null;
+  /** 状态（'' 表示不筛选，与搜索表单空选项对齐） */
+  status?: ElectronicContractStatus | '' | null;
   /** 供应商ID */
   supplierId?: string;
   /** 开始日期 */

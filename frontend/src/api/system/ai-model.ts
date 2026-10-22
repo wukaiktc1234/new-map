@@ -12,6 +12,7 @@ import type {
   AIModelQueryParams,
   AIModelPageResponse,
   AIModelStatistics,
+  AIModelTestResult,
 } from '@/types/ai-model'
 
 export const aiModelApi = {
