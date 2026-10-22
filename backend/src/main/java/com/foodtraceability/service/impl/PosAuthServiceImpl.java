@@ -67,6 +67,17 @@ public class PosAuthServiceImpl implements PosAuthService {
      * 与 POS 控制器白名单对齐：ROLE_ADMIN / ROLE_STORE_MANAGER / ROLE_CASHIER / ROLE_POS_OPERATOR。
      * owner 由 admin 同级授权一并放行（超级管理员）。
      */
+    /** POS 终端基础权限集：终端运行必需、且部分码未入 DB 目录的业务码；另含菜品只读三码。 */
+    private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiableList(Arrays.asList(
+            "pos:order:create", "pos:order:pay", "pos:order:query",
+            "pos:member:query", "pos:member:recharge", "pos:member:consume",
+            "pos:menu:query", "pos:shift:manage", "pos:yolo:recognize",
+            "member:manage",              // MemberController：POS 收银员需要充值/消费
+            "product:food:view",          // FoodController（/v1/product-center/foods）
+            "product:category:view",      // CategoryController
+            "product:combo:view"          // ComboController
+    ));
+
     private static final Set<String> POS_ALLOWED_ROLE_CODES =
             Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
                     "admin", "owner", "store_manager", "cashier", "pos_operator")));
@@ -303,38 +314,71 @@ public class PosAuthServiceImpl implements PosAuthService {
         securityUser.setMfaEnabled(false);
         securityUser.setMfaVerified(true);
 
-        // 解析角色 JSON 列表
+        // 2026-10-15 修复：角色改用授权权威源 user_roles → roles.role_id_str（如 ROLE_STORE_MANAGER /
+        // ROLE_CASHIER）。原实现读 users.roles（存的是数字角色 ID，如 ["9"] / ["4216"]），
+        // 导致签发的 token 里角色变成 ROLE_9 / ROLE_4216，POS 控制器类级
+        // hasAnyAuthority('ROLE_ADMIN','ROLE_STORE_MANAGER','ROLE_CASHIER','ROLE_POS_OPERATOR','*') 全部落空。
         List<String> roles = new ArrayList<>();
         try {
-            if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-                roles = objectMapper.readValue(user.getRoles(), new TypeReference<List<String>>() {});
+            List<String> dbRoles = userMapper.getUserRoles(user.getId());
+            if (dbRoles != null) {
+                for (String role : dbRoles) {
+                    if (role != null && !role.isBlank()) {
+                        roles.add(role.trim());
+                    }
+                }
             }
         } catch (Exception e) {
-            logger.warn("解析用户角色JSON失败: userId={}, roles={}, error={}", user.getId(), user.getRoles(), e.getMessage());
+            logger.warn("读取 user_roles 角色失败，回退 users.roles JSON: userId={}, error={}", user.getId(), e.getMessage());
+        }
+        // 回退：user_roles 无行时才用 users.roles JSON（历史兼容，数字 ID 无法转 authority，仅作兜底记录）
+        if (roles.isEmpty()) {
+            try {
+                if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+                    roles = objectMapper.readValue(user.getRoles(), new TypeReference<List<String>>() {});
+                }
+            } catch (Exception e) {
+                logger.warn("解析用户角色JSON失败: userId={}, roles={}, error={}", user.getId(), user.getRoles(), e.getMessage());
+            }
         }
         // admin 用户默认拥有 admin 角色
         if ((roles.isEmpty() || roles.stream().noneMatch(r -> "admin".equalsIgnoreCase(r)))
                 && "admin".equalsIgnoreCase(user.getUsername())) {
-            roles = Collections.singletonList("admin");
+            roles = new ArrayList<>(Collections.singletonList("admin"));
         }
         securityUser.setRoles(roles);
 
         // VULN-02 修复：不再给所有 POS 用户通配符权限 "*"，遵循最小权限原则。
         // admin 用户保留 "*" 以兼容管理端 hasAuthority('*') 检查；
-        // 非 admin 用户仅授予 POS 终端业务所需的最小权限集合。
-        // 退款等敏感操作由 @PreAuthorize 在方法级强制校验角色（ROLE_ADMIN/ROLE_MANAGER）。
+        // 非 admin 用户 = DB 真实权限（user_permissions + role_permissions） ∪ POS 终端基础集。
+        //
+        // 2026-10-15 修复：原实现给的是**硬编码清单**，完全不读 DB 授权，导致
+        //   ① 菜品/分类/套餐读取所需的 product:food:view / product:category:view / product:combo:view
+        //      一律缺失 → POS 首页「菜品无法查看」并返回
+        //      GlobalExceptionHandler 的 403「权限不足，无法访问该资源」；
+        //   ② 角色被当成权限塞进 authorities（"ROLE_CASHIER"/"ROLE_POS_OPERATOR" 字面量），
+        //      而真实角色反而缺失。
+        // 现有 POS 基础集只保留终端运行必需、且可能不在 DB 目录里的 pos:* 业务码 + 菜品只读三码。
         boolean isAdmin = roles.stream().anyMatch("admin"::equalsIgnoreCase)
                 || (user.getUsername() != null && user.getUsername().equalsIgnoreCase("admin"));
         if (isAdmin) {
             securityUser.setPermissions(Collections.singletonList("*"));
         } else {
-            securityUser.setPermissions(java.util.Arrays.asList(
-                    "ROLE_CASHIER", "ROLE_POS_OPERATOR",
-                    "pos:order:create", "pos:order:pay", "pos:order:query",
-                    "pos:member:query", "pos:member:recharge", "pos:member:consume",
-                    "pos:menu:query", "pos:shift:manage", "pos:yolo:recognize",
-                    "member:manage" // 兼容 MemberController @PreAuthorize，POS 收银员需要充值/消费
-            ));
+            LinkedHashSet<String> permissions = new LinkedHashSet<>();
+            try {
+                List<String> direct = userMapper.getUserPermissions(user.getId());
+                if (direct != null) {
+                    permissions.addAll(direct);
+                }
+                List<String> fromRoles = userMapper.getUserRolePermissions(user.getId());
+                if (fromRoles != null) {
+                    permissions.addAll(fromRoles);
+                }
+            } catch (Exception e) {
+                logger.warn("读取用户 DB 权限失败，仅使用 POS 基础集: userId={}, error={}", user.getId(), e.getMessage());
+            }
+            permissions.addAll(POS_BASE_PERMISSIONS);
+            securityUser.setPermissions(new ArrayList<>(permissions));
         }
 
         return securityUser;
