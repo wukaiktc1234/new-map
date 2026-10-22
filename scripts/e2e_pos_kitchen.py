@@ -416,8 +416,8 @@ def main():
     p.add_argument("--pay-method", default="cash", help="支付方式：cash/wechat/alipay/card")
     p.set_defaults(pay=True)
     p.add_argument("--kitchen-order", default=None, help="只对指定后厨单（KO...）跑流转，跳过下单/绑定")
-    p.add_argument("--chef-id", type=int, default=1, help="后厨接单必填：厨师ID")
-    p.add_argument("--chef-name", default="E2E-CHEF", help="后厨接单必填：厨师姓名")
+    p.add_argument("--chef-id", type=int, default=2080155339590037512, help="后厨接单必填：厨师ID，必须是 employees.employee_id 真实存在的员工（外键 fk_ftc_chef_id 会校验）")
+    p.add_argument("--chef-name", default="员工J", help="后厨接单必填：厨师姓名")
     args = p.parse_args()
 
     DEFAULT_BASE = args.base
