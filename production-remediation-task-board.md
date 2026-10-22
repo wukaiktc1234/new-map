@@ -8631,3 +8631,19 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 状态 | **登记项，本轮未改任何代码** —— Owner 指示「报告出来之前不要动 POS 那 40 处」 |
 | 待裁决 | ① B1/B2 是否补 seed 迁移把 286 码入目录 ② B3 的 34 码：补码入库 or 至少补 `or hasAuthority('*')` 让 admin 可操作 ③ A 类 `ROLE_MANAGER` → `ROLE_STORE_MANAGER`？ ④ C 类 4 个码：补建角色 or 并入 `store_manager`/`employee` |
 | 关联 | §24.13a N30 / §24.14a P1-AUTH-CHAIN-001-B / §24.16a N32 / §24.10a P1-AUTH-CHAIN-001 |
+
+### §24.16a N32（工具化）：全仓注解权限字面量 × 活库核对器（2026-10-15 交付）
+
+| 项 | 内容 |
+|----|------|
+| 交付物 | `scripts/scan_auth_annotations.py`（412 行，Python 3，零第三方依赖） |
+| 覆盖注解 | `@PreAuthorize` / `@PostAuthorize` / `@Secured` / `@RolesAllowed` / `@RequiresPermission` / `@RequiresPermissions` |
+| 解析能力 | 括号配对（字符串内括号不计）→ SpEL 取词（正确处理源码 `\'` 转义）→ 提取 `hasRole/hasAnyRole/hasAuthority/hasAnyAuthority` 实参 → 排除 `'*'`/空串/`$`/`#{`/`+` 拼接 → 跳过注释行里的示例注解 |
+| 比对基准 | `roles.role_code` ∪ `roles.role_id_str`（归一化）+ `permissions.permission_code`；输出 A/B/C 三类 + 四类位置错配标记 |
+| 输出 | Markdown（总览/分类表/逐条位置）+ JSON（逐条机器可读，含 `has_star` 兜底标志）双份 |
+| 落位说明 | 初版放 `tools/` 被 `.gitignore:123` 的 `tools/` 规则忽略 → 已迁至 `scripts/`（`c43924a`）；报告内复现命令同步 |
+| 复跑方式 | `--psql <psql.exe> --dbname ... --dbuser ...` 直连活库；或 `--snapshot snap.json`（含 `role_codes`/`permission_codes`）离线跑，便于 CI |
+| 确定性 | 同输入同输出（不含时间戳），可入 CI 做回归门禁 |
+| 已知边界 | ① 只做静态字面量比对，不判断业务语义（如"经理"该映射哪个角色） ② `AdminPermissions.ALL` 单独解析，不参与 A/B/C 分类 ③ 不解析跨行拼接的注解（本仓当前 0 处） |
+| 首次产出 | 2526 条字面量 / VALID 1461 / A 12 / B 1031 / C 22（见 §24.15a N31 与报告） |
+| 状态 | **已交付**，随 N31 治理与后续清洗复用 |
