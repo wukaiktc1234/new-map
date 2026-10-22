@@ -8616,3 +8616,18 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 > **结论**：A 卡交验通过（编译 0 / 新测 15 全绿 / 全量无新增失败）。全量红是既存基线（日期相关断言如 `CR202610220001` vs `CR20260626`、`SystemSettings*` ApplicationContext 加载失败、Position/FoodCode 生成器逻辑、若干 NPE），与鉴权链路无关，未在本卡处理
 >
 > **未做（按裁决留待后续）**：B 卡幻码改名与数据清洗、C 卡单向化、`hasRole('ROLE_ADMIN')` 4 处（归一后可命中，但属注解字面调整）
+
+### §24.15a N31（注解位幻码）：鉴权注解引用的角色/权限标识在 DB 中不存在（2026-10-15 登记，Owner 发现并指示全仓扫描）
+
+| 项 | 内容 |
+|----|------|
+| 与 N30 的本质区别 | N30 是**写法**问题（大小写 / `ROLE_` 前缀），A 卡 `RoleCodeNormalizer` 归一化即可解；**N31 是「标识本身不存在」**，任何归一化都无解 —— 必须改注解字面量或补 DB 目录/角色 |
+| 规模（N32 扫描器实测，2526 条字面量） | **A 角色幻码 12 处**（`ROLE_MANAGER`，近邻 `store_manager`/`region_manager`/`finance_manager`）；**B 权限码幻码 1031 处 / 286 个不同码**；**C 完全未定义 22 处**（`ROLE_CASHIER` 6 / `ROLE_POS_OPERATOR` 6 / `ROLE_CHEF` 5 / `ROLE_KITCHEN` 5） |
+| 位置错配 | `ROLE_IN_AUTHORITY_POSITION` **46 处**（= `ROLE_ADMIN` 12 有效 + 34 幻码）；`PERMISSION_IN_ROLE_POSITION` **0**；`BARE_ROLE_IN_AUTHORITY_POSITION` **0** → 不存在"裸角色码写进 hasAuthority"的写法 |
+| B 类按可达性分层 | ① 注解内有 `hasAuthority('*')` 兜底 **568 处** → 仅 admin 可过 ② 无兜底但码在 `AdminPermissions.ALL` **396 处** → 仅 admin 可过 ③ 两者皆无 **67 处 / 34 个码 → 任何人都进不去（含 admin）** |
+| 死路 34 码（无人可达） | `backup:config/create/delete/download/query/restore`、`notification:deadletter:{delete,query,retry}`、`notification:event:test`、`notification:message:{query,send}`、`notification:setting:{edit,query}`、`notification:statistics:query`、`notification:template:{create,delete,edit,query}`、`scheduler:task:{create,delete,edit,query,trigger}`、`label:template:{print,view}`、`file:query`、`product:analysis:{export,view}`、`system:stats:view`、`warehouse:location:delete`、`finance:receipt:{delete,edit}`、`admin:user:export` |
+| 四象限缺口 | 注解引用但目录缺失 **286** 码；`AdminPermissions.ALL` 有但目录无 **256** 码（admin 实际靠硬编码白名单，与 DB 目录已严重分叉）；目录有但注解从未引用 **46** 码；目录有但从未授予任何角色 **2** 码；`role_permissions` 孤儿授权 **2** 行 |
+| 证据文件 | `docs/audit/auth-annotation-literal-audit-001.md`（报告）、`-raw.md`（1435 行分类明细）、`.json`（逐条机器可读） |
+| 状态 | **登记项，本轮未改任何代码** —— Owner 指示「报告出来之前不要动 POS 那 40 处」 |
+| 待裁决 | ① B1/B2 是否补 seed 迁移把 286 码入目录 ② B3 的 34 码：补码入库 or 至少补 `or hasAuthority('*')` 让 admin 可操作 ③ A 类 `ROLE_MANAGER` → `ROLE_STORE_MANAGER`？ ④ C 类 4 个码：补建角色 or 并入 `store_manager`/`employee` |
+| 关联 | §24.13a N30 / §24.14a P1-AUTH-CHAIN-001-B / §24.16a N32 / §24.10a P1-AUTH-CHAIN-001 |
