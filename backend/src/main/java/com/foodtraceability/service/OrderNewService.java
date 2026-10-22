@@ -76,6 +76,19 @@ public interface OrderNewService {
     void completeOrder(String orderId);
 
     /**
+     * 由后厨完成链路触发的主订单完成（2026-10-23 状态机闭环）。
+     *
+     * <p>与 {@link #completeOrder(String)} 的区别：<b>不扣减库存、不写成本</b>。
+     * 扣料与成本由 {@code deductMaterialsForServe} 负责（口径 A：完成制作即扣料），
+     * 两者同时调用会导致同一份库存被扣两次。</p>
+     *
+     * <p>职责：未确认订单先置「已确认」→ 置「已完成」→ 解锁桌台。幂等。</p>
+     *
+     * @param orderId 主订单 ID
+     */
+    void markCompletedFromKitchen(String orderId);
+
+    /**
      * 根据ID获取订单详情
      * @param orderId 订单ID
      * @return 订单视图对象（含明细和支付记录）
@@ -90,21 +103,19 @@ public interface OrderNewService {
     Page<OrderVO> queryOrders(OrderQueryDTO queryDTO);
 
     /**
-     * 分页查询POS终端订单（orders_legacy 表）
-     * 专门查询POS收银端创建的订单，与 queryOrders（查询 orders 表）互补。
-     * 内部完成订单状态/支付方式/金额单位（元→分）的映射转换，
-     * 返回的 OrderVO 与管理端订单格式一致，前端无需额外处理。
-     * @param queryDTO 查询条件（orderCode/orderStatus/startTime/endTime 等）
+     * 分页查询POS终端订单（orders 表，canonical read）
+     * W1-EC-04C: 从 orders_legacy 迁移到 orders 表。
+     * orders 表已包含所有订单（POS端+管理端），order_status/payment_status 为 canonical 值。
+     * @param queryDTO 查询条件（orderCode/orderStatus/startTime/endTime/storeId 等）
      * @return 分页结果（OrderVO 列表）
      */
     Page<OrderVO> queryPosOrders(OrderQueryDTO queryDTO);
 
     /**
      * 根据订单编号获取POS终端订单详情（含菜品明细）
-     * 专门查询POS收银端创建的订单（orders_legacy + order_items_legacy）。
-     * 内部完成订单状态/支付方式/金额单位（元→分）的映射转换，
-     * 返回的 OrderVO 与管理端订单格式一致，包含 items 列表用于数据追溯。
-     * @param orderNumber 订单编号（如 T20260713002），非订单ID
+     * W1-EC-04C: 从 orders_legacy + order_items_legacy 迁移到 orders + order_items（canonical read）。
+     * orders 表已包含所有订单（POS端+管理端），order_status/payment_status/orderType 为 canonical 值。
+     * @param orderNumber 订单编号（如 ORD20260713002），非订单ID
      * @return 订单视图对象（含明细）
      */
     OrderVO getPosOrderDetail(String orderNumber);
@@ -160,6 +171,17 @@ public interface OrderNewService {
      * @return 趋势数据 Map
      */
     Map<String, Object> getOrderTrends(String startDate, String endDate, String granularity);
+
+    /**
+     * KDS 出餐时扣减原料库存（P0 严格版：禁止任何"部分跳过后静默成功"）
+     * 幂等：通过 kitchenOrder.materialConsumed 原子占位防止重复扣减
+     * 原子性：所有应扣原料在同一事务内扣减，任一原料失败 → 整体失败（MaterialDeductionFailureException），
+     *         主事务回滚、material_consumed 恢复 0，并由独立 REQUIRES_NEW 事务写入 FAILED 审计行
+     * @param kitchenOrderId 后厨订单ID
+     * @param sourceRef 来源引用（写入库存流水）
+     * @param trayCode 触发服务时的托盘码（可空，写入失败审计行）
+     */
+    void deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode);
 
     /**
      * 按日期分组统计（聚合 orders + orders_legacy 两表数据）

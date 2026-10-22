@@ -514,6 +514,40 @@ public class OrderNewServiceImpl implements OrderNewService {
     }
 
     /**
+     * 2026-10-23 状态机闭环：后厨完成链路触发的主订单完成。
+     *
+     * <p><b>不扣库存、不写成本</b>——扣料由 deductMaterialsForServe 负责（口径 A），
+     * 两处同时扣会命中同一份库存造成双扣。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void markCompletedFromKitchen(String orderId) {
+        if (orderId == null || orderId.isBlank()) {
+            log.warn("后厨完成联动：orderId 为空，跳过主订单更新");
+            return;
+        }
+        OrderNew order = orderNewMapper.selectById(orderId);
+        if (order == null) {
+            log.warn("后厨完成联动：主订单不存在，跳过, orderId={}", orderId);
+            return;
+        }
+        Integer status = order.getOrderStatus();
+        if (status != null && status == 2) {
+            log.info("后厨完成联动：主订单已是已完成，幂等跳过, orderId={}", orderId);
+            return;
+        }
+        // 未确认（0）先置已确认（1），再置已完成（2），保持状态单调推进
+        if (status != null && status == 0) {
+            orderNewMapper.updateStatus(orderId, 1);
+            log.info("后厨完成联动：主订单待确认 → 已确认, orderId={}", orderId);
+        }
+        orderNewMapper.updateStatus(orderId, 2);
+        diningTableNewMapper.unlockTableByOrderId(orderId);
+        log.info("后厨完成联动：主订单已置已完成并解锁桌台, orderId={}, paymentStatus={}",
+                orderId, order.getPaymentStatus());
+    }
+
+    /**
      * 持久化订单成本到 cost_record 表（DF-009 修复）
      * 同步同事务写入，确保成本数据不丢失
      * @param order 订单实体
