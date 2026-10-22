@@ -78,3 +78,71 @@
 - `listener/HREventListener.java:43-53,80-110,136-186`：NumberFormatException 只 warn 后跳过 → 职位/部门ID 格式错误静默不同步。
 - `service/impl/OrderLifecycleServiceImpl.java:118`（**核心状态机红线，未改**）：javadoc 仍描述「监听器 recordOrderCost 会再写一条成本」，该方法已于本批次删除 → 注释过时，请 Owner 自行更新。
 - 保留不动的可容忍降级（有明确 ADR/注释依据）：SalaryPaidEventListener:74-107（ADR-004）、ReceiptConfirmationServiceImpl:754-783（SR-7）、scheduler/BackupHealthChecker:394-397（fail-closed 方向正确）、PurchaseOrderCleanupTask:33-35、BackupTaskScheduler:181,233。
+### 批次 3 — 雷达 1（静默吞异常·无日志优先）· 提交 `20adc43`
+
+7 文件 10 处「catch 完全静默（无 log 无 throw）」→ 显式 log.error / log.warn，**不改方法签名与返回契约**（mapper/config/printer/driver 层抛异常会炸启动或整条链路，故只硬化日志）：
+
+| 文件:行 | 静默吞掉的后果 |
+|---------|---------------|
+| config/handler/JsonbListTypeHandler.java:70 | JSONB 反序列化失败静默返回空列表 → **追溯码列表凭空清空且无任何日志** |
+| service/VoucherNoGenerator.java:95 | 凭证流水号解析失败静默 return 0 → 期间内凭证重号（违反连续唯一） |
+| config/KitchenOrderMigrationConfig.java:97 | 列探测失败静默 return false（=当作迁移未执行）→ 重跑迁移/重复 ALTER |
+| runner/PermissionInitRunner.java:69,136,176 | 权限初始化/插入/admin 授权失败只 `System.err` → 不进日志体系，应用照常启动 |
+| driver/TsplLabelPrinterDriver.java:1037 | 标签尺寸参数非法静默取默认 → 版式错但算打印成功 |
+| config/PositionRoleMappingInitConfig.java:140 | 查职位ID异常只 warn 无异常 → 职位-角色映射静默缺失 |
+| printer/XprinterSdkService.java:275,287 | 打印元素 mm/边框参数解析失败静默取默认 |
+
+验证：`mvn -o compile` **BUILD SUCCESS**；仅 7 文件入库（Owner WIP 的 `CorsConfig.java` 未入）。
+
+**发现但未修**：`service/PosOrderNumberGenerator.java:136-141`（WIP）MAX 序号解析失败静默归零 → 可能生成重复 order_code；`config/SchemaFixMigration.java:71-74` 表存在性探测失败降为 debug 且当「表不存在」；`config/WebSocketConfig.java:79-90` STOMP 鉴权 catch 后 return null（fail-closed，鉴权语义只报不改）。
+
+### 批次 4 — 雷达 2 + 雷达 3 审计交付 · 提交 `947cf80`
+
+产出：`docs/night-patrol/radar2-schema-drift-report.md`(318 行) / `radar3-dirty-data-report.md`(189 行) + `scripts/night-patrol/` 7 个脚本（01–07）。
+
+**雷达 2 实测结论（Lead 已用 psql 独立复核）**
+| 项 | 实测 |
+|----|------|
+| @TableName 指向不存在对象 | **67 处**（其中 40 处 Mapper 已被 Controller 链路注入） |
+| 根因 | 64 处**在 222 个 Flyway 脚本中从来没有 CREATE TABLE**；3 处有迁移且 success=t，但数据躺在手工建的 `*_legacy` 表 |
+| 单复数并存 | 18 对，其中 6 对**代码读写的是空表** |
+| 双表行数（Lead psql 复核） | `food_trace_codes` 0 / `food_trace_code` 14；`dish_recipe` 0 / `dish_recipes` 12；`food_category` 0 / `food_categories` 9；`recharge_plans` 0 / `recharge_plan` 496；`cost_record` 0 / `cost_records` 33；`order_material_requirement` 0 |
+| `trays` 表 | **根本不存在**（STATUS.md TECH-DEBT-001 记载有误，实际只有 `tray` 13 行） |
+
+**雷达 3 实测结论**
+- DATA-006 的 10 条 `amount=0` 财务流水：仍 `deleted=0`，对应 10 个 order_code 在 `orders` 全部命中且 `payment_status=2`。
+- **更严重的连带发现**：`orders` 里 **25 条已支付订单的 `actual_amount` 100% 为 0.00**（`final_amount = total_amount` 25/25、真 0 元订单 0 条）→ **此时软删流水等于掩盖缺口而非修复**。
+- 其他：`cost_records.remark` 含字面 ` - null` 25 行；`food_trace_code.dish_name` 空 8/14 行；`tray.store_id IS NULL` 2 行（挂 141/143 在途厨单）；`kitchen_order material_consumed=1` 21 单但 `order_material_requirement` **全表 0 行**（扣料明细从未落库）；孤儿引用 0。
+
+**脚本安全性（Lead 独立复核）**：7 个脚本剥离注释后 `destructive=0 / writes=0`（连 UPDATE/INSERT 都只在注释内），全部实跑 exit=0。
+
+### 批次 5 — 雷达 2 自动化闸门 · 提交 `5491cda` + `7dfd3fa`
+
+新增 `scripts/check-table-name-exists.py`（237 行）+ `docs/night-patrol/schema-drift-baseline.md`（69 项基线）。
+
+**为什么要新写一个**：既有 `scripts/check-schema-alignment.py` 有两个盲区 —— ① 只扫 `entity/*.java` 顶层，漏掉 `entity/finance`、`entity/marketing`、`entity/approval` 等子包；② 只比「实体 vs Flyway CREATE TABLE」，比不到活库真实对象，也发现不了「数据在手工 legacy 表」。
+
+**实测输出**：370 处 @TableName / 312 表 / 4 视图 → 命中表 300、**命中视图 1**（`DiningTable → dining_table`，视图可读不可写，任何写操作必失败）、缺失 65、单复数错侧 4（`Budget`/`Receivable`/`SalaryRecord`/`CostAllocationRule` 读单数空表而数据在复数表 —— 这 4 对是雷达2 报告未覆盖的，由闸门的单复数启发式新发现）。
+
+**闸门语义**：基线内 69 项不触发失败；**基线外新增即 exit 1**；`--update-baseline` 需 Owner 批准后使用。
+
+**踩坑登记**：基线最初写成 `.txt` → 被 `.gitignore:238` 的全局 `*.txt` 规则忽略，无法入库；改用 `.md`（不改 .gitignore，遵守 ENV-4 红线）。
+### 批次 6 — 雷达 4（业务边界·第二批）· 提交 `0ded263`
+
+5 文件 6 处：
+
+| 文件:行 | 问题 |
+|---------|------|
+| service/finance/impl/AccountingSubjectServiceImpl.java:166 | `Integer status == 1` 拆箱 NPE（`accounting_subjects.status` nullable） |
+| service/trace/impl/FoodTraceabilityServiceImpl.java:468 | 追溯码风险重算漏判空（同文件 :433 已判） |
+| service/finance/impl/BudgetServiceImpl.java:92-94,161-171 | `budgets.actual_amount`/`budget_amount` nullable 拆箱 NPE 三处 → 统一提 `long`（顺带消掉除零可能） |
+| service/finance/impl/PayableServiceImpl.java:284-293,419-427 | YR/YF 应付号尾段 `substring(len-4)`+`parseInt` 无长度判断/无 try → NFE / SIOOBE 500（同文件 :302-318 早已有同构守卫） |
+| service/finance/impl/ReceivableServiceImpl.java:284-293 | YS 应收号同构缺陷 |
+
+验证：`mvn -o compile` **BUILD SUCCESS**；仅 5 文件入库（`BankAccountServiceImpl` 等 5 个 Owner WIP 未入）。
+
+**发现但未修**：`BankAccountServiceImpl.java:303`（WIP，同族拆箱 NPE）；`MaterialRequestServiceImpl`/`PurchasePlanServiceImpl` 共 11 处 `getStatus() != STATUS_*` —— psql 确认两表 status 均 `NOT NULL`，DB 路径不可达，按「不引入回归」未改；`PurchasePlanServiceImpl:448/385` 的状态码属采购自有体系，**不能**替换成 `OrderStatusCodes`（不同表口径）。
+
+## 3. 复核（reviewer）与收口
+
+（待 reviewer 结论回填）

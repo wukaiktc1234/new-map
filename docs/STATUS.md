@@ -67,3 +67,48 @@
 3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–006）。
 4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.24a）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
+
+## 6. 夜间自主巡航（2026-10-23，分支 `ai-night-patrol-1`）· 只增不改追加段
+
+> 性质：Owner 休息期间的无人值守扫描结果。**本节不改动上方任何既有结论**；与上文冲突处以本节实测为准，并已在上文对应条目下留指针（若未留指针，以本节为准）。
+> 详细日志：`NIGHT_PATROL_LOG.md`；雷达报告：`docs/night-patrol/radar2-schema-drift-report.md` / `radar3-dirty-data-report.md`。
+
+### 6.1 已修复并提交（8 个提交，全部 `mvn -o compile` BUILD SUCCESS）
+
+| 批次 | 提交 | 内容 |
+|------|------|------|
+| 1 | `b746e66` | 雷达4：7 文件 9 处空安全/边界（Integer 拆箱 NPE×3、IpUtils 内网判定 AIOOBE+NFE、JwtUtil 无 exp NPE×2、DesensitizeUtils switch null、ImageUploadUtils file null、FinanceAssetController assetId null→500 与 months=12.0→400 误报） |
+| 2 | `d1c1f9d` | 雷达1：6 文件 7 处假成功 + **CODE-007 已删除**（`OrderCompletedEventListener.recordOrderCost` 死代码） |
+| 3 | `20adc43` | 雷达1：7 文件 10 处无日志静默吞异常（JsonbListTypeHandler 追溯码解析静默清空、VoucherNoGenerator 凭证重号、PermissionInitRunner 只进 System.err 等） |
+| 4 | `947cf80` | 雷达2+3：2 份审计报告 + 7 个只读 SQL 脚本（剥离注释后零写语句） |
+| 5 | `5491cda`+`7dfd3fa` | 新增 `scripts/check-table-name-exists.py` 自动化闸门 + 69 项漂移基线 |
+| 6 | `0ded263` | 雷达4 第二批：5 文件 6 处（Budget/Payable/Receivable/AccountingSubject/FoodTraceability 拆箱 NPE 与编号解析崩溃） |
+
+**未入库说明**：工作区 448 M / 91 ?? 的 Owner WIP 全程未暂存；每批次均用 `git diff --cached --numstat` 复核仅含本批文件。带 WIP 的同族缺陷一律「只报不改」。
+
+### 6.2 对既有条目的实测更正（TECH-DEBT-001 / DATA-006）
+
+| 原记载 | 实测更正 |
+|--------|----------|
+| TECH-DEBT-001「`tray` / `trays` 双表并存」 | **`trays` 表根本不存在**（`information_schema` 实测），只有 `tray` 13 行 |
+| TECH-DEBT-001「`order_material_requirement` 属双表残留」 | 不是双表：该表**存在但全表 0 行**，且 21 张 `material_consumed=1` 的厨单对应扣料明细**从未落库** |
+| TECH-DEBT-001 未提及 `food_trace_codes` / `dish_recipe` / `food_category` / `recharge_plans` | 这 4 对是**代码读写的是空表**（0 行），真数据在单数/复数另一侧（14 / 12 / 9 / 496 行）——严重度高于原记载 |
+| DATA-006「10 条 0 元流水建议软删」 | **不建议直接软删**：10 条对应订单均已支付且真实存在；同时 `orders` 里 **25 条已支付订单 `actual_amount` 全为 0.00**（`final_amount=total_amount` 25/25、真 0 元订单 0 条）→ 软删只是掩盖金额未写回的缺口 |
+
+### 6.3 新增待裁决项（建议 Owner 优先看这 4 条）
+
+| 编号 | 问题 | 建议 |
+|------|------|------|
+| **SCHEMA-DRIFT-001** | `@TableName` 指向活库不存在对象 **65 处 + 单复数错侧 4 处**；其中 40 处 Mapper 已被 Controller 链路注入 → 查询返回空、写入静默失败，**日志里没有任何痕迹** | 按 `scripts/check-table-name-exists.py` 的清单逐条定：修 @TableName / 补 Flyway / 或登记基线。基线已建（69 项），**基线外新增即 exit 1**，可先接进收口流程防扩散 |
+| **SCHEMA-DRIFT-002** | `DiningTable` 实体 `@TableName("dining_table")` 指向的是**视图**（可读不可写）→ 任何 save/update 必失败 | 确认是否应改为写基表；同时呼应 DATA-004（`dining_tables` 0 行） |
+| **FIN-AMOUNT-001** | 25 条已支付订单 `actual_amount=0.00` | 先修金额写回，再决定 DATA-006 是否软删；`scripts/night-patrol/05-*` 已备好对账三段 |
+| **DATA-007** | `cost_records.remark` 含字面 `" - null"` 25 行；`food_trace_code.dish_name` 空 8/14 行 | `scripts/night-patrol/02-*` / `03-*` 已备（默认只预览，变更段封在 `[OWNER-EXECUTE]` 注释内） |
+
+### 6.4 明确「不敢修」的项（红线或需 Owner 决策）
+
+- `OrderLifecycleServiceImpl.java:116-119` javadoc 仍描述已删除的 `recordOrderCost`（**核心状态机红线**，仅注释问题，留 Owner）。
+- `interceptor/PermissionInterceptor.java:123` `permission.getStatus() == 1` 无判空 —— 鉴权链路 NPE，但「null 视为禁用」属授权语义，**权限底层红线不碰**。
+- `service/impl/MaterialTraceCodeServiceImpl.java:441-453` 组装 `Inventory` 后**从未落库**，只打「更新门店库存」日志 —— 比吞异常更彻底的假成功，属功能缺口（`InventoryService` 无对应写入方法），需 Owner 定接口。
+- `scheduler/MonthlyClosingScheduler.java:67-122` 成本结转/折旧金额写死 `0L`、账龄更新空 TODO，日志却打印「月末结账任务完成」；`scheduler/impl/DefaultTaskExecutor.java:90-133` 用 `Thread.sleep(100)` 模拟备份却返回 success —— 均为结构性假成功，接真实服务属新增依赖，需立卡。
+- 带 Owner WIP 的 6 处同族缺陷（`PosOrderNumberGenerator:136-141` 序号归零→重复 order_code、`PurchaseOrderServiceImpl:242-249` 静默 null 供应商、`PosOrderQueryServiceImpl:226-233` 详情转换失败仍 success、`OrderTimeoutTask:102,134-136` private 方法上的 @Transactional 失效、`BankAccountServiceImpl:303`、`SchemaFixMigration:71-74` debug 降级）—— **只报不改**，待 Owner WIP 落定后处理。
+
