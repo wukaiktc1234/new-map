@@ -19,7 +19,7 @@
 | B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **23 个类 / 263 个用例全绿**，每类一提交 |
 | C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
 | A | API 契约静态比对报告 | **本轮收口** | `docs/night-patrol/api-contract-diff.md`（232 行）：2057 端点 / 944 调用点 / 配对 898（95%），发现 58 条（高危 14 / 中低 16 / 类型精度 10 / 待确认 8） |
-| D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
+| D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行）；另发现 3 个零引用枚举，**保留待裁**（见 §5） |
 
 ## 2. 已完成任务（按提交序）
 
@@ -51,7 +51,8 @@
 | B-20 | `3e47d78` | `CaptchaServiceImplTest`（10 用例：生成/缓存、5 次锁定、大小写不敏感、失败计数递增、脏计数容错） | 10/0/0 |
 | B-21 | `469750d` | `InventoryAdjustServiceImplTest`（15 用例：创建/查询、审批历史三步、草稿闸门、执行增减与类型映射；特征化"表头 vs 明细金额口径不一致"） | 15/0/0 |
 | B-22 | `827500b` | `NotificationPreferenceServiceImplTest`（10 用例：upsert 双分支、唯一键冲突回退/重抛、默认开启语义、16 条默认偏好、批量） | 10/0/0 |
-| B-23 | 本次 | `ReportConfigServiceImplTest`（9 用例：缓存命中/副本/隔离、upsert 双分支、保存后失效、默认 5 键） | 9/0/0 |
+| B-23 | `16d498c` | `ReportConfigServiceImplTest`（9 用例：缓存命中/副本/隔离、upsert 双分支、保存后失效、默认 5 键） | 9/0/0 |
+| A-2 | 本次 | `docs/night-patrol/code-quality-performance-report.md`（4 条 P0 + 4 条 P1 + 6 条 P2 实测缺陷与修法；含"如何继续补测试"的可执行脚本） | 只读汇总，无代码改动 |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
@@ -91,6 +92,12 @@
 - `DiningTableNewServiceImpl.update`：`updateById` 后直接 `selectById(...).getStoreId()`，回查为空会 NPE。
 - `InventoryWarningRuleServiceImpl.getWarningRulePage`：`category` 参数被静默忽略（代码注释自认）。
 - 前端 52 个报错文件带 Owner WIP，本轮**一律未动**，其 TS 报错需 Owner WIP 落定后再修。
+
+## 5.1 D 循环：零引用枚举扫描结论（保留待裁）
+
+`backend/src/main/java/com/foodtraceability/enums/` 下 3 个枚举在全仓 Java/XML 中**零引用**：
+`HealthCertificateStatusEnum` / `HealthCertificateExpenseStatusEnum` / `HealthCertificateApprovalStatusEnum`（共 168 行）。
+**未删除**，理由：这三个枚举编码的是「健康证状态」业务词典，前端 `types/healthCertificate.ts` 仍在用同义状态值；删除会把未来接回后端的词典一并清掉，属产品决策而非纯清理。建议 Owner 裁决：要么接入实体字段，要么连同前端类型一起清。
 
 ## 6. 交接说明
 
