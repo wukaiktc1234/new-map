@@ -59,7 +59,9 @@ public interface DiningTableNewMapper extends BaseMapper<DiningTableNew> {
     /**
      * 解锁桌台（根据订单ID）
      */
-    @Update("UPDATE dining_tables SET status = 1, current_order_id = NULL, update_time = NOW() WHERE current_order_id = #{orderId} AND deleted = 0")
+    @Update("UPDATE dining_tables SET status = 1, current_order_id = NULL, update_time = NOW() " +
+            "WHERE deleted = 0 AND current_order_id IS NOT NULL " +
+            "AND current_order_id::text = #{orderId}")
     int unlockTableByOrderId(@Param("orderId") String orderId);
 
     /**
