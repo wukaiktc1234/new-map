@@ -8555,3 +8555,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 状态 | **观察项，本轮未改、未提交** |
 
 > **§24.10a 应急 SQL 更正（2026-10-15 追加，只增不改）**：`user_roles.id` 为 `bigint NOT NULL` 且**无 default**（information_schema 实测：`id | bigint | (column_default 空) | NO`；`deleted` default `0`；`create_time` default `CURRENT_TIMESTAMP`）→ 卡面 SQL 省略 `id` 会报 `null value in column "id" violates not-null constraint`。可用版本（现 `max(id)=2327`，16 行）：`INSERT INTO user_roles (id, user_id, role_id, deleted, create_time) SELECT 2328, '2110437068670001154', 'ROLE_STORE_MANAGER', 0, now() WHERE NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = '2110437068670001154' AND role_id = 'ROLE_STORE_MANAGER');`
+
+### §24.13a N30（核心缺陷，必须修）：角色码校验面全仓失效 —— 412 处 `hasRole`/`hasAnyRole` 对非 admin 恒 false（2026-10-15 Owner 裁决「必须单列 N 项」；即 §24.10a「附带发现」行的正式立项）
+
+| 项 | 内容 |
+|----|------|
+| 性质 | **授权校验面失效**：`user_roles.role_id` 的取值口径与 `roles.role_code` 不一致，使按角色码校验的路径对全部真实用户恒 false；叠加 `SecurityUser` 的 `ROLE_` 前缀重复，Spring `hasRole` 同样不匹配。**本条是 P1-AUTH-CHAIN-001（§24.10a）的绝对核心修复目标** |
+| 缺陷 A（服务层比较面） | `PermissionVerifyServiceImpl.hasRole` L402–409 / `hasAnyRole` L411–419 / `hasAllRoles` L421–429 均先 `getUserRoles(userId)`（→ `UserMapper.getUserRoles`，读 `user_roles`）再与入参 `roleCode` 直接 `contains`。活库实测：`user_roles.role_id` 的 8 个 distinct 值与 `roles.role_code` **0 命中**（7 个 `ROLE_XXX` 只能匹配 `roles.role_id_str`；数字 `1` 两边都不匹配）→ `hasRole(userId, 'store_manager')` 对**全部真实用户恒 false** |
+| 缺陷 B（Spring 安全面） | `JwtUtils` L169–178 把 roles 全 lowercase 写入 claim；`SecurityUser.getAuthorities` L52–56 直接拼 `"ROLE_" + role.toUpperCase()`，**不剥已存在的 `ROLE_` 前缀** → 表路径用户得到 `ROLE_ROLE_STORE_MANAGER`（另有原始大小写 `ROLE_role_store_manager`）；Spring `hasRole('store_manager')` 检查的是 `ROLE_STORE_MANAGER` → 不匹配 |
+| 影响面（实测） | 全仓 `hasRole(` / `hasAnyRole(` **412 处**调用点依赖上述两条路径；**唯一能通过的只有 admin**（`AuthServiceImpl.buildSecurityUser` L692 硬编码 `roles=["admin","user"]` → `ROLE_ADMIN`，`SecurityUser` L60–69 追加 `*` 并展开 `AdminPermissions.ALL`）。即：**除 admin 外，所有账号在按角色码校验的端点上全被拒**——方向 fail-closed（无越权），但功能面近乎裸奔 |
+| 与 N15 的关系 | N15 的 403 是**权限码**路径断（`user_roles` 无桥，§24.10a）；N30 是**角色码**路径断。两条独立断点——补桥只救 N15，救不了 N30 |
+| 修复要点（在 P1-AUTH-CHAIN-001 内实施） | ① `user_roles.role_id` 口径统一为 `role_code`，或比较前双向归一（`ROLE_` 前缀 + 大小写）② `SecurityUser.getAuthorities` 先剥前缀再拼（`role.startsWith("ROLE_")` → 去前缀再大写）③ 补单测：持 `ROLE_STORE_MANAGER` 的用户 `hasRole('store_manager')` 为 true ④ 412 处调用点口径回归（admin + 非 admin 各抽 1 账号） |
+| 不在本 N | 不改 `@PreAuthorize` 注解字面（先改归一逻辑）；不碰 P1-SEC-009 渗透基线；不跑 Flyway repair（ENV-14） |
+| 验收基准 | ①（Owner Live）持店长角色的非 admin 账号，按角色码校验的端点不再 403 ② admin 行为不变 ③ 无角色账号仍被拒（fail-closed 不变、无越权）④ `mvn test` 无新增失败 |
+| 状态 | **登记项，本轮不改代码**；随 P1-AUTH-CHAIN-001 实施，是该卡首要修复目标 |
