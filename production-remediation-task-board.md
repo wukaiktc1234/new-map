@@ -8693,3 +8693,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **裁决 2（Owner 2026-10-15）** | **收银员结算/退款限制保持现状**：`PosOrderPaymentServiceImpl` L104（`ROLE_ADMIN/STORE_MANAGER/CASHIER/POS_OPERATOR`）与 **L280（仅 `ROLE_ADMIN/STORE_MANAGER`）** 的分级维持原样，**不放开给收银员**。理由：退款/日结由店长或超管把关符合财务风控 |
 | 若仍 403 的下一步 | 已能登录但业务端点仍 403 → 属另一层（`@PreAuthorize` 角色码或数据权限过滤），需按具体端点单独定位 |
 | 关联 | §24.17a N31 裁决 3（ROLE_MANAGER → ROLE_STORE_MANAGER） / §24.13a N30 / §24.15a N31 |
+
+### §24.20a N34（现场排查 + E2E 打通）：后厨「未认证，请先登录」定性 + 点单→后厨→出餐全链路修复
+
+| 项 | 内容 |
+|----|------|
+| 现象 | POS 点单成功，流转后厨时提示「未认证，请先登录」，托盘无法绑定 |
+| **结论 1（KDS 鉴权本身完好）** | 该文案出自 `SecurityConfig` 的 `authenticationEntryPoint`（L190，401），**不是 KdsTokenFilter 的 401**（后者文案为「KDS token 格式无效」/「KDS token 无效或 store_id 不匹配」）。实测 `Authorization: Bearer kds_1_kds-store1-dev-secret` 调 `POST /v1/tray/bind-order` **已通过认证与授权**（返回业务错误「托盘状态不允许绑定」，说明已进入 service 层）。故 401 的真实原因是 **KDS 客户端请求未携带 kds_ 凭证**（无 Authorization 头，或带的是普通 JWT） |
+| 设计说明（KDS 鉴权链） | ① `KdsAuthProperties`：`app.kds.enabled` + `app.kds.tokens[storeId]=secret`（application.yml 已配 `"1": kds-store1-dev-secret`）② `KdsTokenFilter`：匹配 `Bearer kds_{storeId}_{secret}`，验证通过后设 principal = `KdsPrincipal(storeId)`、authorities = `[kitchen:edit]` ③ 已注册进链：`SecurityConfig` L175 `addFilterBefore(kdsTokenFilter, UsernamePasswordAuthenticationFilter)`，且排在 JWT 过滤器之前，`shouldNotFilter` 对非 `kds_` 前缀直接放行 ④ 受保护面：`/v1/tray/**`、`/v1/kitchen/**`、`/v1/kitchen-order/**` 的写操作要求 authenticated；方法级为 `hasAuthority('kitchen:edit') or hasAuthority('*')`，**与 KDS 凭证授予的 authority 完全对齐** |
+| 无需设备注册 | 托盘/后厨侧**没有设备注册表依赖**：KDS 凭证是静态配置 secret（application.yml / 环境变量 `KDS_TOKEN_{storeId}`），不落库、不签 token。另注：`TrayController.bindOrder` 对 KDS principal 做 store_id 隔离校验（KDS 门店必须与托盘门店一致，且托盘必须已分配门店） |
+| **结论 2（链路真实缺陷 3 处，均已修）** | ① **`order_material_requirement` 表从未被任何迁移创建** → complete-make 扣料报「关系不存在」→ 事务毒化（25P02）→ 出餐必失败；已补 `V20261015_005` ② **`food_trace_code` 缺 8 列**（serve_time/table_number/store_id/store_name/print_count/material_cost/labor_cost/total_cost）→ 出餐生成追溯码 INSERT 失败 → 同事务 UPDATE 必 25P02；已补 `V20261015_006` ③ **`TrayServiceImpl.bindOrder` 用裸 `selectOne` 查后厨单**，而同一 orderId 天然存在多条（POS 下单自动生成 + 手工创建）→ `TooManyResultsException` → 500「系统繁忙」；已改为取列表、优先未终结的最新一条并加幂等返回 |
+| 附带发现（未修，待裁决） | 自动生成的后厨单 `dish_items` 存的是 POS 键名 `[{"name","quantity","price","type"}]`，而 `generateFoodTraceCodes` 反序列化为 `DishItemDTO{dishId,dishName}` → 生成出的追溯码 `dish_id`/`dish_name` 为空（实测 `FTC202610230001CB8` 菜品名为空）；且该后厨单 `store_id`/`store_name` 为空。属**数据模型口径问题**（需裁决 canonical key），未擅自改动 |
+| E2E 脚本 | `scripts/e2e_pos_kitchen.py`（330 行）：① POS 登录（`--password` 真实登录，或 `--mint` 用 dev `jwt.secret` 自签，仅供无法取明文密码时打通）② `POST /v1/pos/orders/order` 下单（**菜品 id 必须是 `food_code` 而非 `food_id`**，否则 400「food_code 不存在，拒绝下单」）③ 复用 POS 下单**自动生成**的后厨单（`GET /v1/kitchen/orders/order/{orderId}`）④ `POST /v1/tray/bind-order`（KDS 凭证；`--tray auto` 自动挑选本店 idle 托盘）⑤ `receive?chefId=&chefName=`（两参数**必填**，且 chefId 必须是 `employees` 中真实存在的员工，否则外键 `fk_ftc_chef_id` 违约）、`start-make`、`complete-make` |
+| E2E 实测结果（2026-10-23 00:16） | **全链路 PASS**：`orderId=O1792684273467` / `orderNumber=T20261023008` / `kitchenOrderId=KO1792684273466` / 托盘 `REGA1001` / 接单+开始制作+完成制作均 `code=0 data=true`；落库核验：`kitchen_order.status=completed`、`make_complete_time` 有值、`chef_id=2080155339590037512`、`tray_code=REGA1001`，追溯码 `FTC202610230001CB8` 已生成 |
+| 关联 | §24.19a N33（POS 令牌修复） / §24.18a P1-DASHBOARD-FILTER-001 |
