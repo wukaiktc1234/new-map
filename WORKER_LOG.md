@@ -16,7 +16,7 @@
 
 | 循环 | 内容 | 状态 | 证据 |
 |------|------|------|------|
-| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **19 个类 / 219 个用例全绿**，每类一提交 |
+| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **20 个类 / 229 个用例全绿**，每类一提交 |
 | C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
 | A | API 契约静态比对报告 | **本轮收口** | `docs/night-patrol/api-contract-diff.md`（232 行）：2057 端点 / 944 调用点 / 配对 898（95%），发现 58 条（高危 14 / 中低 16 / 类型精度 10 / 待确认 8） |
 | D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
@@ -47,7 +47,8 @@
 | B-16 | `84362a7` | `PricingServiceImplTest`（13 用例：FOOD/COMBO 调价、套餐优惠重算、批量 100 上限、历史筛选、变动率/毛利、limit 钳制） | 13/0/0 |
 | B-17 | `0e1c9b5` | `InventoryOutboundServiceImplTest`（12 用例：OB 单号/总数量、草稿态闸门、审批人取安全上下文、执行出库扣减与金额、ID 解析容错） | 12/0/0 |
 | B-18 | `d645ea2` | `StoreInventoryLogServiceImplTest`（10 用例：四道写路径校验、movement 字段映射、type→movement_type、备注合并截断、门店越权收敛） | 10/0/0 |
-| B-19 | 本次 | `AlertServiceImplTest`（11 用例：创建/查询、确认与解决迁移、删除布尔、阈值判定矩阵） | 11/0/0 |
+| B-19 | `37c18d3` | `AlertServiceImplTest`（11 用例：创建/查询、确认与解决迁移、删除布尔、阈值判定矩阵） | 11/0/0 |
+| B-20 | 本次 | `CaptchaServiceImplTest`（10 用例：生成/缓存、5 次锁定、大小写不敏感、失败计数递增、脏计数容错） | 10/0/0 |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
