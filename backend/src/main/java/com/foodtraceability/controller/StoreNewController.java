@@ -28,7 +28,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/v1/stores")
 @Tag(name = "门店档案管理", description = "门店基础档案的增删改查及状态管理")
-@PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_REGIONAL_MANAGER', 'ROLE_MANAGER')")
+@PreAuthorize("hasAnyRole('ROLE_ADMIN', 'region_manager', 'ROLE_MANAGER')")
 public class StoreNewController {
 
     private final StoreNewService storeNewService;
@@ -153,7 +153,7 @@ public class StoreNewController {
      */
     @GetMapping("/active")
     @Operation(summary = "获取所有营业中的门店", description = "用于下拉选项，无需分页")
-    @PreAuthorize("hasAnyRole('admin', 'regional_manager', 'manager', 'store_manager', 'warehouse_manager', 'purchase_manager', 'department_manager', 'employee')")
+    @PreAuthorize("hasAnyRole('admin', 'region_manager', 'manager', 'store_manager', 'warehouse_manager', 'purchase_manager', 'department_manager', 'employee')")
     public Result<List<StoreNew>> getActiveStores() {
         List<StoreNew> stores = storeNewService.getActiveStores();
         return Result.success(stores);

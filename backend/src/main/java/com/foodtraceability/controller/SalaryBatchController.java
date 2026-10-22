@@ -41,7 +41,7 @@ public class SalaryBatchController {
      */
     @Operation(summary = "生成薪资批次")
     @PostMapping("/generate")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<Integer> generateBatch(@RequestParam String year, @RequestParam String month) {
         int count = salaryService.generateSalary(year, month);
         log.info("薪资批次生成完成，年月：{}-{}，共生成{}条记录", year, month, count);
@@ -55,7 +55,7 @@ public class SalaryBatchController {
      */
     @Operation(summary = "获取薪资批次列表")
     @GetMapping
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<IPage<SalaryRecord>> listBatches(Page<SalaryRecord> page) {
         try {
             IPage<SalaryRecord> records = salaryRecordService.page(page);
@@ -76,7 +76,7 @@ public class SalaryBatchController {
      */
     @Operation(summary = "获取薪资批次详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryRecord> getBatchById(@PathVariable Long id) {
         SalaryRecord record = salaryRecordService.getById(id);
         if (record == null) {
@@ -92,7 +92,7 @@ public class SalaryBatchController {
      */
     @Operation(summary = "确认薪资批次")
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryRecord> confirmBatch(@PathVariable Long id) {
         SalaryRecord record = salaryRecordService.getById(id);
         if (record == null) {
@@ -111,7 +111,7 @@ public class SalaryBatchController {
      */
     @Operation(summary = "删除薪资批次")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<Void> deleteBatch(@PathVariable Long id) {
         salaryRecordService.removeById(id);
         log.info("薪资批次删除完成，记录ID：{}", id);

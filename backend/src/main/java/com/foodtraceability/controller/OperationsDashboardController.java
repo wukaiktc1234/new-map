@@ -40,7 +40,7 @@ public class OperationsDashboardController {
      */
     @GetMapping("/dashboard/stats")
     @Operation(summary = "多店监控统计卡片", description = "获取门店运营核心指标数据")
-    @PreAuthorize("hasAnyRole('ROLE_OPERATIONS_DIRECTOR', 'ROLE_REGIONAL_MANAGER', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAnyRole('ops_director', 'region_manager', 'ROLE_ADMIN')")
     public Result<Map<String, Object>> getDashboardStats(Principal principal) {
         Map<String, Object> stats = operationsDashboardService.getDashboardStats(principal);
         return Result.success(stats);
@@ -52,7 +52,7 @@ public class OperationsDashboardController {
      */
     @GetMapping("/dashboard/stores")
     @Operation(summary = "门店绩效列表", description = "分页获取各门店的绩效数据")
-    @PreAuthorize("hasAnyRole('ROLE_OPERATIONS_DIRECTOR', 'ROLE_REGIONAL_MANAGER', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAnyRole('ops_director', 'region_manager', 'ROLE_ADMIN')")
     public Result<IPage<Map<String, Object>>> getStoreList(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,

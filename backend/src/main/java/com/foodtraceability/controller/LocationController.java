@@ -18,7 +18,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/v1/locations")
-@PreAuthorize("hasAnyRole('admin', 'regional_manager', 'manager', 'store_manager', 'warehouse_manager', 'purchase_manager', 'department_manager', 'employee')")
+@PreAuthorize("hasAnyRole('admin', 'region_manager', 'manager', 'store_manager', 'warehouse_manager', 'purchase_manager', 'department_manager', 'employee')")
 public class LocationController {
 
     private final LocationService locationService;

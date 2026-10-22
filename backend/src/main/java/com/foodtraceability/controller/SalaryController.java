@@ -51,7 +51,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资记录列表")
     @GetMapping("/records")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<IPage<SalaryRecord>> getSalaryRecords(Page<SalaryRecord> page, @RequestParam(required = false) String employeeName, @RequestParam(required = false) String salaryMonth) {
         IPage<SalaryRecord> salaryRecords = salaryRecordService.page(page);
         return Result.success(salaryRecords);
@@ -59,7 +59,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资记录详情")
     @GetMapping("/records/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryRecord> getSalaryRecordById(@PathVariable Long id) {
         SalaryRecord salaryRecord = salaryRecordService.getById(id);
         if (salaryRecord == null) {
@@ -95,7 +95,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资规则列表")
     @GetMapping("/rules")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<List<SalaryRule>> getSalaryRules() {
         List<SalaryRule> salaryRules = salaryRuleService.list();
         return Result.success(salaryRules);
@@ -103,7 +103,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资规则详情")
     @GetMapping("/rules/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryRule> getSalaryRuleById(@PathVariable Long id) {
         SalaryRule salaryRule = salaryRuleService.getById(id);
         if (salaryRule == null) {
@@ -139,7 +139,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资调整列表")
     @GetMapping("/adjustments")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<List<SalaryAdjustment>> getSalaryAdjustments() {
         List<SalaryAdjustment> salaryAdjustments = salaryAdjustmentService.list();
         return Result.success(salaryAdjustments);
@@ -147,7 +147,7 @@ public class SalaryController {
 
     @Operation(summary = "获取薪资调整详情")
     @GetMapping("/adjustments/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryAdjustment> getSalaryAdjustmentById(@PathVariable Long id) {
         SalaryAdjustment salaryAdjustment = salaryAdjustmentService.getById(id);
         if (salaryAdjustment == null) {
@@ -231,7 +231,7 @@ public class SalaryController {
 
     @Operation(summary = "确认薪资发放")
     @PostMapping("/confirm/{id}")
-    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance')")
+    @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<SalaryRecord> confirmSalary(@PathVariable Long id) {
         SalaryRecord salaryRecord = salaryRecordService.getById(id);
         if (salaryRecord == null) {

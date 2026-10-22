@@ -52,7 +52,7 @@ public class StoreManagementSettlementController {
      */
     @GetMapping
     @Operation(summary = "获取日结列表", description = "分页查询日结对账记录（含权限过滤）")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'region_manager', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
     public Result<IPage<DailySettlementVO>> getSettlementList(SettlementQueryDTO query,
                                                                Principal principal) {
         User currentUser = SecurityUtils.getCurrentUser();
@@ -66,7 +66,7 @@ public class StoreManagementSettlementController {
      */
     @GetMapping("/{id}")
     @Operation(summary = "获取日结详情", description = "获取日结对账完整信息（含班次明细和权限过滤）")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'region_manager', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
     public Result<DailySettlementVO> getSettlementDetail(@PathVariable String id, Principal principal) {
         User currentUser = SecurityUtils.getCurrentUser();
         DailySettlementVO settlement = dailySettlementService.getSettlementWithPermission(id, currentUser);
@@ -79,7 +79,7 @@ public class StoreManagementSettlementController {
      */
     @GetMapping("/{id}/shifts")
     @Operation(summary = "获取班次明细", description = "获取指定日结的班次营业数据列表")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'region_manager', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
     public Result<List<DailySettlementShiftVO>> getShiftDetail(@PathVariable String id) {
         List<DailySettlementShiftVO> shifts = dailySettlementService.getShiftsBySettlementId(id);
         return Result.success(shifts);
@@ -90,7 +90,7 @@ public class StoreManagementSettlementController {
      */
     @PostMapping
     @Operation(summary = "创建日结草稿", description = "创建新的日结记录（初始状态为草稿）")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'CASHIER', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'ADMIN', 'admin')")
     public Result<DailySettlementVO> createSettlement(@Valid @RequestBody DailySettlementCreateDTO dto,
                                                        Principal principal) {
         DailySettlementVO settlement = dailySettlementService.createSettlement(dto, principal.getName());
@@ -115,7 +115,7 @@ public class StoreManagementSettlementController {
      */
     @PostMapping("/{id}/report-issue")
     @Operation(summary = "上报异常", description = "报告日结数据异常问题")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'CASHIER', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'ADMIN', 'admin')")
     public Result<Void> reportIssue(@PathVariable String id,
                                      @RequestBody @Valid Object dto,
                                      Principal principal) {
@@ -141,7 +141,7 @@ public class StoreManagementSettlementController {
      */
     @GetMapping("/export")
     @Operation(summary = "导出日结对账Excel", description = "导出指定日期范围的日结对账数据为Excel文件")
-    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'REGIONAL_MANAGER', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'region_manager', 'FINANCE_DIRECTOR', 'ADMIN', 'admin')")
     public void exportSettlements(@RequestParam(required = false) String storeId,
                                    @RequestParam(required = false) String startDate,
                                    @RequestParam(required = false) String endDate,
