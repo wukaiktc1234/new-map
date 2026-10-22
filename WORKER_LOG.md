@@ -16,7 +16,7 @@
 
 | 循环 | 内容 | 状态 | 证据 |
 |------|------|------|------|
-| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **12 个类 / 151 个用例全绿**，每类一提交 |
+| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **15 个类 / 173 个用例全绿**，每类一提交 |
 | C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
 | A | API 契约静态比对报告 | **本轮收口** | `docs/night-patrol/api-contract-diff.md`（232 行）：2057 端点 / 944 调用点 / 配对 898（95%），发现 58 条（高危 14 / 中低 16 / 类型精度 10 / 待确认 8） |
 | D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
@@ -40,7 +40,10 @@
 | A-1 | `a00c02a` | `docs/night-patrol/api-contract-diff.md`（队友 `api-contract-audit` 产出，Lead 抽查复核） | 抽查 3 条高危均成立：会员冻结/拉黑路由缺失、HR 四类配置仅 GET、日结状态数字/字符串映射错位 |
 | B-10 | `ee1f5e9` | `InventoryLossServiceImplTest`（12 用例：审批状态映射、报损扣减 LOSS 源类型与跳过规则） | 12/0/0 |
 | B-11 | 本次 | `ComboInventoryServiceImplTest`（9 用例：新增闸门、单位回退、布尔删除） | 9/0/0 |
-| B-12 | 本次 | `SelfPurchaseServiceImplTest`（8 用例：编号/初始态、入库追溯码+QUICK_STOCKIN、报销/取消闸门） | 8/0/0 |
+| B-12 | `b888298` | `SelfPurchaseServiceImplTest`（8 用例：编号/初始态、入库追溯码+QUICK_STOCKIN、报销/取消闸门） | 8/0/0 |
+| B-13 | 本次 | `InventorySummaryServiceImplTest`（2 用例：分页委托透传） | 2/0/0 |
+| B-14 | 本次 | `MaterialConsumptionAuditServiceImplTest`（6 用例：FAILED 审计行映射、2000 字截断、空清单落 NULL、写入异常吞掉） | 6/0/0 |
+| B-15 | 本次 | `InventoryDeductionServiceImplTest`（14 用例：模式A 可用量回退链/扣完置 used、模式B 配方折算+JSON 回写、批次跨码消耗、内存记录） | 14/0/0 |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
