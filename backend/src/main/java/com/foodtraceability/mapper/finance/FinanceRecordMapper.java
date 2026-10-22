@@ -17,9 +17,21 @@ import java.math.BigDecimal;
 public interface FinanceRecordMapper extends BaseMapper<FinanceRecord> {
 
     /**
+     * 统计某订单已记录的「收入」流水条数（幂等判重）。
+     *
+     * <p>2026-10-23：POS 支付成功时已写一条收入（record_category=101），
+     * 订单完成事件若再写一条会造成营收重复入账。事件侧写前必须先查此项。</p>
+     */
+    @org.apache.ibatis.annotations.Select(
+            "SELECT COUNT(*) FROM finance_records WHERE order_code = #{orderCode} " +
+            "AND record_type = 1 AND deleted = 0")
+    int countIncomeByOrderCode(@org.apache.ibatis.annotations.Param("orderCode") String orderCode);
+
+    /**
      * 分页查询收支记录
      * @param page 分页参数
      * @param recordNo 记录编号（模糊）
+     * @param orderCode W1-EC-05: 订单编号（精确）
      * @param recordType 收支类型
      * @param recordCategory 收支类别
      * @param paymentMethod 支付方式
@@ -31,6 +43,7 @@ public interface FinanceRecordMapper extends BaseMapper<FinanceRecord> {
      */
     IPage<FinanceRecord> selectRecordPage(Page<FinanceRecord> page,
                                           @Param("recordNo") String recordNo,
+                                          @Param("orderCode") String orderCode,
                                           @Param("recordType") Integer recordType,
                                           @Param("recordCategory") Integer recordCategory,
                                           @Param("paymentMethod") Integer paymentMethod,

@@ -45,11 +45,13 @@ public class OrderCompletedEventListener {
      * @param financeRecordService 财务记录服务，可选依赖
      */
     public OrderCompletedEventListener(CostRecordService costRecordService, @Nullable FinanceRecordService financeRecordService,
-                                       OrderNewMapper orderNewMapper, @Nullable ReceivableService receivableService) {
+                                       OrderNewMapper orderNewMapper, @Nullable ReceivableService receivableService,
+                                       com.foodtraceability.mapper.finance.FinanceRecordMapper financeRecordMapper) {
         this.costRecordService = costRecordService;
         this.financeRecordService = financeRecordService;
         this.orderNewMapper = orderNewMapper;
         this.receivableService = receivableService;
+        this.financeRecordMapper = financeRecordMapper;
     }
 
     private final CostRecordService costRecordService;
@@ -59,6 +61,8 @@ public class OrderCompletedEventListener {
     private final OrderNewMapper orderNewMapper;
 
     private final ReceivableService receivableService;
+
+    private final com.foodtraceability.mapper.finance.FinanceRecordMapper financeRecordMapper;
 
     /**
      * 监听订单完成事件（主事务提交后异步处理）
@@ -135,15 +139,36 @@ public class OrderCompletedEventListener {
 
         try {
             if (financeRecordService != null) {
+                // 2026-10-23 幂等：POS 支付成功时已写一条收入（record_category=101）。
+                // 订单完成事件若再写一条，会造成同一订单营收重复入账（实测 02:50 那张单已出现两条）。
+                // 以 order_code 为幂等键：已有收入流水则跳过，仅记日志。
+                String orderCode = event.getOrderNumber();
+                if (orderCode != null && financeRecordMapper != null) {
+                    int existing = financeRecordMapper.countIncomeByOrderCode(orderCode);
+                    if (existing > 0) {
+                        log.info("财务收入已存在，幂等跳过（避免重复入账）: orderCode={}, existing={}", orderCode, existing);
+                        return;
+                    }
+                }
+
                 FinanceRecordCreateDTO dto = new FinanceRecordCreateDTO();
                 dto.setRecordType(1); // 1-收入
                 dto.setRecordCategory(101); // 101-销售收入
                 // 金额：元（BigDecimal）转分（Long）
                 java.math.BigDecimal amountYuan = event.getActualAmount() != null
                         ? event.getActualAmount() : java.math.BigDecimal.ZERO;
+                if (amountYuan.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    log.warn("财务收入金额<=0，跳过写入（避免 0 元流水污染）: orderId={}, orderCode={}",
+                            event.getOrderId(), orderCode);
+                    return;
+                }
                 dto.setAmount(amountYuan.multiply(java.math.BigDecimal.valueOf(100L)).longValue());
                 dto.setBusinessDate(java.time.LocalDate.now());
-                dto.setRemark("订单收入 - " + event.getOrderNumber());
+                // W1-EC-05: 设置 canonical order reference（orders.order_code）
+                if (orderCode != null) {
+                    dto.setOrderCode(orderCode);
+                }
+                dto.setRemark("订单收入 - " + orderCode);
 
                 financeRecordService.create(dto);
             }
