@@ -7,8 +7,10 @@ import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.mapper.*;
 import com.foodtraceability.service.CameraService;
 import com.foodtraceability.service.FoodTraceCodeService;
+import com.foodtraceability.service.OrderNewService;
 import com.foodtraceability.service.TrayService;
 import com.foodtraceability.service.YoloVerificationService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,7 @@ public class TrayServiceImpl implements TrayService {
     private final CameraService cameraService;
     private final YoloVerificationService yoloVerificationService;
     private final TrayScanRecordMapper trayScanRecordMapper;
+    private final OrderNewService orderNewService;
 
     public TrayServiceImpl(final TrayMapper trayMapper,
                            final KitchenOrderMapper kitchenOrderMapper,
@@ -59,7 +62,8 @@ public class TrayServiceImpl implements TrayService {
                            final ApplicationEventPublisher eventPublisher,
                            final CameraService cameraService,
                            final YoloVerificationService yoloVerificationService,
-                           final TrayScanRecordMapper trayScanRecordMapper) {
+                           final TrayScanRecordMapper trayScanRecordMapper,
+                           @Lazy final OrderNewService orderNewService) {
         this.trayMapper = trayMapper;
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.callRecordMapper = callRecordMapper;
@@ -69,6 +73,7 @@ public class TrayServiceImpl implements TrayService {
         this.cameraService = cameraService;
         this.yoloVerificationService = yoloVerificationService;
         this.trayScanRecordMapper = trayScanRecordMapper;
+        this.orderNewService = orderNewService;
     }
 
     @Override
@@ -123,10 +128,33 @@ public class TrayServiceImpl implements TrayService {
         if (kitchenOrderId != null) {
             kitchenOrder = kitchenOrderMapper.selectById(kitchenOrderId);
         } else if (orderId != null) {
-            kitchenOrder = kitchenOrderMapper.selectOne(new LambdaQueryWrapper<KitchenOrder>().eq(KitchenOrder::getOrderId, orderId).eq(KitchenOrder::getDeleted, 0));
+            // 2026-10-23 修复（现场）：同一 orderId 完全可能对应多条后厨单
+            // （POS 下单自动生成一条 + KDS/接口再手工创建一条），
+            // 原 selectOne 会抛 TooManyResultsException → GlobalExceptionHandler 兜成
+            // 500「系统繁忙，请稍后重试」，表现为托盘绑不上。
+            // 现改为取列表并优先选中"未终结"的最新一条（served/completed/cancelled 视为终态）。
+            List<KitchenOrder> candidates = kitchenOrderMapper.selectList(
+                    new LambdaQueryWrapper<KitchenOrder>()
+                            .eq(KitchenOrder::getOrderId, orderId)
+                            .eq(KitchenOrder::getDeleted, 0)
+                            .orderByDesc(KitchenOrder::getId));
+            if (candidates != null && !candidates.isEmpty()) {
+                kitchenOrder = candidates.stream()
+                        .filter(o -> o.getStatus() == null
+                                || !("served".equals(o.getStatus())
+                                     || "completed".equals(o.getStatus())
+                                     || "cancelled".equals(o.getStatus())))
+                        .findFirst()
+                        .orElse(candidates.get(0));
+            }
         }
         if (kitchenOrder == null) {
             return Result.error("订单不存在");
+        }
+        // 幂等：若该后厨单已绑定同一托盘，直接返回，避免重复绑定报状态错
+        if (trayCode.equals(kitchenOrder.getTrayCode()) && "bound".equals(tray.getStatus())) {
+            log.info("托盘已绑定该订单，幂等返回: trayCode={}, orderId={}", trayCode, orderId);
+            return Result.success(trayMapper.selectById(tray.getId()));
         }
         // 托盘进入 bound 状态（不直接改 kitchenOrder 为 making）
         trayMapper.bindOrder(tray.getId(), kitchenOrder.getOrderId(), kitchenOrder.getId());
@@ -312,6 +340,12 @@ public class TrayServiceImpl implements TrayService {
         order.setServeTime(now);
         order.setServedTime(now);
         kitchenOrderMapper.updateById(order);
+
+        // 扣减原料库存（出餐时扣料，P0 严格版：幂等占位 + 整体失败回滚 + REQUIRES_NEW 失败审计）
+        orderNewService.deductMaterialsForServe(
+                order.getKitchenOrderId(),
+                "KDS出餐扣料 - 订单:" + order.getOrderNumber(),
+                tray.getTrayCode());
 
         // 记录扫码
         recordScan(tray, "SERVE", "ready", "served", now, debounce.prevScanTime(),
