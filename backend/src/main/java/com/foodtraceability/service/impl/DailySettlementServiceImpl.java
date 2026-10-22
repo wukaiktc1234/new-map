@@ -52,15 +52,19 @@ public class DailySettlementServiceImpl implements DailySettlementService {
     /** 店长角色 */
     private static final String ROLE_STORE_MANAGER = "store_manager";
 
-    // ==================== 支付方式常量定义 ====================
-    /** 微信支付（PAYMENT_METHOD = 0） */
-    private static final int PAYMENT_WECHAT = 0;
-    /** 支付宝（PAYMENT_METHOD = 1） */
-    private static final int PAYMENT_ALIPAY = 1;
-    /** 现金（PAYMENT_METHOD = 2） */
-    private static final int PAYMENT_CASH = 2;
-    /** 会员余额（PAYMENT_METHOD = 4） */
-    private static final int PAYMENT_MEMBER_BALANCE = 4;
+    // ==================== 支付方式常量定义（order_payment_records表编码） ====================
+    /** 现金（payment_method = 1） */
+    private static final int PAYMENT_CASH = 1;
+    /** 微信支付（payment_method = 2） */
+    private static final int PAYMENT_WECHAT = 2;
+    /** 支付宝（payment_method = 3） */
+    private static final int PAYMENT_ALIPAY = 3;
+    /** 银行卡（payment_method = 4） */
+    private static final int PAYMENT_BANK_CARD = 4;
+    /** 积分（payment_method = 5） */
+    private static final int PAYMENT_POINTS = 5;
+    /** 混合支付（payment_method = 6） */
+    private static final int PAYMENT_MIXED = 6;
 
     /** JSON序列化器 */
     private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -544,6 +548,15 @@ public class DailySettlementServiceImpl implements DailySettlementService {
         settlement.setRefundCount(refundCount);
         settlement.setCancelledAmount(cancelledAmount);
         settlement.setCancelledCount(cancelledCount);
+
+        // 2026-10-23 P1：日结单列「已完成但未支付」= 应收挂账来源；
+        // 状态机断裂期（后厨已完成、订单仍 0/0）的单据会在这里被显式暴露，而不是静默不计营收。
+        long completedUnpaidCount = orderMapper.countCompletedUnpaid(storeId, startTime, endTime);
+        long completedUnpaidAmount = orderMapper.sumCompletedUnpaidAmount(storeId, startTime, endTime);
+        if (completedUnpaidCount > 0) {
+            log.warn("日结告警：存在已完成但未支付订单 {} 笔，应收挂账合计 {} 分, storeId={}, date={}",
+                    completedUnpaidCount, completedUnpaidAmount, storeId, date);
+        }
         settlement.setStatus("draft"); // 初始状态为草稿
 
         // 10. 保存到数据库
@@ -583,6 +596,14 @@ public class DailySettlementServiceImpl implements DailySettlementService {
         existing.setCancelledAmount(((Number) cancelledData.getOrDefault("total_cancelled_amount", 0L)).longValue());
         existing.setCancelledCount(((Number) cancelledData.getOrDefault("cancelled_count", 0)).intValue());
 
+        // 2026-10-23 P1：更新日结同样单列「已完成但未支付」（应收挂账口径）
+        long existingCompletedUnpaidCount = orderMapper.countCompletedUnpaid(storeId, startTime, endTime);
+        long existingCompletedUnpaidAmount = orderMapper.sumCompletedUnpaidAmount(storeId, startTime, endTime);
+        if (existingCompletedUnpaidCount > 0) {
+            log.warn("日结更新告警：存在已完成但未支付订单 {} 笔，应收挂账合计 {} 分, storeId={}, date={}",
+                    existingCompletedUnpaidCount, existingCompletedUnpaidAmount, storeId, date);
+        }
+
         existing.setTotalRevenue(calculateTotalRevenue(paymentBreakdownMap));
         existing.setOrderCount(calculateTotalOrderCount(paymentBreakdownMap));
         existing.setAvgOrderValue(existing.getOrderCount() > 0 ? existing.getTotalRevenue() / existing.getOrderCount() : 0L);
@@ -594,7 +615,7 @@ public class DailySettlementServiceImpl implements DailySettlementService {
 
     /**
      * 聚合支付方式数据并转换为标准格式
-     * 支付方式映射：0=wechat, 1=alipay, 2=cash, 4=memberBalance
+     * 支付方式映射：1=cash, 2=wechat, 3=alipay, 4=bankCard, 5=points, 6=mixed
      *
      * @param storeId   门店ID
      * @param startTime 开始时间
@@ -609,7 +630,9 @@ public class DailySettlementServiceImpl implements DailySettlementService {
         breakdown.put("cash", Map.of("amount", 0L, "count", 0));
         breakdown.put("wechat", Map.of("amount", 0L, "count", 0));
         breakdown.put("alipay", Map.of("amount", 0L, "count", 0));
-        breakdown.put("memberBalance", Map.of("amount", 0L, "count", 0));
+        breakdown.put("bankCard", Map.of("amount", 0L, "count", 0));
+        breakdown.put("points", Map.of("amount", 0L, "count", 0));
+        breakdown.put("mixed", Map.of("amount", 0L, "count", 0));
 
         // 填充实际聚合结果
         for (Map<String, Object> row : aggregationResult) {
@@ -631,19 +654,23 @@ public class DailySettlementServiceImpl implements DailySettlementService {
     /**
      * 将数据库PAYMENT_METHOD字段值映射为JSONB中的key名称
      *
-     * @param paymentMethod 数据库中的支付方式代码
-     * @return JSONB中的key名称（cash/wechat/alipay/memberBalance）
+     * @param paymentMethod 数据库中的支付方式代码（order_payment_records表编码）
+     * @return JSONB中的key名称（cash/wechat/alipay/bankCard/points/mixed）
      */
     private String mapPaymentMethodToKey(int paymentMethod) {
         switch (paymentMethod) {
+            case PAYMENT_CASH:
+                return "cash";
             case PAYMENT_WECHAT:
                 return "wechat";
             case PAYMENT_ALIPAY:
                 return "alipay";
-            case PAYMENT_CASH:
-                return "cash";
-            case PAYMENT_MEMBER_BALANCE:
-                return "memberBalance";
+            case PAYMENT_BANK_CARD:
+                return "bankCard";
+            case PAYMENT_POINTS:
+                return "points";
+            case PAYMENT_MIXED:
+                return "mixed";
             default:
                 log.warn("未知的支付方式代码: {}", paymentMethod);
                 return null;
