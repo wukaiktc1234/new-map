@@ -89,7 +89,7 @@ public class OrderNew {
      * 4部分退款 5全额退款 6待评价
      */
     @TableField("order_status")
-    @Schema(description = "订单状态: 0待确认 1已确认 2已完成 3已取消 4部分退款 5全额退款 6待评价", example = "0")
+    @Schema(description = "订单状态（canonical）: 0待确认 1已确认 2已完成 3已取消 5全额退款（码表见 OrderStatusCodes）", example = "0")
     private Integer orderStatus;
 
     /**
@@ -97,7 +97,7 @@ public class OrderNew {
      * 0未支付 1部分支付 2已支付 3已退款
      */
     @TableField("payment_status")
-    @Schema(description = "支付状态: 0未支付 1部分支付 2已支付 3已退款", example = "0")
+    @Schema(description = "支付状态（canonical）: 0未支付 1支付中 2已支付 3已退款（码表见 OrderStatusCodes）", example = "0")
     private Integer paymentStatus;
 
     /** 订单总金额（分） */

@@ -39,10 +39,11 @@ public class Order {
     @Schema(description = "订单类型（0-堂食，1-外卖，2-自提）", example = "1")
     private Integer orderType;
     /**
-     * 订单状态（0-待支付，1-已支付，2-待配送，3-配送中，4-已完成，5-已取消，6-退款中，7-已退款）
+     * 订单状态（**orders_legacy 遗留表口径**：0-待支付，1-已支付，2-待配送，3-配送中，4-已完成，5-已取消，6-退款中，7-已退款）
+     * 禁止在新逻辑中使用本口径；canonical 口径见 {@link com.foodtraceability.common.constant.OrderStatusCodes}
      */
     @TableField("ORDER_STATUS")
-    @Schema(description = "订单状态（0-待支付，1-已支付，2-待配送，3-配送中，4-已完成，5-已取消，6-退款中，7-已退款）", example = "1")
+    @Schema(description = "订单状态（orders_legacy 遗留表口径：0-待支付，1-已支付，2-待配送，3-配送中，4-已完成，5-已取消，6-退款中，7-已退款）", example = "1")
     private Integer orderStatus;
     /**
      * 订单金额（元）

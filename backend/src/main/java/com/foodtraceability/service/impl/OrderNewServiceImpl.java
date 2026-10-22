@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.common.constant.OrderStatusCodes;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.exception.MaterialDeductionContext;
@@ -532,16 +533,16 @@ public class OrderNewServiceImpl implements OrderNewService {
             return;
         }
         Integer status = order.getOrderStatus();
-        if (status != null && status == 2) {
+        if (status != null && status == OrderStatusCodes.ORDER_COMPLETED) {
             log.info("后厨完成联动：主订单已是已完成，幂等跳过, orderId={}", orderId);
             return;
         }
         // 未确认（0）先置已确认（1），再置已完成（2），保持状态单调推进
-        if (status != null && status == 0) {
-            orderNewMapper.updateStatus(orderId, 1);
+        if (status != null && status == OrderStatusCodes.ORDER_PENDING_CONFIRM) {
+            orderNewMapper.updateStatus(orderId, OrderStatusCodes.ORDER_CONFIRMED);
             log.info("后厨完成联动：主订单待确认 → 已确认, orderId={}", orderId);
         }
-        orderNewMapper.updateStatus(orderId, 2);
+        orderNewMapper.updateStatus(orderId, OrderStatusCodes.ORDER_COMPLETED);
         diningTableNewMapper.unlockTableByOrderId(orderId);
         log.info("后厨完成联动：主订单已置已完成并解锁桌台, orderId={}, paymentStatus={}",
                 orderId, order.getPaymentStatus());

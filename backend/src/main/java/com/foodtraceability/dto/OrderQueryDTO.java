@@ -26,7 +26,7 @@ public class OrderQueryDTO {
     private String paymentMethod;
     @Schema(description = "交易流水号")
     private String transactionId;
-    @Schema(description = "状态")
+    @Schema(description = "状态（canonical：0待确认 1已确认 2已完成 3已取消 5全额退款）")
     private String status;
 
     public OrderQueryDTO() {
