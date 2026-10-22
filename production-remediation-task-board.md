@@ -8734,3 +8734,16 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 未修的隐患（登记） | `generateFoodTraceCodes` **吞异常但毒化事务**：非法 `chef_id` 只应导致「该单追溯码生成失败」，实际会连带 `kitchen_order` 的 UPDATE 一起失败（25P02），并把真实原因藏在「完成制作失败: ### Error updating database…」里。建议后续：① 生成前校验 `chef_id` 存在性（或 `employees` 外键可空化）② 追溯码生成改 `REQUIRES_NEW` 独立事务，避免污染主事务 |
 | E2E 脚本增强 | `--table-number` 默认值 `0` → `1`（后端 `@Min(1)`，原默认值必然 400「桌号必须大于0」）；新增 `--kitchen-order KO...` 单卡复验模式（跳过下单/绑定，只跑 接单→制作→出餐） |
 | 关联 | §24.21a N35 / §24.20a N34 |
+
+### §24.23a N37：状态机闭环第二批（P1 数据一致性）+ 桌台表 schema 冲突
+
+| 项 | 内容 |
+|----|------|
+| Owner 裁决 | D1=A（完成制作即扣料）· D2=A（统一生命周期入口）· D3=暂不回填 · **BOM 缺失必须硬拒（P0 严格版，禁止静默跳过）** |
+| 日结口径统一 | `OrderMapper` 全部统计切到 canonical `orders`：`orders_legacy` 注解 SQL → `orders`；legacy 状态码 `4=已完成/5=已取消` → canonical `2=已完成/3=已取消`；金额 `ACTUAL_AMOUNT*100`（元→分）→ `final_amount`（本就是分）。**修正真实缺陷**：`aggregateRefunds` 原按 `order_status IN (4,5)`（那是已完成/已取消）统计退款 → 改为 `payment_status = 3 OR order_status = 5`（已退款/全额退款）。未动 `updateOrderStatus` / `updateOrderRefund` 两条 `orders_legacy` **写**语句（属遗留实体的 CRUD，非统计口径，改动会误伤 `OrderServiceImpl`） |
+| 已完成未支付 | 新增 `countCompletedUnpaid` / `sumCompletedUnpaidAmount`（`order_status=2 且 payment_status<>2`），日结创建与更新两条路径均调用并 `log.warn` 单列应收挂账；未落库（不加列，避免 schema 变更） |
+| 状态码归一 | 新增 `common/constant/OrderStatusCodes`（order: 0待确认/1已确认/2已完成/3已取消/5全额退款；payment: 0未支付/1支付中/2已支付/3已退款，附 `isBillable` / `isCompletedButUnpaid`）；`Order.java` 注释标注为 **orders_legacy 遗留口径**并禁止新逻辑引用；`OrderNew`/`OrderQueryDTO` 文案对齐；lifecycle 改用常量 |
+| 成本接线 | `deductMaterialsForServe` 返回值 void → **long（实际出库成本，分）**；新增 `persistOrderCostFromDeduction(orderId, costFen)`；lifecycle 在扣料后落 `cost_record` —— 修复「KDS 完成路径只有收入、没有成本」 |
+| **新发现缺陷（现场阻断）** | 出餐报 `PSQLException: 操作符不存在: bigint = character varying`。根因：`dining_tables.current_order_id` 为 **bigint**，而 `orders.order_id` 为 `O...` 字符串 → `unlockTableByOrderId` 必然类型冲突。**且该列全表 150+ 行皆为 NULL** → 桌台锁定/解锁功能从未真正生效（既存缺陷，被本次状态机闭环首次触发暴露）。已改为 `current_order_id::text = #{orderId}` 类型安全写法（语义不变、不再 500）。**遗留**：桌台与订单的关联需重新设计（bigint↔varchar），建议独立卡处理 |
+| 验证状态 | ① 支付步骤实测通过（`POST /v1/pos/orders/order/pay` → code=0）② 后厨接单/开始制作实测通过 ③ 完成制作在修复前因上述类型冲突 500，修复后需重启后端复验 ④ E2E 已内置三端一致性断言（kds completed + material_consumed=1；orders order_status=2 + payment_status=2） |
+| 关联 | §24.20a N34 / §24.21a N35 / §24.22a N36 |
