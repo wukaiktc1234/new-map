@@ -8662,3 +8662,19 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | **必须披露的执行偏差** | 两个迁移是**用 psql 直接落库**验证的（项目未配 `flyway-maven-plugin`，`spring.flyway.enabled=true` 只在应用启动时跑）。因此 `flyway_schema_history` **尚未登记** `20261015.001/002`；下次后端启动时 Flyway 会重跑这两个文件（全部 `WHERE NOT EXISTS` 守卫，幂等）并登记版本。若要求在启动前就登记，需 Owner 授权后手工插 history 行（属历史面操作，本卡未做） |
 | 未做 | ① `AdminPermissions.ALL`(352) 与 DB 目录(418) 仍分叉，独立治理项 ② 目录中 46 个从未被注解引用的码未清理 ③ 非 admin 角色对 B1/B2 层的可达性依赖上表矩阵，未经活体验证 |
 | 关联 | §24.15a N31 / §24.16a N32 / §24.14a P1-AUTH-CHAIN-001-B / §24.13a N30 |
+
+### §24.18a P1-DASHBOARD-FILTER-001（2026-10-15 Owner 开卡；越权风险，暂以「不授权」规避）
+
+| 项 | 内容 |
+|----|------|
+| Task ID | **P1-DASHBOARD-FILTER-001** |
+| 状态 | **PENDING（未启动，待 Owner 放行）** |
+| 优先级 | **P1**——越权风险；当前靠「不授权 + 前端不展示」规避，**根因未修** |
+| 来源 | 2026-10-15 活体验证：收银员/店长首页「今日销售」「会员增长」403 → 临时授权后变为 500 → Owner 裁决 **B（前端按权限隐藏，绝不放开授权）** 并开本卡 |
+| 性质 | **数据权限缺失**：`DashboardController` 全部端点仅 `@PreAuthorize("hasAuthority('operations:dashboard:view') or hasAuthority('*')")`，方法内**无门店/部门级数据过滤** → 一旦授予业务角色，等于让其看到**全公司**销售与会员流水 |
+| 已落地的规避（本轮） | ① 前端 `useRoleDashboard.detectRequiredApis()` 增加 `canViewOperationsDashboard` 参数，无权限时 4 类端点**一律不发请求**，`refresh()` 早退并清空 `statsCards`/`alerts`（不渲染）② `V20261015_004__revoke_dashboard_view_from_business_roles.sql`：撤销 2026-10-22 19:55 误授的 13 个业务角色，仅保留 `ROLE_ADMIN` / `ROLE_OWNER` / 悬空 `'1'` / `ROLE_OPS_DIRECTOR`（活库实跑 `DELETE 13`，复核仅余 4 个持有者） |
+| 附带发现（独立缺陷） | `DashboardServiceImpl.java:114` 主动抛 `BusinessException(INTERNAL_SERVER_ERROR, "今日销售概览数据暂不可用")` → **即使有权限也会 500**，属数据实现问题，随本卡一并排查 |
+| 实施要点 | ① 4 个数据端点接数据权限过滤（`SecurityUser.locationId/storeId` 或 `DataPermissionAspect`）② 明确口径：店长=本店 / 区域经理=辖区 / 运营总监=全司 ③ 修 `DashboardServiceImpl` 的 500 ④ 补单测 + 活体对照 ⑤ 完成后再按角色重新授予 `operations:dashboard:view` |
+| 不在本卡 | 不改注解权限码字面；不动 N31 权限目录；不回退 `V20261015_004`（撤销是防越权，不是临时手段） |
+| 验收基准 | ① 店长账号仅见本店数字（与全司总量可区分）② 收银员无该权限时首页无相关卡片、零请求 ③ 有权限者不再 500 ④ `mvn test` 无新增失败 |
+| 关联 | §24.15a N31 / §24.17a / §24.14a P1-AUTH-CHAIN-001 |
