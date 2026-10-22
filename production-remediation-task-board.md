@@ -8678,3 +8678,18 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 不在本卡 | 不改注解权限码字面；不动 N31 权限目录；不回退 `V20261015_004`（撤销是防越权，不是临时手段） |
 | 验收基准 | ① 店长账号仅见本店数字（与全司总量可区分）② 收银员无该权限时首页无相关卡片、零请求 ③ 有权限者不再 500 ④ `mvn test` 无新增失败 |
 | 关联 | §24.15a N31 / §24.17a / §24.14a P1-AUTH-CHAIN-001 |
+
+### §24.19a N33（现场修复 + 业务裁决）：POS 登录闸门 `hasPosRole` 读错字段导致非 admin 全军覆没
+
+| 项 | 内容 |
+|----|------|
+| 现象 | vtest01（店长）、vcashier01（收银员）登录 POS 端被拒，返回 403「无收银操作权限」 |
+| 定位 | 文案出自 `PosAuthServiceImpl.java:108`；判定在 `hasPosRole(User)`（L364 起），属**后端业务异常**，非 `@PreAuthorize` 403、非前端拦截 |
+| 根因 | `hasPosRole` 读 `user.getRoles()`（即 `users.roles` 列），而该列存的是**数字角色 ID**（vtest01=`["9"]`、vcashier01=`["4216"]`、admin=`["1"]`），代码却对该字符串做 `contains("admin"/"cashier"/"pos"/"operator")` 英文关键词匹配 → **恒为 false**。除 `username == "admin"` 快捷通道外，**任何账号都进不了 POS，包括真正的收银员**。控制器白名单形同虚设（根本走不到 `@PreAuthorize`） |
+| 修复 | 改读授权权威源 `user_roles → roles.role_id_str`，经 `RoleCodeNormalizer` 归一后与放行集合比对：`{admin, owner, store_manager, cashier, pos_operator}`；保留 admin 用户名通道；查询异常 **fail-closed** 拒绝 |
+| 与控制器口径一致性 | 放行集合与 `PosApiController` L26 / `PosOrderController` L29 / `PosCouponController` L29 / `YoloProductRecognitionController` L24 的类级 `hasAnyAuthority('ROLE_ADMIN','ROLE_STORE_MANAGER','ROLE_CASHIER','ROLE_POS_OPERATOR', '*')` 严格对齐 |
+| 实证（活库模拟新逻辑） | `vcashier01 → ROLE_CASHIER → cashier → PASS`；`vtest01 → ROLE_STORE_MANAGER → store_manager → PASS`；admin 走用户名快捷通道 → PASS。`mvn -o compile` exit 0 |
+| **裁决 1（Owner 2026-10-15）** | **店长保留收银权限**：`store_manager` 留在放行集合内。理由：现实中店长顶班收银属常态；且 POS 控制器白名单本就含店长（源自 §24.17a 裁决 3 的 `ROLE_MANAGER → ROLE_STORE_MANAGER`），两处口径必须一致 |
+| **裁决 2（Owner 2026-10-15）** | **收银员结算/退款限制保持现状**：`PosOrderPaymentServiceImpl` L104（`ROLE_ADMIN/STORE_MANAGER/CASHIER/POS_OPERATOR`）与 **L280（仅 `ROLE_ADMIN/STORE_MANAGER`）** 的分级维持原样，**不放开给收银员**。理由：退款/日结由店长或超管把关符合财务风控 |
+| 若仍 403 的下一步 | 已能登录但业务端点仍 403 → 属另一层（`@PreAuthorize` 角色码或数据权限过滤），需按具体端点单独定位 |
+| 关联 | §24.17a N31 裁决 3（ROLE_MANAGER → ROLE_STORE_MANAGER） / §24.13a N30 / §24.15a N31 |
