@@ -99,8 +99,30 @@
 `HealthCertificateStatusEnum` / `HealthCertificateExpenseStatusEnum` / `HealthCertificateApprovalStatusEnum`（共 168 行）。
 **未删除**，理由：这三个枚举编码的是「健康证状态」业务词典，前端 `types/healthCertificate.ts` 仍在用同义状态值；删除会把未来接回后端的词典一并清掉，属产品决策而非纯清理。建议 Owner 裁决：要么接入实体字段，要么连同前端类型一起清。
 
-## 6. 交接说明
+## 6. 交接说明（2026-10-23 06:25 收口）
 
-- 分支提交列表：`git log --oneline ai-night-patrol-1..ai-night-chore-1`
-- 未提交在途改动：`git status --porcelain` 中除 Owner WIP 外仅含队友正在编辑的前端 clean 文件。
-- push：`git push origin ai-night-chore-1`（独立夜间分支，不影响 master；本轮结束时已按交接条款推送）。
+### 6.1 分支与提交
+- 分支：`ai-night-chore-1`（基于 `ai-night-patrol-1` @ f907804），已推送 origin，ahead=0。
+- 本轮共 **40 个提交**：23 个测试类、1 个前端类型修复、1 个死代码删除、2 份报告、其余为日志/文档。
+- 查看：`git log --oneline f907804..ai-night-chore-1`
+
+### 6.2 终检证据
+- 23 个新测试类一次性全跑：`mvn -o test -Dtest="<23 个类名>"` → **Tests run: 263, Failures: 0, Errors: 0, BUILD SUCCESS**（2026-10-23 06:24）。
+- 全量测试编译：`mvn -o test-compile` → BUILD SUCCESS。
+- 前端：`npx vue-tsc --noEmit` → **93 条**（基线 145，−52，0 新增）。
+- 生产代码改动：**0 行**（仅新增测试 + 删除 2 个零引用类 + 前端类型层改动）。
+
+### 6.3 给白天 Agent 的 3 条优先修复（都有测试兜底，改完跑对应测试即可）
+1. **P0 定价排序反转**：`PricingServiceImpl:139` 的 `orderBy(true, isDesc, ...)` 改传 `!isDesc`；同步把 `PricingServiceImplTest#queryHistory_*` 的两条特征化断言改回正常方向。
+2. **P0 调整单金额口径**：`InventoryAdjustServiceImpl` 创建(112-114)与更新(219-226)统一为"分"；改完更新 `InventoryAdjustServiceImplTest` 里三条特征化断言。
+3. **P1 扣料静默缺口**：`InventoryDeductionServiceImpl` ①批次不足仅 warn（199-201）②按配方不写库存（78-92）；前者改抛异常/返回缺口，后者接 `InventoryService`，测试已固定在对应用例。
+
+### 6.4 未完成（下一夜可继续）
+- 仍有 **300+ `ServiceImpl` 无单测**（挑选脚本见质量报告 §5）。
+- 前端剩余 **93 条** TS 报错根因全在 Owner WIP 脏文件，需 Owner 放行后才能修；两条批量线索（`DataTable.vue:22` 一改消 10 条；9 条图标名错误）见 §3。
+- 3 个零引用健康证枚举（168 行）保留待 Owner 裁决，见 §5.1。
+
+### 6.5 纪律复核
+- 所有提交均为精确 `git add <文件>`，每次 commit 前 `git diff --cached --numstat` 复核只含本批文件。
+- Owner WIP（448 M + 1 D + 90 ??）全程未暂存；测试目录下既有的 `PaymentServiceImplTest.java`（Owner WIP）未触碰。
+- 未执行任何写入 SQL、未碰 `flyway_schema_history`、未改后端核心业务逻辑。
