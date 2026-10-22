@@ -24,7 +24,7 @@ public class LoginLogController {
 
     @Operation(summary = "分页查询登录日志")
     @PostMapping("/page")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'department_manager')")
     public Result<IPage<LoginLog>> getLoginLogs(@RequestBody LoginLogQueryRequest request) {
         IPage<LoginLog> logs = loginLogService.getLoginLogs(request);
         return Result.success(logs);
@@ -32,7 +32,7 @@ public class LoginLogController {
 
     @Operation(summary = "获取登录日志详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'department_manager')")
     public Result<LoginLog> getLoginLogById(@PathVariable Long id) {
         LoginLog log = loginLogService.getLoginLogById(id);
         return Result.success(log);
@@ -40,7 +40,7 @@ public class LoginLogController {
 
     @Operation(summary = "导出登录日志（Excel）")
     @PostMapping("/export")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'department_manager')")
     public Result<String> exportLoginLogs(@RequestBody LoginLogQueryRequest request) {
         return Result.success("导出功能开发中");
     }

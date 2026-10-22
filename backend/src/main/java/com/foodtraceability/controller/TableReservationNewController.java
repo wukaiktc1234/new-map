@@ -34,7 +34,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/v1/reservations")
 @Tag(name = "预约管理", description = "桌台预约的增删改查及状态管理接口")
-@PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_HOST', 'store_manager')")
+@PreAuthorize("hasAnyRole('ROLE_ADMIN', 'store_manager')")
 public class TableReservationNewController {
 
     private final TableReservationNewService tableReservationNewService;

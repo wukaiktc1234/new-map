@@ -45,7 +45,7 @@ public class StoreHealthCertificateController {
      * @param status 状态
      * @return 健康证列表
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin', 'admin')")
+    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin')")
     @GetMapping("/list")
     public Result<Page<HealthCertificate>> getStoreHealthCertificateList(
             @RequestParam(defaultValue = "1") Integer page,
@@ -70,7 +70,7 @@ public class StoreHealthCertificateController {
      * @param id 健康证ID
      * @return 健康证信息
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'store_employee', 'admin', 'admin')")
+    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin')")
     @GetMapping("/{id}")
     public Result<HealthCertificate> getStoreHealthCertificateById(@PathVariable String id) {
         HealthCertificate healthCertificate = healthCertificateService.getById(id);
@@ -82,7 +82,7 @@ public class StoreHealthCertificateController {
      * @param employeeId 员工ID
      * @return 健康证信息
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin', 'admin')")
+    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin')")
     @GetMapping("/employee/{employeeId}")
     public Result<HealthCertificate> getStoreHealthCertificateByEmployeeId(@PathVariable String employeeId) {
         HealthCertificate healthCertificate = healthCertificateService.getByEmployeeId(employeeId);
@@ -130,7 +130,7 @@ public class StoreHealthCertificateController {
      * @param healthCertificateId 健康证ID
      * @return 报销记录列表
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin', 'admin')")
+    @PreAuthorize("hasAnyRole('store_manager', 'employee', 'admin')")
     @GetMapping("/expense/{healthCertificateId}")
     public Result<List<HealthCertificateExpense>> getStoreHealthCertificateExpenses(@PathVariable String healthCertificateId) {
         List<HealthCertificateExpense> expenses = healthCertificateExpenseService.getByHealthCertificateId(healthCertificateId);
@@ -164,7 +164,7 @@ public class StoreHealthCertificateController {
      * @param status 报销状态（可选）
      * @return 分页费用记录
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'admin', 'admin')")
+    @PreAuthorize("hasAnyRole('store_manager', 'admin')")
     @GetMapping("/expense/all")
     public Result<Page<HealthCertificateExpense>> getAllExpenseRecords(
             @RequestParam(defaultValue = "1") Integer page,
@@ -188,7 +188,7 @@ public class StoreHealthCertificateController {
      * @param body 包含 status 和 approver 的请求体
      * @return 更新结果
      */
-    @PreAuthorize("hasAnyRole('store_manager', 'admin', 'admin') or hasAuthority('hr:health-certificate:manage')")
+    @PreAuthorize("hasAnyRole('store_manager', 'admin') or hasAuthority('hr:health-certificate:manage')")
     @PutMapping("/expense/{id}/status")
     public Result<String> updateExpenseStatus(
             @PathVariable Long id,

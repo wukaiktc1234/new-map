@@ -37,7 +37,7 @@ import java.util.*;
 @RestController
 @RequestMapping("/v1/label-template")
 @Tag(name = "标签模板管理", description = "标签模板的增删改查、预览和打印")
-@PreAuthorize("hasRole('USER')")
+@PreAuthorize("hasRole('employee')")
 public class LabelTemplateController {
 
     private static final Logger log = LoggerFactory.getLogger(LabelTemplateController.class);
