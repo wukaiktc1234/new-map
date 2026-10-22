@@ -127,7 +127,6 @@ export const ADMIN_OWNER_PROFILE: RoleProfile = {
       colorType: 'success',
       dataSource: 'todaySales.todayAmount',
       format: 'currency',
-      isTodo: true,
     },
     {
       key: 'inventory-warning',
@@ -352,7 +351,6 @@ export const STORE_PROFILE: RoleProfile = {
       colorType: 'success',
       dataSource: 'todaySales.todayAmount',
       format: 'currency',
-      isTodo: true,
     },
     {
       key: 'inventory-warning',

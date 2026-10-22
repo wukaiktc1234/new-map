@@ -16,7 +16,7 @@
  * - 部分字段后端标注 TODO（todayAmount/yesterdayGrowth/monthlyRevenue 等），前端如实展示 0
  * - 前端不再 Mock 任何看板数据，缺失字段以空状态展示，避免误导经营决策
  */
-import { get, post } from '@/api/request'
+import { get, post, silentGet } from '@/api/request'
 
 // ============================================================
 // 看板类型枚举（与后端 DashboardController 对齐）
@@ -191,7 +191,8 @@ export const dashboardApi = {
    * 真实数据源：sales_order 表（status=completed，今日订单）
    */
   async getTodaySales(): Promise<TodaySalesOverview> {
-    const res = await get<Record<string, unknown>>('/v1/dashboard/today-sales')
+    // N31：仪表盘为可选组件，失败静默降级（不弹 ElMessage，卡片自行展示占位）
+    const res = await silentGet<Record<string, unknown>>('/v1/dashboard/today-sales')
     return adaptTodaySales(res)
   },
 
@@ -201,7 +202,7 @@ export const dashboardApi = {
    * 真实数据源：inventory 表（warning_status=1）
    */
   async getInventoryAlerts(): Promise<InventoryAlerts> {
-    const res = await get<Record<string, unknown>>('/v1/dashboard/inventory-alerts')
+    const res = await silentGet<Record<string, unknown>>('/v1/dashboard/inventory-alerts')
     return adaptInventoryAlerts(res)
   },
 
@@ -212,7 +213,7 @@ export const dashboardApi = {
    * @param days 最近天数（默认 30）
    */
   async getMemberGrowth(days = 30): Promise<MemberGrowthTrend> {
-    const res = await get<Record<string, unknown>>('/v1/dashboard/member-growth', { days })
+    const res = await silentGet<Record<string, unknown>>('/v1/dashboard/member-growth', { days })
     return adaptMemberGrowth(res)
   },
 
@@ -222,7 +223,7 @@ export const dashboardApi = {
    * 注意：后端目前为 TODO，返回全 0，前端如实展示
    */
   async getFinanceSummary(): Promise<FinanceSummary> {
-    const res = await get<Record<string, unknown>>('/v1/dashboard/finance-summary')
+    const res = await silentGet<Record<string, unknown>>('/v1/dashboard/finance-summary')
     return adaptFinanceSummary(res)
   },
 

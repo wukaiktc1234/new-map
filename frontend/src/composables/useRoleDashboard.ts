@@ -284,25 +284,25 @@ export function useRoleDashboard(): UseRoleDashboardReturn {
       const [todaySales, inventory, member, finance] = await Promise.all([
         required.needTodaySales
           ? dashboardApi.getTodaySales().catch(err => {
-              console.error('[useRoleDashboard] 加载今日销售失败:', err)
+              console.warn('[useRoleDashboard] 今日销售不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needInventory
           ? dashboardApi.getInventoryAlerts().catch(err => {
-              console.error('[useRoleDashboard] 加载库存预警失败:', err)
+              console.warn('[useRoleDashboard] 库存预警不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needMember
           ? dashboardApi.getMemberGrowth(30).catch(err => {
-              console.error('[useRoleDashboard] 加载会员增长失败:', err)
+              console.warn('[useRoleDashboard] 会员增长不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needFinance
           ? dashboardApi.getFinanceSummary().catch(err => {
-              console.error('[useRoleDashboard] 加载财务概况失败:', err)
+              console.warn('[useRoleDashboard] 财务概况不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
