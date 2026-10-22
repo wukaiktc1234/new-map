@@ -8647,3 +8647,18 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 已知边界 | ① 只做静态字面量比对，不判断业务语义（如"经理"该映射哪个角色） ② `AdminPermissions.ALL` 单独解析，不参与 A/B/C 分类 ③ 不解析跨行拼接的注解（本仓当前 0 处） |
 | 首次产出 | 2526 条字面量 / VALID 1461 / A 12 / B 1031 / C 22（见 §24.15a N31 与报告） |
 | 状态 | **已交付**，随 N31 治理与后续清洗复用 |
+
+### §24.17a N31 四项裁决执行记录（2026-10-15；4 片独立提交）
+
+| 裁决 | 落地 |
+|------|------|
+| **裁决 2：286 码补目录** | `V20261015_001__backfill_permission_catalog.sql`（408 行）。活库实跑结果：`permissions` **132 → 418**（+286）；`role_permissions` **+1251**（admin/owner 全目录 580+409、模块矩阵 262）；落库后 `role_permissions` 总计 **1690** |
+| **裁决 1：admin 全局兜底** | 新增 `security/service/AdminPermissionCatalog`（启动时把 DB 全量权限码读入静态快照，失败则退化为仅 `AdminPermissions.ALL`，fail-safe）；`SecurityUser.getAuthorities()` 的 admin 分支改为 `AdminPermissions.ALL ∪ AdminPermissionCatalog.codes()`。**零注解改动**，B3 那 67 处死路对 admin 全部解开 |
+| **裁决 3：A 类统一** | `ROLE_MANAGER` → `ROLE_STORE_MANAGER`，实际 **14 处**（见下方更正） |
+| **裁决 4：C 类补建** | `V20261015_002__add_pos_kitchen_roles.sql`。活库已建：`ROLE_CASHIER`(id 4216) / `ROLE_POS_OPERATOR`(4217) / `ROLE_CHEF`(4218) / `ROLE_KITCHEN`(4219)，`role_code` 分别为 `cashier`/`pos_operator`/`chef`/`kitchen`，`data_scope=store`、`org_level=STORE_STAFF`；并授予最小必要权限（收银员 28、POS 操作员 23、厨师 2、后厨 2 条）。前端 `permission.ts` 的 `UserRole` 枚举 + 角色字典（`ROLE_` 前缀 / 裸码 / 中文名三组）各补 4 项 |
+| 授权矩阵（裁决 2 第 3 步，**需 Owner 复核**） | `finance`/`recharge*`/`refund`→`ROLE_FINANCE_DIRECTOR`；`member`/`coupon`/`order`/`product`/`trace`/`traceability`/`label`/`store`/`schedule`/`alert`/`warehouse`/`inventory`/`other-inbound`/`loss-outbound`/`signature`/`refund`→`ROLE_STORE_MANAGER`；`warehouse`/`inventory`/`other-inbound`/`loss-outbound`/`signature`→`ROLE_WAREHOUSE_MANAGER`；`purchase`→`ROLE_PURCHASE_MANAGER`；`hr`→`ROLE_HR_DIRECTOR`；`operations`→`ROLE_OPS_DIRECTOR`；`audit`→`ROLE_AUDITOR`；`system`/`device`/`hardware`/`notification`/`backup`/`scheduler`/`esign`/`seal`/`sys`/`permission`/`admin`/`file` **仅 admin**。若认为某域越权，删对应 `role_permissions` 行即可回退（迁移头已写回退 SQL） |
+| **口径更正（只增不改）** | §24.15a N31 与报告里的「A 类 **12** 处」应为 **14 处**。原因：N32 扫描器 `ANN_START` 只匹配 `@PreAuthorize`，漏掉了**全限定写法** `@org.springframework.security.access.prepost.PreAuthorize(...)` —— `KitchenScanController` L207/L221 两处即属此类。扫描器已修（`@(?:[A-Za-z_][\w.]*\.)?(PreAuthorize\|...)`），修后 `KitchenScanController` 的字面量从 0 变为 12 条 |
+| **改后验证** | 重扫产出 `docs/audit/auth-annotation-literal-audit-002-post-fix.{md,json}`：字面量 **2536**，**VALID 2536 / A 0 / B 0 / C 0**（B、C 归零系补码迁移与补建角色生效所致）。`mvn -o compile` exit 0；`RoleCodeNormalizerTest` + `SecurityUserAuthoritiesTest` **15/15 通过**；前端 `vue-tsc` 145 条不变（144 基线 + RoleManagementTab 既有 1 条），`permission.ts` 零新增错误 |
+| **必须披露的执行偏差** | 两个迁移是**用 psql 直接落库**验证的（项目未配 `flyway-maven-plugin`，`spring.flyway.enabled=true` 只在应用启动时跑）。因此 `flyway_schema_history` **尚未登记** `20261015.001/002`；下次后端启动时 Flyway 会重跑这两个文件（全部 `WHERE NOT EXISTS` 守卫，幂等）并登记版本。若要求在启动前就登记，需 Owner 授权后手工插 history 行（属历史面操作，本卡未做） |
+| 未做 | ① `AdminPermissions.ALL`(352) 与 DB 目录(418) 仍分叉，独立治理项 ② 目录中 46 个从未被注解引用的码未清理 ③ 非 admin 角色对 B1/B2 层的可达性依赖上表矩阵，未经活体验证 |
+| 关联 | §24.15a N31 / §24.16a N32 / §24.14a P1-AUTH-CHAIN-001-B / §24.13a N30 |

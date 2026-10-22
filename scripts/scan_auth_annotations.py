@@ -42,7 +42,8 @@ import sys
 from collections import defaultdict
 
 ANN_START = re.compile(
-    r"@(PreAuthorize|PostAuthorize|Secured|RolesAllowed|RequiresPermission|RequiresPermissions)\b\s*\("
+    r"@(?:[A-Za-z_][\w.]*\.)?"
+    r"(PreAuthorize|PostAuthorize|Secured|RolesAllowed|RequiresPermission|RequiresPermissions)\b\s*\("
 )
 CALL = re.compile(r"\b(hasRole|hasAnyRole|hasAuthority|hasAnyAuthority)\s*\(")
 
