@@ -3,6 +3,7 @@ package com.foodtraceability.service.impl;
 import com.foodtraceability.common.exception.NoLocationContextException;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.*;
@@ -25,6 +26,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -588,6 +591,9 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         kitchenOrder.setPickupCode(pickupCode);
         kitchenOrder.setOrderType(orderType);
         kitchenOrder.setTableNumber(command.getTableNumber() != null ? command.getTableNumber().toString() : null);
+        // 2026-10-23 修复：后厨单补齐门店归属（原实现 store_id/store_name 为空，追溯码与门店维度统计均缺数据）
+        kitchenOrder.setStoreId(parseStoreId(command.getStoreId()));
+        kitchenOrder.setStoreName(resolveStoreName(command.getStoreId()));
         kitchenOrder.setStatus("pending");
         kitchenOrder.setReceiveTime(LocalDateTime.now());
         kitchenOrder.setTotalDishes(calculateCanonicalTotalDishes(command.getItems()));
@@ -656,22 +662,12 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * P1-COMBO-ORDER-001: combo 行写入 productType/comboId，供 KDS 拉单展开
      */
     private String buildCanonicalDishItemsJson(List<CanonicalOrderItemCommand> items) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.size(); i++) {
-            CanonicalOrderItemCommand item = items.get(i);
-            if (i > 0) sb.append(",");
-            sb.append("{\"name\":\"").append(item.getFoodName()).append("\"")
-              .append(",\"quantity\":").append(item.getQuantity())
-              .append(",\"price\":").append(item.getUnitPrice())
-              .append(",\"type\":\"").append(item.getDishType() != null ? item.getDishType() : "").append("\"");
-            if (isComboItem(item)) {
-                sb.append(",\"productType\":2")
-                  .append(",\"comboId\":").append(item.getFoodId() != null ? item.getFoodId().trim() : "null");
-            }
-            sb.append("}");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (CanonicalOrderItemCommand item : items) {
+            rows.add(canonicalDishItem(item.getFoodId(), item.getFoodName(), item.getQuantity(),
+                    item.getUnitPrice(), item.getDishType(), isComboItem(item)));
         }
-        sb.append("]");
-        return sb.toString();
+        return writeDishItems(rows);
     }
 
     /**
@@ -853,6 +849,9 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         kitchenOrder.setPickupCode(pickupCode);
         kitchenOrder.setOrderType(orderType);
         kitchenOrder.setTableNumber(request.getTableNumber() != null ? request.getTableNumber().toString() : null);
+        // 2026-10-23 修复：后厨单补齐门店归属（同上）
+        kitchenOrder.setStoreId(parseStoreId(request.getStoreId()));
+        kitchenOrder.setStoreName(resolveStoreName(request.getStoreId()));
         kitchenOrder.setStatus("pending");
         kitchenOrder.setReceiveTime(LocalDateTime.now());
         kitchenOrder.setTotalDishes(calculateTotalDishes(request.getItems()));
@@ -965,6 +964,54 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * @param storeId 门店ID（stores_new.store_id 的字符串形式）
      * @return 门店名称（查询失败返回"未知门店"）
      */
+    /** 后厨单菜品项 JSON 序列化器（统一出口，保证转义正确）。 */
+    private static final ObjectMapper DISH_ITEMS_MAPPER = new ObjectMapper();
+
+    /**
+     * 2026-10-23（Owner 裁决：后端 DTO 为 Canonical 真相源）：
+     * 后厨单 dish_items 统一按 KitchenOrderCreateDTO.DishItemDTO 的键名落库 ——
+     *   dishId / dishName / quantity / remark
+     * price / type / comboId 仅作为展示元数据附带，读取方一律以 dishId/dishName 为准。
+     * 修复前该字段写的是 POS 键名 {name,quantity,price,type}，
+     * 导致 generateFoodTraceCodes 反序列化为 DishItemDTO 时 dishId/dishName 为空（追溯码缺菜品信息）。
+     */
+    private Map<String, Object> canonicalDishItem(String dishId, String dishName, Integer quantity,
+                                                  BigDecimal price, String dishType, boolean combo) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("dishId", dishId);
+        row.put("dishName", dishName);
+        row.put("quantity", quantity);
+        row.put("remark", null);
+        row.put("price", price);
+        row.put("type", dishType != null ? dishType : "");
+        if (combo) {
+            row.put("productType", 2);
+            row.put("comboId", dishId);
+        }
+        return row;
+    }
+
+    private String writeDishItems(List<Map<String, Object>> rows) {
+        try {
+            return DISH_ITEMS_MAPPER.writeValueAsString(rows);
+        } catch (Exception e) {
+            log.error("后厨单菜品项序列化失败", e);
+            return "[]";
+        }
+    }
+
+    /** 门店 ID 字符串转 Long，非法或空返回 null（下游按无门店处理）。 */
+    private Long parseStoreId(String storeId) {
+        if (storeId == null || storeId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(storeId.trim());
+        } catch (NumberFormatException e) {
+            log.warn("门店ID格式非法，忽略: storeId={}", storeId);
+            return null;
+        }
+    }
     private String resolveStoreName(String storeId) {
         if (storeId == null || storeId.isEmpty()) {
             return "未知门店";
@@ -1055,36 +1102,24 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * P1-COMBO-ORDER-001: combo 行写入 productType/comboId，供 KDS 拉单展开
      */
     private String buildDishItemsJson(List<OrderItemDTO> items) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.size(); i++) {
-            OrderItemDTO item = items.get(i);
-            if (i > 0) sb.append(",");
-            sb.append("{\"name\":\"").append(item.getName()).append("\"")
-              .append(",\"quantity\":").append(item.getQuantity())
-              .append(",\"price\":").append(item.getPrice())
-              .append(",\"type\":\"").append(item.getDishType()).append("\"");
-            if ("combo".equals(item.getDishType())) {
-                sb.append(",\"productType\":2")
-                  .append(",\"comboId\":").append(item.getId() != null ? item.getId().trim() : "null");
-            }
-            sb.append("}");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (OrderItemDTO item : items) {
+            rows.add(canonicalDishItem(item.getId(), item.getName(), item.getQuantity(),
+                    item.getPrice(), item.getDishType(), "combo".equals(item.getDishType())));
         }
-        sb.append("]");
-        return sb.toString();
+        return writeDishItems(rows);
     }
 
     /**
      * 构建桌台订单菜品项JSON
      */
     private String buildTableOrderDishItemsJson(List<TableOrderDTO.TableOrderItem> items) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.size(); i++) {
-            TableOrderDTO.TableOrderItem item = items.get(i);
-            if (i > 0) sb.append(",");
-            sb.append("{\"name\":\"").append(item.getName()).append("\",\"quantity\":").append(item.getQuantity()).append("}");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (TableOrderDTO.TableOrderItem item : items) {
+            rows.add(canonicalDishItem(item.getId(), item.getName(), item.getQuantity(),
+                    item.getPrice(), null, false));
         }
-        sb.append("]");
-        return sb.toString();
+        return writeDishItems(rows);
     }
     /**
      * P1-NEW-FOOD-LEGACY-SYNC-001: legacy food 行缺失时按 foods 新表数据补行（自愈兜底）。
