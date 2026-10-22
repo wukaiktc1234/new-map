@@ -112,3 +112,14 @@
 - `scheduler/MonthlyClosingScheduler.java:67-122` 成本结转/折旧金额写死 `0L`、账龄更新空 TODO，日志却打印「月末结账任务完成」；`scheduler/impl/DefaultTaskExecutor.java:90-133` 用 `Thread.sleep(100)` 模拟备份却返回 success —— 均为结构性假成功，接真实服务属新增依赖，需立卡。
 - 带 Owner WIP 的 6 处同族缺陷（`PosOrderNumberGenerator:136-141` 序号归零→重复 order_code、`PurchaseOrderServiceImpl:242-249` 静默 null 供应商、`PosOrderQueryServiceImpl:226-233` 详情转换失败仍 success、`OrderTimeoutTask:102,134-136` private 方法上的 @Transactional 失效、`BankAccountServiceImpl:303`、`SchemaFixMigration:71-74` debug 降级）—— **只报不改**，待 Owner WIP 落定后处理。
 
+### 6.5 独立复核（reviewer 只读复核 8 个提交）新增的 4 项
+
+| 编号 | 问题 | 关键证据 |
+|------|------|---------|
+| **SEC-JWT-003**（**建议优先**） | `security/utils/JwtUtils.java:451,541` `claims.getExpiration().getTime()` 无判空 → 无 exp 的 token 直接 NPE；:451 的 catch 只捕 `JwtException`，NPE 冒到注销接口 → 500 | 这才是**真实鉴权链**用的类：`JwtAuthenticationFilter:118` / `WebSocketConfig:113` / `TokenServiceImpl:86`。批次 1 修的 `util/JwtUtil` 全仓零调用方 |
+| **SEC-JWT-004** | `security/utils/JwtUtils.validateToken:267` 只靠 JJWT `parseSignedClaims`，**无 exp 的 token 在真实链路仍被判有效** → 「无 exp 视为过期」政策未在真实链路落地 | 实际风险限于持密钥伪造者（token 生成 :197/:245 恒带 exp），评 P2 |
+| **ARCH-EVENT-003** | `OrderCreatedEventListener:25-26` 用裸 `@EventListener` + `@Async`（DF-011 只落地到 OrderCompleted / PurchaseStockIn）→ 主事务回滚时原料锁定仍会执行 | 预存在设计缺口，非本轮引入。改 AFTER_COMMIT 前须确认发布点事务上下文，否则事件在无事务上下文发布时监听器**完全不触发**、原料锁定静默失效 |
+| **ARCH-EVENT-004** | `PurchaseStockInEventListener:50-51` 在 AFTER_COMMIT 阶段抛异常，**没有事务可回滚** → 可能「追溯码已提交 + 采购成本失败」半成功 | 批次 2 提交说明里的原子性承诺**撤回**（代码无回归，但一致性未保证）。建议与既有 **ARCH-EVENT-002（事件 outbox）** 一并立卡 |
+
+> **更正声明（只增不改）**：`d1c1f9d` 提交说明中「监听器均为 @Async+AFTER_COMMIT+REQUIRES_NEW 不影响主事务」**不成立**，以本节为准。实测：只有 `OrderCompletedEventListener:75-77` 三件套齐全；`OrderCreatedEventListener` 为 `@Async + @EventListener`（但其外层 `:35-40` catch 捕获后不重抛，故无异步未捕获异常回归）；`PurchaseStockInEventListener` 缺 `REQUIRES_NEW`。
+

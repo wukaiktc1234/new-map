@@ -143,6 +143,67 @@
 
 **发现但未修**：`BankAccountServiceImpl.java:303`（WIP，同族拆箱 NPE）；`MaterialRequestServiceImpl`/`PurchasePlanServiceImpl` 共 11 处 `getStatus() != STATUS_*` —— psql 确认两表 status 均 `NOT NULL`，DB 路径不可达，按「不引入回归」未改；`PurchasePlanServiceImpl:448/385` 的状态码属采购自有体系，**不能**替换成 `OrderStatusCodes`（不同表口径）。
 
-## 3. 复核（reviewer）与收口
+## 3. 独立复核（reviewer：radar1 只读复核 6 个提交）
 
-（待 reviewer 结论回填）
+### 3.1 复核结论矩阵
+
+| 项 | 结论 | 依据 |
+|----|------|------|
+| d1c1f9d 监听器「三件套」 | **提交说明失实（Lead 的错）** | 实测：OrderCompletedEventListener:75-77 = @Async + AFTER_COMMIT + REQUIRES_NEW ✓；**PurchaseStockInEventListener:50-51 只有 @Async + AFTER_COMMIT，无 REQUIRES_NEW**；**OrderCreatedEventListener:25-26 只有 @Async + @EventListener**（既非 AFTER_COMMIT 也无 REQUIRES_NEW）；HealthCertificateEventListener:41-43 = @Async + @EventListener |
+| OrderCreatedEventListener 是否会漏到 async 未捕获处理器 | **不会（Lead 复核推翻 reviewer 的 P0 判定）** | 该文件 :35-40 外层 `catch (Exception e)` 捕获后只 log、**不重抛** → lockMaterialsForOrder 抛出的异常在 :35 被吃掉，行为 = 「记 error + 不再打印处理完成」，零传播、零回归。reviewer 未读到外层 catch 的这一层 |
+| batchConfirmStockin 部分成功语义 | PASS | `confirmStockin` 自调用不过代理，抛出的 BusinessException 不会把外层标 rollback-only → 循环继续、已成功项保留；返回 int 仍是「逐条成功条数」（从「含假成功的计数」变为真实计数，正是本卡目的） |
+| JsonbListTypeHandler 新增 Logger | PASS，不需限流 | Logger 是 static final；TypeHandler 单例复用不复制静态字段；全仓仅 `entity/MarketingMember.java:111` 的 tags 字段使用该 handler |
+| JwtUtil 无 exp 视为过期 | PASS（无调用方依赖旧行为） | `isTokenExpired` / `validateToken(token,username)` 全仓零调用方；注入 util.JwtUtil 的只有 PermissionAspect:44 与 PermissionInterceptor:26，两者只用 `parseJwt`（对过期 token 返回 null，同为拒绝语义） |
+| IpUtils.isInternalIp | PASS | 全仓（java/xml/yml/properties）**零调用方**，不存在「内网免鉴权」依赖；172.16-31 合法输入行为逐字节不变 |
+
+### 3.2 复核新发现（Lead 判定：登记不改，无人值守不动事务边界）
+
+| 项 | 内容 | 为什么今晚不改 |
+|----|------|---------------|
+| **ARCH-EVENT-003** | `OrderCreatedEventListener` 用裸 `@EventListener` + `@Async`（DF-011 只落地到 OrderCompleted / PurchaseStockIn）→ 主事务回滚时原料锁定仍会执行（预存在设计缺口，非本次引入） | 改成 `@TransactionalEventListener(AFTER_COMMIT)` 若该事件在无事务上下文发布，**监听器将完全不触发** → 原料锁定静默失效。需 Owner 先确认发布点事务上下文，或加 `fallbackExecution = true` 后再改 |
+| **ARCH-EVENT-004** | `PurchaseStockInEventListener` 在 AFTER_COMMIT 阶段抛异常，**没有事务可回滚** → 可能出现「追溯码已提交 + 采购成本失败」的半成功。提交说明里的原子性承诺不成立 | 加 `@Transactional(REQUIRES_NEW)` 可让两步同事务，但会改变事务边界；无运行期验证手段，不在夜间擅改。**这与 ARCH-EVENT-002（事件 outbox）应一并立卡解决** |
+| **SEC-JWT-003** | `security/utils/JwtUtils.java:451,541` `claims.getExpiration().getTime()` 无判空 → 无 exp 的 token NPE；:451 的 catch 只捕 `JwtException`，NPE 会冒到注销接口 500。**这才是真实鉴权链用的类**（JwtAuthenticationFilter:118 / WebSocketConfig:113 / TokenServiceImpl:86），b746e66 修的是无人调用的 `util/JwtUtil` | 属**鉴权面红线**，Owner 亲自处理 |
+| **SEC-JWT-004** | `security/utils/JwtUtils.validateToken:267` 只靠 JJWT parseSignedClaims，**无 exp 的 token 在真实链路仍判有效** → b746e66 的「无 exp 视为过期」政策未在真实链路落地 | 同上，鉴权面红线；实际风险限于持密钥伪造者（token 生成 :197/:245 恒带 exp），评 P2 |
+
+> 更正声明（只增不改）：d1c1f9d 的提交说明里「监听器均为 @Async+AFTER_COMMIT+REQUIRES_NEW 不影响主事务」**不成立**，以本节 3.1 矩阵为准。代码本身无回归（OrderCreatedEventListener 外层 catch 兜住），但**原子性承诺撤回**。历史不改写，故在此更正。
+
+## 4. 收口
+
+### 4.1 提交清单（10 个，全部 `mvn -o compile` BUILD SUCCESS）
+
+```
+472aea8 批次7 收口文档（NIGHT_PATROL_LOG + STATUS §6）
+0ded263 批次6 雷达4 第二批 5 文件 6 点
+7dfd3fa 批次5b 漂移基线改 .md
+5491cda 批次5  新增 check-table-name-exists.py 闸门
+947cf80 批次4  雷达2+3 审计交付
+20adc43 批次3  雷达1 日志硬化 7 文件 10 点
+d1c1f9d 批次2  雷达1 假成功 6 文件 7 点（含 CODE-007）
+b746e66 批次1  雷达4 业务边界 7 文件 9 点
+```
+
+### 4.2 红线遵守自证
+
+| 红线 | 执行情况 |
+|------|---------|
+| 不动核心状态机 `OrderLifecycleService` | ✅ 零改动（仅记录其 :116-119 javadoc 过时引用，交 Owner） |
+| 不动权限底层 | ✅ security/ 全包零改动；`PermissionInterceptor:123`、`JwtUtils:451/541` 只报不改 |
+| 不改主分支 | ✅ 全程在 `ai-night-patrol-1`，master 未动 |
+| 不执行 DELETE/UPDATE/DROP 活库数据 | ✅ 对库只跑 SELECT；7 个清理脚本剥离注释后 `destructive=0 / writes=0`，变更段全封在 `[OWNER-EXECUTE]` 注释内 |
+| 每次提交跑通 `mvn -o compile` | ✅ 8 个代码/文档批次逐个编译，全部 BUILD SUCCESS（含一次 2766 源文件全量重编） |
+| Owner WIP 不入库 | ✅ 448 M / 91 ?? 全程未暂存；每批次 `git diff --cached --numstat` 复核，累计剔除 4 个 WIP 邻文件（`OrderRefundEventListener`、`CorsConfig`、`BankAccountServiceImpl`、`DeviceServiceImpl`） |
+| 精确 `git add` | ✅ 无 `git add .` / `-A` / 目录通配 |
+
+### 4.3 交接给 Owner 的 6 件事（按优先级）
+
+1. **SCHEMA-DRIFT-001**：65 处缺失 + 4 处单复数错侧。先跑 `python scripts/check-table-name-exists.py`，再逐条定「修 @TableName / 补 Flyway / 登记基线」。基线外新增会 exit 1，建议接进收口流程。
+2. **FIN-AMOUNT-001**：25 条已支付订单 `actual_amount=0.00` → 先修金额写回，再决定 DATA-006 是否软删（否则是掩盖）。
+3. **SEC-JWT-003 / 004**：真实鉴权链 `security/utils/JwtUtils` 的无 exp NPE 与「无 exp 仍判有效」，鉴权面红线，Owner 亲自处理。
+4. **ARCH-EVENT-003 / 004**：`OrderCreatedEventListener` 缺 AFTER_COMMIT 绑定、`PurchaseStockInEventListener` 在 AFTER_COMMIT 抛异常无事务可回滚 —— 与既有 **ARCH-EVENT-002（事件 outbox）** 一并立卡。
+5. **MAT-TRACE-001**：`MaterialTraceCodeServiceImpl:441-453` 组装 `Inventory` 后从未落库（功能缺口，需定 `InventoryService` 写入接口）。
+6. **Scheduler 桩实现**：`MonthlyClosingScheduler` 成本结转/折旧写死 0L、`DefaultTaskExecutor` `Thread.sleep(100)` 模拟备份却返回 success —— 结构性假成功，需立卡接真实服务。
+
+### 4.4 推送状态
+
+`ai-night-patrol-1` 已 push 到 `origin`（https://github.com/wukaiktc1234/new-map），PR 入口：
+https://github.com/wukaiktc1234/new-map/pull/new/ai-night-patrol-1
