@@ -1,6 +1,7 @@
 package com.foodtraceability.security.model;
 
 import com.foodtraceability.security.constants.AdminPermissions;
+import com.foodtraceability.security.utils.RoleCodeNormalizer;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -47,21 +48,25 @@ public class SecurityUser implements UserDetails {
             for (String role : roles) {
                 if (role == null || role.isEmpty()) continue;
 
-                // 同时添加大写和原始大小写两种 ROLE authority，兼容项目中混用大小写的 @PreAuthorize 注解
-                // hasAnyRole('admin') 检查 ROLE_admin；hasAnyRole('ADMIN') 检查 ROLE_ADMIN
-                String normalizedRole = role.toUpperCase();
-                authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
-                if (!role.equals(normalizedRole)) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                // P1-AUTH-CHAIN-001-A（N30 止血）：统一走 RoleCodeNormalizer，
+                // 消除历史实现的 ROLE_ + （已带 ROLE_ 的值）→ ROLE_ROLE_STORE_MANAGER 双前缀缺陷。
+                // 归一后 authority 恒为 ROLE_ + 全大写规范码，与 Spring hasRole('store_manager') 期望的
+                // ROLE_STORE_MANAGER 对齐；同时保留小写变体，兼容直接比较 authority 字符串的旧代码。
+                String canonicalRole = RoleCodeNormalizer.normalize(role);
+                if (canonicalRole == null) {
+                    continue;
+                }
+
+                String upperAuthority = RoleCodeNormalizer.toAuthority(canonicalRole);
+                authorities.add(new SimpleGrantedAuthority(upperAuthority));
+                String lowerAuthority = RoleCodeNormalizer.ROLE_PREFIX + canonicalRole;
+                if (!lowerAuthority.equals(upperAuthority)) {
+                    authorities.add(new SimpleGrantedAuthority(lowerAuthority));
                 }
 
                 // 管理员角色自动获得所有权限（*）
-                // 支持: admin/ADMIN, ROLE_ADMIN, Z(超级管理员), ROLE_Z
-                boolean isAdminRole = "ROLE_ADMIN".equals(normalizedRole)
-                    || "ADMIN".equals(normalizedRole)
-                    || "Z".equals(normalizedRole)
-                    || "ROLE_Z".equals(normalizedRole)
-                    || "admin".equalsIgnoreCase(role);
+                // 归一后 'ROLE_ADMIN' / 'ADMIN' / 'admin' / 'ROLE_Z' / 'Z' 分别归一为 'admin' / 'z'
+                boolean isAdminRole = "admin".equals(canonicalRole) || "z".equals(canonicalRole);
                 if (isAdminRole) {
                     isAdmin = true;
                     authorities.add(new SimpleGrantedAuthority("*"));

@@ -5,6 +5,7 @@ import com.foodtraceability.entity.User;
 import com.foodtraceability.mapper.RoleMapper;
 import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.security.constants.AdminPermissions;
+import com.foodtraceability.security.utils.RoleCodeNormalizer;
 import com.foodtraceability.service.PermissionVerifyService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -404,8 +405,14 @@ public class PermissionVerifyServiceImpl implements PermissionVerifyService {
             return false;
         }
 
+        // P1-AUTH-CHAIN-001-A（N30 止血）：归一后比较。
+        // 历史缺陷：user_roles.role_id 存 'ROLE_STORE_MANAGER'，调用方传 'store_manager'
+        // → 直接 equals 恒 false（活库实测 8 个 distinct 值与 roles.role_code 0 命中）。
         Set<String> roles = getUserRoles(userId);
-        return roles.contains(roleCode);
+        if (roles == null || roles.isEmpty()) {
+            return false;
+        }
+        return roles.stream().anyMatch(userRole -> RoleCodeNormalizer.matches(userRole, roleCode));
     }
 
     @Override
@@ -415,7 +422,11 @@ public class PermissionVerifyServiceImpl implements PermissionVerifyService {
         }
 
         Set<String> userRoles = getUserRoles(userId);
-        return roleCodes.stream().anyMatch(userRoles::contains);
+        if (userRoles == null || userRoles.isEmpty()) {
+            return false;
+        }
+        return roleCodes.stream().anyMatch(roleCode ->
+                userRoles.stream().anyMatch(userRole -> RoleCodeNormalizer.matches(userRole, roleCode)));
     }
 
     @Override
@@ -425,7 +436,11 @@ public class PermissionVerifyServiceImpl implements PermissionVerifyService {
         }
 
         Set<String> userRoles = getUserRoles(userId);
-        return userRoles.containsAll(roleCodes);
+        if (userRoles == null || userRoles.isEmpty()) {
+            return false;
+        }
+        return roleCodes.stream().allMatch(roleCode ->
+                userRoles.stream().anyMatch(userRole -> RoleCodeNormalizer.matches(userRole, roleCode)));
     }
 
     @Override

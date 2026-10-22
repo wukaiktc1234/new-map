@@ -16,6 +16,7 @@ import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.User;
 import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.service.PermissionVerifyService;
+import com.foodtraceability.security.utils.RoleCodeNormalizer;
 import com.foodtraceability.service.RoleService;
 import com.foodtraceability.service.UserService;
 import com.foodtraceability.service.UserDataService;
@@ -449,10 +450,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return false;
         }
 
+        // P1-AUTH-CHAIN-001-A（N30 止血）：归一后比较（原实现为 roleCode.equals(role.getRoleCode())，
+        // 大小写/ROLE_ 前缀任一不符即恒 false）；同时兜住角色 ID 非数字的历史脏值（如 'ROLE_ADMIN'），
+        // 避免 Long.valueOf 抛 NumberFormatException 打穿调用方。
         return roleIds.stream()
-                .map(roleId -> roleService.getRoleById(Long.valueOf(roleId)))
+                .map(roleId -> {
+                    try {
+                        return roleService.getRoleById(Long.valueOf(roleId));
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                })
                 .filter((Role role) -> role != null)
-                .anyMatch(role -> roleCode.equals(role.getRoleCode()));
+                .anyMatch(role -> RoleCodeNormalizer.matches(role.getRoleCode(), roleCode));
     }
 
     @Override
