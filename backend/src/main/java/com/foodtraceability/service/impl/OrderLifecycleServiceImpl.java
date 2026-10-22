@@ -75,8 +75,13 @@ public class OrderLifecycleServiceImpl implements OrderLifecycleService {
         }
 
         // 2) 扣料（口径 A：完成制作即扣料；material_consumed 原子幂等占位，重复调用会被拒绝并审计）
+        //    返回值为本次出库成本（分），用于第 2.5 步落 cost_record。
         String sourceRef = "KDS完成制作扣料 - 订单:" + kitchenOrder.getOrderNumber();
-        orderNewService.deductMaterialsForServe(kitchenOrderId, sourceRef, kitchenOrder.getTrayCode());
+        long totalCostFen = orderNewService.deductMaterialsForServe(
+                kitchenOrderId, sourceRef, kitchenOrder.getTrayCode());
+
+        // 2.5) 成本落库（cost_record）：此前 KDS 完成路径从不写成本，日结只有收入没有成本
+        orderNewService.persistOrderCostFromDeduction(kitchenOrder.getOrderId(), totalCostFen);
 
         // 3) 主订单联动：状态 → 已完成（未确认的先置已确认）+ 解锁桌台；不重复扣库存
         orderNewService.markCompletedFromKitchen(kitchenOrder.getOrderId());

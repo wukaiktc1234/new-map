@@ -554,6 +554,19 @@ public class OrderNewServiceImpl implements OrderNewService {
      * @param order 订单实体
      * @param totalCost 订单总成本（单位：分）
      */
+    @Override
+    public void persistOrderCostFromDeduction(String orderId, long totalCostFen) {
+        if (orderId == null || orderId.isBlank() || totalCostFen <= 0L) {
+            log.info("订单成本落库跳过（成本<=0 或 orderId 为空）: orderId={}, totalCostFen={}", orderId, totalCostFen);
+            return;
+        }
+        OrderNew order = orderNewMapper.selectById(orderId);
+        if (order == null) {
+            log.warn("订单成本落库跳过（主订单不存在）: orderId={}", orderId);
+            return;
+        }
+        persistOrderCost(order, totalCostFen);
+    }
     private void persistOrderCost(OrderNew order, long totalCost) {
         if (totalCost <= 0) {
             log.info("订单成本为0，跳过持久化, orderId: {}", order.getOrderId());
@@ -740,13 +753,13 @@ public class OrderNewServiceImpl implements OrderNewService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode) {
+    public long deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode) {
         MaterialDeductionContext ctx = new MaterialDeductionContext();
         ctx.setKitchenOrderId(kitchenOrderId);
         ctx.setTrayCode(trayCode);
         ctx.setSourceRef(sourceRef);
         try {
-            doDeductMaterialsForServe(ctx, sourceRef);
+            return doDeductMaterialsForServe(ctx, sourceRef);
         } catch (MaterialDeductionFailureException e) {
             // 独立 bean + REQUIRES_NEW：主事务回滚后 FAILED 审计行仍持久化。
             // 禁止改为 this 自调用（会绕过代理，退化为同事务随主事务一起回滚）。
@@ -762,7 +775,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         }
     }
 
-    private void doDeductMaterialsForServe(MaterialDeductionContext ctx, String sourceRef) {
+    private long doDeductMaterialsForServe(MaterialDeductionContext ctx, String sourceRef) {
         String kitchenOrderId = ctx.getKitchenOrderId();
 
         // 1. 原子占位：将 material_consumed 从 0 改为 1，获取唯一处理权
@@ -930,7 +943,7 @@ public class OrderNewServiceImpl implements OrderNewService {
             // 仅有全部已退款明细：合法零消耗（既有行为保持不变）
             log.warn("出餐扣料：订单明细全部已退款，未扣减原料（合法零消耗）, orderId={}, kitchenOrderId={}",
                     orderId, kitchenOrderId);
-            return;
+            return 0L;
         }
 
         // 5. 门店校验：有应扣原料但订单门店为空 → 无法定位库存，整体失败
@@ -956,6 +969,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         }
 
         // 6. 逐原料扣减（M3-M4 S6a：统一账 inventoryService.decreaseStockAtLocation()）
+        long totalCost = 0L;
         //    任一原料失败 → MaterialDeductionFailureException → 事务回滚 + REQUIRES_NEW 审计
         for (Map.Entry<Long, BigDecimal> entry : materialDeductionMap.entrySet()) {
             Long materialId = entry.getKey();
@@ -969,9 +983,13 @@ public class OrderNewServiceImpl implements OrderNewService {
 
             ctx.addAttempted(materialId, qty, materialName);
             try {
-                inventoryService.decreaseStockAtLocation(
+                // 2026-10-23：捕获出库成本（分），供上层落 cost_record（此前返回值被丢弃，KDS 完成路径无成本记录）
+                Long costFen = inventoryService.decreaseStockAtLocation(
                         locationId,
                         materialId, qty, "SALE_DEDUCT", sourceRef);
+                if (costFen != null) {
+                    totalCost += costFen;
+                }
             } catch (BusinessException e) {
                 // decreaseStock 的显式失败（库存不足/记录不存在/冲突）：映射为失败类型，整体失败 + 审计
                 ctx.setFailedMaterial(materialId, materialName);
@@ -1000,8 +1018,9 @@ public class OrderNewServiceImpl implements OrderNewService {
                     orderId, materialId, materialName, qty);
         }
 
-        log.info("出餐扣料完成, kitchenOrderId={}, orderId={}, 原料种类={}, 零数量跳过说明={}",
-                kitchenOrderId, orderId, materialDeductionMap.size(), ctx.getZeroQtyNotes());
+        log.info("出餐扣料完成, kitchenOrderId={}, orderId={}, 原料种类={}, 出库成本={}分, 零数量跳过说明={}",
+                kitchenOrderId, orderId, materialDeductionMap.size(), totalCost, ctx.getZeroQtyNotes());
+        return totalCost;
     }
 
     /**

@@ -89,6 +89,14 @@ public interface OrderNewService {
     void markCompletedFromKitchen(String orderId);
 
     /**
+     * 落库订单成本（cost_record），供后厨完成链路在扣料后调用。
+     *
+     * @param orderId  主订单 ID
+     * @param totalCostFen 扣料实际出库成本（分）；<=0 时跳过
+     */
+    void persistOrderCostFromDeduction(String orderId, long totalCostFen);
+
+    /**
      * 根据ID获取订单详情
      * @param orderId 订单ID
      * @return 订单视图对象（含明细和支付记录）
@@ -181,7 +189,7 @@ public interface OrderNewService {
      * @param sourceRef 来源引用（写入库存流水）
      * @param trayCode 触发服务时的托盘码（可空，写入失败审计行）
      */
-    void deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode);
+    long deductMaterialsForServe(String kitchenOrderId, String sourceRef, String trayCode);
 
     /**
      * 按日期分组统计（聚合 orders + orders_legacy 两表数据）
