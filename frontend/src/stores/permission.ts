@@ -53,6 +53,14 @@ export enum UserRole {
   AUDITOR = 'auditor',
   /** 普通员工 */
   EMPLOYEE = 'employee',
+  /** 收银员（POS 前台收款） */
+  CASHIER = 'cashier',
+  /** POS 点单/终端操作员 */
+  POS_OPERATOR = 'pos_operator',
+  /** 厨师（后厨出品） */
+  CHEF = 'chef',
+  /** 后厨人员 */
+  KITCHEN = 'kitchen',
 }
 
 /**
@@ -696,6 +704,10 @@ export const usePermissionStore = defineStore('permission', () => {
       'ROLE_REGION_MANAGER': UserRole.REGION_MANAGER,
       'ROLE_AUDITOR': UserRole.AUDITOR,
       'ROLE_EMPLOYEE': UserRole.EMPLOYEE,
+      'ROLE_CASHIER': UserRole.CASHIER,
+      'ROLE_POS_OPERATOR': UserRole.POS_OPERATOR,
+      'ROLE_CHEF': UserRole.CHEF,
+      'ROLE_KITCHEN': UserRole.KITCHEN,
       // 无 ROLE_ 前缀格式（兼容旧格式）
       'ADMIN': UserRole.ADMIN,
       'OWNER': UserRole.OWNER,
@@ -711,6 +723,10 @@ export const usePermissionStore = defineStore('permission', () => {
       'REGION_MANAGER': UserRole.REGION_MANAGER,
       'AUDITOR': UserRole.AUDITOR,
       'EMPLOYEE': UserRole.EMPLOYEE,
+      'CASHIER': UserRole.CASHIER,
+      'POS_OPERATOR': UserRole.POS_OPERATOR,
+      'CHEF': UserRole.CHEF,
+      'KITCHEN': UserRole.KITCHEN,
       // role_code 格式（roles 表 role_code 列）
       'SUPER_ADMIN': UserRole.ADMIN,
       'SYSTEM_ADMIN': UserRole.ADMIN,
@@ -741,6 +757,11 @@ export const usePermissionStore = defineStore('permission', () => {
       '稽查专员': UserRole.AUDITOR,
       '部门经理': UserRole.DEPARTMENT_MANAGER,
       '普通员工': UserRole.EMPLOYEE,
+      // N31 裁决 4：POS / 厨房 4 角色（roles 表已补建）
+      '收银员': UserRole.CASHIER,
+      'POS操作员': UserRole.POS_OPERATOR,
+      '厨师': UserRole.CHEF,
+      '后厨人员': UserRole.KITCHEN,
     }
 
     return backendRoles
