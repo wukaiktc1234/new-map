@@ -11,15 +11,16 @@
 | 分支 | `master`（单分支工作流） |
 | HEAD | **上次同步时点：2026-10-13**（不写具体哈希——任何提交都会使其过时）→ 以 `git rev-parse HEAD` 为准 |
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准（上次同步时点 `671d87f`） |
-| 同步 | **已 push（2026-10-13，64 commit：`671d87f` → 当时 HEAD）**；现 **ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
+| 同步 | **2026-10-15 Owner 指令 push 已执行**（本轮 43 commit，含 §24.10a–§24.13a / record §7.15 / STATUS 指针）；push 后 **ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；`.gitignore` 提交后 `apk-download/`、`certs/` 不再出现在 `??`，故 92 → 90） |
 
-## 2. 活跃卡（只列 5）
+## 2. 活跃卡（只列 6）
 
 | 卡 | 状态 | 下一个动作 |
 |----|------|-----------|
+| **P1-AUTH-CHAIN-001**（**下一主战场**） | 卡面已立（§24.10a）；**核心修复目标 = N30（§24.13a）**：412 处 `hasRole`/`hasAnyRole` 对非 admin 全失效——除 admin 外按角色码校验的端点全被拒（fail-closed，无越权） | 下个会话开卡实施：定权威源 + `user_roles.role_id` 口径归一 + `getAuthorities` 剥 `ROLE_` 前缀 + 补单测；本轮先由 Owner 跑应急 SQL（补 `user_roles` 行）解阻 N15 |
 | **P1-APK-DEVICE-001** | 卡号/优先级已确认（Owner 2026-10-13）：**P1 / 整特性一次入库**；三项 `.gitignore` 已执行（`48750ce` + `c13cb2a`）；`capacitor-cordova-android-plugins` 已放行（`!` 保护规则在未跟踪的 `frontend/android/.gitignore` 内，随卡提交），5 个文件判定为生成模板无 plugin 注册点 → **排除**（§24.3y），候选回到 **59** | Owner 放行后整特性入库，含 4 项卡面待补：guards.ts APK 四块 / request.ts X-Device-Id + FormData / index.ts 三条路由 / SecurityConfig 3 条 permitAll 与 `meta.requireAuth` 口径核对 |
-| **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | Owner Live 验证：持角色 200 / 无角色 403 / UI 菜单（与批次 A/B/C 同批） |
+| **§24.3s（N15 order:add）** | 实施 CLOSED（`68fb1d3` + rank 216 `success=t` + 58 F+E 集等） | **已剥离，被 P1-AUTH-CHAIN-001 阻塞**（原 Live 项作废，待该卡收口后重跑） |
 | **P1-SEC-009** | QA 渗透验证未关闭（**发布门禁前必须关闭**）；执行窗口已裁决（§24.3x）：**排在 P1-APK-DEVICE-001 入库后一起跑** | 覆盖 device-whitelist / verify-code / `usesCleartextTraffic="true"`；Owner 安排窗口 |
 | **P0-SEC-001** | 第二阶段 71 Controller 审计，**暂缓**（Owner 2026-10-12） | Owner 放行后恢复 |
 | **P0-WORKSPACE-WIP-CONSOLIDATION-001** | **暂缓**（GOV-003 分类表为其输入） | Owner 裁决五批入库 |
@@ -53,5 +54,5 @@
 1. 读本文件。
 2. 读 `docs/project-context/process-guards.md`（PG-001 v2 / PG-002 / PG-003 / PG-006 判档）。
 3. 读 `production-governance-incidents.md`（GOV-INCIDENT-001–006）。
-4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.12a）——只增不改，读尾部而非中部。
+4. 读任务板**尾部**最新追加段（当前 §24.10a–§24.13a）——只增不改，读尾部而非中部。
 5. 跑 git 事实核对（HEAD / ahead-behind / status），不依赖本文件快照。
