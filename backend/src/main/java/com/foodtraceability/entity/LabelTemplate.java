@@ -57,10 +57,15 @@ public class LabelTemplate {
     @JsonProperty("createdAt")
     @JsonAlias({"createTime", "created_at", "createTimeAt"})
     @JsonDeserialize(using = IsoLocalDateTimeDeserializer.class)
+    // N31 现场修复：真实列是 create_time（label_template 无 created_at），
+    // 不显式指定会被 MyBatis-Plus 按驼峰推成 created_at -> 查询报「字段 created_at 不存在」
+    @TableField("create_time")
     private LocalDateTime createdAt;
     @JsonProperty("updatedAt")
     @JsonAlias({"updateTime", "updated_at", "updateTimeAt"})
     @JsonDeserialize(using = IsoLocalDateTimeDeserializer.class)
+    // 同上：真实列是 update_time
+    @TableField("update_time")
     private LocalDateTime updatedAt;
     @JsonProperty("createdBy")
     @JsonAlias({"createBy", "created_by"})
