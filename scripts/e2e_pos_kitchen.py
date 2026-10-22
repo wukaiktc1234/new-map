@@ -167,6 +167,10 @@ class Runner:
                   (st, self.order_id or "-", self.order_number or "-"))
         if not ok:
             print("       返回: " + brief(body))
+            msg = str(body.get("message") if isinstance(body, dict) else "")
+            if "库存不足" in msg:
+                print("       提示：菜品库存已被多次测试耗尽，执行以下 SQL 补货后重跑：")
+                print('         UPDATE foods SET stock = 50 WHERE food_code = ' + repr(self.a.food_code) + ';')
         return ok
 
     # 2.5 支付（关键：不支付则 orders.payment_status 永远为 0，日结无法计入营收）
