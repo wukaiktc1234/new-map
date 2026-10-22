@@ -274,6 +274,14 @@ class Runner:
         print("base=%s  user=%s  store=%s  tray=%s  kds_token=%s" %
               (DEFAULT_BASE, self.a.username, self.a.store_id, self.a.tray, self.a.kds_token))
         print("=" * 78)
+        # --kitchen-order 模式：只对一张已存在的后厨单跑流转（无需下单，便于复现/复验）
+        if self.a.kitchen_order:
+            self.kitchen_order_id = self.a.kitchen_order
+            self.step("指定后厨单", True, self.kitchen_order_id)
+            if not self.kitchen_flow():
+                return self.summary(False)
+            return self.summary(True)
+
         if not self.login():
             return self.summary(False)
         if not self.create_order():
@@ -313,8 +321,9 @@ def main():
     p.add_argument("--food-name", default="QA-红烧土豆")
     p.add_argument("--food-price", type=float, default=18.00)
     p.add_argument("--quantity", type=int, default=1)
-    p.add_argument("--table-number", type=int, default=0)
+    p.add_argument("--table-number", type=int, default=1, help="桌号（后端校验必须 >0）")
     p.add_argument("--kds-token", default=DEFAULT_KDS_TOKEN)
+    p.add_argument("--kitchen-order", default=None, help="只对指定后厨单（KO...）跑流转，跳过下单/绑定")
     p.add_argument("--chef-id", type=int, default=1, help="后厨接单必填：厨师ID")
     p.add_argument("--chef-name", default="E2E-CHEF", help="后厨接单必填：厨师姓名")
     args = p.parse_args()
