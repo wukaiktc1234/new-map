@@ -13,6 +13,7 @@
 | 远程 | `origin` = https://github.com/wukaiktc1234/new-map.git；`origin/master` 以 `git rev-parse origin/master` 为准 |
 | 同步 | **2026-10-15 Owner 指令 push 已执行**：本轮（N30 → N31 收口）全部提交已推送，**ahead=0 / behind=0**，以 `git rev-list --count origin/master..HEAD` 实测为准；push 仅由 Owner 显式指令触发；`.git/hooks` 实测无 `post-commit`（PG-001 规则 6） |
 | 工作区 | **547 条目 = 456 M + 90 ?? + 1 D**（Owner WIP，留盘不暂存；本轮全程未变） |
+| 现场修复轮（2026-10-23） | POS/KDS 链路：`§24.19a N33`（POS 登录闸门）→ `§24.20a N34`（后厨未认证定性 + 三处链路缺陷 + E2E 脚本）→ `§24.21a N35`（dish_items 键名 canonical + 门店归属）。后端需重启生效；迁移 V005/V006 已用 psql 落库，`flyway_schema_history` 待下次启动登记 |
 
 ## 2. 活跃卡（只列 7）
 

@@ -8707,3 +8707,16 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | E2E 脚本 | `scripts/e2e_pos_kitchen.py`（330 行）：① POS 登录（`--password` 真实登录，或 `--mint` 用 dev `jwt.secret` 自签，仅供无法取明文密码时打通）② `POST /v1/pos/orders/order` 下单（**菜品 id 必须是 `food_code` 而非 `food_id`**，否则 400「food_code 不存在，拒绝下单」）③ 复用 POS 下单**自动生成**的后厨单（`GET /v1/kitchen/orders/order/{orderId}`）④ `POST /v1/tray/bind-order`（KDS 凭证；`--tray auto` 自动挑选本店 idle 托盘）⑤ `receive?chefId=&chefName=`（两参数**必填**，且 chefId 必须是 `employees` 中真实存在的员工，否则外键 `fk_ftc_chef_id` 违约）、`start-make`、`complete-make` |
 | E2E 实测结果（2026-10-23 00:16） | **全链路 PASS**：`orderId=O1792684273467` / `orderNumber=T20261023008` / `kitchenOrderId=KO1792684273466` / 托盘 `REGA1001` / 接单+开始制作+完成制作均 `code=0 data=true`；落库核验：`kitchen_order.status=completed`、`make_complete_time` 有值、`chef_id=2080155339590037512`、`tray_code=REGA1001`，追溯码 `FTC202610230001CB8` 已生成 |
 | 关联 | §24.19a N33（POS 令牌修复） / §24.18a P1-DASHBOARD-FILTER-001 |
+
+### §24.21a N35（Owner 裁决执行）：后厨单 `dish_items` 键名统一为后端 canonical DTO + 补齐门店归属
+
+| 项 | 内容 |
+|----|------|
+| 裁决（Owner 2026-10-23） | **选择「统一成后端 DTO 键名」**：后端数据模型是 Canonical 真相源，**不允许**后端追溯码生成逻辑去兼容前端的随意命名；由后端在保存后厨单时完成映射 |
+| 缺陷（§24.20a 附带发现） | 自动生成的后厨单 `dish_items` 写的是 POS 键名 `[{"name","quantity","price","type"}]`，而 `generateFoodTraceCodes` 反序列化目标为 `KitchenOrderCreateDTO.DishItemDTO{dishId,dishName,quantity,remark}` → `dish_id`/`dish_name` 恒为空（实测 `FTC202610230001CB8`）；同时后厨单 `store_id`/`store_name` 为空 |
+| 根因定位 | `PosOrderCreateServiceImpl` 内**三处**手写 JSON 拼接均使用 POS 键名：`buildCanonicalDishItemsJson`（Canonical 下单路径）、`buildDishItemsJson`（OrderRequestDTO 路径）、`buildTableOrderDishItemsJson`（桌台下单路径）；两个 `createKitchenOrder` 重载均未设置门店字段 |
+| 修复 | ① 新增统一出口 `canonicalDishItem(...)` + `writeDishItems(...)`（Jackson 序列化，杜绝手工拼接的转义风险）：**权威键 `dishId`/`dishName`/`quantity`/`remark`**，另附 `price`/`type`（及套餐的 `productType=2`/`comboId`）作展示元数据，读取方一律以 `dishId`/`dishName` 为准 ② 三个 builder 全部改为调用统一出口 ③ 两个 `createKitchenOrder` 补 `setStoreId(parseStoreId(...))` + `setStoreName(resolveStoreName(...))`（复用既有 `storeNewMapper` 解析，无新增依赖）④ 新增 `parseStoreId` 容错（空/非法 → null + warn） |
+| 落库前后对照 | 修复前：`[{"name":"QA-红烧土豆","quantity":1,"price":18.0,"type":""}]` → 追溯码 `dish_name` 空<br>修复后：`[{"dishId":"FD260925001","dishName":"QA-红烧土豆","quantity":1,"remark":null,"price":18.0,"type":""}]` |
+| 兼容性核对 | `KitchenOrderController.expandComboDishItems` 读 `productType`/`type`/`comboId` → **三者均保留**，套餐展开逻辑不受影响；`KitchenOrderFullDTO` 原样透传字符串给前端；`frontend/src/types/kitchen-order.ts:271` 已是 `DishItemDTO[]`，与 canonical 一致。**注意**：若 KDS UI 渲染时读 `name` 键，需改用 `dishName`（canonical 方向，未保留 `name` 别名） |
+| 验证步骤（Owner 重启后） | ① 跑 `python scripts/e2e_pos_kitchen.py --password <密码> --tray auto` ② 查 `SELECT dish_items, store_id, store_name FROM kitchen_order ORDER BY id DESC LIMIT 1;`（应含 dishId/dishName 且 store_id 非空）③ 查 `SELECT dish_id, dish_name, store_id FROM food_trace_code ORDER BY id DESC LIMIT 1;`（dish_name/dish_id 应非空） |
+| 关联 | §24.20a N34（E2E 打通 + 三处链路缺陷） / §24.19a N33 |
