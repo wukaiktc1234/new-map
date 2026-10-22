@@ -16,7 +16,7 @@
 
 | 循环 | 内容 | 状态 | 证据 |
 |------|------|------|------|
-| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **20 个类 / 229 个用例全绿**，每类一提交 |
+| B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **21 个类 / 244 个用例全绿**，每类一提交 |
 | C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
 | A | API 契约静态比对报告 | **本轮收口** | `docs/night-patrol/api-contract-diff.md`（232 行）：2057 端点 / 944 调用点 / 配对 898（95%），发现 58 条（高危 14 / 中低 16 / 类型精度 10 / 待确认 8） |
 | D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
@@ -48,7 +48,8 @@
 | B-17 | `0e1c9b5` | `InventoryOutboundServiceImplTest`（12 用例：OB 单号/总数量、草稿态闸门、审批人取安全上下文、执行出库扣减与金额、ID 解析容错） | 12/0/0 |
 | B-18 | `d645ea2` | `StoreInventoryLogServiceImplTest`（10 用例：四道写路径校验、movement 字段映射、type→movement_type、备注合并截断、门店越权收敛） | 10/0/0 |
 | B-19 | `37c18d3` | `AlertServiceImplTest`（11 用例：创建/查询、确认与解决迁移、删除布尔、阈值判定矩阵） | 11/0/0 |
-| B-20 | 本次 | `CaptchaServiceImplTest`（10 用例：生成/缓存、5 次锁定、大小写不敏感、失败计数递增、脏计数容错） | 10/0/0 |
+| B-20 | `3e47d78` | `CaptchaServiceImplTest`（10 用例：生成/缓存、5 次锁定、大小写不敏感、失败计数递增、脏计数容错） | 10/0/0 |
+| B-21 | 本次 | `InventoryAdjustServiceImplTest`（15 用例：创建/查询、审批历史三步、草稿闸门、执行增减与类型映射；特征化"表头 vs 明细金额口径不一致"） | 15/0/0 |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
@@ -80,6 +81,7 @@
 
 ## 5. 遗留观察（只报不改，属核心业务或需 Owner 裁决）
 
+- **库存调整单金额口径不一致（B-21 实测，待修）**：`InventoryAdjustServiceImpl.createAdjust:112-114` 表头 `totalAdjustAmount` 直接把入参（元）累加，而明细 `adjustAmount` 已 ×100 存分；`updateAdjust:219-226` 又改成按明细分值累加（可为负）。同一字段"创建按元、更新按分"，且可为负 → 报表对账必错。
 - **定价排序方向反转（B-16 实测，待修）**：`PricingServiceImpl.queryHistory:138-139` 用 `orderBy(true, isDesc, ...)`，而 MP 第二个参数是 **isAsc** → `sortOrder=desc` 实际升序、`asc` 实际降序。已用特征化测试固化，未改实现（属 ServiceImpl 行为，留白天 Agent）。
 - **契约层（A 报告，需 Owner 决策 2 条）**：① `GET /v1/roles/list` 前端传 `status=1/0`、后端要 `active/inactive`（`RoleController.java:150-155`）→ 筛选静默失效；② `JacksonConfig.java:51-54` 全局 Long→String 可能让 MyBatis-Plus `Page.total/size/current` 变字符串，与前端 number 类型冲突 —— 需实抓一次响应体才能定级（Q1）。
 
