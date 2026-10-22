@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
@@ -22,6 +24,8 @@ import java.util.List;
  * </p>
  */
 public class JsonbListTypeHandler extends BaseTypeHandler<List<String>> {
+
+    private static final Logger log = LoggerFactory.getLogger(JsonbListTypeHandler.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -61,6 +65,11 @@ public class JsonbListTypeHandler extends BaseTypeHandler<List<String>> {
         try {
             return MAPPER.readValue(json, new TypeReference<List<String>>() {});
         } catch (Exception e) {
+            // 假成功修复：原来静默返回空列表，DB 中损坏的 JSONB 会被下游当成「本来就没有数据」
+            // （如追溯码列表凭空清空），且无任何痕迹可查。
+            log.error("JSONB 反序列化失败，数据可能损坏，已降级为空列表: json={}, error={}",
+                    json.length() > 200 ? json.substring(0, 200) + "...(truncated)" : json,
+                    e.getMessage(), e);
             return new ArrayList<>();
         }
     }

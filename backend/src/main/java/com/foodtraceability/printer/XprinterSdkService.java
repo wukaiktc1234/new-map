@@ -272,6 +272,7 @@ public class XprinterSdkService {
         try {
             return Double.parseDouble(value.toString());
         } catch (Exception e) {
+            log.warn("打印元素 double 参数非法，按默认值渲染: key={}, value={}, default={}", key, value, defaultValue);
             return defaultValue;
         }
     }
@@ -283,6 +284,7 @@ public class XprinterSdkService {
         try {
             return Integer.parseInt(value.toString());
         } catch (Exception e) {
+            log.warn("打印元素 int 参数非法，按默认值渲染: key={}, value={}, default={}", key, value, defaultValue);
             return defaultValue;
         }
     }

@@ -1,6 +1,8 @@
 package com.foodtraceability.service;
 
 import com.foodtraceability.mapper.VoucherHeaderMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class VoucherNoGenerator {
+
+    private static final Logger log = LoggerFactory.getLogger(VoucherNoGenerator.class);
 
     /** 凭证号前缀 */
     private static final String VOUCHER_NO_PREFIX = "V";
@@ -86,6 +90,10 @@ public class VoucherNoGenerator {
         try {
             return Integer.parseInt(voucherNo.substring(expectedPrefix.length()));
         } catch (NumberFormatException e) {
+            // 假成功修复：原来静默返回 0（=下一条从 1 开始），凭证号可能与本期间已有号重号；
+            // 会计法要求期间内连续且唯一，必须留下痕迹供对账排查。
+            log.error("凭证流水号解析失败，按 0 处理（存在期间内重号风险，请核对凭证连续性）: voucherNo={}, period={}, error={}",
+                    voucherNo, period, e.getMessage(), e);
             return 0;
         }
     }

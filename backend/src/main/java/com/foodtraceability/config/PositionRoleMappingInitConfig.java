@@ -136,7 +136,9 @@ public class PositionRoleMappingInitConfig {
                 Long.class, 
                 positionCode);
         } catch (Exception e) {
-            log.warn("获取职位ID失败, positionCode: {}", positionCode);
+            // 原来只 warn 且不带异常，职位-角色映射会静默缺失；补全异常与后果说明。
+            log.error("获取职位ID失败，该职位-角色映射将被跳过（权限自动分配可能失效）: positionCode={}, error={}",
+                    positionCode, e.getMessage(), e);
             return null;
         }
     }

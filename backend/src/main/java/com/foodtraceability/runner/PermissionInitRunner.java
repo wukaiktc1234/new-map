@@ -65,8 +65,8 @@ public class PermissionInitRunner implements CommandLineRunner {
             System.out.println("权限数据初始化完成！");
             
         } catch (Exception e) {
-            System.err.println("权限数据初始化失败: " + e.getMessage());
-            e.printStackTrace();
+            // 假成功修复：原来只 System.err.println（不进日志体系），权限初始化失败时应用照样启动成功。
+            log.error("权限数据初始化失败，权限数据可能缺失，需人工核对: error={}", e.getMessage(), e);
         }
 
         log.info("PermissionInitRunner 执行结束");
@@ -132,8 +132,8 @@ public class PermissionInitRunner implements CommandLineRunner {
                 jdbcTemplate.execute(sql);
                 successCount++;
             } catch (Exception e) {
-                System.err.println("执行SQL失败: " + sql);
-                System.err.println("错误: " + e.getMessage());
+                // 失败逐条留痕（原来只有 System.err，日志体系里看不到）
+                log.error("权限数据插入失败: sql={}, error={}", sql, e.getMessage(), e);
             }
         }
         
@@ -173,8 +173,7 @@ public class PermissionInitRunner implements CommandLineRunner {
             System.out.println("已为admin角色分配 " + count + " 个权限");
             
         } catch (Exception e) {
-            System.err.println("为admin角色分配权限失败: " + e.getMessage());
-            e.printStackTrace();
+            log.error("为admin角色分配权限失败，超管可能无权限可用: error={}", e.getMessage(), e);
         }
     }
 }

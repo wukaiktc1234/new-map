@@ -1033,6 +1033,9 @@ public class TsplLabelPrinterDriver implements DeviceDriver {
         try {
             return Integer.parseInt(value.toString());
         } catch (NumberFormatException e) {
+            // 假成功修复：原来静默取默认值，标签参数写错时按默认尺寸出图，打印结果「看起来成功」但内容不对。
+            log.warn("标签整数参数非法，按默认值渲染: key={}, value={}, default={}",
+                    key, value, defaultValue);
             return defaultValue;
         }
     }

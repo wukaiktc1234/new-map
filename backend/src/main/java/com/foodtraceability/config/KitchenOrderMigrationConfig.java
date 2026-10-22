@@ -92,6 +92,9 @@ public class KitchenOrderMigrationConfig {
             Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM information_schema.COLUMNS " + "WHERE TABLE_SCHEMA = CURRENT_SCHEMA() AND TABLE_NAME = \'kitchen_order\' AND COLUMN_NAME = \'total_amount\'", Integer.class);
             return count != null && count == 0;
         } catch (Exception e) {
+            // 假成功修复：原来静默返回 false，探测失败会被当成「迁移未执行」从而重跑迁移；
+            // 至少要留下可查的失败原因。
+            log.error("探测 kitchen_order.total_amount 列失败，按「迁移未执行」处理: error={}", e.getMessage(), e);
             return false;
         }
     }
