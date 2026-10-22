@@ -8600,3 +8600,19 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 执行顺序 | A → B → C；**B 的幻码裁决不阻塞 A 开工** |
 | 口径说明 | 上一轮口述「19 个幻码」→ 真值 **18 个**（第 19 个 `hr\` 是转义残留，与 `hr` 同一个）；「412 处」→ 按出现次数 **471 处** |
 | 关联 | §24.10a P1-AUTH-CHAIN-001 / §24.13a N30 / §24.6a N25 / §24.8a P1-PERM-CONSOLIDATION-001 |
+
+> **§24.14a 追加：001-A 实施与交验记录（2026-10-15，提交 `849adf5`，6 文件 +345/−17）**
+>
+> **改动面**：① 新增 `security/utils/RoleCodeNormalizer`（`normalize` 脱引号/转义 → trim → 循环剥 `ROLE_` → 小写；`toAuthority` 恒输出 `ROLE_`+全大写；`matches` fail-closed）；② `SecurityUser.getAuthorities` 改走归一，**消除 `ROLE_ROLE_` 双前缀**，保留小写变体兼容旧比较；③ `PermissionVerifyServiceImpl.hasRole/hasAnyRole/hasAllRoles` 改归一比较；④ `UserServiceImpl.hasRole` 改归一比较并兜住非数字角色 ID（原 `Long.valueOf('ROLE_ADMIN')` 会抛 NumberFormatException）；⑤ 新增 2 个测试类共 15 条。**未改任何数据、未改任何注解、未碰 `@PreAuthorize` 字面**
+>
+> **编译**：`mvn -o compile` exit 0
+>
+> **新增单测**：`RoleCodeNormalizerTest`(8) + `SecurityUserAuthoritiesTest`(7) = **15/15 通过，BUILD SUCCESS**
+>
+> **自测抓到的边界 bug（已修）**：`normalize("ROLE_")` 原用 `length > 前缀长度` 判断，裸 `ROLE_` 不被剥离 → 产出 `ROLE_ROLE_` 脏 authority；改 `>=` 后归一为 `null`
+>
+> **全量回归（关键证据：对照实验）**：`mvn -o test` 全量 = `396 tests / 27F / 31E`（红）。为证明与本次改动无关，在**同仓把 6 个文件临时回退到父提交 `b194111`** 后重跑同一批 15 个失败类 → `119 tests / 27F / 31E`，与改动后**逐类一致**（InventoryLogConsumption 6/2F、InventoryLogFilter 4/1F、OrderManagement 9/9F、SystemSettingsDatabase 13/13E、SystemSettingsIntegration 8/8E、CostRecord 8/1F、InvoicePay 3/1F、Payable 6/1F、Payment 8/3E、SysDictEdge 3/1F、SysDictUpdate 1/1E、PositionSorting 5/5E、SysSettingService 4/4F、FoodCode 7/3F、PositionCode 9/4F+1E）→ **零新增失败、零意外修复**；396 = 381 + 本次新增 15
+>
+> **结论**：A 卡交验通过（编译 0 / 新测 15 全绿 / 全量无新增失败）。全量红是既存基线（日期相关断言如 `CR202610220001` vs `CR20260626`、`SystemSettings*` ApplicationContext 加载失败、Position/FoodCode 生成器逻辑、若干 NPE），与鉴权链路无关，未在本卡处理
+>
+> **未做（按裁决留待后续）**：B 卡幻码改名与数据清洗、C 卡单向化、`hasRole('ROLE_ADMIN')` 4 处（归一后可命中，但属注解字面调整）
