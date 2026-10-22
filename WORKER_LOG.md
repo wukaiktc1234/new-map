@@ -18,7 +18,7 @@
 |------|------|------|------|
 | B | 后端 ServiceImpl 纯 Mockito 单测 | 进行中 | **9 个类 / 122 个用例全绿**，每类一提交 |
 | C | 前端 TypeScript 报错清洗 | **本轮收口**（仅 clean 文件） | **145 → 93（−52，0 新增）**，Lead 独立复跑确认 93；基线 62 文件里 52 个带 Owner WIP 不可碰 |
-| A | API 契约静态比对报告 | 进行中 | 队友 `api-contract-audit` → `docs/night-patrol/api-contract-diff.md` |
+| A | API 契约静态比对报告 | **本轮收口** | `docs/night-patrol/api-contract-diff.md`（232 行）：2057 端点 / 944 调用点 / 配对 898（95%），发现 58 条（高危 14 / 中低 16 / 类型精度 10 / 待确认 8） |
 | D | 死代码 / 废弃注释清理 | 进行中 | 已删 2 个零引用 util 类（148 行），`mvn -o compile` 绿 |
 
 ## 2. 已完成任务（按提交序）
@@ -37,6 +37,7 @@
 | B-9 | `6882092` | `MaterialConsumptionServiceImplTest`（12 用例） | 12/0/0；`mvn -o test-compile` 全量通过 |
 | C-1 | `d4d7ff0` | 前端 21 文件类型清洗（共享 types 放宽 + 缺失 import + `types/capacitor.d.ts` + 无效图标/spread no-op） | `npx vue-tsc --noEmit` → **93** error TS（基线 145） |
 | LOG | `0c9eb24` | `WORKER_LOG.md` 建档 | — |
+| A-1 | 本次 | `docs/night-patrol/api-contract-diff.md`（队友 `api-contract-audit` 产出，Lead 抽查复核） | 抽查 3 条高危均成立：会员冻结/拉黑路由缺失、HR 四类配置仅 GET、日结状态数字/字符串映射错位 |
 
 ### 单测覆盖要点（供白天 Agent 接手）
 - 日结：查询权限过滤现状（`currentUser==null` 会丢弃全部筛选条件 → 特征化测试已固化）、元→分换算、确认状态机、日结完成事件发布与异常隔离、批量生成"全失败必须抛错"。
@@ -50,7 +51,7 @@
 - C-2（待 Owner 放行）：剩余 93 条全部根因在 Owner 脏文件，**本轮一律未动**。队友已给出两条"一改消多条"的批量线索：
   1. `DataTable.vue:22` 把 `align?: 'left'|'center'|'right'` 放宽为 `string` → 一次消 10 条（7 份脏 vue 的本地 ColumnDef 都只差这一个字段）；
   2. 9 条是脏 vue 引用了不存在的 element-plus 图标（Points/Coupon/TrendingUp/BankCard/Refund/DatePicker/Transfer/Copy），对应关系：Coin/Ticket/TrendCharts/CreditCard/RefreshLeft/Calendar/Sort/DocumentCopy。
-- A：队友 `api-contract-audit` 扫描中。
+- A 已收口，报告见 `docs/night-patrol/api-contract-diff.md`；Top 高危：日结金额二次换算（小 100 倍）、日结状态恒「待日结」、会员风控/HR 配置/优惠券/薪资批次/POS 会员/排班 6 簇写操作打空（404/405）。
 
 ## 4. 待办队列（按优先级）
 
@@ -60,6 +61,8 @@
 4. 池子掏空后：输出《代码质量与性能优化建议报告》到 `docs/night-patrol/`。
 
 ## 5. 遗留观察（只报不改，属核心业务或需 Owner 裁决）
+
+- **契约层（A 报告，需 Owner 决策 2 条）**：① `GET /v1/roles/list` 前端传 `status=1/0`、后端要 `active/inactive`（`RoleController.java:150-155`）→ 筛选静默失效；② `JacksonConfig.java:51-54` 全局 Long→String 可能让 MyBatis-Plus `Page.total/size/current` 变字符串，与前端 number 类型冲突 —— 需实抓一次响应体才能定级（Q1）。
 
 - `DailySettlementServiceImpl.buildQueryWrapper`：`currentUser == null` 时提前 return，**日期/状态/门店筛选全部失效**（已用特征化测试固化现状）。
 - `DiningTableNewServiceImpl.update`：`updateById` 后直接 `selectById(...).getStoreId()`，回查为空会 NPE。
