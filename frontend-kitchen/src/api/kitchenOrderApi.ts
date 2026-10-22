@@ -133,6 +133,16 @@ export const kitchenOrderApi = {
     return request.put<boolean>(`/v1/kitchen-order/${kitchenOrderId}/priority`, { priority })
   },
 
+  /**
+   * 手动流转托盘状态（兜底/测试轨）—— 与扫码自动轨并存。
+   * 后端强制要求 reason 并写入审计（tray_scan_record.scan_type=MANUAL）。
+   * 允许目标：making / ready / cleaning / idle；served 必须走出餐确认（触发扣料与追溯码）。
+   */
+  manualTrayTransition: (trayCode: string, targetStatus: string, reason: string) => {
+    return request.post<unknown>('/v1/tray/manual-transition', null, {
+      params: { trayCode, targetStatus, reason },
+    })
+  },
   getStatistics: (storeId: number) => {
     return request.get<Record<string, number>>(`/v1/kitchen-order/statistics/${storeId}`)
   }

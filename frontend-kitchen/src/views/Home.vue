@@ -122,6 +122,14 @@
                            @click="serveOrder(order)">
                   出餐
                 </el-button>
+                <!-- 手动流转（兜底/测试轨）：与扫码自动轨并存，需填理由并写审计 -->
+                <el-button v-if="order.trayCode"
+                           type="info"
+                           size="small"
+                           plain
+                           @click="showManualTransitionDialog(order)">
+                  手动流转
+                </el-button>
               </div>
             </div>
           </div>
@@ -197,6 +205,55 @@
       <template #footer>
         <el-button @click="bindTrayDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="bindTray" :loading="binding">绑定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 手动流转弹窗（兜底/测试轨） -->
+    <el-dialog
+      v-model="manualDialogVisible"
+      title="手动流转托盘（兜底/测试）"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <div class="manual-tray-content">
+        <p class="manual-hint">
+          与扫码自动轨并存。手动操作会写入审计记录（操作人 + 理由），请如实填写。
+        </p>
+        <el-form label-width="80px">
+          <el-form-item label="订单">
+            <span>{{ manualOrderNumber }}</span>
+          </el-form-item>
+          <el-form-item label="托盘">
+            <span>{{ manualTrayCode }}</span>
+          </el-form-item>
+          <el-form-item label="目标状态">
+            <el-select v-model="manualTarget" style="width: 100%">
+              <el-option label="making（制作中）" value="making" />
+              <el-option label="ready（待取餐）" value="ready" />
+              <el-option label="cleaning（清洁中）" value="cleaning" />
+              <el-option label="idle（空闲/释放）" value="idle" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="理由">
+            <el-input
+              v-model="manualReason"
+              type="textarea"
+              :rows="3"
+              maxlength="200"
+              show-word-limit
+              placeholder="例：扫码设备故障，人工确认后流转（必填）"
+            />
+          </el-form-item>
+        </el-form>
+        <p class="manual-hint manual-hint--warn">
+          注意：served（出餐）不能手动设置 —— 该状态承载扣料与追溯码，请用「出餐」按钮。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="manualDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="manualSubmitting" @click="submitManualTransition">
+          确认流转
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -421,12 +478,52 @@ const bindTray = async () => {
   }
 }
 
+// ===== 手动流转（兜底/测试轨）：必须填写理由，后端写入 tray_scan_record(scan_type=MANUAL) =====
+const manualDialogVisible = ref(false)
+const manualTarget = ref('ready')
+const manualReason = ref('')
+const manualSubmitting = ref(false)
+const manualTrayCode = ref('')
+const manualOrderNumber = ref('')
+
+const showManualTransitionDialog = (order: any) => {
+  manualTrayCode.value = order.trayCode
+  manualOrderNumber.value = order.orderNumber
+  manualTarget.value = order.status === 'making' ? 'ready' : 'making'
+  manualReason.value = ''
+  manualDialogVisible.value = true
+}
+
+const submitManualTransition = async () => {
+  if (!manualReason.value.trim()) {
+    ElMessage.warning('请填写操作理由（将写入审计记录）')
+    return
+  }
+  manualSubmitting.value = true
+  try {
+    await request.post('/v1/tray/manual-transition', null, {
+      params: {
+        trayCode: manualTrayCode.value,
+        targetStatus: manualTarget.value,
+        reason: manualReason.value.trim(),
+      },
+    })
+    ElMessage.success(`托盘 ${manualTrayCode.value} 已手动流转为 ${manualTarget.value}`)
+    manualDialogVisible.value = false
+    await loadOrders()
+  } catch (e: any) {
+    console.error('手动流转失败:', e)
+    ElMessage.error(e.message || '手动流转失败')
+  } finally {
+    manualSubmitting.value = false
+  }
+}
+
 const serveOrder = async (order: any) => {
   if (!order.trayCode) {
     ElMessage.warning('订单未绑定托盘')
     return
   }
-  
   try {
     await ElMessageBox.confirm(
       `确定要出餐订单 ${order.orderNumber} 吗？`,
