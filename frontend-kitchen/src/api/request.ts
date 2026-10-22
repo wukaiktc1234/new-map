@@ -18,9 +18,42 @@ const service = axios.create({
   withCredentials: true
 })
 
-// 请求拦截器：自动添加Token
+/**
+ * 2026-10-23 修复：KDS 设备凭证接线。
+ *
+ * 后厨端（/v1/kitchen/**、/v1/kitchen-order/**、/v1/tray/**）走后端的 KdsTokenFilter，
+ * 凭证格式为 `Bearer kds_{storeId}_{secret}`（见后端 KdsAuthProperties / application.yml 的 app.kds.tokens）。
+ * 原实现只挂 localStorage 里的用户 JWT —— 后厨页从未登录过，于是请求不带任何 Authorization，
+ * 后端返回 401「未认证，请先登录」，表现为托盘绑不上、完成制作点不动。
+ *
+ * 取值优先级：localStorage('kds_token')（现场可覆盖） > 构建期 VITE_KDS_TOKEN（.env）。
+ */
+const KDS_ENDPOINT_PREFIXES = ['/v1/kitchen', '/v1/kitchen-order', '/v1/tray']
+
+function resolveKdsToken(): string {
+  const fromStorage = localStorage.getItem('kds_token')
+  if (fromStorage) return fromStorage.trim()
+  const fromEnv = import.meta.env.VITE_KDS_TOKEN as string | undefined
+  return fromEnv ? fromEnv.trim() : ''
+}
+
+// 请求拦截器：KDS 接口用设备凭证，其余接口沿用用户 JWT
 service.interceptors.request.use(
   (config) => {
+    const url = config.url || ''
+    if (KDS_ENDPOINT_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+      const kdsToken = resolveKdsToken()
+      if (kdsToken) {
+        config.headers.Authorization = `Bearer ${kdsToken}`
+      } else {
+        console.warn(
+          '[KDS] 未配置设备凭证：请在 frontend-kitchen/.env 设置 VITE_KDS_TOKEN=kds_{storeId}_{secret}，' +
+          '或执行 localStorage.setItem("kds_token", "kds_{storeId}_{secret}")；否则后厨接口会返回 401。'
+        )
+      }
+      return config
+    }
+
     const token = localStorage.getItem('token') || localStorage.getItem('access_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
