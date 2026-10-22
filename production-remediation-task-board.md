@@ -8720,3 +8720,17 @@ Runtime Validation PASS → EC-04B-1 正式 CLOSED
 | 兼容性核对 | `KitchenOrderController.expandComboDishItems` 读 `productType`/`type`/`comboId` → **三者均保留**，套餐展开逻辑不受影响；`KitchenOrderFullDTO` 原样透传字符串给前端；`frontend/src/types/kitchen-order.ts:271` 已是 `DishItemDTO[]`，与 canonical 一致。**注意**：若 KDS UI 渲染时读 `name` 键，需改用 `dishName`（canonical 方向，未保留 `name` 别名） |
 | 验证步骤（Owner 重启后） | ① 跑 `python scripts/e2e_pos_kitchen.py --password <密码> --tray auto` ② 查 `SELECT dish_items, store_id, store_name FROM kitchen_order ORDER BY id DESC LIMIT 1;`（应含 dishId/dishName 且 store_id 非空）③ 查 `SELECT dish_id, dish_name, store_id FROM food_trace_code ORDER BY id DESC LIMIT 1;`（dish_name/dish_id 应非空） |
 | 关联 | §24.20a N34（E2E 打通 + 三处链路缺陷） / §24.19a N33 |
+
+### §24.22a N36（现场收口）：后厨 401 的真凶 = KDS 前端从未接线设备凭证（凭证早配好、没人读）
+
+| 项 | 内容 |
+|----|------|
+| 现象 | 在 KDS 界面（`http://localhost:3003`）点「完成制作」提示「未认证，请先登录」；托盘也绑不上 |
+| **定位证据** | 后端 `ANOMALY_ACCESS_LOG` 记录：`[401-未授权] {"referer":"http://localhost:3003/","method":"POST","authTokenPresent":false}` → **请求根本没带 Authorization 头**；且全日志 `KDS token` 相关记录 **0 条**（`kds_` 前缀从未到达 `KdsTokenFilter`）→ 排除「token 过期/secret 错」 |
+| **根因** | KDS 前端是**独立工程** `frontend-kitchen/`（vite 端口 3003，之前排查只在 `frontend/src` 内找页面，属排查盲区）。其 `src/api/request.ts` 请求拦截器**只挂 `localStorage` 里的用户 JWT**；后厨页从未登录 → 无 token → 全部 401。而 `frontend-kitchen/.env` 里**早已存在** `VITE_KDS_TOKEN=kds_1_kds-store1-dev-secret`，**代码从未读取该变量** —— 典型「凭证配了、没接线」 |
+| 修复 | `frontend-kitchen/src/api/request.ts`：请求拦截器对 `/v1/kitchen`、`/v1/kitchen-order`、`/v1/tray` 前缀改挂 KDS 设备凭证 `Bearer kds_{storeId}_{secret}`；取值优先级 `localStorage('kds_token')` > `import.meta.env.VITE_KDS_TOKEN`；两者皆空时打印明确告警（含配置方法），其余接口仍走用户 JWT。`vue-tsc --noEmit` 0 错误 |
+| 实证（同一接口对照） | 不带任何凭证 → `HTTP 401`（空 body，与浏览器一致）；带 `Bearer kds_1_kds-store1-dev-secret` → 进入 service 层。修复后浏览器侧将带凭证 |
+| **附带数据修复** | 旧测试单存在 `chef_id=1` 这类**不存在的员工 ID**（4 行），出餐生成追溯码时 INSERT `food_trace_code` 违反外键 `fk_ftc_chef_id` → 事务毒化 25P02 → 出餐必失败。已将 4 行 `chef_id` 修正为真实员工 `2080155339590037512`（员工J），`KO1792684273458`（= `T20261023004`）随即 `complete-make` 返回 `code:0 data:true` |
+| 未修的隐患（登记） | `generateFoodTraceCodes` **吞异常但毒化事务**：非法 `chef_id` 只应导致「该单追溯码生成失败」，实际会连带 `kitchen_order` 的 UPDATE 一起失败（25P02），并把真实原因藏在「完成制作失败: ### Error updating database…」里。建议后续：① 生成前校验 `chef_id` 存在性（或 `employees` 外键可空化）② 追溯码生成改 `REQUIRES_NEW` 独立事务，避免污染主事务 |
+| E2E 脚本增强 | `--table-number` 默认值 `0` → `1`（后端 `@Min(1)`，原默认值必然 400「桌号必须大于0」）；新增 `--kitchen-order KO...` 单卡复验模式（跳过下单/绑定，只跑 接单→制作→出餐） |
+| 关联 | §24.21a N35 / §24.20a N34 |
