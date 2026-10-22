@@ -113,11 +113,13 @@ public class HealthCertificateEventListener {
             boolean hrSyncResult = hrSystemService.syncHealthCertificateToHrSystem(healthCertificate);
             if (hrSyncResult) {
                 log.info("健康证同步至HR系统成功，健康证ID: {}", healthCertificate.getId());
+                log.info("健康证事件处理完成，健康证ID: {}", healthCertificate.getId());
             } else {
-                log.error("健康证同步至HR系统失败，健康证ID: {}", healthCertificate.getId());
+                // 假成功修复：原先同步失败后仍打印「健康证事件处理完成」，
+                // 让 HR 侧缺档被当成处理成功。现在只记录「未完成」。
+                log.error("健康证事件未完成：同步至HR系统返回失败，需人工重试，健康证ID: {}",
+                        healthCertificate.getId());
             }
-
-            log.info("健康证事件处理完成，健康证ID: {}", healthCertificate.getId());
 
         } catch (Exception e) {
             log.error("处理健康证事件失败，健康证ID: {}, 错误信息: {}",

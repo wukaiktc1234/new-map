@@ -1,5 +1,7 @@
 package com.foodtraceability.event.listener;
 
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.event.OrderCreatedEvent;
 import com.foodtraceability.service.KitchenScanService;
 import org.slf4j.Logger;
@@ -31,7 +33,10 @@ public class OrderCreatedEventListener {
             
             log.info("订单创建事件处理完成: kitchenOrderId={}", event.getKitchenOrderId());
         } catch (Exception e) {
-            log.error("处理订单创建事件失败: {}", e.getMessage(), e);
+            // 假成功修复：原先内层 catch 只 log 不抛，外层照样打印「处理完成」，
+            // 原料未锁定（库存可被超卖、追溯链断裂）被伪装成成功。
+            log.error("处理订单创建事件失败: kitchenOrderId={}, error={}",
+                    event.getKitchenOrderId(), e.getMessage(), e);
         }
     }
     
@@ -42,7 +47,10 @@ public class OrderCreatedEventListener {
             kitchenScanService.lockMaterialsForOrder(event.getKitchenOrderId());
             log.info("订单原料锁定成功: kitchenOrderId={}", event.getKitchenOrderId());
         } catch (Exception e) {
-            log.error("锁定订单原料失败: {}", e.getMessage(), e);
+            // 不再吞异常：向上抛，避免外层继续宣告「订单创建事件处理完成」。
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "锁定订单原料失败（kitchenOrderId=" + event.getKitchenOrderId()
+                            + "）：" + e.getMessage());
         }
     }
 }

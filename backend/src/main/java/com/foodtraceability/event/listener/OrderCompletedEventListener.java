@@ -1,6 +1,7 @@
 package com.foodtraceability.event.listener;
 
-import com.foodtraceability.dto.finance.CostRecordCreateDTO;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.dto.finance.FinanceRecordCreateDTO;
 import com.foodtraceability.entity.OrderNew;
 import com.foodtraceability.event.OrderCompletedEvent;
@@ -17,8 +18,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
-
-import java.math.BigDecimal;
 
 /**
  * 订单完成事件监听器
@@ -80,17 +79,40 @@ public class OrderCompletedEventListener {
         log.info("处理订单完成事件: orderId={}, orderNumber={}", 
                 event.getOrderId(), event.getOrderNumber());
         
+        Exception firstFailure = null;
+
         try {
             recordFinanceIncome(event);
-
-            recordReceivableIfUnpaid(event);
-
-            recordOrderCost(event);
-
-            log.info("订单完成事件处理完成: orderId={}", event.getOrderId());
         } catch (Exception e) {
-            log.error("处理订单完成事件失败: {}", e.getMessage(), e);
+            log.error("订单完成事件联动-记录财务收入失败: orderId={}, orderNumber={}",
+                    event.getOrderId(), event.getOrderNumber(), e);
+            firstFailure = e;
         }
+
+        try {
+            recordReceivableIfUnpaid(event);
+        } catch (Exception e) {
+            log.error("订单完成事件联动-生成应收失败: orderId={}, orderNumber={}",
+                    event.getOrderId(), event.getOrderNumber(), e);
+            if (firstFailure == null) {
+                firstFailure = e;
+            }
+        }
+
+        // CODE-007：recordOrderCost 已删除。OrderCompletedEvent.materialCost/laborCost 从未被任何
+        // 发布点赋值（恒为 null），该方法是死代码；成本已由订单完成主流程同步写入 cost_records，
+        // 此处再记一次会重复入账。
+
+        if (firstFailure != null) {
+            // 假成功修复：原来两个步骤各自吞异常，外层仍打印「处理完成」。
+            // 现在聚合失败后显式抛出，让「日志说完成、账面没记录」不再发生。
+            log.error("订单完成事件联动不完整（财务收入/应收可能缺失，需人工补录）: orderId={}, orderNumber={}",
+                    event.getOrderId(), event.getOrderNumber());
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "订单完成联动失败（orderId=" + event.getOrderId() + "）：" + firstFailure.getMessage());
+        }
+
+        log.info("订单完成事件处理完成: orderId={}", event.getOrderId());
     }
 
     /**
@@ -126,7 +148,9 @@ public class OrderCompletedEventListener {
             log.info("订单未付清生成应收成功: orderId={}, orderNo={}, unpaid={}分",
                     event.getOrderId(), orderNo, unpaid);
         } catch (Exception e) {
-            log.error("订单未付清生成应收失败: orderId={}, 错误={}", event.getOrderId(), e.getMessage());
+            log.error("订单未付清生成应收失败: orderId={}, 错误={}", event.getOrderId(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "生成应收账款失败（orderId=" + event.getOrderId() + "）：" + e.getMessage());
         }
     }
     
@@ -175,45 +199,11 @@ public class OrderCompletedEventListener {
 
             log.info("财务收入记录成功: orderId={}", event.getOrderId());
         } catch (Exception e) {
-            log.error("记录财务收入失败: {}", e.getMessage(), e);
+            log.error("记录财务收入失败: orderId={}, orderCode={}, error={}",
+                    event.getOrderId(), event.getOrderNumber(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "记录财务收入失败（orderId=" + event.getOrderId() + "）：" + e.getMessage());
         }
     }
     
-    /**
-     * 记录订单成本
-     */
-    private void recordOrderCost(OrderCompletedEvent event) {
-        log.info("记录订单成本: orderId={}, materialCost={}, laborCost={}",
-                event.getOrderId(), event.getMaterialCost(), event.getLaborCost());
-
-        try {
-            // 记录材料成本
-            if (event.getMaterialCost() != null && event.getMaterialCost().compareTo(BigDecimal.ZERO) > 0) {
-                CostRecordCreateDTO dto = new CostRecordCreateDTO();
-                dto.setCostType(1); // 1-食材成本
-                dto.setCostCenterId(event.getStoreId());
-                dto.setAmount(event.getMaterialCost().multiply(BigDecimal.valueOf(100L)).longValue());
-                dto.setPeriod(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
-                dto.setRemark("订单材料成本 - " + event.getOrderNumber());
-                dto.setCalculationMethod(1); // 1-实际发生
-                costRecordService.create(dto);
-            }
-
-            // 记录人工成本
-            if (event.getLaborCost() != null && event.getLaborCost().compareTo(BigDecimal.ZERO) > 0) {
-                CostRecordCreateDTO dto = new CostRecordCreateDTO();
-                dto.setCostType(2); // 2-人工成本
-                dto.setCostCenterId(event.getStoreId());
-                dto.setAmount(event.getLaborCost().multiply(BigDecimal.valueOf(100L)).longValue());
-                dto.setPeriod(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
-                dto.setRemark("订单人工成本 - " + event.getOrderNumber());
-                dto.setCalculationMethod(1); // 1-实际发生
-                costRecordService.create(dto);
-            }
-
-            log.info("订单成本记录成功: orderId={}", event.getOrderId());
-        } catch (Exception e) {
-            log.error("记录订单成本失败: {}", e.getMessage(), e);
-        }
-    }
 }

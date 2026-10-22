@@ -2,6 +2,8 @@ package com.foodtraceability.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.dto.MaterialTraceCodeGenerateDTO;
 import com.foodtraceability.dto.PrintTaskDTO;
 import com.foodtraceability.entity.Inventory;
@@ -373,7 +375,12 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
         code.setStatus("in_stock");
         code.setScanTime(LocalDateTime.now());
         code.setUpdateTime(LocalDateTime.now());
-        updateById(code);
+        // 假成功修复：原来忽略 updateById 的 boolean，状态没改成也继续往下走并返回 true。
+        if (!updateById(code)) {
+            log.error("追溯码确认入库失败：状态更新未生效, traceCode={}", traceCode);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "确认入库失败：追溯码状态更新未生效（traceCode=" + traceCode + "）");
+        }
         
         log.info("追溯码确认入库成功: traceCode={}, materialName={}", traceCode, code.getMaterialName());
         
@@ -388,12 +395,26 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
     @Transactional
     public int batchConfirmStockin(List<String> traceCodes, String operatorName) {
         int successCount = 0;
+        List<String> failedCodes = new ArrayList<>();
         for (String traceCode : traceCodes) {
-            if (confirmStockin(traceCode, operatorName)) {
-                successCount++;
+            try {
+                if (confirmStockin(traceCode, operatorName)) {
+                    successCount++;
+                } else {
+                    failedCodes.add(traceCode);
+                }
+            } catch (Exception e) {
+                // 保持批量「尽力而为」语义，但失败必须逐条留痕并汇总，不能被算作成功。
+                failedCodes.add(traceCode);
+                log.error("批量确认入库-单条失败: traceCode={}, error={}", traceCode, e.getMessage(), e);
             }
         }
-        log.info("批量确认入库完成: 总数={}, 成功={}", traceCodes.size(), successCount);
+        if (!failedCodes.isEmpty()) {
+            log.error("批量确认入库存在失败: 总数={}, 成功={}, 失败{}条={}",
+                    traceCodes.size(), successCount, failedCodes.size(), failedCodes);
+        } else {
+            log.info("批量确认入库完成: 总数={}, 成功={}", traceCodes.size(), successCount);
+        }
         return successCount;
     }
 
@@ -408,8 +429,11 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
             try {
                 storeIdLong = Long.parseLong(code.getStoreId());
             } catch (NumberFormatException e) {
-                log.warn("门店ID格式不正确: {}", code.getStoreId());
-                return;
+                // 假成功修复：原先只 warn 后 return，确认入库照样返回 true 而库存未变动。
+                log.error("确认入库-门店ID格式不正确，禁止跳过库存更新: storeId={}, traceCode={}",
+                        code.getStoreId(), code.getTraceCode());
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "确认入库失败：门店ID格式不正确（storeId=" + code.getStoreId() + "）");
             }
             
             BigDecimal quantity = code.getWeight() != null ? code.getWeight() : BigDecimal.ZERO;
@@ -443,8 +467,13 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
                 log.info("确认入库-创建库存变动日志: storeId={}, productName={}, quantity={}", 
                     code.getStoreId(), code.getMaterialName(), quantity);
             }
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("确认入库-更新门店库存失败: {}", e.getMessage(), e);
+            log.error("确认入库-更新门店库存失败: storeId={}, traceCode={}, error={}",
+                    code.getStoreId(), code.getTraceCode(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "确认入库失败：更新门店库存失败（traceCode=" + code.getTraceCode() + "）：" + e.getMessage());
         }
     }
 
@@ -497,7 +526,10 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
             log.info("确认入库-创建采购入库记录成功: traceCode={}, stockinCode={}",
                 code.getTraceCode(), stockin.getStockinCode());
         } catch (Exception e) {
-            log.error("确认入库-创建采购入库记录失败: {}", e.getMessage(), e);
+            log.error("确认入库-创建采购入库记录失败: traceCode={}, error={}",
+                    code.getTraceCode(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "确认入库失败：创建采购入库记录失败（traceCode=" + code.getTraceCode() + "）：" + e.getMessage());
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.foodtraceability.event.listener;
 
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.dto.finance.CostRecordCreateDTO;
 import com.foodtraceability.event.PurchaseStockInEvent;
 import com.foodtraceability.service.MaterialTraceCodeService;
@@ -50,15 +52,36 @@ public class PurchaseStockInEventListener {
     public void handlePurchaseStockInEvent(PurchaseStockInEvent event) {
         log.info("处理采购入库完成事件: stockinId={}", event.getStockinId());
         
+        Exception firstFailure = null;
+
         try {
             generateMaterialTraceCodes(event);
-            
-            recordPurchaseCost(event);
-            
-            log.info("采购入库事件处理完成: stockinId={}", event.getStockinId());
         } catch (Exception e) {
-            log.error("处理采购入库事件失败: {}", e.getMessage(), e);
+            log.error("采购入库联动-生成原料追溯码失败: stockinId={}, error={}",
+                    event.getStockinId(), e.getMessage(), e);
+            firstFailure = e;
         }
+
+        try {
+            recordPurchaseCost(event);
+        } catch (Exception e) {
+            log.error("采购入库联动-记录采购成本失败: stockinId={}, error={}",
+                    event.getStockinId(), e.getMessage(), e);
+            if (firstFailure == null) {
+                firstFailure = e;
+            }
+        }
+
+        if (firstFailure != null) {
+            // 假成功修复：原实现两步各自吞异常，外层仍打印「处理完成」，
+            // 导致「原料无追溯码 / 采购成本未入账」被伪装成成功。
+            log.error("采购入库事件联动不完整（追溯码或采购成本可能缺失，需人工补录）: stockinId={}",
+                    event.getStockinId());
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "采购入库联动失败（stockinId=" + event.getStockinId() + "）：" + firstFailure.getMessage());
+        }
+
+        log.info("采购入库事件处理完成: stockinId={}", event.getStockinId());
     }
     
     /**
@@ -100,7 +123,10 @@ public class PurchaseStockInEventListener {
             
             log.info("原料追溯码生成成功: stockinId={}", event.getStockinId());
         } catch (Exception e) {
-            log.error("生成原料追溯码失败: {}", e.getMessage(), e);
+            log.error("生成原料追溯码失败: stockinId={}, productId={}, error={}",
+                    event.getStockinId(), event.getProductId(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "生成原料追溯码失败（stockinId=" + event.getStockinId() + "）：" + e.getMessage());
         }
     }
     
@@ -127,7 +153,10 @@ public class PurchaseStockInEventListener {
 
             log.info("采购成本记录成功: stockinId={}", event.getStockinId());
         } catch (Exception e) {
-            log.error("记录采购成本失败: {}", e.getMessage(), e);
+            log.error("记录采购成本失败: stockinId={}, amount={}, error={}",
+                    event.getStockinId(), event.getTotalAmount(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "记录采购成本失败（stockinId=" + event.getStockinId() + "）：" + e.getMessage());
         }
     }
 }

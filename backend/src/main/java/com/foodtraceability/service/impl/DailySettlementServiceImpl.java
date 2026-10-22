@@ -472,6 +472,7 @@ public class DailySettlementServiceImpl implements DailySettlementService {
         log.info("批量获取/生成日结对账: storeId={}, startDate={}, endDate={}", storeId, startDate, endDate);
 
         List<DailySettlement> settlements = new ArrayList<>();
+        List<LocalDate> failedDates = new ArrayList<>();
         LocalDate currentDate = startDate;
 
         while (!currentDate.isAfter(endDate)) {
@@ -479,10 +480,24 @@ public class DailySettlementServiceImpl implements DailySettlementService {
                 DailySettlement settlement = getOrGenerateSettlement(storeId, currentDate);
                 settlements.add(settlement);
             } catch (Exception e) {
-                log.error("生成日期[{}]的日结数据失败: {}", currentDate, e.getMessage());
-                // 单日失败不影响其他日期，继续处理
+                // 单日失败不影响其他日期，但必须留痕并在返回前汇总：
+                // 原实现直接吞掉异常，调用方会把「缺日的列表」当成完整对账结果（假成功）。
+                failedDates.add(currentDate);
+                log.error("生成日期[{}]的日结数据失败: storeId={}, error={}",
+                        currentDate, storeId, e.getMessage(), e);
             }
             currentDate = currentDate.plusDays(1);
+        }
+
+        if (!failedDates.isEmpty()) {
+            log.error("日结对账结果不完整: storeId={}, 成功{}天, 失败{}天={}",
+                    storeId, settlements.size(), failedDates.size(), failedDates);
+            if (settlements.isEmpty()) {
+                // 全区间都失败：没有任何可用数据，显式失败而不是返回空列表冒充成功
+                throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                        "日结对账生成失败（storeId=" + storeId + "，区间 " + startDate + "~" + endDate
+                                + "，失败 " + failedDates.size() + " 天）");
+            }
         }
 
         return settlements;
