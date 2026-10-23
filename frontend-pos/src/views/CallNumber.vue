@@ -75,6 +75,10 @@
             <div class="stat-num">{{ stats.picked }}</div>
             <div class="stat-label">已取餐</div>
           </div>
+          <div class="stat-card passed">
+            <div class="stat-num">{{ stats.passed }}</div>
+            <div class="stat-label">已过号</div>
+          </div>
         </div>
       </div>
 
@@ -141,25 +145,16 @@
       </div>
     </div>
 
-    <el-dialog v-model="showHistoryDialog" title="叫号历史" width="700px" :lock-scroll="false">
-      <el-table :data="historyList" size="small" max-height="400" v-loading="loadingHistory">
-        <el-table-column prop="callNumber" label="叫号" width="90">
-          <template #default="{ row }">{{ row.callNumber || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="orderNumber" label="订单号" width="150" />
-        <el-table-column prop="orderType" label="类型" width="80" />
-        <el-table-column prop="tableNumber" label="桌号" width="80" />
-        <el-table-column prop="callCount" label="叫号次数" width="80" />
-        <el-table-column prop="firstCallTime" label="首次叫号" width="120">
-          <template #default="{ row }">{{ formatTime(row.firstCallTime) }}</template>
-        </el-table-column>
-        <el-table-column prop="pickTime" label="取餐时间" width="120">
-          <template #default="{ row }">{{ row.pickTime ? formatTime(row.pickTime) : '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="waitSeconds" label="等待时长">
-          <template #default="{ row }">{{ formatWaitTime(row.waitSeconds) }}</template>
-        </el-table-column>
-      </el-table>
+    <el-dialog
+      v-model="showHistoryDialog"
+      title="取餐叫号历史"
+      width="min(1240px, 94vw)"
+      top="5vh"
+      :lock-scroll="false"
+      destroy-on-close
+      class="history-dialog"
+    >
+      <CallHistoryPanel @refresh-stats="handleHistoryChanged" />
     </el-dialog>
 
     <el-dialog v-model="showSettingsDialog" title="语音设置" width="500px" :lock-scroll="false">
@@ -219,9 +214,9 @@ import { Sunny, Moon, Bell, RefreshRight, CircleCheck, Clock, Setting, Refresh }
 import SockJS from 'sockjs-client'
 import { Client, IMessage } from '@stomp/stompjs'
 import { ttsService } from '@/services/tts'
-import { formatTime } from '@/utils/format'
 import request from '@/api/request'
 import { callNumberHardwareApi, type HardwareVoiceResponse } from '@/api/callNumberApi'
+import CallHistoryPanel from '@/components/pos/CallHistoryPanel.vue'
 
 interface CallRecord {
   id: number
@@ -232,7 +227,7 @@ interface CallRecord {
   tableNumber?: string
   orderType?: string
   itemCount: number
-  status: 'pending' | 'called' | 'picked'
+  status: 'pending' | 'called' | 'picked' | 'passed'
   callCount: number
   firstCallTime?: string
   lastCallTime?: string
@@ -252,9 +247,7 @@ const currentOrder = ref<CallRecord | null>(null)
 const filterStatus = ref('all')
 const showHistoryDialog = ref(false)
 const showSettingsDialog = ref(false)
-const historyList = ref<CallRecord[]>([])
 const availableVoices = ref<SpeechSynthesisVoice[]>([])
-const loadingHistory = ref(false)
 const syncing = ref(false)
 const calling = ref(false)
 const recalling = ref(false)
@@ -267,7 +260,9 @@ const hardwareSpeakerAvailable = ref(false)
 const stats = ref({
   pending: 0,
   called: 0,
-  picked: 0
+  picked: 0,
+  // 后端 stats 目前只返回 pending/called/picked，passed 缺失时按 0 处理
+  passed: 0
 })
 
 const voiceSettings = ref({
@@ -363,21 +358,12 @@ const broadcastCallEvent = (action: string, data: {
   }
 }
 
-const formatWaitTime = (seconds: number) => {
-  if (!seconds) return '-'
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (mins > 0) {
-    return `${mins}分${secs}秒`
-  }
-  return `${secs}秒`
-}
-
 const getStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
     pending: '待叫号',
     called: '已叫号',
-    picked: '已取餐'
+    picked: '已取餐',
+    passed: '已过号'
   }
   return statusMap[status] || status
 }
@@ -407,13 +393,27 @@ const loadPendingOrders = async () => {
 
 const loadStats = async () => {
   try {
-    const res = await request.get('/v1/call-number/stats') as any
+    const res = await request.get('/v1/call-number/stats') as unknown as Record<string, unknown> | null
     if (res && typeof res === 'object') {
-      stats.value = res
+      const num = (value: unknown): number => {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : 0
+      }
+      stats.value = {
+        pending: num(res.pending),
+        called: num(res.called),
+        picked: num(res.picked),
+        passed: num(res.passed)
+      }
     }
   } catch (e) {
     console.error('加载统计数据失败:', e)
   }
+}
+
+/** 历史面板内取餐/过号后：同步刷新统计与待取餐队列 */
+const handleHistoryChanged = async (): Promise<void> => {
+  await Promise.all([loadStats(), loadPendingOrders()])
 }
 
 /**
@@ -484,23 +484,6 @@ const sendToDisplay = async (orderData: {
   } catch (e) {
     console.warn('[显示屏] 发送失败:', e)
     // 显示屏发送失败不阻断主流程
-  }
-}
-
-// 加载叫号历史记录
-const loadHistory = async () => {
-  loadingHistory.value = true
-  try {
-    const res = await request.get('/v1/call-number/history')
-    if (Array.isArray(res)) {
-      historyList.value = res
-    } else if (res && typeof res === 'object') {
-      historyList.value = (res as any).data || []
-    }
-  } catch (e) {
-    console.error('加载历史记录失败:', e)
-  } finally {
-    loadingHistory.value = false
   }
 }
 
@@ -895,7 +878,6 @@ onMounted(async () => {
 
   await loadPendingOrders()
   await loadStats()
-  await loadHistory()
 
   // 检查硬件连接状态
   await checkHardwareStatus()
@@ -1137,7 +1119,7 @@ onUnmounted(() => {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 
@@ -1152,6 +1134,7 @@ onUnmounted(() => {
 .stat-card.pending { border-color: #E6A23C; }
 .stat-card.called { border-color: #409EFF; }
 .stat-card.picked { border-color: #67C23A; }
+.stat-card.passed { border-color: #909399; }
 
 .stat-num {
   font-size: 32px;
@@ -1162,6 +1145,7 @@ onUnmounted(() => {
 .stat-card.pending .stat-num { color: #E6A23C; }
 .stat-card.called .stat-num { color: #409EFF; }
 .stat-card.picked .stat-num { color: #67C23A; }
+.stat-card.passed .stat-num { color: #909399; }
 
 .stat-label {
   font-size: 12px;
@@ -1430,5 +1414,14 @@ onUnmounted(() => {
   50% {
     opacity: 0.3;
   }
+}
+
+/* 历史对话框被 teleport 到 body，只能走 :global，避免破坏 scoped 主题 */
+:global(.history-dialog .el-dialog__body) {
+  padding-top: 8px;
+}
+
+:global(.history-dialog .el-dialog__header) {
+  margin-right: 0;
 }
 </style>
