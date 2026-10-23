@@ -110,14 +110,26 @@ interface LoginForm {
   password: string
 }
 
+/**
+ * 后端 PosAuthServiceImpl.login 实际写入 userInfo 的字段：
+ *   userId / employeeId / employeeName / terminalId
+ * 其余字段做兼容兜底（管理端/历史版本可能返回 fullName、name、username、roleName、roles）。
+ */
+interface LoginUserInfo {
+  userId?: string | number
+  employeeId?: string
+  employeeName?: string
+  terminalId?: string
+  fullName?: string
+  name?: string
+  username?: string
+  roleName?: string
+  roles?: string[] | string
+}
+
 interface LoginResponse {
   token: string
-  userInfo: {
-    employeeId: string
-    name: string
-    role: string
-    shopName: string
-  }
+  userInfo: LoginUserInfo
 }
 
 const router = useRouter()
@@ -167,12 +179,15 @@ async function handleLogin(): Promise<void> {
   // 登录前清理旧凭证，避免旧 token 导致后续请求 401
   localStorage.removeItem('pos-token')
   localStorage.removeItem('pos-user')
+  localStorage.removeItem('pos-terminal')
 
   try {
+    // 终端号：登录后交班/班次接口需要，登录时即落盘
+    const terminalId = generateTerminalId()
     const payload = {
       employeeId: form.employeeId,
       password: form.password,
-      terminalId: generateTerminalId()
+      terminalId
     }
 
     const response = await request.post<LoginResponse>('/v1/pos/auth/login', payload) as any
@@ -180,6 +195,8 @@ async function handleLogin(): Promise<void> {
     if (response?.token) {
       localStorage.setItem('pos-token', response.token)
       localStorage.setItem('pos-user', JSON.stringify(response.userInfo))
+      // 后端 userInfo.terminalId 与请求载荷同值，作为兜底
+      localStorage.setItem('pos-terminal', response.userInfo?.terminalId || terminalId)
       ElMessage.success('登录成功')
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/')

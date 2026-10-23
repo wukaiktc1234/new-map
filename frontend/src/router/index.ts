@@ -113,6 +113,8 @@ const router = createRouter({
     { path: '/finance/cost', name: 'FinanceCost', component: () => import('@/views/finance/FinanceCost.vue'), meta: { title: '成本管理', domain: 'finance' } },
     { path: '/finance/budget', name: 'FinanceBudget', component: () => import('@/views/finance/FinanceBudget.vue'), meta: { title: '预算管理', domain: 'finance' } },
     { path: '/finance/fund', name: 'FinanceFund', component: () => import('@/views/finance/FinanceFund.vue'), meta: { title: '资金管理', domain: 'finance' } },
+    // 仪表盘财务快捷入口「资金流水」指向 /finance/fund-flow，其数据与 /finance/fund 同一份（GET /v1/finance/fund-flows）
+    { path: '/finance/fund-flow', redirect: '/finance/fund' },
     { path: '/finance/tax', name: 'FinanceTax', component: () => import('@/views/finance/FinanceTax.vue'), meta: { title: '税务管理', domain: 'finance' } },
     { path: '/finance/invoice-reimbursement', name: 'InvoiceReimbursement', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票报销', domain: 'finance' } },
     { path: '/finance/report', name: 'FinanceReport', component: () => import('@/views/finance/FinanceReport.vue'), meta: { title: '财务报表', domain: 'finance', permissions: ['finance:report:view'] } },

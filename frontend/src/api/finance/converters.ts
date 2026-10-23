@@ -737,20 +737,60 @@ export const FundFlowDataConverter = {
   /** 金额字段清单（分↔元） */
   amountFields: ['amount', 'balance'] as const,
 
-  /** 后端数据 → 前端展示（金额分→元） */
+  /**
+   * 后端 FundFlowVO 字段名 → 前端 FundFlow 字段名
+   * 后端（/v1/finance/fund-flows）返回：flowId/businessDate/flowDirection/accountId/accountName/
+   * counterpartyName/remark/balanceAfter；前端页面与类型用的是另一套名字，
+   * 不做这层别名映射会导致列表列全部空白、「财务流水」看起来没有数据。
+   */
+  fieldAlias: {
+    flowId: 'id',
+    businessDate: 'transactionDate',
+    accountId: 'bankAccountId',
+    accountName: 'bankAccountName',
+    counterpartyName: 'counterparty',
+    remark: 'summary',
+  } as Record<string, string>,
+
+  /** 后端数据 → 前端展示（字段别名 + 金额分→元 + 方向/状态数字→字符串） */
   toFrontend(backend: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = { ...backend }
+
+    // 1) 字段别名：后端名 → 前端名（不覆盖后端原始字段，保持向后兼容）
+    Object.entries(FundFlowDataConverter.fieldAlias).forEach(([backendKey, frontendKey]) => {
+      if (result[frontendKey] === undefined && result[backendKey] !== undefined) {
+        result[frontendKey] = result[backendKey]
+      }
+    })
+    if (result.id !== undefined && result.id !== null) {
+      result.id = String(result.id)
+    }
+
+    // 2) 金额分→元（仅转换后端直接返回的字段，此时 balance 还未由 balanceAfter 派生）
     FundFlowDataConverter.amountFields.forEach(field => {
       if (result[field] !== undefined && result[field] !== null) {
         result[field] = fenToYuanNumber(result[field] as number)
       }
     })
+
+    // 3) 余额：后端 balanceAfter（分）→ 前端 balance（元）
+    //    必须放在金额换算之后，否则 balance 会被换算两次（分/100/100）
+    if (
+      result.balance === undefined &&
+      result.balanceAfter !== undefined &&
+      result.balanceAfter !== null
+    ) {
+      result.balance = fenToYuanNumber(result.balanceAfter as number)
+    }
+
+    // 4) 收支方向数字→字符串（后端字段名是 flowDirection）
+    const direction = result.flowDirection ?? result.flowType
+    result.flowType = FundFlowTypeMap.toFrontend[direction as number] ?? result.flowType
     result.status = FundFlowStatusMap.toFrontend[result.status as number] ?? result.status
-    result.flowType = FundFlowTypeMap.toFrontend[result.flowType as number] ?? result.flowType
     return result
   },
 
-  /** 前端表单 → 创建DTO（金额元→分） */
+  /** 前端表单 → 创建DTO（前端字段名 → 后端字段名，金额元→分） */
   toCreateDTO(form: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = { ...form }
     FundFlowDataConverter.amountFields.forEach(field => {
@@ -758,8 +798,26 @@ export const FundFlowDataConverter = {
         result[field] = yuanToFen(result[field] as number | string)
       }
     })
+    // 前端名 → 后端名（后端 FundFlowCreateDTO 要求 accountId/flowDirection/businessDate/flowCategory）
+    const aliasToBackend: Record<string, string> = {
+      bankAccountId: 'accountId',
+      transactionDate: 'businessDate',
+      counterparty: 'counterpartyName',
+      summary: 'remark',
+    }
+    Object.entries(aliasToBackend).forEach(([frontendKey, backendKey]) => {
+      if (result[frontendKey] !== undefined && result[backendKey] === undefined) {
+        result[backendKey] = result[frontendKey]
+      }
+    })
+    if (result.flowType !== undefined) {
+      result.flowDirection = FundFlowTypeMap.toBackend[result.flowType as string] ?? result.flowDirection
+    }
+    // flowCategory 后端 @NotNull：前端未提供时按「6-其他」兜底
+    if (result.flowCategory === undefined || result.flowCategory === null) {
+      result.flowCategory = 6
+    }
     result.status = FundFlowStatusMap.toBackend[result.status as string] ?? result.status
-    result.flowType = FundFlowTypeMap.toBackend[result.flowType as string] ?? result.flowType
     return result
   },
 
