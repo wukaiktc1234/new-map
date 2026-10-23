@@ -121,7 +121,13 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
                 .distinct()
                 .collect(Collectors.toList());
         if (!accountIds.isEmpty()) {
-            List<BankAccount> accounts = bankAccountMapper.selectBatchIds(accountIds);
+            // 只取账户 id + 名称两列：本接口不需要账户明细字段，
+            // 避免因 bank_accounts 其他列的脏数据（如 account_type 历史 varchar 值）
+            // 让整页列表 500（traceId=680bd8650713）。
+            List<BankAccount> accounts = bankAccountMapper.selectList(
+                    new LambdaQueryWrapper<BankAccount>()
+                            .select(BankAccount::getAccountId, BankAccount::getAccountName)
+                            .in(BankAccount::getAccountId, accountIds));
             for (BankAccount acc : accounts) {
                 accountNameMap.put(acc.getAccountId(), acc.getAccountName());
             }

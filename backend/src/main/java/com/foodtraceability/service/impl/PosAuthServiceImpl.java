@@ -16,8 +16,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -218,6 +220,7 @@ public class PosAuthServiceImpl implements PosAuthService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> endShift(String terminalId, String remark) {
         logger.info("结束班次: terminalId={}", terminalId);
 
@@ -229,8 +232,24 @@ public class PosAuthServiceImpl implements PosAuthService {
         // 2. 查找当前活跃班次
         PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
         if (shift == null) {
-            logger.warn("结束班次失败: 终端{}没有活跃班次", terminalId);
-            throw new BusinessException(404, "没有找到进行中的班次");
+            // 现实场景：收银员直接点「确认交班」，但没走开台流程（历史数据里 pos_shifts 为空）。
+            // 这里补建一条当日班次并直接完成，保证交班有留痕、金额能对上，而不是把用户挡在门外。
+            LocalDateTime firstPaid = posShiftMapper.findFirstPaidOrderTimeToday();
+            PosShift synthetic = new PosShift();
+            synthetic.setTerminalId(terminalId);
+            // pos_shifts.employee_id 是 NOT NULL 且无默认值：补建班次必须给非空值，
+            // 否则交班整体 500（2026-10-23 复核发现：原来传 null → 约束冲突）。
+            synthetic.setEmployeeId("SYSTEM");
+            synthetic.setEmployeeName("系统补建");
+            synthetic.setShiftType("day");
+            synthetic.setStartTime(firstPaid != null ? firstPaid : LocalDate.now().atStartOfDay());
+            synthetic.setStatus("active");
+            synthetic.setOpeningCash(BigDecimal.ZERO);
+            synthetic.setTotalOrders(0);
+            synthetic.setTotalAmount(BigDecimal.ZERO);
+            posShiftMapper.insert(synthetic);
+            shift = synthetic;
+            logger.warn("结束班次：终端{}无活跃班次，已按今日首笔支付时间补建班次 shiftId={}", terminalId, shift.getShiftId());
         }
 
         // 3. 统计该班次的订单数据
@@ -272,19 +291,17 @@ public class PosAuthServiceImpl implements PosAuthService {
 
         // 1. 获取当前活跃班次
         PosShift shift = getCurrentShift(terminalId);
-        if (shift == null) {
-            return Collections.emptyMap();
-        }
 
-        // 2. 统计当前班次的订单数据
-        Map<String, Object> orderStats = countShiftOrders(terminalId, shift.getStartTime(), LocalDateTime.now());
+        // 无活跃班次时不再返回空对象（前端会显示全 0，像"假数据"）：退化为「今日汇总」
+        LocalDateTime start = shift != null ? shift.getStartTime() : LocalDate.now().atStartOfDay();
+        Map<String, Object> orderStats = countShiftOrders(terminalId, start, LocalDateTime.now());
 
-        // 3. 构建摘要结果
         Map<String, Object> summary = new HashMap<>();
-        summary.put("shiftInfo", buildShiftInfo(shift));
+        summary.put("shiftInfo", shift != null ? buildShiftInfo(shift) : null);
+        summary.put("shiftActive", shift != null);
+        summary.put("summaryStartTime", start);
         summary.put("orderStats", orderStats);
         summary.put("currentTime", LocalDateTime.now());
-
         return summary;
     }
 
@@ -453,15 +470,64 @@ public class PosAuthServiceImpl implements PosAuthService {
      * 统计指定时间范围内的订单数据
      */
     private Map<String, Object> countShiftOrders(String terminalId, LocalDateTime startTime, LocalDateTime endTime) {
+        Map<String, Object> stats = new HashMap<>();
         try {
-            return posShiftMapper.countOrdersByTimeRange(terminalId, startTime, endTime);
+            Map<String, Object> raw = posShiftMapper.countOrdersByTimeRange(terminalId, startTime, endTime);
+            long orders = raw != null && raw.get("total_orders") != null
+                    ? ((Number) raw.get("total_orders")).longValue() : 0L;
+            long amountCents = raw != null && raw.get("total_amount_cents") != null
+                    ? ((Number) raw.get("total_amount_cents")).longValue() : 0L;
+
+            stats.put("total_orders", orders);
+            // 新表金额是「分」，对外统一「元」
+            BigDecimal totalYuan = BigDecimal.valueOf(amountCents).movePointLeft(2);
+            stats.put("total_amount", totalYuan);
+            stats.put("avg_amount", orders > 0
+                    ? totalYuan.divide(BigDecimal.valueOf(orders), 2, java.math.RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO);
+
+            // 支付方式拆解：1现金 2微信 3支付宝 4银行卡 5余额
+            Map<String, BigDecimal> breakdown = new java.util.LinkedHashMap<>();
+            breakdown.put("cash", BigDecimal.ZERO);
+            breakdown.put("wechat", BigDecimal.ZERO);
+            breakdown.put("alipay", BigDecimal.ZERO);
+            breakdown.put("card", BigDecimal.ZERO);
+            breakdown.put("balance", BigDecimal.ZERO);
+            List<Map<String, Object>> rows = posShiftMapper.sumPaymentBreakdown(startTime, endTime);
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    int method = row.get("method") != null ? ((Number) row.get("method")).intValue() : 0;
+                    long cents = row.get("amount_cents") != null ? ((Number) row.get("amount_cents")).longValue() : 0L;
+                    String key = switch (method) {
+                        case 1 -> "cash";
+                        case 2 -> "wechat";
+                        case 3 -> "alipay";
+                        case 4 -> "card";
+                        case 5 -> "balance";
+                        default -> "other";
+                    };
+                    breakdown.merge(key, BigDecimal.valueOf(cents).movePointLeft(2), BigDecimal::add);
+                }
+            }
+            // 兜底对账：历史/导入单可能 payment_status=2 却缺 order_payment_records
+            // （活库实测 4 笔：2026-08-08 / 2026-09-09 测试夹具，共 3330 元）。
+            // 若拆解合计小于总额，把差额落到 unrecorded，保证「各方式合计 == total_amount」恒成立，
+            // 而不是让收银员看到一个对不上的交班表（2026-10-23 复核补）。
+            BigDecimal breakdownSum = breakdown.values().stream()
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal gap = totalYuan.subtract(breakdownSum);
+            if (gap.compareTo(new BigDecimal("0.005")) > 0) {
+                breakdown.put("unrecorded", gap.setScale(2, java.math.RoundingMode.HALF_UP));
+            }
+            stats.put("payment_breakdown", breakdown);
+            return stats;
         } catch (Exception e) {
             logger.warn("统计订单数据失败: terminalId={}, error={}", terminalId, e.getMessage());
-            // 返回默认值
-            Map<String, Object> defaultStats = new HashMap<>();
-            defaultStats.put("total_orders", 0);
-            defaultStats.put("total_amount", BigDecimal.ZERO);
-            return defaultStats;
+            stats.put("total_orders", 0);
+            stats.put("total_amount", BigDecimal.ZERO);
+            stats.put("avg_amount", BigDecimal.ZERO);
+            stats.put("payment_breakdown", Map.of());
+            return stats;
         }
     }
 
