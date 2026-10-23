@@ -47,9 +47,15 @@ public class PosController {
     // ==================== 快速支付 ====================
 
     /**
-     * 快速支付（简化版）
-     * 支持单种或多种支付方式
+     * 快速支付（简化版）—— <b>已废弃</b>
+     *
+     * <p>自 2026-10-23 起，标准支付入口 {@code POST /v1/pos/orders/order/pay}
+     * 已支持 orders 新表（新表优先、旧表兜底），POS 端统一走标准入口即可；
+     * 本接口仅为历史客户端保留，新代码不要调用，后续版本将移除。</p>
+     *
+     * @deprecated 使用 {@code POST /v1/pos/orders/order/pay}（PayRequestDTO）替代
      */
+    @Deprecated
     @PostMapping("/orders/{orderId}/quick-pay")
     @PreAuthorize("hasAuthority('order:pay') or hasAuthority('*')")
     @Operation(summary = "POS快速支付", description = "收银台快速支付订单")

@@ -53,6 +53,11 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     /** 收支流水Mapper，用于支付成功后自动创建收入记录，确保利润表数据同步 */
     private final FinanceRecordMapper financeRecordMapper;
 
+    /** 新表（orders）支付链路：POS 快速下单落 orders，标准支付入口必须能闭环 */
+    private final OrderNewMapper orderNewMapper;
+    private final OrderItemNewMapper orderItemNewMapper;
+    private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
+
     public PosOrderPaymentServiceImpl(
             KitchenOrderMapper kitchenOrderMapper,
             OrderMapper orderMapper,
@@ -65,7 +70,10 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             MemberMapper memberMapper,
             SensitiveDataService sensitiveDataService,
             ReceiptPrinterService receiptPrinterService,
-            FinanceRecordMapper financeRecordMapper) {
+            FinanceRecordMapper financeRecordMapper,
+            OrderNewMapper orderNewMapper,
+            OrderItemNewMapper orderItemNewMapper,
+            OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -78,6 +86,9 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         this.sensitiveDataService = sensitiveDataService;
         this.receiptPrinterService = receiptPrinterService;
         this.financeRecordMapper = financeRecordMapper;
+        this.orderNewMapper = orderNewMapper;
+        this.orderItemNewMapper = orderItemNewMapper;
+        this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
     }
 
     /**
@@ -89,6 +100,13 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     public Result<OrderResultDTO> payOrder(PayRequestDTO request) {
         log.info("开始处理订单支付: orderId={}", request.getOrderId());
         try {
+            // ===== 新表（orders）优先：POS 快速下单写 orders，标准支付入口必须能闭环 =====
+            OrderNew newOrder = orderNewMapper.selectOne(
+                new LambdaQueryWrapper<OrderNew>().eq(OrderNew::getOrderId, request.getOrderId()).last("LIMIT 1"));
+            if (newOrder != null) {
+                return payNewOrder(newOrder, request);
+            }
+            log.warn("支付入口未在 orders 命中，回落 orders_legacy: orderId={}", request.getOrderId());
             // 查询订单
             Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderId, request.getOrderId()));
             if (order == null) {
@@ -518,6 +536,104 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         result.setOrderItems(itemResults);
 
         return result;
+    }
+
+    /**
+     * 新表（orders）支付：金额以「分」为准，写入 order_payment_records 并回写 payment_status=2。
+     *
+     * <p>与遗留表口径差异：orders 的 payment_status 才是资金口径（2=已支付），
+     * order_status 表示业务流转进度，支付不动它；遗留表则用 order_status=1 表示已支付。</p>
+     */
+    private Result<OrderResultDTO> payNewOrder(OrderNew order, PayRequestDTO request) {
+        if (order.getOrderStatus() != null && order.getOrderStatus() == 3) {
+            return Result.error("订单已取消，无法支付");
+        }
+        if (order.getPaymentStatus() != null && order.getPaymentStatus() == 2) {
+            return Result.error("订单已支付，请勿重复操作");
+        }
+
+        long totalCents = order.getFinalAmount() != null ? order.getFinalAmount()
+                : (order.getTotalAmount() != null ? order.getTotalAmount() : 0L);
+        long paidCents = order.getPaidAmount() != null ? order.getPaidAmount() : 0L;
+        long dueCents = totalCents - paidCents;
+        if (dueCents <= 0) {
+            return Result.error("订单金额异常，请联系管理员");
+        }
+
+        // 金额校验：PayRequestDTO.amount 是「元」，与订单「分」比较前统一换算
+        if (request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0) {
+            long requestCents = request.getAmount().movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValue();
+            if (requestCents != dueCents) {
+                log.warn("新表支付金额不一致: request={}分, due={}分, orderId={}", requestCents, dueCents, order.getOrderId());
+                return Result.error("支付金额与订单金额不一致，请刷新后重试");
+            }
+        }
+
+        Integer paymentMethodInt = convertPaymentMethodForNewOrder(request.getPaymentMethod());
+        String transactionNo = generateTransactionId(paymentMethodInt);
+        String operatorName = SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "unknown";
+        Long operatorId = SecurityUtils.getCurrentUserId();
+
+        OrderPaymentRecordNew record = new OrderPaymentRecordNew();
+        record.setOrderId(order.getOrderId());
+        record.setPaymentMethod(paymentMethodInt);
+        record.setPaymentAmount(dueCents);
+        record.setTransactionNo(transactionNo);
+        record.setPaymentTime(LocalDateTime.now());
+        record.setOperatorId(operatorId);
+        record.setRemark("POS 标准支付入口（orders 新表）");
+        record.setCreateTime(LocalDateTime.now());
+        record.setUpdateTime(LocalDateTime.now());
+        record.setDeleted(0);
+        orderPaymentRecordNewMapper.insert(record);
+
+        long newPaid = paidCents + dueCents;
+        OrderNew paidUpdate = new OrderNew();
+        paidUpdate.setOrderId(order.getOrderId());
+        paidUpdate.setPaymentStatus(2);
+        paidUpdate.setPaidAmount(newPaid);
+        paidUpdate.setUpdateTime(LocalDateTime.now());
+        orderNewMapper.updateById(paidUpdate);
+
+        log.info("新表订单支付完成: orderId={}, orderNumber={}, amount={}分, method={}, operator={}",
+                order.getOrderId(), order.getOrderNumber(), dueCents, paymentMethodInt, operatorName);
+
+        OrderResultDTO result = new OrderResultDTO();
+        result.setOrderId(order.getOrderId());
+        result.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
+        result.setStatus(order.getOrderStatus() != null ? String.valueOf(order.getOrderStatus()) : "0");
+        result.setTotalAmount(BigDecimal.valueOf(dueCents).movePointLeft(2));
+        result.setOrderSource(order.getOrderSource());
+        result.setOrderType(order.getOrderType() != null ? String.valueOf(order.getOrderType()) : "0");
+        result.setCreateTime(order.getCreateTime() != null ? order.getCreateTime().toString() : "");
+
+        List<OrderItemNew> items = orderItemNewMapper.selectList(
+                new LambdaQueryWrapper<OrderItemNew>().eq(OrderItemNew::getOrderId, order.getOrderId()));
+        result.setOrderItems(items.stream().map(item -> {
+            OrderResultDTO.OrderItemInfo info = new OrderResultDTO.OrderItemInfo();
+            info.setName(item.getProductName());
+            info.setPrice(item.getUnitPrice() != null
+                    ? BigDecimal.valueOf(item.getUnitPrice()).movePointLeft(2) : null);
+            info.setQuantity(item.getQuantity());
+            return info;
+        }).collect(java.util.stream.Collectors.toList()));
+
+        return Result.success(result);
+    }
+
+    /**
+     * 新表支付方式编码：1现金 2微信 3支付宝 4银行卡 5积分/余额
+     * （与遗留表 0微信/1支付宝/2现金/3银行卡/4余额 的编码**不同**，禁止混用）
+     */
+    private Integer convertPaymentMethodForNewOrder(String paymentMethod) {
+        if (paymentMethod == null) return 1;
+        return switch (paymentMethod) {
+            case "微信支付", "wechat", "WECHAT" -> 2;
+            case "支付宝", "alipay", "ALIPAY" -> 3;
+            case "银行卡", "card", "CARD" -> 4;
+            case "余额支付", "balance", "BALANCE", "积分", "points", "POINTS" -> 5;
+            default -> 1;
+        };
     }
 
     /**
