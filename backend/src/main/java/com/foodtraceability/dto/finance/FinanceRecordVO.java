@@ -83,6 +83,10 @@ public class FinanceRecordVO implements Serializable {
     /** 备注 */
     private String remark;
 
+    /** W1-EC-05: canonical order reference（orders.order_code） */
+    @com.fasterxml.jackson.annotation.JsonProperty("orderCode")
+    private String orderCode;
+
     /** 创建人ID */
     private Long createUserId;
 
@@ -138,6 +142,8 @@ public class FinanceRecordVO implements Serializable {
     public void setApproveTime(LocalDateTime approveTime) { this.approveTime = approveTime; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
+    public String getOrderCode() { return orderCode; }
+    public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
     public Long getCreateUserId() { return createUserId; }
     public void setCreateUserId(Long createUserId) { this.createUserId = createUserId; }
     public LocalDateTime getCreateTime() { return createTime; }

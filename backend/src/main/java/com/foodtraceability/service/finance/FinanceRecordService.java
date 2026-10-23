@@ -12,9 +12,14 @@ import com.foodtraceability.entity.finance.FinanceRecord;
 public interface FinanceRecordService extends IService<FinanceRecord> {
 
     /**
-     * 创建收支记录
+     * 创建收支记录（默认待审批状态）
      */
     FinanceRecordVO create(FinanceRecordCreateDTO dto);
+
+    /**
+     * W1-EC-05: 创建收支记录（指定审批状态，POS支付自动通过）
+     */
+    FinanceRecordVO create(FinanceRecordCreateDTO dto, int approvalStatus);
 
     /**
      * 更新收支记录（仅待审批状态可修改）

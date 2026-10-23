@@ -13,6 +13,9 @@ public class FinanceRecordQueryDTO implements Serializable {
     /** 记录编号（模糊查询） */
     private String recordNo;
 
+    /** W1-EC-05: 订单编号（精确查询） */
+    private String orderCode;
+
     /** 收支类型：1收入 2支出 3转账 */
     private Integer recordType;
 
@@ -43,6 +46,8 @@ public class FinanceRecordQueryDTO implements Serializable {
     // getter和setter方法
     public String getRecordNo() { return recordNo; }
     public void setRecordNo(String recordNo) { this.recordNo = recordNo; }
+    public String getOrderCode() { return orderCode; }
+    public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
     public Integer getRecordType() { return recordType; }
     public void setRecordType(Integer recordType) { this.recordType = recordType; }
     public Integer getRecordCategory() { return recordCategory; }

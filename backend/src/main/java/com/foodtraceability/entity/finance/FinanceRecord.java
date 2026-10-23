@@ -85,6 +85,9 @@ public class FinanceRecord extends BaseEntity implements Serializable {
     /** 审批时间 */
     private LocalDateTime approveTime;
 
+    /** W1-EC-05: canonical order reference（orders.order_code） */
+    private String orderCode;
+
     /** 备注 */
     private String remark;
 
@@ -221,6 +224,14 @@ public class FinanceRecord extends BaseEntity implements Serializable {
 
     public void setApproveTime(LocalDateTime approveTime) {
         this.approveTime = approveTime;
+    }
+
+    public String getOrderCode() {
+        return orderCode;
+    }
+
+    public void setOrderCode(String orderCode) {
+        this.orderCode = orderCode;
     }
 
     public String getRemark() {

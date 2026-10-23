@@ -29,7 +29,13 @@ public class FinanceRecordServiceImpl extends ServiceImpl<FinanceRecordMapper, F
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FinanceRecordVO create(FinanceRecordCreateDTO dto) {
-        log.info("创建收支记录，类型：{}，金额：{}", dto.getRecordType(), dto.getAmount());
+        return create(dto, 0); // 默认待审批
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FinanceRecordVO create(FinanceRecordCreateDTO dto, int approvalStatus) {
+        log.info("创建收支记录，类型：{}，金额：{}，orderCode：{}", dto.getRecordType(), dto.getAmount(), dto.getOrderCode());
 
         FinanceRecord record = new FinanceRecord();
         record.setRecordNo(generateRecordNo());
@@ -42,8 +48,9 @@ public class FinanceRecordServiceImpl extends ServiceImpl<FinanceRecordMapper, F
         record.setCounterpartyType(dto.getCounterpartyType());
         record.setBusinessDate(dto.getBusinessDate());
         record.setRecordDate(LocalDate.now());
-        record.setApprovalStatus(0); // 待审批
+        record.setApprovalStatus(approvalStatus);
         record.setRemark(dto.getRemark());
+        record.setOrderCode(dto.getOrderCode());
 
         this.save(record);
 
@@ -89,7 +96,8 @@ public class FinanceRecordServiceImpl extends ServiceImpl<FinanceRecordMapper, F
     public IPage<FinanceRecordVO> getPage(FinanceRecordQueryDTO query) {
         Page<FinanceRecord> page = new Page<>(query.getCurrent(), query.getSize());
         IPage<FinanceRecord> recordPage = baseMapper.selectRecordPage(page,
-                query.getRecordNo(), query.getRecordType(), query.getRecordCategory(),
+                query.getRecordNo(), query.getOrderCode(),
+                query.getRecordType(), query.getRecordCategory(),
                 query.getPaymentMethod(), query.getCounterpartyName(),
                 query.getStartDate(), query.getEndDate(), query.getApprovalStatus());
 
@@ -161,6 +169,7 @@ public class FinanceRecordServiceImpl extends ServiceImpl<FinanceRecordMapper, F
         vo.setApprovalStatusName(getApprovalStatusName(record.getApprovalStatus()));
         vo.setApproveTime(record.getApproveTime());
         vo.setRemark(record.getRemark());
+        vo.setOrderCode(record.getOrderCode());
         vo.setCreateTime(record.getCreateTime());
         return vo;
     }

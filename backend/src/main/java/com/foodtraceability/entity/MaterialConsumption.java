@@ -109,6 +109,47 @@ public class MaterialConsumption {
     @Schema(description = "删除标记：0-未删除, 1-已删除")
     private Integer deleted;
 
+    // ==================== KDS 出餐扣料失败审计字段（V20260922_001 新增） ====================
+    /** 记录状态：NULL=普通消耗记录；FAILED=KDS出餐扣料失败审计行 */
+    @TableField("status")
+    @Schema(description = "记录状态：NULL=普通消耗记录, FAILED=扣料失败审计行")
+    private String status;
+
+    /** 失败类型（MaterialDeductionFailureException 常量） */
+    @TableField("failure_type")
+    @Schema(description = "扣料失败类型")
+    private String failureType;
+
+    /** 失败详细原因 */
+    @TableField("failure_reason")
+    @Schema(description = "扣料失败详细原因")
+    private String failureReason;
+
+    /** 触发服务时在场的托盘码 */
+    @TableField("tray_code")
+    @Schema(description = "托盘码")
+    private String trayCode;
+
+    /** 已展开BOM原料清单（materialId:qty;...） */
+    @TableField("bom_materials")
+    @Schema(description = "已展开BOM原料清单")
+    private String bomMaterials;
+
+    /** 已尝试扣减原料清单（materialId:qty;...） */
+    @TableField("attempted_materials")
+    @Schema(description = "已尝试扣减原料清单")
+    private String attemptedMaterials;
+
+    /** 最终失败原料ID（未定位时为NULL） */
+    @TableField("failed_material_id")
+    @Schema(description = "最终失败原料ID")
+    private String failedMaterialId;
+
+    /** 最终失败原料名称或定位描述 */
+    @TableField("failed_material_name")
+    @Schema(description = "最终失败原料名称")
+    private String failedMaterialName;
+
     public MaterialConsumption() {
     }
 
@@ -354,6 +395,71 @@ public class MaterialConsumption {
 
     public void setDeleted(final Integer deleted) {
         this.deleted = deleted;
+    }
+
+    // ==================== 失败审计字段 getter/setter ====================
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(final String status) {
+        this.status = status;
+    }
+
+    public String getFailureType() {
+        return failureType;
+    }
+
+    public void setFailureType(final String failureType) {
+        this.failureType = failureType;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(final String failureReason) {
+        this.failureReason = failureReason;
+    }
+
+    public String getTrayCode() {
+        return trayCode;
+    }
+
+    public void setTrayCode(final String trayCode) {
+        this.trayCode = trayCode;
+    }
+
+    public String getBomMaterials() {
+        return bomMaterials;
+    }
+
+    public void setBomMaterials(final String bomMaterials) {
+        this.bomMaterials = bomMaterials;
+    }
+
+    public String getAttemptedMaterials() {
+        return attemptedMaterials;
+    }
+
+    public void setAttemptedMaterials(final String attemptedMaterials) {
+        this.attemptedMaterials = attemptedMaterials;
+    }
+
+    public String getFailedMaterialId() {
+        return failedMaterialId;
+    }
+
+    public void setFailedMaterialId(final String failedMaterialId) {
+        this.failedMaterialId = failedMaterialId;
+    }
+
+    public String getFailedMaterialName() {
+        return failedMaterialName;
+    }
+
+    public void setFailedMaterialName(final String failedMaterialName) {
+        this.failedMaterialName = failedMaterialName;
     }
 
     @java.lang.Override

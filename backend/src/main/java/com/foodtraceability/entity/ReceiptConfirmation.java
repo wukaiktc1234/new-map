@@ -31,6 +31,13 @@ public class ReceiptConfirmation {
     private String confirmationCode;
 
     /**
+     * 防伪验证码（16位随机，不可预测，唯一索引）
+     */
+    @TableField("verify_code")
+    @Schema(description = "防伪验证码（16位随机）", example = "RMJ6FNHJFQ4YUU7E")
+    private String verifyCode;
+
+    /**
      * 关联到货单ID
      */
     @TableField("arrival_id")
@@ -146,6 +153,20 @@ public class ReceiptConfirmation {
     private LocalDateTime updateTime;
 
     /**
+     * 打印次数（每次打印 A4 递增，用于防打印泛滥追溯）
+     */
+    @TableField("print_count")
+    @Schema(description = "打印次数")
+    private Integer printCount;
+
+    /**
+     * 最近一次打印时间
+     */
+    @TableField("last_print_time")
+    @Schema(description = "最近一次打印时间")
+    private LocalDateTime lastPrintTime;
+
+    /**
      * 逻辑删除标记（0未删除 1已删除）
      */
     @TableLogic
@@ -159,6 +180,21 @@ public class ReceiptConfirmation {
     @TableField(exist = false)
     @Schema(description = "收货确认明细列表")
     private List<ReceiptConfirmationItem> items;
+
+    /** 供应商名称（非数据库字段，用于展示/打印） */
+    @TableField(exist = false)
+    @Schema(description = "供应商名称")
+    private String supplierName;
+
+    /** 货物条形码（商品码/外箱条码） */
+    @TableField("barcode")
+    @Schema(description = "货物条形码")
+    private String barcode;
+
+    /** 到货单编号（非数据库字段，用于展示/打印） */
+    @TableField(exist = false)
+    @Schema(description = "到货单编号")
+    private String arrivalCode;
 
     // ==================== Getter & Setter ====================
 
@@ -176,6 +212,14 @@ public class ReceiptConfirmation {
 
     public void setConfirmationCode(String confirmationCode) {
         this.confirmationCode = confirmationCode;
+    }
+
+    public String getVerifyCode() {
+        return verifyCode;
+    }
+
+    public void setVerifyCode(String verifyCode) {
+        this.verifyCode = verifyCode;
     }
 
     public Long getArrivalId() {
@@ -306,6 +350,22 @@ public class ReceiptConfirmation {
         this.updateTime = updateTime;
     }
 
+    public Integer getPrintCount() {
+        return printCount;
+    }
+
+    public void setPrintCount(Integer printCount) {
+        this.printCount = printCount;
+    }
+
+    public LocalDateTime getLastPrintTime() {
+        return lastPrintTime;
+    }
+
+    public void setLastPrintTime(LocalDateTime lastPrintTime) {
+        this.lastPrintTime = lastPrintTime;
+    }
+
     public Integer getDeleted() {
         return deleted;
     }
@@ -320,5 +380,29 @@ public class ReceiptConfirmation {
 
     public void setItems(List<ReceiptConfirmationItem> items) {
         this.items = items;
+    }
+
+    public String getSupplierName() {
+        return supplierName;
+    }
+
+    public void setSupplierName(String supplierName) {
+        this.supplierName = supplierName;
+    }
+
+    public String getBarcode() {
+        return barcode;
+    }
+
+    public void setBarcode(String barcode) {
+        this.barcode = barcode;
+    }
+
+    public String getArrivalCode() {
+        return arrivalCode;
+    }
+
+    public void setArrivalCode(String arrivalCode) {
+        this.arrivalCode = arrivalCode;
     }
 }

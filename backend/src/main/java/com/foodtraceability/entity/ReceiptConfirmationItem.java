@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 收货确认单明细表实体类
@@ -124,11 +125,32 @@ public class ReceiptConfirmationItem {
     private LocalDate expiryDate;
 
     /**
+     * 质检结果（1-合格 2-不合格 3-部分合格）
+     */
+    @TableField("quality_check_result")
+    @Schema(description = "质检结果（1-合格 2-不合格 3-部分合格）")
+    private Integer qualityCheckResult;
+
+    /**
      * 备注
      */
     @TableField("remark")
     @Schema(description = "备注")
     private String remark;
+
+    /**
+     * 问题类型（破损/短少/效期不符/品质异常/其他）
+     */
+    @TableField("issue_type")
+    @Schema(description = "问题类型")
+    private String issueType;
+
+    /**
+     * 留证照片列表（非表字段，查询时填充）
+     */
+    @TableField(exist = false)
+    @Schema(description = "留证照片列表")
+    private List<ReceiptEvidence> evidence;
 
     /**
      * 创建时间
@@ -282,6 +304,30 @@ public class ReceiptConfirmationItem {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public Integer getQualityCheckResult() {
+        return qualityCheckResult;
+    }
+
+    public void setQualityCheckResult(Integer qualityCheckResult) {
+        this.qualityCheckResult = qualityCheckResult;
+    }
+
+    public String getIssueType() {
+        return issueType;
+    }
+
+    public void setIssueType(String issueType) {
+        this.issueType = issueType;
+    }
+
+    public List<ReceiptEvidence> getEvidence() {
+        return evidence;
+    }
+
+    public void setEvidence(List<ReceiptEvidence> evidence) {
+        this.evidence = evidence;
     }
 
     public LocalDateTime getCreateTime() {

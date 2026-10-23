@@ -26,6 +26,15 @@ public class ReceiptConfirmationQueryDTO {
     @Schema(description = "收货仓库ID")
     private Long warehouseId;
 
+    @Schema(description = "确认时间范围-起（yyyy-MM-dd）")
+    private String confirmDateStart;
+
+    @Schema(description = "确认时间范围-止（yyyy-MM-dd）")
+    private String confirmDateEnd;
+
+    @Schema(description = "供应商名称（模糊查询，作用于关联到货单的供应商）")
+    private String supplierName;
+
     @Schema(description = "当前页码", example = "1")
     private Integer current = 1;
 
@@ -78,6 +87,30 @@ public class ReceiptConfirmationQueryDTO {
 
     public void setWarehouseId(Long warehouseId) {
         this.warehouseId = warehouseId;
+    }
+
+    public String getConfirmDateStart() {
+        return confirmDateStart;
+    }
+
+    public void setConfirmDateStart(String confirmDateStart) {
+        this.confirmDateStart = confirmDateStart;
+    }
+
+    public String getConfirmDateEnd() {
+        return confirmDateEnd;
+    }
+
+    public void setConfirmDateEnd(String confirmDateEnd) {
+        this.confirmDateEnd = confirmDateEnd;
+    }
+
+    public String getSupplierName() {
+        return supplierName;
+    }
+
+    public void setSupplierName(String supplierName) {
+        this.supplierName = supplierName;
     }
 
     public Integer getCurrent() {

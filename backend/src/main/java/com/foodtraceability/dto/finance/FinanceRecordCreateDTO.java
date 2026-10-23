@@ -69,6 +69,10 @@ public class FinanceRecordCreateDTO implements Serializable {
     @Size(max = 500, message = "备注长度不能超过500位")
     private String remark;
 
+    /** W1-EC-05: canonical order reference（orders.order_code） */
+    @Size(max = 64, message = "订单编号长度不能超过64位")
+    private String orderCode;
+
     // getter和setter方法
     public Integer getRecordType() { return recordType; }
     public void setRecordType(Integer recordType) { this.recordType = recordType; }
@@ -88,4 +92,6 @@ public class FinanceRecordCreateDTO implements Serializable {
     public void setBusinessDate(LocalDate businessDate) { this.businessDate = businessDate; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
+    public String getOrderCode() { return orderCode; }
+    public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
 }

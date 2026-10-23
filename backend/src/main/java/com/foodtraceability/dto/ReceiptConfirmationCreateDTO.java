@@ -38,6 +38,18 @@ public class ReceiptConfirmationCreateDTO {
     @Schema(description = "备注")
     private String remark;
 
+    @Size(max = 64, message = "条形码不能超过64个字符")
+    @Schema(description = "货物条形码（商品码/外箱条码）")
+    private String barcode;
+
+    public String getBarcode() {
+        return barcode;
+    }
+
+    public void setBarcode(String barcode) {
+        this.barcode = barcode;
+    }
+
     public Long getArrivalId() {
         return arrivalId;
     }
@@ -111,6 +123,32 @@ public class ReceiptConfirmationCreateDTO {
         @Schema(description = "备注")
         private String remark;
 
+        @Size(max = 20, message = "问题类型不能超过20个字符")
+        @Schema(description = "问题类型（damaged/short/expiry/quality/other）")
+        private String issueType;
+
+        @Schema(description = "留证照片列表（拒收/人工关联必拍）")
+        private List<ReceiptEvidenceDTO> evidence;
+
+        @Schema(description = "质检结果（1-合格 2-不合格 3-部分合格）")
+        private Integer qualityCheckResult;
+
+        public Integer getQualityCheckResult() {
+            return qualityCheckResult;
+        }
+
+        public void setQualityCheckResult(Integer qualityCheckResult) {
+            this.qualityCheckResult = qualityCheckResult;
+        }
+
+        public List<ReceiptEvidenceDTO> getEvidence() {
+            return evidence;
+        }
+
+        public void setEvidence(List<ReceiptEvidenceDTO> evidence) {
+            this.evidence = evidence;
+        }
+
         public Long getArrivalItemId() {
             return arrivalItemId;
         }
@@ -165,6 +203,76 @@ public class ReceiptConfirmationCreateDTO {
 
         public void setRemark(String remark) {
             this.remark = remark;
+        }
+
+        public String getIssueType() {
+            return issueType;
+        }
+
+        public void setIssueType(String issueType) {
+            this.issueType = issueType;
+        }
+    }
+
+    /**
+     * 留证照片信息
+     */
+    @Schema(description = "留证照片")
+    public static class ReceiptEvidenceDTO {
+
+        @Schema(description = "证据类型：MANUAL_MATCH-人工关联 / QC_REJECT-拒收或不合格")
+        private String evidenceType;
+
+        @Schema(description = "照片访问地址")
+        private String photoUrl;
+
+        @Schema(description = "照片拍摄时间（Exif）")
+        private String photoTakenAt;
+
+        @Schema(description = "拍摄设备型号（Exif）")
+        private String deviceModel;
+
+        @Schema(description = "定位信息")
+        private String gps;
+
+        public String getEvidenceType() {
+            return evidenceType;
+        }
+
+        public void setEvidenceType(String evidenceType) {
+            this.evidenceType = evidenceType;
+        }
+
+        public String getPhotoUrl() {
+            return photoUrl;
+        }
+
+        public void setPhotoUrl(String photoUrl) {
+            this.photoUrl = photoUrl;
+        }
+
+        public String getPhotoTakenAt() {
+            return photoTakenAt;
+        }
+
+        public void setPhotoTakenAt(String photoTakenAt) {
+            this.photoTakenAt = photoTakenAt;
+        }
+
+        public String getDeviceModel() {
+            return deviceModel;
+        }
+
+        public void setDeviceModel(String deviceModel) {
+            this.deviceModel = deviceModel;
+        }
+
+        public String getGps() {
+            return gps;
+        }
+
+        public void setGps(String gps) {
+            this.gps = gps;
         }
     }
 }

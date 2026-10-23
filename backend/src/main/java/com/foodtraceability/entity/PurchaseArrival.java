@@ -228,8 +228,20 @@ public class PurchaseArrival {
     private Integer qualityCheckResult;
     /** 质检备注 */
     private String qualityCheckRemark;
+    /** 质检人ID */
+    @TableField("quality_check_by")
+    private Long qualityCheckBy;
+    /** 质检时间 */
+    @TableField("quality_check_time")
+    private LocalDateTime qualityCheckTime;
     /** 入库确认时间 */
     private LocalDateTime confirmTime;
+
+    /**
+     * 质检人姓名（非数据库字段，用于前端展示）
+     */
+    @TableField(exist = false)
+    private String qualityCheckByName;
 
     /**
      * 供应商名称（非数据库字段，用于前端展示）
@@ -489,6 +501,30 @@ public class PurchaseArrival {
 
     public void setQualityCheckRemark(String qualityCheckRemark) {
         this.qualityCheckRemark = qualityCheckRemark;
+    }
+
+    public Long getQualityCheckBy() {
+        return qualityCheckBy;
+    }
+
+    public void setQualityCheckBy(Long qualityCheckBy) {
+        this.qualityCheckBy = qualityCheckBy;
+    }
+
+    public LocalDateTime getQualityCheckTime() {
+        return qualityCheckTime;
+    }
+
+    public void setQualityCheckTime(LocalDateTime qualityCheckTime) {
+        this.qualityCheckTime = qualityCheckTime;
+    }
+
+    public String getQualityCheckByName() {
+        return qualityCheckByName;
+    }
+
+    public void setQualityCheckByName(String qualityCheckByName) {
+        this.qualityCheckByName = qualityCheckByName;
     }
 
     public LocalDateTime getConfirmTime() {
