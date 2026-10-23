@@ -29,10 +29,8 @@ import static org.mockito.Mockito.*;
 /**
  * FinanceAccountServiceImpl 单元测试（会计科目：树、按类型/父级、按编码）。
  *
- * <p><b>已知缺陷（特征化固化，不修）：</b>{@code buildAccountTree} 递归算出 children 却从不挂回
- * account，导致返回的树是「只有顶层节点、不含子节点」的扁平列表；且 {@code parentId} 比较为
- * {@code parentId.equals(...)}，顶层父级必须恰好是 0L。修这棵树属业务语义变更（前端如何消费
- * 该结构未定），按无人值守纪律只固化现状并登记 WORKER_LOG。</p>
+ * <p>科目树：{@code buildAccountTree} 已修复为「递归算出子节点后挂回 children」，
+ * 顶层父级约定为 0L。修复前它只返回顶层节点（children 从未挂载），本类改为断言真实树形结构。</p>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -69,19 +67,46 @@ class FinanceAccountServiceImplTest {
     }
 
     @Test
-    @DisplayName("getAccountTree：只返回 parentId=0 的顶层科目（子节点未挂载，特征化现状）")
-    void getAccountTree_onlyTopLevel() {
+    @DisplayName("getAccountTree：父子节点正确挂载（三级树），叶子节点 children 为空列表")
+    void getAccountTree_buildsNestedTree() {
         when(financeAccountMapper.selectAllActive()).thenReturn(List.of(
                 account(1L, 0L, "1001", "ASSET"),
                 account(2L, 1L, "100101", "ASSET"),
+                account(4L, 2L, "10010101", "ASSET"),
                 account(3L, 0L, "2001", "LIABILITY")
         ));
 
         List<FinanceAccount> tree = service.getAccountTree();
 
-        assertEquals(2, tree.size(), "当前实现只返回顶层节点");
+        assertEquals(2, tree.size(), "顶层应只有 1001 与 2001 两个一级科目");
         assertEquals(List.of(1L, 3L), tree.stream().map(FinanceAccount::getId).toList());
+
+        FinanceAccount level1 = tree.get(0);
+        assertEquals(1, level1.getChildren().size(), "1001 下应挂 100101");
+        assertEquals(2L, level1.getChildren().get(0).getId());
+
+        FinanceAccount level2 = level1.getChildren().get(0);
+        assertEquals(1, level2.getChildren().size(), "100101 下应挂 10010101（三级）");
+        assertEquals(4L, level2.getChildren().get(0).getId());
+
+        assertTrue(level2.getChildren().get(0).getChildren().isEmpty(), "叶子节点 children 必须是空列表而非 null");
+        assertTrue(tree.get(1).getChildren().isEmpty(), "2001 无子科目");
+
         verify(financeAccountMapper).selectAllActive();
+    }
+
+    @Test
+    @DisplayName("getAccountTree：父节点缺失的孤儿节点不会被挂到任何父级（不丢不报错）")
+    void getAccountTree_orphanIgnored() {
+        when(financeAccountMapper.selectAllActive()).thenReturn(List.of(
+                account(1L, 0L, "1001", "ASSET"),
+                account(9L, 999L, "999999", "ASSET")
+        ));
+
+        List<FinanceAccount> tree = service.getAccountTree();
+
+        assertEquals(1, tree.size(), "孤儿节点（parentId 指向不存在的科目）当前不会出现在树里");
+        assertEquals(1L, tree.get(0).getId());
     }
 
     @Test

@@ -1,9 +1,12 @@
 package com.foodtraceability.entity.finance;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @TableName("finance_account")
 public class FinanceAccount {
@@ -32,7 +35,22 @@ public class FinanceAccount {
     private Date createTime;
     
     private Date updateTime;
-    
+
+    /**
+     * 子科目（树形结构用，非数据库字段）。
+     * 不标 @TableField(exist = false) 会被 MyBatis-Plus 当成真实列，查询/插入直接报错。
+     */
+    @TableField(exist = false)
+    private List<FinanceAccount> children = new ArrayList<>();
+
+    public List<FinanceAccount> getChildren() {
+        return children;
+    }
+
+    public void setChildren(List<FinanceAccount> children) {
+        this.children = children;
+    }
+
     public Long getId() {
         return id;
     }
