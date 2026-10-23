@@ -42,6 +42,18 @@ public class OrderNew {
     @Schema(description = "POS叫号号", example = "A001")
     private String callNumber;
 
+    /**
+     * 支付方式（<b>旧编码</b>：0微信 1支付宝 2现金 3银行卡 4余额）
+     *
+     * <p>编码口径警告：新表支付主口径在 {@code order_payment_records.payment_method}
+     * （1现金 2微信 3支付宝 4银行卡 5余额），本列仅为兼容/兜底，两套编码<b>不可混用</b>
+     * （同一个数字含义不同，例如 1 在旧编码是支付宝、在新编码是现金）。
+     * 统一翻译请用 {@code PosPaymentMethodResolver}。</p>
+     */
+    @TableField("payment_method")
+    @Schema(description = "支付方式（旧编码：0微信 1支付宝 2现金 3银行卡 4余额）", example = "2")
+    private Integer paymentMethod;
+
     /** 订单类型：1堂食 2外卖 3自提 4打包 */
     @TableField("order_type")
     @Schema(description = "订单类型: 1堂食 2外卖 3自提 4打包", example = "1")
@@ -219,6 +231,8 @@ public class OrderNew {
     public String getOrderCode() { return orderCode; }
     public String getOrderNumber() { return orderNumber; }
     public String getCallNumber() { return callNumber; }
+    public Integer getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(Integer paymentMethod) { this.paymentMethod = paymentMethod; }
     public Integer getOrderType() { return orderType; }
     public Integer getOrderSource() { return orderSource; }
     public Long getStoreId() { return storeId; }

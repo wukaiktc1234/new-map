@@ -22,7 +22,7 @@
           {{ formatDateTime(order.createTime, '-') }}
         </el-descriptions-item>
         <el-descriptions-item label="支付方式">
-          {{ getPaymentMethodText(order.paymentMethod) }}
+          {{ getPaymentMethodText(order.paymentMethodName || order.paymentMethod || '-') }}
         </el-descriptions-item>
         <el-descriptions-item label="交易流水号">
           {{ formatTransactionId(order.transactionId, order.paymentMethod) }}

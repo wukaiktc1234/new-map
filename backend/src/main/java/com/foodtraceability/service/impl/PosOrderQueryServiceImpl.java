@@ -2,6 +2,7 @@ package com.foodtraceability.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.common.util.PosPaymentMethodResolver;
 import com.foodtraceability.dto.*;
 import com.foodtraceability.entity.*;
 import com.foodtraceability.mapper.*;
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -159,7 +162,18 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
 
             List<OrderNew> newOrders = orderNewMapper.selectList(newWrapper);
             if (!newOrders.isEmpty()) {
-                return Result.success(newOrders.stream().map(this::convertNewToQueryDTO).collect(Collectors.toList()));
+                // 批量装配：一次查支付记录、一次查明细，避免 200 行 N+1
+                List<String> orderIds = newOrders.stream()
+                        .map(OrderNew::getOrderId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                Map<String, Integer> latestPaymentCodes = loadLatestPaymentCodes(orderIds);
+                Map<String, Integer> itemCounts = loadItemCounts(orderIds);
+                return Result.success(newOrders.stream()
+                        .map(o -> convertNewToQueryDTO(o,
+                                latestPaymentCodes.get(o.getOrderId()),
+                                itemCounts.getOrDefault(o.getOrderId(), 0)))
+                        .collect(Collectors.toList()));
             }
 
             // ===== 兜底：新表没有数据时，回退遗留表 =====
@@ -452,15 +466,16 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         dto.setContactPhone(resolvePhone(order));
         dto.setRemarks(order.getRemark());
 
-        // 支付信息来自 order_payment_records（新表订单主表不存支付方式/流水号）
+        // 支付信息：order_payment_records 最近一条（新编码）优先；无记录回退 orders.payment_method（旧编码）；
+        // 两者都没有 → PosPaymentMethodResolver.UNRECORDED（与资金流水详情同一文案，避免三处口径不一致）
         List<OrderPaymentRecordNew> payments = orderPaymentRecordNewMapper.selectByOrderId(order.getOrderId());
+        Integer recordMethodCode = null;
         if (payments != null && !payments.isEmpty()) {
             OrderPaymentRecordNew last = payments.get(payments.size() - 1);
-            dto.setPaymentMethod(convertNewPaymentMethodToString(last.getPaymentMethod()));
+            recordMethodCode = last.getPaymentMethod();
             dto.setTransactionId(last.getTransactionNo());
-        } else if (order.getPaymentStatus() != null && order.getPaymentStatus() == 2) {
-            dto.setPaymentMethod("已支付");
         }
+        dto.setPaymentMethod(PosPaymentMethodResolver.resolve(recordMethodCode, order.getPaymentMethod()));
 
         KitchenOrder kitchenOrder = findKitchenOrder(order);
         if (kitchenOrder != null) {
@@ -521,7 +536,14 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
                 new LambdaQueryWrapper<KitchenOrder>().eq(KitchenOrder::getOrderId, order.getOrderId()).last("LIMIT 1"));
     }
 
-    private OrderQueryDTO convertNewToQueryDTO(OrderNew order) {
+    /**
+     * 列表 DTO 装配（新表订单）。
+     *
+     * @param latestPaymentCode 最近一条 order_payment_records.payment_method（新编码）；无记录传 null，
+     *                          此时回退 orders.payment_method（旧编码）
+     * @param itemCount         明细件数合计（quantity 之和；无数量时用明细行数）
+     */
+    private OrderQueryDTO convertNewToQueryDTO(OrderNew order, Integer latestPaymentCode, int itemCount) {
         OrderQueryDTO dto = new OrderQueryDTO();
         dto.setOrderId(order.getOrderId());
         dto.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
@@ -530,8 +552,59 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         Long amount = order.getFinalAmount() != null ? order.getFinalAmount() : order.getPaidAmount();
         dto.setTotalAmount(centsToYuan(amount));
         dto.setStatus(convertNewOrderStatusToString(order.getOrderStatus()));
+        dto.setPaymentMethod(PosPaymentMethodResolver.resolve(latestPaymentCode, order.getPaymentMethod()));
+        dto.setItemCount(itemCount);
         dto.setCreateTime(order.getCreateTime() != null ? order.getCreateTime().toString() : "");
         return dto;
+    }
+
+    /**
+     * 批量取每个订单「最近一条支付记录的支付方式（新编码）」。
+     * order_payment_records 按 payment_time ASC 取最后一条，与详情口径一致。
+     */
+    private Map<String, Integer> loadLatestPaymentCodes(List<String> orderIds) {
+        Map<String, Integer> result = new HashMap<>();
+        if (orderIds == null || orderIds.isEmpty()) {
+            return result;
+        }
+        List<OrderPaymentRecordNew> records = orderPaymentRecordNewMapper.selectList(
+                new LambdaQueryWrapper<OrderPaymentRecordNew>()
+                        .in(OrderPaymentRecordNew::getOrderId, orderIds)
+                        .orderByAsc(OrderPaymentRecordNew::getPaymentTime));
+        if (records == null) {
+            return result;
+        }
+        for (OrderPaymentRecordNew record : records) {
+            // 顺序即 payment_time 升序，后来的覆盖前者 → 保留最近一条
+            if (record.getPaymentMethod() != null) {
+                result.put(record.getOrderId(), record.getPaymentMethod());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 批量取每个订单的明细件数合计（quantity 之和；无有效数量时退化为明细行数）。
+     */
+    private Map<String, Integer> loadItemCounts(List<String> orderIds) {
+        Map<String, Integer> result = new HashMap<>();
+        if (orderIds == null || orderIds.isEmpty()) {
+            return result;
+        }
+        List<OrderItemNew> items = orderItemNewMapper.selectList(
+                new LambdaQueryWrapper<OrderItemNew>().in(OrderItemNew::getOrderId, orderIds));
+        if (items == null) {
+            return result;
+        }
+        Map<String, int[]> agg = new HashMap<>();
+        for (OrderItemNew item : items) {
+            int[] slot = agg.computeIfAbsent(item.getOrderId(), k -> new int[2]);
+            int qty = item.getQuantity() != null ? item.getQuantity() : 0;
+            slot[0] += qty;   // 数量合计
+            slot[1] += 1;     // 明细行数
+        }
+        agg.forEach((orderId, slot) -> result.put(orderId, slot[0] > 0 ? slot[0] : slot[1]));
+        return result;
     }
 
     private CustomerOrderDTO convertNewToCustomerOrderDTO(OrderNew order) {
@@ -671,15 +744,9 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
      * 与遗留表（0微信/1支付宝/2现金/3银行卡/4余额）**完全不同**，混用会把微信支付显示成现金。</p>
      */
     private String convertNewPaymentMethodToString(Integer paymentMethod) {
-        if (paymentMethod == null) return "现金";
-        return switch (paymentMethod) {
-            case 1 -> "现金";
-            case 2 -> "微信支付";
-            case 3 -> "支付宝";
-            case 4 -> "银行卡";
-            case 5 -> "余额支付";
-            default -> "现金";
-        };
+        // 统一走 PosPaymentMethodResolver（新编码；空/未知给出明确提示而非默认「现金」）
+        String name = PosPaymentMethodResolver.fromPaymentRecordCode(paymentMethod);
+        return name != null ? name : PosPaymentMethodResolver.UNRECORDED;
     }
 
     private String convertPaymentMethodToString(Integer paymentMethod) {

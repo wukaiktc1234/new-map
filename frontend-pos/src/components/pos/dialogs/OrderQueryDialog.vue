@@ -3,7 +3,7 @@
     :model-value="modelValue"
     @update:model-value="emit('update:modelValue', $event)"
     title="订单查询"
-    width="900px"
+    width="980px"
     class="order-query-dialog"
     :lock-scroll="false"
   >
@@ -35,13 +35,23 @@
               {{ formatDateTime(row.createTime, '-') }}
             </template>
           </el-table-column>
-          <el-table-column prop="itemCount" label="数量" width="60" align="center" />
-          <el-table-column prop="totalAmount" label="金额" width="90">
+          <!-- 数量：后端 OrderQueryDTO.itemCount（菜品总件数），空值显示 '-' -->
+          <el-table-column prop="itemCount" label="数量" width="70" align="right">
             <template #default="{ row }">
-              ¥{{ row.totalAmount.toFixed(2) }}
+              <span class="item-count-cell">{{ row.itemCount ?? '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="paymentMethod" label="支付方式" width="90" />
+          <!-- 支付方式：后端已给中文（OrderQueryDTO.paymentMethod），不前端翻译；兼容 paymentMethodName -->
+          <el-table-column prop="paymentMethod" label="支付方式" width="100" align="center">
+            <template #default="{ row }">
+              <span class="payment-method-cell">{{ row.paymentMethod || row.paymentMethodName || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="totalAmount" label="金额" width="100" align="right">
+            <template #default="{ row }">
+              ¥{{ (row.totalAmount ?? 0).toFixed(2) }}
+            </template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="90">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
@@ -226,6 +236,17 @@ onUnmounted(() => {
 .order-list {
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* 数量/支付方式：等宽数字 + 空值占位保持整齐 */
+.item-count-cell {
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-text-primary);
+}
+
+.payment-method-cell {
+  white-space: nowrap;
+  color: var(--pos-text-primary);
 }
 
 .order-query-dialog {

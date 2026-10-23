@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.foodtraceability.common.util.PosPaymentMethodResolver;
 import com.foodtraceability.dto.finance.*;
 import com.foodtraceability.entity.OrderItemNew;
 import com.foodtraceability.entity.OrderNew;
@@ -297,7 +298,7 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
             vo.setCreatedBy(entity.getCreatedBy());
         }
         if (withPosOrder) {
-            vo.setPosOrder(buildPosOrderSummary(entity.getRemark()));
+            vo.setPosOrder(buildPosOrderSummary(entity));
         }
         return vo;
     }
@@ -312,17 +313,26 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
      * 解析不到（非 POS 入账流水）返回 null，
      * 不影响既有详情接口的其它字段。</p>
      *
+     * <p><b>订单定位优先用 {@code fund_flows.order_id} 列</b>（2026-10-24 新增，备注清洗后不再带
+     * {@code [orderId=...]} 技术串）；仅当 order_id 为空的历史行，才回退解析旧备注。</p>
+     *
      * <p>返回体<b>不含 orderId</b>：前端要求隐藏内部ID，订单号即可满足展示与追溯。</p>
      */
-    private FundFlowVO.PosOrderSummary buildPosOrderSummary(String remark) {
+    private FundFlowVO.PosOrderSummary buildPosOrderSummary(FundFlow entity) {
+        if (entity == null) {
+            return null;
+        }
+        String remark = entity.getRemark();
         try {
             String orderNumber = null;
-            String orderId = null;
-            if (remark != null) {
+            // 新口径：order_id 列直接承载订单关联
+            String orderId = trimToNull(entity.getOrderId());
+            // 兼容历史行：order_id 为空时才回退解析旧备注里的技术串
+            if (orderId == null && remark != null) {
                 Matcher matcher = POS_SALE_REMARK_PATTERN.matcher(remark);
                 if (matcher.find()) {
-                    orderNumber = matcher.group(1) != null ? matcher.group(1).trim() : null;
-                    orderId = matcher.group(2) != null ? matcher.group(2).trim() : null;
+                    orderNumber = trimToNull(matcher.group(1));
+                    orderId = trimToNull(matcher.group(2));
                 }
             }
             if ((orderNumber == null || orderNumber.isEmpty()) && (orderId == null || orderId.isEmpty())) {
@@ -340,14 +350,15 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
                     ? order.getCreateTime().format(ORDER_TIME_FORMATTER) : null);
             summary.setOrderStatusCode(order.getOrderStatus());
             summary.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
-            summary.setPaymentMethodName(resolvePaymentMethodName(order.getOrderId()));
+            summary.setPaymentMethodName(resolvePaymentMethodName(order));
             summary.setOrderAmount(centsToYuan(order.getFinalAmount() != null
                     ? order.getFinalAmount() : order.getTotalAmount()));
             summary.setItems(loadOrderItems(order.getOrderId()));
             return summary;
         } catch (Exception e) {
             // 摘要只是详情增强：任何异常都不能让详情接口失败
-            log.warn("组装 POS 订单摘要失败（详情接口降级返回空摘要）: remark={}, error={}", remark, e.getMessage());
+            log.warn("组装 POS 订单摘要失败（详情接口降级返回空摘要）: orderId={}, remark={}, error={}",
+                    entity.getOrderId(), remark, e.getMessage());
             return null;
         }
     }
@@ -369,25 +380,34 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         return null;
     }
 
-    /** 支付方式中文：取 order_payment_records 最近一条；没有记录返回「未记录」（不返回 "-"） */
-    private String resolvePaymentMethodName(String orderId) {
-        if (orderId == null || orderId.isEmpty()) {
-            return "未记录";
+    /**
+     * 支付方式中文（与 POS 详情/列表共用同一解析器 {@link PosPaymentMethodResolver}）：
+     * 首选 order_payment_records 最近一条（<b>新编码</b> 1现金/2微信/3支付宝/4银行卡/5余额），
+     * 无记录时回退 orders.payment_method（<b>旧编码</b> 0微信/1支付宝/2现金/3银行卡/4余额），
+     * 两者都没有 → 「（系统未记录流水，请查单）」。
+     */
+    private String resolvePaymentMethodName(OrderNew order) {
+        if (order == null) {
+            return PosPaymentMethodResolver.UNRECORDED;
         }
-        List<OrderPaymentRecordNew> records = orderPaymentRecordNewMapper.selectByOrderId(orderId);
-        if (records == null || records.isEmpty()) {
-            return "未记录";
+        Integer recordCode = null;
+        String orderId = order.getOrderId();
+        if (orderId != null && !orderId.isEmpty()) {
+            List<OrderPaymentRecordNew> records = orderPaymentRecordNewMapper.selectByOrderId(orderId);
+            if (records != null && !records.isEmpty()) {
+                // mapper 按 payment_time ASC，取最后一条（最近一次支付）
+                recordCode = records.get(records.size() - 1).getPaymentMethod();
+            }
         }
-        // mapper 按 payment_time ASC，取最后一条（最近一次支付）
-        Integer method = records.get(records.size() - 1).getPaymentMethod();
-        return switch (method != null ? method : -1) {
-            case 1 -> "现金";
-            case 2 -> "微信支付";
-            case 3 -> "支付宝";
-            case 4 -> "银行卡";
-            case 5 -> "余额支付";
-            default -> "未记录";
-        };
+        return PosPaymentMethodResolver.resolve(recordCode, order.getPaymentMethod());
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /** 订单状态中文（canonical orders.order_status：0待确认 1已确认 2已完成 3已取消 4部分退款 5全额退款） */

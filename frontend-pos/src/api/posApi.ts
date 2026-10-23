@@ -331,9 +331,13 @@ export interface OrderQuery {
   /** POS 叫号号（A001/B023） */
   callNumber?: string;
   createTime: string;
-  itemCount: number;
+  /** 菜品总件数（后端 OrderQueryDTO.itemCount，可能缺省 → 列表显示 '-'） */
+  itemCount?: number;
   totalAmount?: number;
+  /** 支付方式中文（后端已翻译，如「微信支付」「现金」） */
   paymentMethod?: string;
+  /** 支付方式名称（兜底字段，与 paymentMethod 同源） */
+  paymentMethodName?: string;
   status: string;
 }
 
