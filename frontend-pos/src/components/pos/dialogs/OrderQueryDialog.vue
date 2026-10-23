@@ -67,7 +67,8 @@
 
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
-import request from '@/api/request'
+import { ElMessage } from 'element-plus'
+import { posApi } from '@/api/posApi'
 import { formatDate, formatDateTime } from '@/utils/format'
 
 interface Props {
@@ -135,16 +136,22 @@ const queryOrders = async () => {
       params.endDate = formatDate(queryDateRange.value[1])
     }
 
-    const result = await request.get('/v1/pos/orders', params) as any
+    // 修复：原写法把查询参数直接当 axios config 传（request.get(url, params)），
+    // axios 只认 config.params，导致 keyword/startDate/endDate 一个都没发出 —— 表现为「点了查询没反应」。
+    const result = await posApi.getOrders(params)
 
     if (Array.isArray(result)) {
       orderList.value = result
+      if (result.length === 0) {
+        ElMessage.info('没有匹配的订单')
+      }
     } else {
       orderList.value = []
     }
   } catch (error) {
     console.error('查询订单失败:', error)
     orderList.value = []
+    ElMessage.error(error instanceof Error ? error.message : '查询订单失败，请重试')
   }
 }
 
@@ -159,7 +166,7 @@ const queryOrdersSilent = async () => {
       params.endDate = formatDate(queryDateRange.value[1])
     }
 
-    const result = await request.get('/v1/pos/orders', params) as any
+    const result = await posApi.getOrders(params)
 
     if (Array.isArray(result)) {
       const changed = JSON.stringify(orderList.value) !== JSON.stringify(result)
