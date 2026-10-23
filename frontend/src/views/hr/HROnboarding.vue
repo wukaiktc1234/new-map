@@ -88,7 +88,7 @@ interface PositionOption { value: string; label: string; departmentId?: string }
 const positionOptions = ref<PositionOption[]>([])
 async function loadPositionOptions(): Promise<void> {
   try {
-    const res = await positionApi.getList({ page: 1, size: 1000 })
+    const res = await positionApi.getList({ current: 1, size: 1000 })
     positionOptions.value = (res?.records ?? []).map((p: { positionId?: string | number; positionName?: string; departmentId?: string | number }) => ({
       value: String(p.positionName ?? ''),
       label: String(p.positionName ?? ''),

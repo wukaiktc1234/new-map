@@ -193,6 +193,10 @@ export function useReceiptPage(receiverType: ReceiverType) {
     confirmDialogLoading.value = true
     try {
       const detail = await purchaseArrivalApi.getById(row.arrivalId)
+      if (!detail) {
+        ElMessage.warning('未查询到该到货单详情，无法进行收货确认')
+        return
+      }
       if (!detail.items || detail.items.length === 0) {
         ElMessage.warning('该到货单无明细数据，无法进行收货确认')
         return

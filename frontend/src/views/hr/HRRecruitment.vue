@@ -42,16 +42,9 @@ import {
 
 // ==================== 类型定义 ====================
 
-interface ColumnDef {
-  prop: string
-  label: string
-  width?: number | string
-  minWidth?: number | string
-  fixed?: 'left' | 'right'
-  slot?: string
-  ellipsis?: boolean
-  align?: string
-}
+// 复用 DataTable 导出的列类型：本地 align?: string 与 DataTableColumn 的联合类型不兼容（TS2322）
+import type { DataTableColumn } from '@/components/core/DataTable.vue'
+type ColumnDef = DataTableColumn
 
 // ==================== 响应式数据 ====================
 
@@ -904,7 +897,7 @@ onMounted(() => {
           <StatusTag
             :status="getPositionStatusInfo(currentPosition.status).status"
             :label="getPositionStatusInfo(currentPosition.status).label"
-            size="default"
+            size="medium"
             variant="light"
           />
         </div>

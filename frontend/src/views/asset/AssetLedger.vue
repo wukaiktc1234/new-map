@@ -979,7 +979,7 @@ onMounted(() => {
               <el-descriptions-item label="已使用">{{ detailData.usedMonths }} 个月</el-descriptions-item>
               <el-descriptions-item label="残值率">{{ detailData.salvageRate }}%</el-descriptions-item>
               <el-descriptions-item label="折旧方法" :span="2">
-                {{ DepreciationMethodOptions.find(o => o.value === detailData.depreciationMethod)?.label || '-' }}
+                {{ DepreciationMethodOptions.find(o => o.value === detailData?.depreciationMethod)?.label || '-' }}
               </el-descriptions-item>
             </el-descriptions>
           </el-tab-pane>

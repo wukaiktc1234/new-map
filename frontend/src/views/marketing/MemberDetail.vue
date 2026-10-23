@@ -10,8 +10,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  User, Wallet, Points, Coupon,
-  ArrowLeft, Plus, Message, Loading, TrendingUp,
+  User, Wallet, ArrowLeft, Plus, Message, Loading,
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -42,16 +41,10 @@ const memberId = route.params.id as string
 
 // ==================== 类型定义 ====================
 
-interface ColumnDef {
-  prop: string
-  label: string
-  width?: number | string
-  minWidth?: number | string
-  fixed?: 'left' | 'right'
-  slot?: string
-  ellipsis?: boolean
-  align?: string
-}
+// 列定义直接复用 DataTable 导出的类型：本地曾自定义 align?: string，
+// 与 DataTableColumn 的 'left' | 'center' | 'right' 不兼容（TS2322）。
+import type { DataTableColumn } from '@/components/core/DataTable.vue'
+type ColumnDef = DataTableColumn
 
 // ==================== 响应式数据 ====================
 
@@ -61,6 +54,8 @@ const activeTab = ref('basic')
 
 // 等级选项
 const levelOptions = ref<MemberLevelInfo[]>([])
+// 充值方案列表（loadRechargePlans 使用，此前未声明导致 TS2304）
+const rechargePlanList = ref<unknown[]>([])
 
 // 编辑对话框
 const editDialogVisible = ref(false)

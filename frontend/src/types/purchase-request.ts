@@ -125,6 +125,8 @@ export interface PurchaseRequestQueryParams {
   requestNo?: string;
   status?: string;
   departmentId?: string;
+  /** 部门名称（后端列表接口支持按部门名模糊查询，此前类型缺字段导致 tsc 报 TS2339） */
+  departmentName?: string;
   createBy?: string;
   createByName?: string;
   startDate?: string;

@@ -104,8 +104,12 @@ export function useEChartsTheme() {
     color: textColor.value
   }))
 
-  /** 完整的 tooltip 配置 */
-  const tooltipOption = computed(() => ({
+  /**
+   * 完整的 tooltip 配置。
+   * 注意：调用方会 `...tooltipOption.value` 展开后再补 tooltip 字段，
+   * 因此这里放宽为索引签名，避免 tsc 认为返回值里不存在 tooltip 属性（TS2339）。
+   */
+  const tooltipOption = computed<Record<string, any>>(() => ({
     backgroundColor: tooltipBg.value,
     borderColor: tooltipBorderColor.value,
     textStyle: {
