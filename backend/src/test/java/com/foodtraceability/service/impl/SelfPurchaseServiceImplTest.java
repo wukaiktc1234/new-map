@@ -193,6 +193,24 @@ class SelfPurchaseServiceImplTest {
     }
 
     @Test
+    @DisplayName("inboundSelfPurchase：仓库取自采单自身（多仓不再硬编码 1/主仓库）（P1-4）")
+    void inbound_usesHeaderWarehouse() {
+        SelfPurchase header = purchase("SP3", "pending");
+        header.setWarehouseId(7L);
+        header.setWarehouseName("二号仓");
+        when(selfPurchaseMapper.selectById("SP3")).thenReturn(header);
+        when(selfPurchaseItemMapper.selectList(any())).thenReturn(List.of(item(100L, "土豆", 1)));
+
+        assertTrue(service.inboundSelfPurchase("SP3"));
+
+        verify(traceCodeService).generateTraceCodes(eq(100L), eq("土豆"), eq(1), eq("self"), eq("SP3"),
+                anyString(), eq(7L), eq("二号仓"));
+        ArgumentCaptor<InventoryIncreaseDTO> captor = ArgumentCaptor.forClass(InventoryIncreaseDTO.class);
+        verify(inventoryService).increaseInventory(captor.capture());
+        assertEquals(7L, captor.getValue().getWarehouseId(), "入库仓库必须来自自采单");
+    }
+
+    @Test
     @DisplayName("inboundSelfPurchase：没有明细时也把主表置 completed")
     void inbound_noItems_stillCompletes() {
         SelfPurchase header = purchase("SP2", "pending");

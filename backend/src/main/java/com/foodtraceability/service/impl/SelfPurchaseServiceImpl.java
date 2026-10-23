@@ -10,6 +10,8 @@ import com.foodtraceability.mapper.SelfPurchaseItemMapper;
 import com.foodtraceability.service.SelfPurchaseService;
 import com.foodtraceability.service.TraceCodeService;
 import com.foodtraceability.service.InventoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,8 @@ import java.util.List;
 @Service
 public class SelfPurchaseServiceImpl extends ServiceImpl<SelfPurchaseMapper, SelfPurchase> 
         implements SelfPurchaseService {
+
+    private static final Logger log = LoggerFactory.getLogger(SelfPurchaseServiceImpl.class);
     
 
     public SelfPurchaseServiceImpl(SelfPurchaseMapper selfPurchaseMapper, SelfPurchaseItemMapper selfPurchaseItemMapper, TraceCodeService traceCodeService, InventoryService inventoryService) {
@@ -76,9 +80,16 @@ public class SelfPurchaseServiceImpl extends ServiceImpl<SelfPurchaseMapper, Sel
             return false;
         }
         
-        // 获取仓库信息，使用默认值
-        Long warehouseId = 1L;
-        String warehouseName = "主仓库";
+        // P1-4：仓库优先取自采单自身（多仓场景必须入对仓），仅在缺失时回退默认主仓库并告警
+        Long warehouseId = selfPurchase.getWarehouseId();
+        String warehouseName = selfPurchase.getWarehouseName();
+        if (warehouseId == null) {
+            warehouseId = 1L;
+            warehouseName = "主仓库";
+            log.warn("自采单 {} 未指定 warehouseId，回退默认主仓库 1（请补齐自采单仓库字段）", selfPurchaseId);
+        } else if (warehouseName == null || warehouseName.isBlank()) {
+            warehouseName = "仓库" + warehouseId;
+        }
         
         // 查询自采商品明细
         List<SelfPurchaseItem> items = selfPurchaseItemMapper.selectList(
