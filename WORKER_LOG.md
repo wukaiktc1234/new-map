@@ -603,40 +603,35 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 21. 支付口径三处不一致根治（2026-10-24 00:45–01:05）
 
-### 21.1 真因：两套支付编码 + 财务摘要解析失效
-以 W20261023084（order_id=O1792768215705）为例，实测三条事实：
-1. `order_payment_records` **有**记录（payment_method=1 现金 / 1800 分）——数据是好的；
-2. `orders.payment_method` = **2**（旧编码 2=现金），POS 详情按旧编码翻译 → 显示「现金」；
-3. POS **列表** DTO 的 `paymentMethod`/`itemCount` 从未赋值 → 恒 null（图1 缺列/空值的直接原因）；
-4. 财务流水详情 `posOrder` = **null** —— `buildPosOrderSummary` 仍解析 remark 里的 `[orderId=…]`，而备注已按 §20 清洗掉该 token → 解析失败 → 前端降级显示「未记录」。
+---
 
-结论：**不是支付没写记录，而是三处各读各的源**（新编码 / 旧编码 / 解析备注），且清洗备注时漏了财务摘要的取值来源。
+## 22. 支付编码单轨化 + 自动化防线（2026-10-24 01:14–01:35）
 
-### 21.2 修复
-- 新增统一解析器 `common/util/PosPaymentMethodResolver`：新编码（records：1现金/2微信/3支付宝/4银行卡/5余额）→ 旧编码（orders.payment_method：0微信/1支付宝/2现金/3银行卡/4余额）→ `（系统未记录流水，请查单）`；类注释写明两套编码禁止混用（1 在新编码是现金、旧编码是支付宝）；
-- `OrderNew` 实体补 `paymentMethod` 映射（此前读不到兜底值）；
-- 财务 `buildPosOrderSummary` 改按 `fund_flows.order_id` 查订单，仅历史行回退解析备注；支付方式走统一解析器；
-- POS `PosOrderQueryServiceImpl`：详情与**列表**统一走同一解析器；列表批量补 `paymentMethod` 与 `itemCount`（一次 IN 查询，无 N+1；itemCount=quantity 之和，0 时退化为明细行数）；
-- DDL `scripts/db-fix/2026-10-24-backfill-order-payment-method.sql`（可复放）：新编码→旧编码回填 `orders.payment_method`（本次 UPDATE 0，活库已无空值）。
+### 22.1 阶段 1：底层数据统一（单轨）
+- **唯一标准**：`0未记录 / 1现金 / 2微信 / 3支付宝 / 4银行卡 / 5余额`，`orders.payment_method` 与 `order_payment_records.payment_method` **共用这一套**；
+- 迁移脚本 `scripts/db-fix/2026-10-24-unify-order-payment-method.sql`（可复放、带备份表 `orders_payment_method_backup_20261024`）：
+  1. 有支付记录的订单 → 取**最新一条记录**值（权威来源）；2. 无记录有旧值 → 旧编码映射（0→2/1→3/2→1/3→4/4→5）；3. 0 也回填（历史补账「未记录」不再被误写成现金）；
+  4. 先放宽约束再回填（实测踩坑：先回填会被 1..5 的 CHECK 拦下）；
+- 迁移统计：total=530 / 记录回填 **322** / 旧值映射 **123** / NULL=0 / **0 值=4**；二次执行 `INSERT 0 / UPDATE 0`（幂等）；
+- 约束：`CHECK (payment_method IS NULL OR BETWEEN 0 AND 5)`；默认值 **DROP DEFAULT**（未支付不再默认成现金，支付成功后由 payNewOrder/quick-pay 显式写 0..5）；
+- **代码降级**：`PosPaymentMethodResolver` 精简为 `fromCode` + `resolve(recordCode, orderCode)`（orderCode 按新编码解释，不再来回猜）；旧编码映射 `fromLegacyOrderCode` **仅限 `orders_legacy` 分支**并显式注释隔离；
+- 复核：`orders` 与「最新支付记录」不一致 = **0**；已支付但 `payment_method` 为空 = **0**；分布 0→4 / 1→464 / 2→64 / 3→16。
 
-### 21.3 POS 列表补列
-`OrderQueryDialog` 列顺序改为「叫号 | 订单号 | 下单时间 | **数量** | **支付方式** | 金额 | 状态 | 操作」；支付方式不前端翻译，直接用后端中文（与详情/财务同源）；弹窗 900→980px 避免状态列被固定操作列裁切。详情弹窗统一读 `paymentMethodName || paymentMethod`。
+### 22.2 阶段 2：两条永久防线
+| 脚本 | 作用 | 本次结果 |
+|---|---|---|
+| `scripts/qa/ui_e2e_payment.py` | Playwright 真点三个页面（POS 列表 / POS 详情 / 管理端财务详情），提取支付方式与订单金额，**StrictEqual** 断言 + 每步截图存证 | **PASS（7/7，FAIL 0）**；截图 `.verify-tmp/qa-ui-payment/20261024-012944/{pos-list,pos-detail,admin-detail}.png` |
+| `scripts/qa/consistency_check.sql` (+ `consistency_check.py`) | SQL 巡检四类异常：已支付缺 SALE 流水 / 主表金额≠支付记录合计 / 负库存 / 重复入账 | **4 PASS / TOTAL FAIL=0**（四类行数均为 0；已做灵敏度反证：故意破坏谓词能抓出 404/527 行） |
 
-### 21.4 验证
-| 项 | 结果 |
-|---|---|
-| `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
-| `frontend` / `frontend-pos` vue-tsc | 0 error / 0 error |
-| `e2e_payment_consistency.py`（新增） | **PASS=14 FAIL=0**，现金/微信各一轮；修复前同一脚本 **FAIL=4**（POS 列表 '' / 财务详情 '' / posOrder=null / itemCount=None），先红后绿 |
-| `e2e_pay_to_fund` / `e2e_finance_foundation` / `check_finance_invariants` | PASS=8 / PASS=8 / 4 PASS |
-| `e2e_core_chain` | 全绿（托盘无空闲 SKIP） |
-| 浏览器实测（POS 订单查询） | 表头含「数量/支付方式」；行内 数量=1，支付方式=现金/支付宝/微信支付 |
-| 三处一致（W20261023084） | POS 列表 `现金` == POS 详情 `现金` == 财务详情 `posOrder.paymentMethodName = 现金` |
+- UI 脚本的严格模式当场抓到一个真实文案漂移：POS 详情把「现金」渲染成「现金支付」（`OrderDetailDialog.getPaymentMethodText` 的 map），已按统一口径改为直接用后端中文；修完严格模式 **7/7 PASS**；
+- 两条防线都自带退出码（0 全绿 / 1 有 FAIL），可直接挂到提交前或 CI。
 
-### 21.5 新增 E2E 断言（脚本 `scripts/e2e_payment_consistency.py`）
-A. 现金支付后 `order_payment_records` 恰 1 条、金额=应付、method=1（微信用例 method=2）；
-B. POS 列表 / POS 详情 / 财务详情三处支付方式字符串**严格相等**，且不为空、不为占位文案，posOrder 不得为 null；
-C. POS 列表该行 `itemCount > 0`；
-D. 三处文本必须含本用例语义（防三处一起串成另一种方式）。
+### 22.3 提交前自检清单（以后每次提交前跑）
+```
+mvn -o -B -DskipTests compile          # 后端
+cd frontend && npx vue-tsc --noEmit    # 管理端类型
+cd frontend-pos && npx vue-tsc --noEmit# POS 类型
+python scripts/qa/consistency_check.py # 数据巡检（4 类必须 0）
+python scripts/qa/ui_e2e_payment.py    # UI 三处一致 + 截图
+```
