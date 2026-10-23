@@ -264,6 +264,18 @@ public class OrderNewServiceImpl implements OrderNewService {
 
         orderNewMapper.updatePaymentStatus(orderId, newPaymentStatus, newPaidAmount);
 
+        // 支付方式同步到订单主表，与 order_payment_records 使用同一套统一编码
+        // （1现金 2微信 3支付宝 4银行卡 5余额；多笔支付以最后一笔为准）。2026-10-24 单轨化。
+        if (payDTO.getPayments() != null && !payDTO.getPayments().isEmpty()) {
+            Integer lastMethod = payDTO.getPayments().get(payDTO.getPayments().size() - 1).getPaymentMethod();
+            if (lastMethod != null) {
+                OrderNew paymentUpdate = new OrderNew();
+                paymentUpdate.setOrderId(orderId);
+                paymentUpdate.setPaymentMethod(lastMethod);
+                orderNewMapper.updateById(paymentUpdate);
+            }
+        }
+
         // 如果全额支付，更新订单状态为已确认（制作中）
         if (newPaymentStatus == 2 && (order.getOrderStatus() == null || order.getOrderStatus() == 0)) {
             orderNewMapper.updateStatus(orderId, 1); // 待确认->已确认

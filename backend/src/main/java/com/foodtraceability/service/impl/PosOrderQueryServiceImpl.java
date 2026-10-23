@@ -100,7 +100,8 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
             dto.setOrderNumber(order.getOrderNumber());
             dto.setCreateTime(order.getCreateTime() != null ? order.getCreateTime().toString() : "");
             dto.setTotalAmount(order.getActualAmount());
-            dto.setPaymentMethod(convertPaymentMethodToString(order.getPaymentMethod()));
+            // 遗留表专属：orders_legacy 仍是旧编码，只有这条分支允许旧映射
+            dto.setPaymentMethod(convertLegacyPaymentMethodToString(order.getPaymentMethod()));
             dto.setTransactionId(order.getTransactionId());
             dto.setStatus(convertOrderStatusToString(order.getOrderStatus()));
             dto.setOrderType(order.getOrderType());
@@ -740,25 +741,23 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
     /**
      * 新表（order_payment_records）支付方式编码 → 文案。
      *
-     * <p>新表口径：1现金 / 2微信 / 3支付宝 / 4银行卡 / 5积分或余额；
-     * 与遗留表（0微信/1支付宝/2现金/3银行卡/4余额）**完全不同**，混用会把微信支付显示成现金。</p>
+     * <p>统一编码（2026-10-24 起单轨）：1现金 / 2微信 / 3支付宝 / 4银行卡 / 5余额。
+     * 空/未知给出占位文案，不再默认「现金」。</p>
      */
     private String convertNewPaymentMethodToString(Integer paymentMethod) {
-        // 统一走 PosPaymentMethodResolver（新编码；空/未知给出明确提示而非默认「现金」）
-        String name = PosPaymentMethodResolver.fromPaymentRecordCode(paymentMethod);
+        String name = PosPaymentMethodResolver.fromCode(paymentMethod);
         return name != null ? name : PosPaymentMethodResolver.UNRECORDED;
     }
 
-    private String convertPaymentMethodToString(Integer paymentMethod) {
-        if (paymentMethod == null) return "现金";
-        return switch (paymentMethod) {
-            case 0 -> "微信支付";
-            case 1 -> "支付宝";
-            case 2 -> "现金";
-            case 3 -> "银行卡";
-            case 4 -> "余额支付";
-            default -> "现金";
-        };
+    /**
+     * <b>【仅 orders_legacy 遗留分支使用】</b>旧编码（0微信/1支付宝/2现金/3银行卡/4余额）→ 文案。
+     *
+     * <p>新表（orders / order_payment_records）已统一为新编码，<b>禁止</b>再走本方法，
+     * 否则现金会被显示成支付宝。新表请用 {@link PosPaymentMethodResolver#fromCode(Integer)}。</p>
+     */
+    private String convertLegacyPaymentMethodToString(Integer paymentMethod) {
+        String name = PosPaymentMethodResolver.fromLegacyOrderCode(paymentMethod);
+        return name != null ? name : PosPaymentMethodResolver.UNRECORDED;
     }
 
     private String convertOrderStatusToString(Integer orderStatus) {

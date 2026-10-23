@@ -382,9 +382,9 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
 
     /**
      * 支付方式中文（与 POS 详情/列表共用同一解析器 {@link PosPaymentMethodResolver}）：
-     * 首选 order_payment_records 最近一条（<b>新编码</b> 1现金/2微信/3支付宝/4银行卡/5余额），
-     * 无记录时回退 orders.payment_method（<b>旧编码</b> 0微信/1支付宝/2现金/3银行卡/4余额），
-     * 两者都没有 → 「（系统未记录流水，请查单）」。
+     * 首选 order_payment_records 最近一条；无记录时回退 orders.payment_method。
+     * <b>两列已是同一套编码</b>（1现金/2微信/3支付宝/4银行卡/5余额，2026-10-24 单轨化），不再做旧编码映射；
+     * 两者都取不到才返回「（系统未记录流水，请查单）」。
      */
     private String resolvePaymentMethodName(OrderNew order) {
         if (order == null) {

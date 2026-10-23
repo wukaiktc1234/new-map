@@ -668,6 +668,9 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         paidUpdate.setOrderId(order.getOrderId());
         paidUpdate.setPaymentStatus(2);
         paidUpdate.setPaidAmount(newPaid);
+        // 支付方式写回 orders.payment_method，使用与 order_payment_records 相同的统一编码
+        // （1现金 2微信 3支付宝 4银行卡 5余额；2026-10-24 单轨化，禁止再写旧编码 0/2）
+        paidUpdate.setPaymentMethod(paymentMethodInt);
         paidUpdate.setUpdateTime(LocalDateTime.now());
         orderNewMapper.updateById(paidUpdate);
 
