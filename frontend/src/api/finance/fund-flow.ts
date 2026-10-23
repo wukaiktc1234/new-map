@@ -21,19 +21,49 @@ import type {
 } from '@/types/finance'
 
 /**
+ * 剔除空值参数（''/undefined/null/NaN 一律不下发）
+ *
+ * 后端资金流水相关端点的 ID/数值参数都是 Long/int 类型：
+ * - `@RequestParam Long accountId` 收到空串 → MethodArgumentTypeMismatchException → 400「参数类型不匹配：accountId」
+ * - `@PathVariable Long accountId` 收到 'undefined'/'' → 同上
+ * 因此在 API 边界统一过滤空值，避免把空串透传给后端。
+ */
+function compactParams(params: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+    if (typeof value === 'string' && value.trim() === '') return
+    if (typeof value === 'number' && Number.isNaN(value)) return
+    result[key] = value
+  })
+  return result
+}
+
+/**
+ * 判断 ID 是否可用于请求（非空且不是字符串化的 undefined/null/NaN）
+ * 例：`${undefined}` 会得到字符串 'undefined'，这类值同样必须拦掉。
+ */
+function isPresentId(value: unknown): value is string | number {
+  if (value === undefined || value === null) return false
+  const text = String(value).trim()
+  return text !== '' && text !== 'undefined' && text !== 'null' && text !== 'NaN'
+}
+
+/**
  * 映射分页查询参数：
  * - 前端 page/size → 后端 current/size
- * - 前端 bankAccountId → 后端 accountId
+ * - 前端 bankAccountId → 后端 accountId（空值不下发）
  * - 前端 flowType 字符串 → 后端 flowDirection 数字
  */
 function mapQueryParams(params?: FundFlowQueryForm): Record<string, unknown> {
   if (!params) return {}
   const { page, size, bankAccountId, flowType, ...rest } = params as Record<string, unknown>
-  const result: Record<string, unknown> = { ...rest }
+  // rest 中的字符串条件（flowNo/startDate/endDate/counterparty 等）统一过滤空串
+  const result: Record<string, unknown> = compactParams(rest)
   if (page !== undefined) result.current = page
   if (size !== undefined) result.size = size
-  if (bankAccountId !== undefined) result.accountId = bankAccountId
-  if (flowType !== undefined && typeof flowType === 'string') {
+  if (isPresentId(bankAccountId)) result.accountId = bankAccountId
+  if (flowType !== undefined && typeof flowType === 'string' && flowType.trim() !== '') {
     result.flowDirection = FundFlowTypeMap.toBackend[flowType]
   }
   return result
@@ -110,8 +140,20 @@ export const fundFlowApi = {
    * @returns 分页数据（已转换状态/类型/金额）
    */
   async getByAccountId(accountId: string, params?: FundFlowQueryForm): Promise<PageResponse<FundFlow>> {
+    const fallback: PageResponse<FundFlow> = {
+      records: [],
+      total: 0,
+      current: (params?.page as number | undefined) ?? 1,
+      size: (params?.size as number | undefined) ?? 10,
+      pages: 0,
+    }
+    // 守卫：accountId 为空时后端 @PathVariable Long 会 400「参数类型不匹配：accountId」
+    if (!isPresentId(accountId)) {
+      console.warn('[fundFlowApi.getByAccountId] accountId 为空，已跳过请求', { accountId })
+      return fallback
+    }
     const query = mapQueryParams(params)
-    const res = await get<FundFlowPageBackend | null>(`/v1/finance/fund-flows/account/${accountId}`, query)
+    const res = await get<FundFlowPageBackend | null>(`/v1/finance/fund-flows/account/${encodeURIComponent(String(accountId))}`, query)
     const records = (res?.records || []).map(item =>
       FundFlowDataConverter.toFrontend(item) as unknown as FundFlow
     )
@@ -126,17 +168,31 @@ export const fundFlowApi = {
 
   /**
    * 获取银行账户资金流水统计
-   * 后端 @RequestParam startDate/endDate（必填，格式 yyyy-MM-dd）
+   * 后端 GET /v1/finance/fund-flows/account/{accountId}/statistics
+   *   accountId 为 @PathVariable Long，startDate/endDate 为 @RequestParam LocalDate（必填，yyyy-MM-dd）
    *
-   * @param accountId - 银行账户ID
+   * 【空守卫】accountId 为空（null/undefined/''/'undefined'）时直接返回全 0 统计且不发请求：
+   * 否则 URL 会拼成 /account/undefined/statistics，后端抛
+   * MethodArgumentTypeMismatchException → 400「参数类型不匹配：accountId」。
+   *
+   * @param accountId - 银行账户ID（允许为空，为空则不请求）
    * @param startDate - 开始日期（yyyy-MM-dd）
    * @param endDate - 结束日期（yyyy-MM-dd）
    * @returns 统计数据（金额已转为元）
    */
-  async getStatisticsByAccount(accountId: string, startDate: string, endDate: string): Promise<FundFlowStatistics> {
+  async getStatisticsByAccount(
+    accountId: string | number | null | undefined,
+    startDate: string,
+    endDate: string,
+  ): Promise<FundFlowStatistics> {
+    if (!isPresentId(accountId)) {
+      console.warn('[fundFlowApi.getStatisticsByAccount] accountId 为空，已跳过统计请求', { accountId, startDate, endDate })
+      return { totalIncome: 0, totalExpense: 0, netAmount: 0, count: 0 }
+    }
+    const query = compactParams({ startDate, endDate })
     const res = await get<Record<string, unknown> | null>(
-      `/v1/finance/fund-flows/account/${accountId}/statistics`,
-      { startDate, endDate }
+      `/v1/finance/fund-flows/account/${encodeURIComponent(String(accountId))}/statistics`,
+      query
     )
     return toFrontendStatistics(res ?? null)
   },

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import PageHeader from '@/components/core/PageHeader.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue'
 import StatusTag from '@/components/core/StatusTag.vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { useStandardPage } from '@/composables/useStandardPage'
 import { bankAccountApi, fundFlowApi } from '@/api/finance'
 import type { FinanceBankAccount, FundFlow, FundFlowStatistics } from '@/types/finance'
@@ -23,6 +24,10 @@ const bankAccounts = ref<FinanceBankAccount[]>([])
 const records = ref<FundFlow[]>([])
 /** 资金流水统计 */
 const statistics = ref<FundFlowStatistics | null>(null)
+/** 统计区的局部提示（无账户/统计失败），只做弱提示，不弹全局错误 */
+const statsHint = ref('')
+/** 统计区加载态（不阻塞列表） */
+const statsLoading = ref(false)
 
 /** 收支类型 → StatusTag 配置（避免模板内三元映射） */
 function getFlowTypeTag(flowType: string): { type: string; label: string } {
@@ -38,7 +43,8 @@ function getFlowStatusTag(status: string): { type: string; label: string } {
     pending: { type: 'warning', label: '待处理' },
     cancelled: { type: 'info', label: '已取消' },
   }
-  return map[status] ?? { type: 'info', label: '未知' }
+  // 后端 status 已归一为 1..3（后端同时返回 statusName），这里不再出现「未知」兜底
+  return map[status] ?? { type: 'warning', label: '待处理' }
 }
 
 /** 格式化元金额（保留2位小数，带千分位）
@@ -59,11 +65,13 @@ const columns: DataTableColumn[] = [
   { prop: 'transactionDate', label: '日期', minWidth: 110 },
   { prop: 'flowType', label: '收支类型', minWidth: 90, slot: 'flowType' },
   { prop: 'summary', label: '摘要', minWidth: 180, showOverflowTooltip: true },
-  { prop: 'income', label: '收入(元)', minWidth: 120, align: 'right' },
-  { prop: 'expense', label: '支出(元)', minWidth: 120, align: 'right' },
-  { prop: 'balance', label: '余额(元)', minWidth: 120, align: 'right' },
+  // 这三列必须声明 slot 才会渲染模板里的具名插槽（否则取 row.income/expense 不存在 → 空白）
+  { prop: 'income', label: '收入(元)', minWidth: 120, align: 'right', slot: 'income' },
+  { prop: 'expense', label: '支出(元)', minWidth: 120, align: 'right', slot: 'expense' },
+  { prop: 'balance', label: '余额(元)', minWidth: 120, align: 'right', slot: 'balance' },
   { prop: 'bankAccountName', label: '银行账户', minWidth: 130 },
   { prop: 'counterparty', label: '对方单位', minWidth: 130 },
+  { prop: 'status', label: '状态', minWidth: 95, slot: 'status' },
 ]
 
 /** 构建查询参数 */
@@ -90,29 +98,118 @@ async function loadBankAccounts(): Promise<void> {
   try {
     const response = await bankAccountApi.getList({ page: 1, size: 100 })
     bankAccounts.value = response?.records || []
-  } catch {
+  } catch (error) {
+    console.warn('[FinanceFund] 加载银行账户列表失败', error)
     bankAccounts.value = []
   }
 }
 
-/** 加载资金流水统计 */
-async function loadStatistics(): Promise<void> {
-  // 优先使用第一个银行账户的统计数据
-  if (bankAccounts.value.length === 0) {
-    statistics.value = null
-    return
-  }
-  try {
-    const accountId = bankAccounts.value[0].id
-    // 后端要求 startDate/endDate 必填（格式 yyyy-MM-dd），默认查当月数据
-    const now = new Date()
-    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`
-    statistics.value = await fundFlowApi.getStatisticsByAccount(accountId, startDate, endDate)
-  } catch {
-    statistics.value = null
+/**
+ * 取银行账户ID（可安全返回空串）
+ *
+ * 后端 BankAccountVO 的字段名是 `accountId`，而前端 FinanceBankAccount 类型用的是 `id`，
+ * 且 BankAccountDataConverter 未做该别名映射 → 运行时 `acc.id` 可能是 undefined。
+ * 这里两种字段都兜底，拿不到就返回 ''，调用方据此跳过请求（否则 URL 会拼成
+ * /account/undefined/statistics → 后端 400「参数类型不匹配：accountId」）。
+ */
+function getAccountId(acc: FinanceBankAccount | null | undefined): string {
+  if (!acc) return ''
+  const raw = (acc as unknown as Record<string, unknown>).id
+    ?? (acc as unknown as Record<string, unknown>).accountId
+  if (raw === undefined || raw === null) return ''
+  const text = String(raw).trim()
+  return text === 'undefined' || text === 'null' || text === 'NaN' ? '' : text
+}
+
+/** 当月日期区间（后端统计接口 startDate/endDate 必填，yyyy-MM-dd） */
+function currentMonthRange(): { startDate: string; endDate: string } {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const monthText = String(month).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+  return {
+    startDate: `${year}-${monthText}-01`,
+    endDate: `${year}-${monthText}-${String(lastDay).padStart(2, '0')}`,
   }
 }
+
+/** 首个「有有效ID」的银行账户ID（无则空串） */
+function firstValidAccountId(): string {
+  for (const acc of bankAccounts.value) {
+    const id = getAccountId(acc)
+    if (id) return id
+  }
+  return ''
+}
+
+/**
+ * 加载资金流水统计
+ * @param explicitAccountId 显式指定的账户ID（下拉切换时传入）；为空则回退到首个有效账户
+ */
+async function loadStatistics(explicitAccountId?: string): Promise<void> {
+  const accountId = (explicitAccountId || '').trim() || firstValidAccountId()
+
+  // 守卫 1：没有可用账户ID → 不发请求，统计归零并给局部提示
+  if (!accountId) {
+    statistics.value = null
+    statsHint.value = bankAccounts.value.length === 0
+      ? '暂无账户数据'
+      : '银行账户缺少有效ID，暂无统计数据'
+    updateStatsCards()
+    return
+  }
+
+  statsLoading.value = true
+  try {
+    const { startDate, endDate } = currentMonthRange()
+    if (explicitAccountId) {
+      // 指定账户：只看该账户
+      statistics.value = await fundFlowApi.getStatisticsByAccount(accountId, startDate, endDate)
+      statsHint.value = ''
+    } else {
+      // 未指定账户（页面初始化）：跨全部账户求和，避免出现「列表里明明有 POS 收入，本月收入却显示 ¥0.00」
+      const ids: string[] = bankAccounts.value
+        .map((acc) => getAccountId(acc))
+        .filter((id): id is string => !!id)
+      const parts: (FundFlowStatistics | null)[] = await Promise.all(
+        ids.map((id) => fundFlowApi.getStatisticsByAccount(id, startDate, endDate).catch(() => null)),
+      )
+      const sum: FundFlowStatistics = {
+        totalIncome: 0,
+        totalExpense: 0,
+        netAmount: 0,
+        count: 0,
+      } as FundFlowStatistics
+      for (const part of parts) {
+        if (!part) continue
+        sum.totalIncome += part.totalIncome || 0
+        sum.totalExpense += part.totalExpense || 0
+        sum.netAmount += part.netAmount || 0
+        sum.count += part.count || 0
+      }
+      statistics.value = (sum.count > 0 || sum.totalIncome > 0 || sum.totalExpense > 0) ? sum : null
+      statsHint.value = ids.length === 0 ? '暂无账户数据' : '以上为全部账户合计'
+    }
+  } catch (error) {
+    // 守卫 2：失败只做弱提示 + 控制台告警，不弹全局红字、不打断整页
+    console.warn('[FinanceFund] 加载资金流水统计失败', error)
+    statistics.value = null
+    statsHint.value = '统计数据加载失败，已按 0 显示'
+  } finally {
+    statsLoading.value = false
+    updateStatsCards()
+  }
+}
+
+/** 账户下拉切换：只在有值时才请求统计（清空则回退首个账户/归零） */
+watch(
+  () => searchForm.value.bankAccountId,
+  (value) => {
+    const accountId = typeof value === 'string' ? value.trim() : ''
+    void loadStatistics(accountId || undefined)
+  },
+)
 
 /** 更新统计卡片 */
 function updateStatsCards(): void {
@@ -141,7 +238,8 @@ async function loadData(): Promise<void> {
     const response = await fundFlowApi.getList(buildQueryParams())
     records.value = response?.records || []
     pagination.total = response?.total || 0
-  } catch {
+  } catch (error) {
+    console.warn('[FinanceFund] 加载资金流水列表失败', error)
     records.value = []
     pagination.total = 0
   } finally {
@@ -223,9 +321,14 @@ function handleViewDetail(row: Record<string, unknown>): void {
     <div class="stats-section" :style="{ gridTemplateColumns: 'repeat(4, 1fr)' }">
       <StatCard v-for="stat in statsCards" :key="stat.label" :icon="stat.icon" :label="stat.label" :value="stat.value" :color-type="stat.colorType" variant="bordered" />
     </div>
+    <div v-if="statsHint" class="stats-hint">
+      <el-icon class="stats-hint__icon"><InfoFilled /></el-icon>
+      <span>{{ statsHint }}</span>
+      <span v-if="statsLoading" class="stats-hint__loading">统计加载中...</span>
+    </div>
     <div class="advanced-search-panel"><div class="toolbar-row"><div class="toolbar-left">
       <el-select v-model="searchForm.bankAccountId" placeholder="银行账户" clearable style="width:180px" size="default">
-        <el-option v-for="acc in bankAccounts" :key="acc.id" :label="`${acc.bankName}-${acc.accountName}`" :value="acc.id" />
+        <el-option v-for="acc in bankAccounts" :key="getAccountId(acc)" :label="`${acc.bankName}-${acc.accountName}`" :value="getAccountId(acc)" />
       </el-select>
       <el-select v-model="searchForm.flowType" placeholder="收支类型" clearable style="width:130px" size="default">
         <el-option label="收入" value="income" />
@@ -242,6 +345,7 @@ function handleViewDetail(row: Record<string, unknown>): void {
         <template #income="{ row }">{{ getIncome(row) }}</template>
         <template #expense="{ row }">{{ getExpense(row) }}</template>
         <template #balance="{ row }">{{ getBalance(row) }}</template>
+        <template #status="{ row }"><StatusTag :status="getFlowStatusTag(row.status).type" :label="row.statusName || getFlowStatusTag(row.status).label" size="small" /></template>
         <template #actions="{ row }">
           <el-button link type="primary" size="small" @click="handleViewDetail(row)">详情</el-button>
         </template>
@@ -274,3 +378,27 @@ function handleViewDetail(row: Record<string, unknown>): void {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.stats-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--el-color-info-light-9, #f4f4f5);
+  color: var(--el-color-info, #909399);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stats-hint__icon {
+  font-size: 14px;
+}
+
+.stats-hint__loading {
+  margin-left: 4px;
+  opacity: 0.8;
+}
+</style>

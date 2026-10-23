@@ -752,6 +752,8 @@ export interface FundFlow {
   voucherNo?: string
   /** 状态 */
   status: FundFlowStatus
+  /** 状态中文名称（后端 FundFlowVO.statusName：待处理/已完成/已取消） */
+  statusName?: string
   /** 创建时间 */
   createTime: string
   /** 更新时间 */

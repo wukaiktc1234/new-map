@@ -138,9 +138,20 @@ export function setupRouterGuards(router: Router): void {
       return true
     }
 
-    // 非公开路由：需要先确保用户信息已加载
-    if (!permissionStore.loaded && !permissionStore.loading) {
-      await permissionStore.initFromToken()
+    // 非公开路由：需要先确保用户信息已加载。
+    // 竞态修复（2026-10-23）：原来 `!loaded && !loading` 会在「初始化进行中」时直接跳过等待，
+    // 于是紧接着的 isLoggedIn 判定拿到 false，把刚登录/刚刷新深链的用户弹回 /login。
+    // 现改为：若正在加载则等它结束（最多 5s），仍未 loaded 再兜底初始化一次。
+    if (!permissionStore.loaded) {
+      if (permissionStore.loading) {
+        const deadline = Date.now() + 5000
+        while (permissionStore.loading && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+      }
+      if (!permissionStore.loaded) {
+        await permissionStore.initFromToken()
+      }
     }
 
     // 全局兜底：确保权限模板已加载（菜单按模板 admin 域列表派生）。

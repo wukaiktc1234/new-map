@@ -117,6 +117,13 @@ const router = createRouter({
     { path: '/finance/fund-flow', redirect: '/finance/fund' },
     { path: '/finance/tax', name: 'FinanceTax', component: () => import('@/views/finance/FinanceTax.vue'), meta: { title: '税务管理', domain: 'finance' } },
     { path: '/finance/invoice-reimbursement', name: 'InvoiceReimbursement', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票报销', domain: 'finance' } },
+    // 工作台财务快捷入口的历史 path（报销管理 / 发票管理 / 记账凭证）补齐，防死链
+    // 报销管理：暂无独立页面，落到建设中占位页（可跳转到已上线的发票报销页）
+    { path: '/finance/reimbursement', name: 'ReimbursementManage', component: () => import('@/views/finance/ReimbursementManage.vue'), meta: { title: '报销管理', domain: 'finance' } },
+    // 发票管理：复用已有真实发票页面 InvoiceReimbursement.vue（与 /finance/invoice-reimbursement 同一组件，仅入口标题不同）
+    { path: '/finance/invoice', name: 'FinanceInvoice', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票管理', domain: 'finance' } },
+    // 凭证管理：复用已有真实凭证台账 FinanceLedger.vue（voucherApi 列表 + 新增/审核/过账）
+    { path: '/finance/voucher', name: 'FinanceVoucher', component: () => import('@/views/finance/FinanceLedger.vue'), meta: { title: '凭证管理', domain: 'finance' } },
     { path: '/finance/report', name: 'FinanceReport', component: () => import('@/views/finance/FinanceReport.vue'), meta: { title: '财务报表', domain: 'finance', permissions: ['finance:report:view'] } },
     { path: '/finance/approval', name: 'FinanceApproval', component: () => import('@/views/finance/FinanceApproval.vue'), meta: { title: '财务审批', domain: 'finance', permissions: ['finance:approval:view'] } },
     { path: '/finance/auto-voucher', name: 'AutoVoucher', component: () => import('@/views/finance/AutoVoucher.vue'), meta: { title: '自动凭证管理', domain: 'finance' } },

@@ -5,6 +5,13 @@
  * 【设计说明】后端 RecordController 5 个端点：create/update/getDetail/getPage/approve
  * 无 DELETE 端点，前端 delete 方法已移除（避免 405）。
  *
+ * 【入口归属（2026-10-23 裁决 C1）】
+ * 管理端不再有独立的「财务流水」页面：菜单里没有该入口，仪表盘「资金流水 / 财务流水」
+ * 快捷入口统一指向 /finance/fund（路由 /finance/fund-flow 已重定向到 /finance/fund），
+ * 该页数据源是 GET /v1/finance/fund-flows（资金流水），不是本文件的 /v1/finance/records。
+ * 本 API 目前【无任何页面引用】，仅保留给记账口径（finance_records，47 条）后续使用，
+ * 不要据此新建第二个语义重复的「财务流水」页。
+ *
  * 【改造说明（2026-06-30）】
  * - 移除所有 Mock fallback，后端故障直接抛错
  * - 改用命名导出 get/post/put（替代 silentGet/silentPost 等）
