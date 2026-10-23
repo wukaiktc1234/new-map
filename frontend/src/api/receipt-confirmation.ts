@@ -18,8 +18,11 @@ import type {
   ReceiptConfirmationQueryForm,
   ReceiptConfirmationFormData,
   ReceiptSignatureInfo,
+  ReceiptVerifyResult,
   ReceiverType,
 } from '@/types/purchase-arrival'
+
+export type { ReceiptVerifyResult }
 
 // ============================================================
 // 后端原始类型定义
@@ -152,6 +155,15 @@ export const receiptConfirmationConverter = {
       productionDate: item.productionDate ?? null,
       expiryDate: item.expiryDate ?? null,
       remark: item.remark ?? null,
+      // 逐条质检结论与现场留证（后端 ReceiptConfirmationItemDTO 已支持，createConfirmation 会落 receipt_evidence）
+      qualityCheckResult: item.qualityCheckResult ?? null,
+      evidence: (item.evidence ?? []).map((ev) => ({
+        evidenceType: ev.evidenceType,
+        photoUrl: ev.photoUrl,
+        photoTakenAt: ev.photoTakenAt ?? null,
+        deviceModel: ev.deviceModel ?? null,
+        gps: ev.gps ?? null,
+      })),
     }))
     return {
       arrivalId: form.arrivalId ? Number(form.arrivalId) : null,
@@ -271,8 +283,8 @@ export const receiptConfirmationApi = {
    * 防伪码查验（免登录，靠后端限流防遍历）
    * 后端：GET /v1/receipt-confirmations/verify/{verifyCode}
    */
-  async verifyByCode(verifyCode: string): Promise<unknown | null> {
-    return await get<unknown | null>(
+  async verifyByCode(verifyCode: string): Promise<ReceiptVerifyResult | null> {
+    return await get<ReceiptVerifyResult | null>(
       `/v1/receipt-confirmations/verify/${encodeURIComponent(verifyCode)}`,
     )
   },

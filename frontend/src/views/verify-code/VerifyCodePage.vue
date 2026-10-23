@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 /**
  * 防伪码查验页
  * 输入 16 位防伪码查询收货确认单基本信息与完整打印历史
@@ -103,9 +103,9 @@ onMounted(() => {
               <span class="code-text">{{ result.verifyCode || '-' }}</span>
             </el-descriptions-item>
             <el-descriptions-item label="供应商">{{ result.supplierName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="确认时间">{{ formatters.datetime(result.confirmTime) }}</el-descriptions-item>
+            <el-descriptions-item label="确认时间">{{ result.confirmTime ? formatters.datetime(result.confirmTime) : '-' }}</el-descriptions-item>
             <el-descriptions-item label="实收数量">{{ result.totalQuantity ?? 0 }}</el-descriptions-item>
-            <el-descriptions-item label="确认金额">{{ formatMoney(result.totalAmount) }}</el-descriptions-item>
+            <el-descriptions-item label="确认金额">{{ formatMoney(result.totalAmount ?? 0) }}</el-descriptions-item>
             <el-descriptions-item label="打印次数">
               {{ result.printCount }} 次{{ result.lastPrintTime ? `（上次 ${formatters.datetime(result.lastPrintTime)}）` : '' }}
             </el-descriptions-item>

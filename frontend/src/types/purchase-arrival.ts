@@ -216,6 +216,30 @@ export interface ReceiptEvidenceForm {
   gps?: string
 }
 
+/** 防伪码查验结果（对应后端 ReceiptVerifyVO） */
+export interface ReceiptVerifyPrintLog {
+  printId?: string | number
+  printTime?: string
+  operatorName?: string
+  sourceIp?: string
+}
+
+export interface ReceiptVerifyResult {
+  /** 防伪码是否有效 */
+  valid: boolean
+  message?: string
+  confirmationCode?: string | null
+  verifyCode?: string | null
+  supplierName?: string | null
+  confirmTime?: string | null
+  /** 确认金额（后端为分，本页直接展示，需要元请用 formatMoney 统一换算） */
+  totalAmount?: number | null
+  totalQuantity?: number | null
+  printCount?: number | null
+  lastPrintTime?: string | null
+  printLogs: ReceiptVerifyPrintLog[]
+}
+
 /** 收货确认签名存证（对应后端 receipt_confirmation_signatures） */
 export interface ReceiptSignatureInfo {
   signatureId?: string | number
