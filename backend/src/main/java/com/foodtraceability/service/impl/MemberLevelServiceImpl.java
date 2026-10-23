@@ -7,6 +7,7 @@ import com.foodtraceability.mapper.MemberLevelBaseMapper;
 import com.foodtraceability.service.MemberLevelService;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -36,7 +37,9 @@ public class MemberLevelServiceImpl extends ServiceImpl<MemberLevelBaseMapper, M
     @Override
     public Long calculateUpgradeLevel(Integer points, Long totalConsumption) {
         // 获取所有启用的等级，按minPoints降序排列（从高到低）
-        List<MemberLevel> levels = listEnabledLevels();
+        // 防御性拷贝：mapper 返回的可能是不可变集合（List.of/Collections.unmodifiableList），
+        // 就地 sort 会抛 UnsupportedOperationException
+        List<MemberLevel> levels = new ArrayList<>(listEnabledLevels());
         levels.sort(Comparator.comparingInt(
             (MemberLevel l) -> l.getMinPoints() != null ? l.getMinPoints() : 0
         ).reversed());
