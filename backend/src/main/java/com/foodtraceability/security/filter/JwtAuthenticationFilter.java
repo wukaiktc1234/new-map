@@ -91,7 +91,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
 
             String token = authHeader.substring(7).trim();
-            
+
+            // KDS 设备凭证（kds_{storeId}_{secret}）由 KdsTokenFilter 负责认证并已写入 SecurityContext；
+            // 这里必须放行，否则会被当成"格式错误的 JWT"打回 401，导致 KDS/托盘整条链路不可用。
+            if (token.startsWith("kds_")) {
+                logger.debug("KDS device token detected, delegated to KdsTokenFilter: {}", requestUri);
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             if (token.isEmpty() || token.isBlank() || token.length() < 20) {
                 logger.warn("Invalid token format (empty/short): length={}", token.length());
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
