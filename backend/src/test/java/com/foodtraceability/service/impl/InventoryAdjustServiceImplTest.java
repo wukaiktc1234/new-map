@@ -238,7 +238,7 @@ class InventoryAdjustServiceImplTest {
         assertEquals("pending", result.getStatus());
         assertNotNull(result.getApplyTime());
         assertEquals(0, BigDecimal.ONE.compareTo(result.getTotalAdjustQuantity()), "2 + (-1) = 1");
-        assertEquals(11L, result.getTotalAdjustAmount(), "特征化：表头按传入值(元)直接累加，未×100");
+        assertEquals(1100L, result.getTotalAdjustAmount(), "P0-2 已统一为分口径：11 元 = 1100 分（与明细一致）");
 
         ArgumentCaptor<InventoryAdjustItem> captor = ArgumentCaptor.forClass(InventoryAdjustItem.class);
         verify(inventoryAdjustItemMapper, times(2)).insert(captor.capture());
@@ -247,7 +247,7 @@ class InventoryAdjustServiceImplTest {
         assertEquals(0, new BigDecimal("10").compareTo(first.getBeforeQuantity()));
         assertEquals(0, new BigDecimal("12").compareTo(first.getAfterQuantity()));
         assertEquals(550L, first.getUnitCost(), "5.50 元 = 550 分");
-        assertEquals(1100L, first.getAdjustAmount(), "11 元 = 1100 分（明细按分，与表头口径不一致）");
+        assertEquals(1100L, first.getAdjustAmount(), "11 元 = 1100 分（明细与表头同为分口径）");
         assertEquals("盘点差异", first.getReason());
         assertNull(captor.getAllValues().get(1).getAfterQuantity(), "调整前为空时不计算调整后数量");
     }
@@ -293,7 +293,7 @@ class InventoryAdjustServiceImplTest {
         assertEquals("[采购部]", result.getParticipatingDepts());
         assertEquals(0, new BigDecimal("-2").compareTo(result.getTotalAdjustQuantity()));
         assertEquals(-1000L, result.getTotalAdjustAmount(),
-                "特征化：更新按明细分累加（-2 × 5.00 元 = -1000 分），与创建口径（按元累加）不一致");
+                "P0-2 后与创建同口径：更新按明细分累加（-2 × 5.00 元 = -1000 分），允许为负（冲减）");
         verify(inventoryAdjustItemMapper).delete(any());
         verify(inventoryAdjustItemMapper).insert(any(InventoryAdjustItem.class));
     }

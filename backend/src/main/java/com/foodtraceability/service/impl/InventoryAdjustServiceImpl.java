@@ -110,7 +110,9 @@ public class InventoryAdjustServiceImpl extends ServiceImpl<InventoryAdjustMappe
             BigDecimal adjustQuantity = new BigDecimal(itemMap.get("adjustQuantity").toString());
             totalQuantity = totalQuantity.add(adjustQuantity);
             if (itemMap.containsKey("adjustAmount") && itemMap.get("adjustAmount") != null) {
-                totalAmount += Long.parseLong(itemMap.get("adjustAmount").toString());
+                // P0-2：表头与明细统一「分」口径（明细在同一方法的 147-150 行按 ×100 存分）
+                BigDecimal adjustAmountYuan = new BigDecimal(itemMap.get("adjustAmount").toString());
+                totalAmount += adjustAmountYuan.multiply(new BigDecimal("100")).longValue();
             }
         }
         adjust.setTotalAdjustQuantity(totalQuantity);
