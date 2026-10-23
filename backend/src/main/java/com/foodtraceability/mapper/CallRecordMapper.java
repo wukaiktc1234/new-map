@@ -30,6 +30,11 @@ public interface CallRecordMapper extends BaseMapper<CallRecord> {
     
     @Update("UPDATE call_record SET status = 'picked', pick_time = NOW(), wait_seconds = EXTRACT(EPOCH FROM (NOW() - first_call_time))::INTEGER, update_time = NOW() WHERE order_id = #{orderId}")
     int updatePickStatus(@Param("orderId") String orderId);
+
+    /** 过号：已取餐的不再改；其余（待取餐/已呼叫）置为已过号并留痕 */
+    @Update("UPDATE call_record SET status = 'passed', pass_time = NOW(), update_time = NOW() "
+            + "WHERE order_id = #{orderId} AND status <> 'picked'")
+    int updatePassStatus(@Param("orderId") String orderId);
     
     @Select("SELECT COUNT(*) FROM call_record WHERE status = #{status} AND DATE(create_time) = CURRENT_DATE")
     int countByStatusToday(@Param("status") String status);

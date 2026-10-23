@@ -159,6 +159,67 @@ public class CallNumberServiceImpl implements CallNumberService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public CallRecord markPassed(String orderId) {
+        log.info("过号请求: orderId={}", orderId);
+        CallRecord record = callRecordMapper.findByOrderId(orderId);
+        if (record == null) {
+            return null;
+        }
+        callRecordMapper.updatePassStatus(orderId);
+        record = callRecordMapper.findByOrderId(orderId);
+        messagingTemplate.convertAndSend("/topic/call-number/passed", record);
+        return record;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.foodtraceability.dto.PageResult<CallRecord> queryHistory(String keyword, String range,
+                                                                         String status, int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = size <= 0 ? 20 : Math.min(size, 200);
+
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CallRecord> w =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+
+        // 时间范围：今日 / 近7天 / 近30天 / 全部
+        String r = (range == null || range.isBlank()) ? "today" : range.trim().toLowerCase();
+        LocalDate today = LocalDate.now();
+        switch (r) {
+            case "today" -> w.ge(CallRecord::getCreateTime, today.atStartOfDay());
+            case "7d" -> w.ge(CallRecord::getCreateTime, today.minusDays(6).atStartOfDay());
+            case "30d" -> w.ge(CallRecord::getCreateTime, today.minusDays(29).atStartOfDay());
+            default -> { /* all：不加时间条件 */ }
+        }
+
+        // 状态筛选：支持逗号分隔多选
+        if (status != null && !status.isBlank()) {
+            java.util.List<String> statuses = java.util.Arrays.stream(status.split(","))
+                    .map(String::trim).filter(s -> !s.isEmpty()).toList();
+            if (!statuses.isEmpty()) {
+                w.in(CallRecord::getStatus, statuses);
+            }
+        }
+
+        // 关键字：取餐号 / 订单号 模糊
+        if (keyword != null && !keyword.isBlank()) {
+            String kw = keyword.trim();
+            w.and(x -> x.like(CallRecord::getCallNumber, kw)
+                    .or().like(CallRecord::getOrderNumber, kw));
+        }
+
+        w.orderByDesc(CallRecord::getCreateTime).orderByDesc(CallRecord::getId);
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<CallRecord> p =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(safePage, safeSize);
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<CallRecord> result =
+                callRecordMapper.selectPage(p, w);
+
+        return new com.foodtraceability.dto.PageResult<>(result.getTotal(), result.getRecords(),
+                (long) safePage, (long) safeSize);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public int syncFromKitchen() {
         log.info("开始从后厨订单同步待取餐订单...");
         QueryWrapper<KitchenOrder> query = new QueryWrapper<>();

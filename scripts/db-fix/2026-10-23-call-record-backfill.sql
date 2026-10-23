@@ -1,28 +1,40 @@
--- 2026-10-23 叫号历史数据修补（可复放）
--- 背景：早期 call_record 行由「叫号屏同步」产生，部分行缺 call_number（叫号号上线前的历史残渣）；
---       另有少量行状态与时间戳不一致（picked 无 pick_time）。本脚本先按 orders 回填，再清理无主的空号行。
+-- 2026-10-23 叫号历史回填 v2（可复放）
+-- v1 的缺陷：只修「已存在的 call_record 行」，没有给「完全没有历史行」的订单补行。
+-- 实测活库：70 个有叫号号的订单里，23 个在 call_record 里根本没有对应行 → 历史页永远查不到。
+-- 本脚本按 orders 补行，create_time 取订单创建时间（保证落在正确业务日），状态按订单真实终态映射，
+-- 不臆造「呼叫/取餐」时间：已完成订单用 order.update_time 作为取餐时间，其余保持待取餐。
 
--- 1) 从 orders 回填叫号号（仅当历史行缺号且订单已有号）
+INSERT INTO call_record (order_id, order_number, table_number, order_type, item_count,
+                         status, call_count, first_call_time, last_call_time, pick_time,
+                         create_time, update_time, call_number)
+SELECT o.order_id,
+       COALESCE(o.order_number, o.order_code),
+       o.table_name,
+       o.order_type::text,
+       1,
+       CASE WHEN o.order_status = 2 THEN 'picked' ELSE 'pending' END,
+       0,
+       NULL,
+       NULL,
+       CASE WHEN o.order_status = 2 THEN o.update_time ELSE NULL END,
+       COALESCE(o.create_time, NOW()),
+       NOW(),
+       o.call_number
+FROM orders o
+WHERE o.call_number IS NOT NULL
+  AND o.call_number <> ''
+  AND NOT EXISTS (SELECT 1 FROM call_record c WHERE c.order_id = o.order_id);
+
+-- 历史行与订单终态对齐（可复放）：已完成但仍显示待取餐/已呼叫的老行 → 标记已取餐
 UPDATE call_record c
-SET call_number = o.call_number,
+SET status = 'picked',
+    pick_time = COALESCE(c.pick_time, o.update_time),
     update_time = NOW()
 FROM orders o
 WHERE c.order_id = o.order_id
-  AND (c.call_number IS NULL OR c.call_number = '')
-  AND o.call_number IS NOT NULL
-  AND o.call_number <> '';
+  AND o.order_status = 2
+  AND c.status IN ('pending', 'called')
+  AND c.pick_time IS NULL;
 
--- 2) picked 但缺 pick_time：用 update_time 兜底（不臆造业务时间，只是补一致性）
-UPDATE call_record
-SET pick_time = update_time
-WHERE status = 'picked' AND pick_time IS NULL;
-
--- 3) called 但缺 first_call_time：用 last_call_time 兜底
-UPDATE call_record
-SET first_call_time = last_call_time
-WHERE status IN ('called', 'picked') AND first_call_time IS NULL AND last_call_time IS NOT NULL;
-
--- 4) 清理孤立的空号历史行（既无叫号号、也无对应订单）——典型「假数据」
-DELETE FROM call_record c
-WHERE (c.call_number IS NULL OR c.call_number = '')
-  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.order_id = c.order_id);
+-- 诊断：仍无历史行的订单（应为 0）
+-- SELECT COUNT(*) FROM orders o WHERE o.call_number <> '' AND NOT EXISTS (SELECT 1 FROM call_record c WHERE c.order_id = o.order_id);

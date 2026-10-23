@@ -38,11 +38,31 @@ public class CallNumberController {
         return Result.success(records);
     }
 
+    /**
+     * 叫号历史（标杆级查询）。
+     *
+     * <p>支持：关键字（取餐号/订单号模糊）、时间范围（today/7d/30d/all）、状态（逗号分隔）、分页。
+     * 不传参数时保持旧行为（今日全量），保证老调用方不破。</p>
+     */
     @GetMapping("/history")
-    @Operation(summary = "获取今日叫号历史")
-    public Result<List<CallRecord>> getTodayHistory() {
-        List<CallRecord> history = callNumberService.getHistoryByDate(LocalDate.now());
-        return Result.success(history);
+    @Operation(summary = "获取叫号历史（关键字/时间范围/状态/分页）")
+    public Result<com.foodtraceability.dto.PageResult<CallRecord>> getHistory(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "today") String range,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int size) {
+        return Result.success(callNumberService.queryHistory(keyword, range, status, page, size));
+    }
+
+    @PostMapping("/pass")
+    @Operation(summary = "过号（状态置为已过号并留痕）")
+    public Result<CallRecord> markPassed(@RequestBody CallNumberPickupRequest request) {
+        CallRecord record = callNumberService.markPassed(request.getOrderId());
+        if (record == null) {
+            return Result.error("叫号记录不存在");
+        }
+        return Result.success(record);
     }
 
     @GetMapping("/stats")

@@ -56,6 +56,21 @@ public interface CallNumberService {
      */
     CallRecord markPicked(String orderId);
 
+    /** 过号：状态置为 passed 并记录过号时间（历史留痕） */
+    CallRecord markPassed(String orderId);
+
+    /**
+     * 叫号历史查询（标杆级）：关键字（取餐号/订单号模糊）、时间范围、状态、分页。
+     *
+     * @param keyword 取餐号或订单号模糊匹配，可空
+     * @param range   today / 7d / 30d / all，默认 today
+     * @param status  单个或逗号分隔的状态集合（pending,called,picked,passed），可空
+     * @param page    页码（1 起）
+     * @param size    每页条数
+     */
+    com.foodtraceability.dto.PageResult<CallRecord> queryHistory(String keyword, String range,
+                                                                 String status, int page, int size);
+
     /**
      * 从后厨订单同步待取餐订单
      * @return 同步数量

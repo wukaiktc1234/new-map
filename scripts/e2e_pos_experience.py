@@ -301,13 +301,29 @@ class Sweep:
         if not order_id:
             return
 
-        st, body = call("GET", "/v1/call-number/history", token=self.token)
-        hist = payload(body) or []
-        found = [h for h in (hist if isinstance(hist, list) else []) if h.get("orderId") == order_id]
-        self.step("叫号-历史能查到刚下的单", bool(found),
-                  "history 共 %d 条，命中 %d 条（callNumber=%s）" % (
-                      len(hist) if isinstance(hist, list) else -1, len(found),
-                      found[0].get("callNumber") if found else call_no))
+        # 拉历史（新接口：分页对象 {records,total}）——按取餐号模糊搜索刚下的单
+        st, body = call("GET", "/v1/call-number/history?keyword=%s&range=today&page=1&size=20"
+                        % urllib.parse.quote(str(call_no)), token=self.token)
+        page = payload(body) or {}
+        recs = page.get("records") if isinstance(page, dict) else None
+        found = [h for h in (recs or []) if h.get("orderId") == order_id]
+        self.step("叫号-历史页按取餐号模糊搜索命中", st == 200 and bool(found),
+                  "keyword=%s total=%s 命中=%d" % (call_no, page.get("total") if isinstance(page, dict) else "?",
+                                                  len(found)))
+
+        # 分页契约：size 生效且 total 与记录数自洽
+        st, body = call("GET", "/v1/call-number/history?range=7d&page=1&size=2", token=self.token)
+        pg = payload(body) or {}
+        ok_page = (isinstance(pg, dict) and isinstance(pg.get("records"), list)
+                   and len(pg.get("records")) <= 2 and int(pg.get("total") or 0) >= len(pg.get("records")))
+        self.step("叫号-历史分页(size=2 生效)", st == 200 and ok_page,
+                  "records=%s total=%s" % (len(pg.get("records") or []), pg.get("total")))
+
+        # 时间范围筛选
+        st, body = call("GET", "/v1/call-number/history?range=30d&page=1&size=1", token=self.token)
+        pg30 = payload(body) or {}
+        self.step("叫号-时间范围筛选(30d)可用", st == 200 and isinstance(pg30.get("records"), list),
+                  "total(30d)=%s" % pg30.get("total"))
 
         st, body = call("POST", "/v1/call-number/call", token=self.token, body={"orderId": order_id})
         rec = payload(body) or {}
@@ -335,12 +351,36 @@ class Sweep:
                   "pending=%s called=%s picked=%s" % (
                       stats.get("pending"), stats.get("called"), stats.get("picked")))
 
-        # 历史里该单需体现 picked 状态（写后即查，验证状态流转落到历史）
-        st, body = call("GET", "/v1/call-number/history", token=self.token)
-        hist = payload(body) or []
-        after = [h for h in (hist if isinstance(hist, list) else []) if h.get("orderId") == order_id]
-        self.step("叫号-历史状态流转为 picked", bool(after) and after[0].get("status") == "picked",
-                  "status=%s" % (after[0].get("status") if after else None))
+        # 取餐后刷新历史（带状态筛选），状态必须已是 picked —— 这就是刚点的「刷新历史页」场景
+        st, body = call("GET", "/v1/call-number/history?keyword=%s&range=today&status=picked&page=1&size=20"
+                        % urllib.parse.quote(str(call_no)), token=self.token)
+        recs = (payload(body) or {}).get("records") or []
+        after = [h for h in recs if h.get("orderId") == order_id]
+        self.step("叫号-取餐后刷新历史(状态筛选 picked)命中",
+                  st == 200 and bool(after),
+                  "status=%s pickTime=%s" % (after[0].get("status") if after else None,
+                                             after[0].get("pickTime") if after else None))
+
+        # 过号机制：再造一单 → /pass → 历史 status=passed 且留痕 passTime
+        st, body = call("POST", "/v1/pos/orders/order", token=self.token, body={
+            "orderType": 1, "storeId": 1,
+            "items": [{"productType": 1, "productId": dish.get("dishId"), "quantity": 1,
+                       "price": unit, "productName": dish.get("dishName")}],
+        })
+        d2 = payload(body) or {}
+        oid2, cn2 = d2.get("orderId"), d2.get("callNumber")
+        st, body = call("POST", "/v1/call-number/call", token=self.token, body={"orderId": oid2})
+        st, body = call("POST", "/v1/call-number/pass", token=self.token, body={"orderId": oid2})
+        rec = payload(body) or {}
+        self.step("叫号-过号：状态 passed 且 passTime 留痕",
+                  st == 200 and rec.get("status") == "passed" and bool(rec.get("passTime")),
+                  "callNumber=%s status=%s passTime=%s" % (cn2, rec.get("status"), rec.get("passTime")))
+
+        st, body = call("GET", "/v1/call-number/history?keyword=%s&range=today&status=passed&page=1&size=10"
+                        % urllib.parse.quote(str(cn2)), token=self.token)
+        recs = (payload(body) or {}).get("records") or []
+        self.step("叫号-过号可在历史中筛出", any(h.get("orderId") == oid2 for h in recs),
+                  "keyword=%s 返回 %d 条" % (cn2, len(recs)))
 
     # ---------- F. 订单历史闭环 ----------
     def sweep_order_history(self):

@@ -19,6 +19,9 @@ public class CallRecord {
     private LocalDateTime firstCallTime;
     private LocalDateTime lastCallTime;
     private LocalDateTime pickTime;
+
+    /** 过号时间（status=passed 时留痕） */
+    private LocalDateTime passTime;
     private Integer waitSeconds;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
@@ -70,6 +73,14 @@ public class CallRecord {
 
     public LocalDateTime getLastCallTime() {
         return this.lastCallTime;
+    }
+
+    public LocalDateTime getPassTime() {
+        return passTime;
+    }
+
+    public void setPassTime(LocalDateTime passTime) {
+        this.passTime = passTime;
     }
 
     public LocalDateTime getPickTime() {
