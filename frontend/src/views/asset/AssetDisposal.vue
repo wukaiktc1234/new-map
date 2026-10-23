@@ -18,7 +18,9 @@ import StatusTag from '@/components/core/StatusTag.vue'
 import { useLayoutStore } from '@/stores/layout'
 import { disposalApi, assetApi } from '@/api/asset'
 import { useCrudTable, type CrudApi } from '@/composables/useCrudTable'
-import type { DisposalRecord, DisposalType, DisposalStatus, Asset, PageResponse } from '@/types/asset'
+import type { DisposalRecord, DisposalType, Asset, PageResponse } from '@/types/asset'
+// DisposalStatus 是 TS enum（有运行时取值），必须用值导入；import type 会让 DisposalStatus.PENDING 变成非法值引用
+import { DisposalStatus } from '@/types/asset'
 import { yuanToFen, fenToYuanNumber as fenToYuan, formatFenToYuan as formatYuan } from '@/utils/money'
 import {
   DisposalTypeOptions,

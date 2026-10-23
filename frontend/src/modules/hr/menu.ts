@@ -20,7 +20,7 @@ export const hrMenu: MenuGroupConfig = {
     { title: '招聘管理', icon: 'UserFilled', path: '/hr/recruitment' },
     { title: '入职办理', icon: 'DocumentChecked', path: '/hr/onboarding' },
     { title: '培训发展', icon: 'Reading', path: '/hr/training' },
-    { title: '学习记录', icon: 'Notebook', path: '/hr/study-records', permissions: ['hr:study-record:view'] },
+    { title: '学习记录', icon: 'Notebook', path: '/hr/study-records', permission: 'hr:study-record:view' },
     // ===== 合规与薪酬 =====
     { title: '健康证管理', icon: 'Stamp', path: '/hr/health-certificate' },
     { title: '合同智能管理', icon: 'Connection', path: '/hr/contract-dashboard' },

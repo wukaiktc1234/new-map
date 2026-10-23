@@ -808,9 +808,8 @@ export const permissionDescriptions: Record<string, string> = {
   "hr:config-center:view": "查看配置中心",
   "hr:config-center:manage": "管理人事配置",
   "hr:employee:manage": "管理员工",
-  "hr:organization:manage": "管理组织架构",
-  "hr:attendance:manage": "管理考勤",
-  "hr:recruitment:manage": "管理招聘",
+  // 注：hr:organization:manage / hr:attendance:manage / hr:recruitment:manage
+  // 已在上方（775-781 行）定义，此处不再重复，避免对象字面量重复键（TS1117）
   "hr:health:manage": "管理健康",
   "hr:contract:manage": "管理合同",
   "hr:probation:manage": "管理试用",

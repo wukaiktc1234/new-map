@@ -36,7 +36,12 @@ import {
 } from '@element-plus/icons-vue'
 import { useLayoutStore } from '@/stores/layout'
 
-type StatusColorType = 'active' | 'inactive' | 'probation' | 'pending' | 'success' | 'error' | 'warning' | 'info'
+// primary/orange/danger/default 的 CSS 变量早已在 _tokens.scss / _dark-mode.scss 中定义，
+// 这里补齐类型联合，否则业务直接使用通用色名时 tsc 报 TS2322。
+type StatusColorType =
+  | 'active' | 'inactive' | 'probation' | 'pending'
+  | 'success' | 'error' | 'warning' | 'info'
+  | 'primary' | 'orange' | 'danger' | 'default'
 type CategoryType = 'department' | 'position' | 'type' | 'location' | 'device' | 'connection' | 'document' | 'tag' | 'config'
   | 'food-hot' | 'food-cold' | 'food-staple' | 'food-soup' | 'food-drink'
 

@@ -16,6 +16,7 @@
  *   DRAFT-草稿 IN_PROGRESS-进行中 COMPLETED-已完成 CANCELLED-已取消
  * 注意：后端当前未提供独立的「已取消」状态码，CANCELLED 不再错误映射到 2（已审核），
  *       而是映射到保留值 4，避免取消操作被误标记为已审核。
+ */
 import { get, post, put } from '../request'
 import type {
   InventoryCheck,
