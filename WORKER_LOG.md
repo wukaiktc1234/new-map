@@ -599,76 +599,19 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 17. 撕掉前端假占位 + 资金/财务 500 与空列表（2026-10-23 14:41–15:25）
 
-### 17.1 Owner 的判断是对的：功能后端通了，前端没接
+---
 
-证据链（三处独立）：
-1. `ShiftHandover.vue:147` 硬编码「班次交接功能待后端接线，暂不可执行」，`:139` 的「确认交班」按钮写死 `disabled` —— 一行请求都没发；
-2. 同一文件 `loadTodayOrders()` 用 `/v1/pos/orders` 拿回**数组**却按 `result.records` 取 → 永远空 → 页面全 0，看着就是假数据；
-3. 后端 `/v1/pos/auth/shift/summary` 虽存在，但 `countOrdersByTimeRange` 查的是遗留表 `pos_orders`（POS 新单从不写它）→ 即便接上也全是 0。
 
-### 17.2 交班/日结：假占位删除，真实金额跑通
+### 18.9 收尾补修：资金管理「收入/支出/余额」列空白
 
-- 统计口径改读 canonical `orders`（`payment_status=2`，单位分→元），支付方式拆解来自 `order_payment_records`（1现金/2微信/3支付宝/4银行卡/5余额）；
-- 无活跃班次时 summary 不再返回 `{}`，退化为「今日汇总」；`endShift` 无班次时自动补建一条 completed 班次（留痕），不再 404；
-- 前端：删掉两处假占位、接 `POST /v1/pos/auth/shift/end`、明细兼容数组返回、支付拆解卡片显示金额+占比、`paymentKey()` 统一中文/英文口径（顺带修好明细标签无色与筛选失效）；
-- 浏览器实测：今日营业额 **¥847.10 / 36 笔 / 客单价 ¥23.53**，现金 ¥360.00、微信 ¥468.30、支付宝 ¥18.80。
+浏览器验收时发现：`FinanceFund.vue` 的 `columns` 里这三列只写了 `prop` 没声明 `slot`，而模板用的是 `<template #income>/#expense/#balance>`，DataTable 只按 `col.slot` 渲染具名插槽 → 走 prop 取 `row.income/expense`（不存在）→ 三列全空。已补 `slot: 'income' | 'expense' | 'balance'`。
 
-### 17.3 资金管理 500：类型脏数据 + 实体 Integer 硬映射
+复验：首行渲染为「2026-10-23 收入 POS销售入账：W20261023034 50.00 / 0.00 / 187.00 测试银行账户 散客 待处理」，本月收入合计 ¥423.60，HTTP≥400 为 0。
 
-- 报错（traceId 680bd8650713）：`Error attempting to get column 'account_type' ... 不良的类型值 int : bank`；
-- 根因：`bank_accounts.account_type` 是 varchar 且混存 `'bank'`(5)、`'1'`(8)、`'cash'`(1)，实体却是 `Integer`；
-- 修法：`scripts/db-fix/2026-10-23-bank-account-type-normalize.sql` 归一值并把列改成 `integer` + `CHECK 1..5`（可复放，已实跑两次）；另加 `LenientIntegerTypeHandler` 读取侧容错，历史脏值不再整页 500；`FundFlowServiceImpl` 取账户名改列投影，列表不再依赖该列。
-- 验证：`/v1/finance/fund-flows` 200 / total=50；`/v1/finance/records` 200 / total=47；建户→详情→删除写路径 200。
+### 18.10 测试账号与数据层踩坑（复用须知）
 
-### 17.4 财务流水「一条都没有」的真因：字段名对不上
-
-`FundFlowDataConverter.toFrontend` 只转 `amount/status`，后端返回的是 `flowId/businessDate/flowDirection/accountId/accountName/counterpartyName/remark/balanceAfter`，前端列表要 `id/transactionDate/flowType/bankAccountId/bankAccountName/counterparty/summary/balance` → 列全空白。已加双向别名映射，并修掉 `balance` 被 /100 两次的双换算；另给仪表盘「资金流水」快捷入口补 `/finance/fund-flow → /finance/fund` 重定向（原来打到不存在的路由）。
-
-### 17.5 POS 顶栏账号与退出
-
-`PosTopBar.vue` 新增账号区（读 `pos-user`：`employeeName → fullName → name → employeeId → username` 兜底，头像首字 + 工号，hover 显示角色）与「退出」按钮：二次确认 → `POST /api/v1/auth/logout`（POS 无专用登出，复用通用接口，JWT 黑名单生效）→ 无论成败清 `pos-token/pos-user/pos-terminal` → 回登录页。`Login.vue` 登录时落 `pos-terminal`（交班取终端号用）。
-
-### 17.6 交班后端复核时又挖出 3 个必修 bug
-
-| # | 问题 | 后果 | 修复 |
-|---|---|---|---|
-| 1 | `endShift` 补建班次传 `employeeId=null`，而 `pos_shifts.employee_id` NOT NULL | 接口 HTTP200 但 code=500，补建完全失效、一行不落库 | 传 `"SYSTEM"` + 方法加 `@Transactional` |
-| 2 | `PosShift` 把 `create_time/update_time` 映射到 `createdAt/updatedAt`，全局填充器只填 `createTime/updateTime` | 插入必 `create_time null` → **开台接口 `/shift/start` 也一直 500** | `MyMetaObjectHandler` 增补 `createdAt/updatedAt` |
-| 3 | `payment_breakdown` 只统计有支付记录的单 | 历史 4 笔夹具共 3330 元缺记录 → 拆解合计 ≠ 总额 | 差额落 `unrecorded` 桶，保证恒等 |
-
-### 17.7 浏览器级验收（Playwright，真点击）
-
-`scripts/e2e_pos_browser.py`（内置降级：自带 chromium → 系统 Edge → Chrome；产物 `.verify-tmp/e2e-browser/`）：
-
-| 步骤 | 结果 |
-|---|---|
-| A 登录（vcashier01/123456） | PASS |
-| B 顶栏账号可见 + 退出回登录页 & token 清理 | PASS（账号区显示「测试收银员 / 工号 vcashier01」） |
-| C 交班日结真实金额、无占位文案 | PASS（¥847.10 / 36 笔；「待后端接线」0 命中） |
-| D 订单查询命中真实单号 | PASS（T20261023059） |
-| E 叫号历史搜索 + 取餐状态流转 | PASS（A071/A068 → 取餐成功） |
-| F 管理端资金管理页 | SKIP（管理端在 3002，缺可用 admin 账号；提供 `ADMIN_USER/ADMIN_PASS` 即可跑） |
-
-本轮 console error / HTTP≥400：**0 条**。
-
-### 17.8 全量验证
-
-| 项 | 结果 |
-|---|---|
-| `frontend-pos` vue-tsc | 0 error |
-| `frontend` vue-tsc | 0 error |
-| `mvn -o -B compile` | BUILD SUCCESS |
-| `e2e_shift_summary.py` | PASS=5 / FAIL=0（summary↔SQL 一致、拆解合计恒等、交班留痕） |
-| `e2e_pos_experience.py` | 全绿（含叫号历史/过号/库存/日结闭环） |
-| `e2e_wip_pages.py` | 全绿 |
-| `e2e_core_chain.py` | 13/13 全绿 |
-
-### 17.9 遗留（需 Owner 决策/后续）
-
-1. **多终端口径**：`orders` 无 `terminal_id`，交班统计按时间全店汇总，同店多台收银机会看到相同数字；要隔离需订单侧引入 terminal 或终端→门店映射；
-2. 管理端「财务流水」页实际就是 fund-flows 列表，`/v1/finance/records`（47 条）无页面引用；`FundFlowVO` 未透出 `status`，详情「状态」显「未知」；
-3. 交班明细里部分订单支付方式显示「未知」（统计分布正常）——历史单无支付记录导致；
-4. 管理端还有 `/finance/reimbursement`、`/finance/invoice`、`/finance/voucher` 三个快捷入口无路由；
-5. 浏览器验收每次会真实把若干叫号标记为已取餐（A071/A068 等），需保持有 pending 数据否则 E 步骤会 SKIP。
+- 账号：`qa_admin / Admin@123456`（user_id 2110437068670001200），绑 `ROLE_FINANCE_DIRECTOR`，`users.roles=["4"]`。
+- `user_roles.role_id` 必须存 `roles.role_id_str`（如 ROLE_FINANCE_DIRECTOR），写数字 id 查不到角色 → token 无 roles/permissions → 全站 403。
+- 绑 ROLE_ADMIN 会展开 419 个权限码 → JWT 13,358 字符 → 超 Tomcat 8KB 请求头上限 → 所有 Bearer 请求 400（表现为"后端像挂了"）。故用 finance 角色（token 3,686 字符）。
+- `/v1/auth/me` 的 roles 取的是 `users.roles` 中角色 id 对应的中文名，前端按中文名映射，因此 `users.roles` 必须与 `user_roles` 口径一致。
