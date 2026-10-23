@@ -1,11 +1,15 @@
 package com.foodtraceability.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.foodtraceability.annotation.RateLimit;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.util.WorkLocationFilterHelper;
 import com.foodtraceability.dto.ReceiptConfirmationCreateDTO;
 import com.foodtraceability.dto.ReceiptConfirmationQueryDTO;
+import com.foodtraceability.dto.ReceiptSignatureDTO;
+import com.foodtraceability.dto.ReceiptVerifyVO;
 import com.foodtraceability.entity.ReceiptConfirmation;
+import com.foodtraceability.entity.ReceiptSignature;
 import com.foodtraceability.service.ReceiptConfirmationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +22,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 收货确认单控制器
@@ -69,5 +75,51 @@ public class ReceiptConfirmationController {
     public Result<ReceiptConfirmation> createConfirmation(
             @Parameter(description = "创建参数") @Valid @RequestBody ReceiptConfirmationCreateDTO createDTO) {
         return Result.success(receiptConfirmationService.createConfirmation(createDTO));
+    }
+
+    /**
+     * 新增收货确认签名（收货方/供应商双签）
+     */
+    @PostMapping("/{confirmationId}/signatures")
+    @PreAuthorize("hasAnyRole('admin', 'store_manager', 'warehouse_manager')")
+    @Operation(summary = "新增收货确认签名")
+    public Result<ReceiptSignature> addSignature(
+            @Parameter(description = "确认单ID") @PathVariable Long confirmationId,
+            @Parameter(description = "签名参数") @Valid @RequestBody ReceiptSignatureDTO signatureDTO) {
+        return Result.success(receiptConfirmationService.addSignature(confirmationId, signatureDTO));
+    }
+
+    /**
+     * 查询收货确认单签名存证列表
+     */
+    @GetMapping("/{confirmationId}/signatures")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'store_manager', 'warehouse_manager')")
+    @Operation(summary = "查询收货确认单签名存证列表")
+    public Result<List<ReceiptSignature>> listSignatures(
+            @Parameter(description = "确认单ID") @PathVariable Long confirmationId) {
+        return Result.success(receiptConfirmationService.listSignatures(confirmationId));
+    }
+
+    /**
+     * 登记一次打印（打印前调用，服务端计数并记录打印时间，防打印泛滥）
+     */
+    @PostMapping("/{confirmationId}/print-records")
+    @PreAuthorize("hasAnyRole('admin', 'purchase_manager', 'store_manager', 'warehouse_manager')")
+    @Operation(summary = "登记确认单打印次数")
+    public Result<ReceiptConfirmation> recordPrint(
+            @Parameter(description = "确认单ID") @PathVariable Long confirmationId) {
+        return Result.success(receiptConfirmationService.recordPrint(confirmationId));
+    }
+
+    /**
+     * 防伪码查验：输入 16 位防伪码查询单据基本信息与完整打印历史
+     * <p>免登录（SecurityConfig 已放行 /v1/receipt-confirmations/verify/**），仅靠限流防暴力遍历。</p>
+     */
+    @GetMapping("/verify/{verifyCode}")
+    @RateLimit(value = 10, time = 60, message = "查验过于频繁，请稍后再试")
+    @Operation(summary = "防伪码查验")
+    public Result<ReceiptVerifyVO> verifyByCode(
+            @Parameter(description = "16位防伪码") @PathVariable String verifyCode) {
+        return Result.success(receiptConfirmationService.verifyByCode(verifyCode));
     }
 }
