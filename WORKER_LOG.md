@@ -126,3 +126,84 @@
 - 所有提交均为精确 `git add <文件>`，每次 commit 前 `git diff --cached --numstat` 复核只含本批文件。
 - Owner WIP（448 M + 1 D + 90 ??）全程未暂存；测试目录下既有的 `PaymentServiceImplTest.java`（Owner WIP）未触碰。
 - 未执行任何写入 SQL、未碰 `flyway_schema_history`、未改后端核心业务逻辑。
+
+---
+
+# 无人值守班次（2026-10-23 10:14 → ）· 白天 Agent
+
+> 本段由长线值守 Agent 追加。上一段（06:25 夜间收口）保留不动。
+
+## 1. 前置安全（已完成）
+
+| 动作 | 结果 |
+|---|---|
+| git push origin master | 通过（GitHub 连接不稳，重试 3 次成功；此后每次提交都重试推送，ahead 恒为 0） |
+| E2E 核心链路 | 12/12 全绿：POS 登录 → 下单 → quick-pay 支付 → 后厨接单 → 开始制作 → 完成出餐 → 扣料流水 |
+| 托盘绑定 | 通过（KDS 设备凭证链路打通后） |
+
+### 1.1 E2E 期间发现并修复的三个真问题
+
+1. KDS 凭证被 JWT 过滤器打回 401（阻断 KDS/托盘整条链路）
+   KdsTokenFilter 认证成功后，JwtAuthenticationFilter 仍把 kds_* 当 JWT 解析 → 401。
+   修法：JwtAuthenticationFilter 遇到 kds_ 前缀直接放行（认证已由 KDS 过滤器完成）。
+2. food_trace_code 表比实体少 11 个字段（出餐生成追溯码 500）
+   实体已带 qr_code_url/order_number/production_station/produce_time/inventory_deduction/material_details/make_start_time/serve_method/remark/create_by/update_by，活库从未迁移。
+   修法：scripts/db-fix/2026-10-23-food-trace-code-align.sql（可复放 ADD COLUMN IF NOT EXISTS），只加列，不改实体不改业务。
+3. e2e_pos_kitchen.py 的支付路由走的是遗留表
+   POST /v1/pos/orders/order/pay → PosOrderPaymentServiceImpl 查 orders_legacy（Order 实体 @TableName(orders_legacy)），新单在 orders → 必然「订单不存在」；GET /v1/pos/orders/order/{no} 同理。
+   绕过：新增 scripts/e2e_core_chain.py，支付走 POST /v1/pos/orders/{orderId}/quick-pay，订单状态与扣料改用活库断言。未改原脚本。
+   命令：python scripts/e2e_core_chain.py --password 123456 --tray auto
+
+## 2. 主线纪律执行情况
+
+- OrderLifecycleService / OrderNewServiceImpl 等状态机核心：零改动。
+- WIP 业务：零合入（wip/night-merge-handover-20261023 分支原样保留，449 文件）。
+- 每次独立提交后立即 push，origin/master 与本地全程同步（ahead=0）。
+
+## 3. 循环 A：P1 缺陷（3 修 1 记录）
+
+| 编号 | 位置 | 处置 | 验证 |
+|---|---|---|---|
+| P1-3 报损审批不落痕迹 | InventoryLossServiceImpl.approveInventoryLoss | 写 approveUserId/approveTime（原被注释），审批意见进审计日志 | InventoryLossServiceImplTest 12/12 |
+| P1-4 自采入库硬编码主仓库 | SelfPurchaseServiceImpl.inboundSelfPurchase | 优先取 SelfPurchase.warehouseId/Name，缺失才回退并 warn；补多仓用例 | SelfPurchaseServiceImplTest 9/9 |
+| P1-1 批次不足只告警 | InventoryDeductionServiceImpl.deductByBatchCode | 改为抛 BusinessException（带缺口数量）+ 事务回滚，消除假成功 | InventoryDeductionServiceImplTest 14/14 |
+| P1-2 按配方扣料不写库存 | InventoryDeductionServiceImpl.deductByRecipe | 未修，只记录：见 §5 | — |
+
+## 4. 循环 B：补单测
+
+| 类 | 用例数 | 覆盖点 |
+|---|---|---|
+| LocationServiceImplTest | 10 | null 短路、deleted=1 不可见、按门店/仓库/位置反查委托与参数、未映射禁止数值兜底、活跃列表透传 |
+
+剩余无测试 ServiceImpl：302 个（挑选脚本见 docs/night-patrol/code-quality-performance-report.md §5）。
+
+## 5. 未做/待裁决（明日请 Owner 过一眼）
+
+1. P1-2 按配方扣料不写库存 —— 未改：deductByRecipe 目前只落 MaterialUsageRecord + 内存 DTO + 追溯码 JSON，真正的库存扣减在 OrderNewServiceImpl 出餐链路里做。若在此处再加一次 decreaseInventory，会与主链路重复扣减。属口径决策，需 Owner 明确该入口是否还对外使用；先记录不改。
+2. POS 读取接口仍绑遗留表：GET /v1/pos/orders/order/{orderNumber}、POST /v1/pos/orders/order/pay、PosOrderQueryServiceImpl 全部查 orders_legacy，与 orders 新单不通。修它等于改订单主读路径（状态机邻域），本轮不动。
+3. InventoryLoss 缺 approve_remark 列：审批意见暂进日志；补列需 Owner 点头后再加 DDL。
+4. positions 种子数据与活库口径漂移：DEPT_MANAGER / SUPER_ADMIN 在活库不存在，启动时职位-角色映射会跳过（已降为 WARN，不再 ERROR）。要修需对齐种子数据与活库职位编码。
+
+## 6. 循环 C：前端 TS 报错（进行中）
+
+- 起点 253 条（Owner 记忆的 93 条应为旧口径），本轮降至 197 条，修了 56 条：
+  - src/api/asset/inventory.ts 块注释未闭合（38 条，一行 */）
+  - AssetDisposal.vue DisposalStatus 用 import type 导入却当值用（10 条）
+  - StatusTag.vue StatusColorType 缺 primary/orange/danger/default（4 条，CSS 变量早已存在）
+  - modules/hr/menu.ts permissions → permission（1 条）
+  - utils/permissions.ts 对象字面量重复键（3 条）
+- 余下大头：ReceivingMobile.vue(85) / BankAccountManage.vue(18) 等 Owner WIP 未跟踪文件，按规矩不碰。
+
+## 7. 明日建议顺序
+
+1. 先跑 python scripts/e2e_core_chain.py --password 123456 --tray auto 确认链路仍绿（后端需用 JDK21 启动，见 §8）。
+2. 继续循环 B（挑 PurchaseOrderServiceImpl / FinanceRecordServiceImpl 这类有真实分支的）。
+3. 循环 C 继续清已跟踪文件的 TS 报错，WIP 文件留给 Owner。
+4. 若要解锁 POS 新单读取/支付，需 Owner 决定是否把 PosOrderQueryServiceImpl 从 orders_legacy 迁到 orders。
+
+## 8. 环境备忘（重要）
+
+- JAVA_HOME 系统变量指向不存在的 H:\fuwu\jdk-17.0.17+10；可用 JDK 在 P:\my-new-project\JDK21（Temurin 21.0.9，与 pom 的 Java 21 匹配）。
+  启动：$env:JAVA_HOME='P:\my-new-project\JDK21'; mvn -o spring-boot:run -Dspring-boot.run.profiles=pg
+- 本地 Postgres：PostgreSQL\18\bin\pg_ctl -D PostgreSQL\18\data start|stop（SCM Start-Service 无权限）。
+- scripts/e2e_pos_kitchen.py 的支付步骤仍会失败（路由遗留问题，见 §1.1-3）；核心链路以 e2e_core_chain.py 为准。
