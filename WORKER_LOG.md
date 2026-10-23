@@ -597,21 +597,61 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 - 筛选栏：关键字（回车/清空即查）、时间快捷（今日/近7天/近30天/全部）、状态下拉（含已过号）、查询/重置；
 - 列表：取餐号大字 + 类型/桌号/份数 chip、订单号等宽、状态语义 tag、呼叫次数（>1 高亮）、首次呼叫/取餐/过号/创建时间全部格式化；
 
----
+---## 19. 财务地基与业务逻辑一次性收口（2026-10-23 22:30–23:10）
 
+> **口径**：本节所有数字均为 23:10 前后在活库/活服务上实测，命令可复跑。
+> **销账映射**：§17.9 第 1–3 条、§18.8 第 1–5 条已在原条目处划线并指向本节。
 
----
+### 19.1 模块 1：财务地基
 
+| 子模块 | 目标 | 销账 | 状态 | 证据 |
+|---|---|---|---|---|
+| 1.1 | 账户按门店隔离，禁止回退首个启用账户 | §17.9-1、§18.8-1 | ✅ | `BankAccount.storeId` + VO/Create/Update 全链路；`PosSaleFinanceRecorder.resolveAccount` 强制 `store_id=订单门店` 再叠加渠道（现金→type2 或名称含现金／微信→含微信／支付宝→含支付宝）；无匹配 → `result=no_account` ERROR + 跳过入账（支付仍成功）；`e2e_finance_foundation` 断言「门店A流水只落门店A账户」PASS |
+| 1.2 | 余额并发安全 + 流水号并发安全 | §18.8-2 | ✅ | 余额改 `UPDATE bank_accounts SET balance = balance + delta` 后回读；流水号改 `order_sequence`（键 `FLOWyyyyMMdd`）原子自增（原「查最后一条+1」在 10 并发下会撞 `flow_no` 唯一键而丢流水）；10 路并发断言 `flows=10 / delta=18000` 精确通过 |
+| 1.3 | `create_user_id` / `created_by` 审计留痕 | §18.8-2 | ✅ | DTO→实体→Service 全链路；`dto → SecurityContext → 0+WARN` 兜底；`created_by` 取当前登录用户名；活库 `create_user_id NULL = 0`、`created_by NULL = 0`（回填 172 行为 system） |
 
-### 18.9 收尾补修：资金管理「收入/支出/余额」列空白
+- 改动文件：`entity/finance/BankAccount.java`、`dto/finance/BankAccount{VO,CreateDTO,UpdateDTO}.java`、`mapper/finance/BankAccountMapper.java`、`mapper/finance/FundFlowMapper.java`、`service/finance/PosSaleFinanceRecorder.java`、`service/finance/impl/{FundFlowServiceImpl,BankAccountServiceImpl}.java`、`dto/finance/FundFlowCreateDTO.java`
+- 数据脚本（均可复放）：`scripts/db-fix/2026-10-23-seed-store-cash-accounts.sql`（每门店三件套：现金/微信/支付宝）、`2026-10-23-fund-flow-create-user.sql`、`2026-10-23-fund-flow-stats-index.sql`、`2026-10-23-fund-flow-created-by.sql`
+- 兼容性影响：`store_id IS NULL` 的总部账户（scope=GLOBAL）不再被 POS 入账使用；**新开门店必须先配账户**（seed 不做启动自检，已写入脚本头注释与 §19.5）。
 
-浏览器验收时发现：`FinanceFund.vue` 的 `columns` 里这三列只写了 `prop` 没声明 `slot`，而模板用的是 `<template #income>/#expense/#balance>`，DataTable 只按 `col.slot` 渲染具名插槽 → 走 prop 取 `row.income/expense`（不存在）→ 三列全空。已补 `slot: 'income' | 'expense' | 'balance'`。
+### 19.2 模块 2：业务矫正
 
-复验：首行渲染为「2026-10-23 收入 POS销售入账：W20261023034 50.00 / 0.00 / 187.00 测试银行账户 散客 待处理」，本月收入合计 ¥423.60，HTTP≥400 为 0。
+| 子模块 | 目标 | 销账 | 状态 | 证据 |
+|---|---|---|---|---|
+| 2.1 | 现结不入应收 | — | ✅ | `OrderCompletedEventListener` 增加现结防线：`order_source=4`（POS 收银单）一律不生成应收，与支付状态无关；清理脚本 `2026-10-23-cleanup-settled-receivables.sql` 先备份 `receivables_backup_20261023` 再逻辑删除 `ART…` 残留，`ART(active)=0`；`e2e_no_receivable` **PASS=16/FAIL=0**（含「后厨先完成、收银后付款」竞态场景，未付款即完成也不再生成应收） |
+| 2.2 | 历史流水状态统一为「已完成」 | §18.8-5 | ✅ | `2026-10-23-fund-flow-status-complete.sql` 归一并保留 `CHECK(1..3)`；活库 `status` 分布最终仅 `{2: 259}`（1/NULL 均为 0）；Java 侧 `create()` 初值已改 2，新流水不再回落到 1 |
+| 2.3 | 流水详情穿透查看 POS 订单明细 | — | ✅ | `fund_flows` 无 order_id 列，故前端 `utils/pos-order-remark.ts` 解析备注 `POS销售入账：<单号>[orderId=…]`，再按「管理端订单 → 订单ID → POS 订单」三级 silent 降级联查并渲染菜品明细；浏览器实测弹窗显示流水号/金额/订单号/菜品合计 |
+| 2.4 | 记账备注口径统一 | §18.8-3 | ✅ | `PosSaleFinanceRecorder.buildSaleRemark()` 抽为公共静态方法；`OrderNewServiceImpl`（quick-pay）与 legacy 分支的 `finance_record` 备注全部改为同一格式；活库已无「订单支付 - 」旧格式 |
+| 2.5 | 存量订单补账（附带） | — | ✅ | `2026-10-23-backfill-historical-sale-flows.sql`：按 `order_payment_records` 合计补 59 笔订单 / 59 条流水 / 588870 分，`balance_after=0`（不回写余额），`FFH` 前缀不撞线上号；3 条无主 QA 占位流水软删除（可回滚） |
 
-### 18.10 测试账号与数据层踩坑（复用须知）
+### 19.3 模块 3：代码债
 
-- 账号：`qa_admin / Admin@123456`（user_id 2110437068670001200），绑 `ROLE_FINANCE_DIRECTOR`，`users.roles=["4"]`。
-- `user_roles.role_id` 必须存 `roles.role_id_str`（如 ROLE_FINANCE_DIRECTOR），写数字 id 查不到角色 → token 无 roles/permissions → 全站 403。
-- 绑 ROLE_ADMIN 会展开 419 个权限码 → JWT 13,358 字符 → 超 Tomcat 8KB 请求头上限 → 所有 Bearer 请求 400（表现为"后端像挂了"）。故用 finance 角色（token 3,686 字符）。
-- `/v1/auth/me` 的 roles 取的是 `users.roles` 中角色 id 对应的中文名，前端按中文名映射，因此 `users.roles` 必须与 `user_roles` 口径一致。
+| 子模块 | 目标 | 销账 | 状态 | 证据 |
+|---|---|---|---|---|
+| 3.1 | 重复路由清理（删除 2 条重复注册） | §18.8-4 | ✅ | 保留菜单实际使用的 `/finance/ledger`、`/finance/invoice-reimbursement`；`/finance/invoice`、`/finance/voucher` 改为 redirect；工作台快捷入口同步改指真实路由；全仓 grep 无页面再引用旧路径 |
+| 3.2 | E2E 增加「现结不入应收」「余额并发更新」断言 | — | ✅ | `e2e_no_receivable.py`（16 条断言）、`e2e_finance_foundation.py`（8 条，含 10 路并发 delta 精确） |
+
+### 19.4 验证（全量，可复跑）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 后端编译 | `mvn -o -B -DskipTests compile` | **BUILD SUCCESS** |
+| 财务地基 E2E | `python scripts/e2e_finance_foundation.py --password 123456` | **PASS=8 FAIL=0** |
+| 现结不入应收 E2E | `python scripts/e2e_no_receivable.py --password 123456` | **PASS=16 FAIL=0** |
+| 支付入账 E2E | `python scripts/e2e_pay_to_fund.py --password 123456` | **PASS=8 FAIL=0** |
+| 核心链路 | `python scripts/e2e_core_chain.py --password 123456 --tray auto` | 全绿（托盘无空闲 SKIP） |
+| 交班聚合 | `python scripts/e2e_shift_summary.py` | PASS=5 FAIL=0 |
+| 页面自检 | `python scripts/e2e_wip_pages.py` | 全绿 |
+| POS 体验巡检 | `python scripts/e2e_pos_experience.py --password 123456` | 全绿（1 项数据缺口 SKIP） |
+| 财务不变式 | `python scripts/check_finance_invariants.py` | **4 PASS / 0 FAIL** |
+| 浏览器验收 | `python scripts/e2e_pos_browser.py` | **A–G 全 PASS，0 SKIP，0 console/网络错误** |
+| 前端类型 | `frontend` / `frontend-pos` `npx vue-tsc --noEmit` | **0 error / 0 error** |
+
+### 19.5 剩余风险 / 未销账
+
+1. **银行卡渠道无专户**：`payment_method=4` 无专属账户关键字，落到本店第一个 `account_type=1` 账户（当前为「门店N微信商户账户」）；如需独立入账要再加「门店N银行卡账户」并扩一条匹配规则。
+2. **新开门店必须先配账户**：seed 脚本不做启动自检（避免应用启动写业务数据），未配账户的门店会「支付成功但不生成流水」（`fundFlowNo=null` + ERROR 日志可查）；建议挂开店 checklist 或日巡检。
+3. **总账权限**：财务角色（`ROLE_FINANCE_DIRECTOR`）无 `order:view`，流水详情里的 POS 订单明细会降级为「无权限查看」提示（页面不报错、已静默）；如需完整穿透，给财务角色补 `order:view` 权限即可。
+4. **存量补账的余额语义**：59 条历史补账流水 `balance_after=0` 且不回写账户余额（避免篡改上线后的真实余额），对账时需知悉。
+5. **仍未销账（未变）**：§17.9 第 4 条（其余三个财务快捷入口的路由）、§17.9 第 5 条（浏览器验收会真实标记叫号为已取餐，属环境约束）。
+6. **文档债**：§18.1–18.8 正文缺失（见 §18 说明），需凭提交与证据链重建，禁止臆造。
