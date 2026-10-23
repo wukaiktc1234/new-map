@@ -11,6 +11,9 @@ import com.foodtraceability.mapper.InventoryLossDetailMapper;
 import com.foodtraceability.mapper.InventoryLossMapper;
 import com.foodtraceability.service.InventoryLossService;
 import com.foodtraceability.service.InventoryService;
+import com.foodtraceability.utils.SecurityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,8 @@ import java.util.List;
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class InventoryLossServiceImpl extends ServiceImpl<InventoryLossMapper, InventoryLoss> implements InventoryLossService {
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryLossServiceImpl.class);
 
     private final InventoryLossMapper inventoryLossMapper;
     private final InventoryLossDetailMapper inventoryLossDetailMapper;
@@ -75,10 +80,15 @@ public class InventoryLossServiceImpl extends ServiceImpl<InventoryLossMapper, I
             // 将字符串状态转换为整数：approved->1(已审核), rejected->-1(已拒绝)
             Integer statusValue = parseLossStatus(status);
             inventoryLoss.setLossStatus(statusValue);
-            // 这里可以添加审批人ID和审批时间，假设当前用户ID可以通过上下文获取
-            // inventoryLoss.setApproverId(approverId);
-            // inventoryLoss.setApproveTime(LocalDateTime.now());
+            // P1-3：审批痕迹落库（此前审批人 / 审批时间被注释，remark 参数从未使用）
+            inventoryLoss.setApproveUserId(SecurityUtils.getCurrentUserId());
+            inventoryLoss.setApproveTime(LocalDateTime.now());
             this.updateById(inventoryLoss);
+            if (remark != null && !remark.isBlank()) {
+                // 表结构暂无 approve_remark 列（ApproverId/ApproveTime 之外无意见字段），
+                // 先以审计日志承载审批意见，避免审批说明丢失；后续加列时再落库。
+                log.info("报损审批意见：lossId={}, status={}, remark={}", id, status, remark);
+            }
         }
         return inventoryLoss;
     }

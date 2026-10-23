@@ -177,16 +177,19 @@ class InventoryLossServiceImplTest {
     }
 
     @Test
-    @DisplayName("approveInventoryLoss：审批备注不写入单据（remark 字段未被使用，特征化）")
-    void approve_remarkNotPersisted() {
+    @DisplayName("approveInventoryLoss：审批痕迹落库（approveTime 必写），原报损原因不被备注覆盖（P1-3）")
+    void approve_writesApprovalTrace() {
         InventoryLoss stored = loss(1L, 10L, "LS", 0);
         stored.setReason("原始原因");
         when(inventoryLossMapper.selectById(1L)).thenReturn(stored);
 
         service.approveInventoryLoss(1L, "approved", "审批意见");
 
-        assertEquals("原始原因", stored.getReason());
-        assertNull(stored.getApproveTime(), "当前实现未写审批时间（待补）");
+        assertEquals("原始原因", stored.getReason(), "审批备注不得覆盖原始报损原因");
+        assertNotNull(stored.getApproveTime(), "P1-3 修复后必须写入审批时间");
+        // 单元测试无安全上下文，approveUserId 允许为 null（不写入脏数据）
+        assertNull(stored.getApproveUserId(), "无登录上下文时不写审批人");
+        verify(inventoryLossMapper).updateById(stored);
     }
 
     // ==================== 处理（扣减库存） ====================
