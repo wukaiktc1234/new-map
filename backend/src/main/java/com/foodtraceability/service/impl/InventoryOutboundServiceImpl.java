@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -303,8 +304,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundM
             }
 
             // 累加总金额（单价 × 数量，分单位）
+            // P0-4：数量可能含小数（1.5 kg），longValue() 会截断导致金额系统偏小；
+            // 改为 BigDecimal 相乘后按 HALF_UP 取整到「分」
             if (item.getUnitCost() != null) {
-                long itemAmount = item.getUnitCost() * actualQty.longValue();
+                long itemAmount = BigDecimal.valueOf(item.getUnitCost())
+                        .multiply(actualQty)
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .longValue();
                 item.setTotalCost(itemAmount);
                 totalAmount += itemAmount;
                 inventoryOutboundItemMapper.updateById(item);

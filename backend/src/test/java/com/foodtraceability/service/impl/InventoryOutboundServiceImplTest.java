@@ -381,6 +381,30 @@ class InventoryOutboundServiceImplTest {
     }
 
     @Test
+    @DisplayName("executeOutbound：小数实发数量按 BigDecimal 乘算 + HALF_UP 取整，不再被 longValue() 截断（P0-4）")
+    void executeOutbound_fractionalQuantity_noTruncation() {
+        InventoryOutbound o = outbound("OB9", "approved", "requisition", "10");
+        stubOutboundReturning(o);
+        when(inventoryOutboundItemMapper.selectList(any())).thenReturn(List.of(
+                item("200", "1.5", 500L),
+                item("201", "0.333", 100L)
+        ));
+
+        InventoryOutbound result = service.executeOutbound("OB9");
+
+        // 修复前：500×1 + 100×0 = 500（截断）；修复后：750 + 33.3→33 = 783
+        assertEquals(783L, result.getTotalAmount(), "500×1.5=750 + 100×0.333=33.3→33，合计 783 分");
+
+        ArgumentCaptor<InventoryOutboundItem> itemCaptor = ArgumentCaptor.forClass(InventoryOutboundItem.class);
+        verify(inventoryOutboundItemMapper, times(4)).updateById(itemCaptor.capture());
+        List<InventoryOutboundItem> updates = itemCaptor.getAllValues();
+        assertTrue(updates.stream().anyMatch(i -> Long.valueOf(750L).equals(i.getTotalCost())),
+                "1.5 × 500 分 = 750 分");
+        assertTrue(updates.stream().anyMatch(i -> Long.valueOf(33L).equals(i.getTotalCost())),
+                "0.333 × 100 分 = 33.3 → 33 分（HALF_UP）");
+    }
+
+    @Test
     @DisplayName("executeOutbound：销售出库映射交易类型 1；仓库 ID 非法时跳过扣减但仍置实发")
     void executeOutbound_invalidWarehouse_skipsDeduction() {
         InventoryOutbound o = outbound("OB2", "approved", "sale", "not-a-number");
