@@ -498,3 +498,58 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 - **POS 菜品数据源仍是遗留 `food` 表**：分类归属要靠 `foods` 映射，长期应统一到 `foods`（foods 有 category_id/售价分口径）。
 - **下单接口要求前端传 price/productName**：服务端会再校验，但契约上仍允许前端先算价，建议后续改为只传 productId+quantity。
 - 浏览器级 E2E（真点击）未接：Playwright 1.63 可用但未安装浏览器内核，当前巡检为 API+静态扫描；需要时再补 `npx playwright install chromium`。
+
+---
+
+## 15. 叫号历史断链修复 + 巡检升级为「数据流转闭环」（2026-10-23 13:52–14:10）
+
+### 15.1 为什么 B001 在历史里查不到（真因）
+
+`ensureCallNumber` 只写 `orders.call_number`，**从不建 `call_record` 行**；而叫号屏「历史」读的是 `call_record`（`GET /v1/call-number/history` → `findByDate(create_time::date)`）。
+`syncToCallRecord` 名字像同步，实际是 `UPDATE call_record ... WHERE order_id=?` —— **行不存在时静默影响 0 行**。所以：下单有号（B001）、历史空白。
+
+同一根因还导致「叫号次数/首次叫号/取餐时间」全失效：这些字段由 `updateCallStatus` / `updatePickStatus` 更新，而没有行就无从更新。
+
+### 15.2 修复（取号即入历史，动作即改状态）
+
+- `PosCallNumberMapper.insertCallRecordIfAbsent`：`INSERT ... SELECT ... WHERE NOT EXISTS`，幂等补建 pending 历史行（自动带 order_number/table_name/order_type/call_number）；
+- `PosCallNumberServiceImpl` 在**三条路径**上都补历史：新取号成功、幂等读回既有号、并发抢号回读；
+- `/call` → `status=called`、`call_count+1`、`first_call_time=COALESCE(...)`、`last_call_time=NOW()`；`/recall` 继续累加；`/pickup` → `status=picked`、`pick_time=NOW()`、`wait_seconds` 由 first_call_time 计算；实测定时链路全部生效。
+
+### 15.3 历史假数据清理
+
+新增可复放脚本 `scripts/db-fix/2026-10-23-call-record-backfill.sql`：
+1. 用 `orders.call_number` 回填缺失的 `call_record.call_number`；
+2. `picked` 但无 `pick_time` 的用 `update_time` 兜底；
+3. `called` 但无 `first_call_time` 的用 `last_call_time` 兜底；
+4. 删除「无号且无对应订单」的孤立行。
+连跑两次验证可复放（第二次全部 0 行影响），最终 `call_record` 42 行 **0 行缺号**。
+
+### 15.4 巡检升级：从「正向写入」到「写→查→统计」闭环
+
+`scripts/e2e_pos_experience.py` 新增 4 个闭环区块（共 29 项断言）：
+
+| 区块 | 闭环动作序列 |
+|---|---|
+| E 叫号历史 | 下单 → 历史能查到 → 呼叫（callCount=1/首次时间）→ 重叫（=2）→ 取餐（pickTime/waitSeconds）→ 统计 picked≥1 → 再查历史状态为 picked |
+| F 订单历史 | 今日列表非空 → 关键字段齐全 → 详情与列表一致 |
+| G 库存流水 | 分页有数据 → 时间/类型/变动量非空 → 扣料流水 remark 可追溯到订单号 |
+| H 日结对账 | 列表可查 → **主动生成今日日结** → 回查必须有该日记录且含营收 |
+
+鉴权：收银员 token 覆盖 POS 端点；库存/日结用 dev secret 自签 admin token（`inventory:query` + ROLE_admin）。
+
+### 15.5 本轮验证
+
+| 项 | 结果 |
+|---|---|
+| `scripts/e2e_pos_experience.py` | **PASS=28 / FAIL=0 / SKIP=1**（5 个 QA 测试菜无图） |
+| `scripts/e2e_core_chain.py` | 核心链路全绿（12 断言） |
+| `scripts/e2e_wip_pages.py` | 11 项全绿 |
+| frontend / frontend-pos `vue-tsc` | 0 error / 0 error |
+| `mvn -o -B compile` | BUILD SUCCESS |
+
+### 15.6 顺带发现并记录（未改）
+
+- 库存流水（`/v1/inventory/logs`）的订单号不在独立列，而是拼在 `remark`（「KDS完成制作扣料 - 订单:T2026…」），报表按单号聚合只能靠字符串解析 —— 建议加 `business_id` 列；
+- 日结列表历史数据里 `storeName`/`totalCost`/`netProfit` 为 null（旧记录未回填），今日新建记录正常；
+- 叫号 `orderType` 落的是数字字符串（"0"），历史页展示需前端映射，建议后端直接给中文名。
