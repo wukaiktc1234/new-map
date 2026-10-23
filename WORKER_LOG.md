@@ -207,3 +207,40 @@
   启动：$env:JAVA_HOME='P:\my-new-project\JDK21'; mvn -o spring-boot:run -Dspring-boot.run.profiles=pg
 - 本地 Postgres：PostgreSQL\18\bin\pg_ctl -D PostgreSQL\18\data start|stop（SCM Start-Service 无权限）。
 - scripts/e2e_pos_kitchen.py 的支付步骤仍会失败（路由遗留问题，见 §1.1-3）；核心链路以 e2e_core_chain.py 为准。
+
+---
+
+## 9. 长线循环进度更新（无人值守第二轮）
+
+### 9.1 循环 B 新增单测（累计 5 类 / 42 例，全部绿）
+
+| 测试类 | 用例 | 覆盖要点 |
+|---|---|---|
+| LocationServiceImplTest | 10 | null 短路、deleted=1 不可见、三类解析委托、未映射禁止数值兜底 |
+| MemberLevelServiceImplTest | 8 | 启用列表条件与排序、升级判定（最高达标等级/消费门槛/无门槛/无等级）、等级分布 |
+| ProductEntityServiceImplTest | 7 | 按 code 查、成本价/供应商更新、写库失败如实返回 false |
+| FinanceAccountServiceImplTest | 6 | 科目树（扁平化缺陷已特征化）、按类型/父级/编码 |
+| OperationLogServiceImplTest | 4 | 写入、写失败吞异常契约、条件查询透传 |
+
+写 ServiceImpl 单测的三个坑（已固化进代码注释，后续照抄）：
+1. `baseMapper` 是父类泛型字段，`@InjectMocks` 注入不进去，必须反射塞：`ServiceImpl.class.getDeclaredField("baseMapper")`；
+2. `ServiceImpl.getOne(wrapper)` 实际调用的是 `baseMapper.selectOne(wrapper, throwEx)` **双参重载**，单参 stub 会拿到 null；
+3. 断言 `LambdaQueryWrapper` 的 SQL 前要先 `TableInfoHelper.initTableInfo`，且 ORDER BY 在 `getCustomSqlSegment()`。
+
+### 9.2 顺带修掉的健壮性缺陷（非业务语义）
+
+- `MemberLevelServiceImpl.calculateUpgradeLevel` 直接对 `listEnabledLevels()` 的返回**就地 sort**，若 mapper/上层返回不可变集合会抛 `UnsupportedOperationException`；改为防御性拷贝 `new ArrayList<>(...)`。
+
+### 9.3 循环 C 前端 TS（253 → 175，累计修 78 条）
+
+| 批次 | 修复 | 条数 |
+|---|---|---|
+| 1 | inventory.ts 块注释未闭合、DisposalStatus 值导入、StatusColorType 补 4 色、hr 菜单属性名、permissions.ts 重复键 | 56 |
+| 2 | purchase 查询参数补 departmentName、ECharts tooltipOption 索引签名、收货详情空值保护、MemberDetail 图标/充值方案/列类型、HRAttendance+HRRecruitment 列类型与 size、HROnboarding 分页参数、AssetLedger 空安全 | 22 |
+
+剩余 175 条里 **103 条在 Owner WIP 未跟踪文件**（ReceivingMobile.vue 85 / BankAccountManage.vue 18），按纪律不碰；可动的是 72 条。
+
+### 9.4 已登记未修的缺陷（只记录）
+
+- `FinanceAccountServiceImpl.buildAccountTree`：递归算出 children 却从不挂回 account，返回的树只有顶层节点（已用测试固化现状，改它属业务语义变更）。
+- `MemberList.vue`：`loadRechargePlans` / `rechargePlanList` / `RechargePaymentMethod` 被引用但未定义（疑似删代码残留），属功能缺口，未擅自补实现。
