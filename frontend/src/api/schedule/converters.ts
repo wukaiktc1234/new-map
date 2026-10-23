@@ -18,6 +18,7 @@ import type {
   SendStatus,
   NotificationChannel,
 } from '@/types/schedule'
+import logger from '@/utils/logger'
 
 // ============================================================
 // 一、排班计划状态映射
@@ -363,7 +364,7 @@ export const swapRequestConverter = {
       try {
         return JSON.parse(value) as T[]
       } catch {
-        console.warn('[SwapConverter] JSON解析失败:', value)
+        logger.warnMessage('[SwapConverter] JSON解析失败:', value)
         return []
       }
     }

@@ -8,6 +8,7 @@
  * 4. 错误收集与报告
  */
 
+import logger from '@/utils/logger'
 /** 导入错误信息 */
 export interface ImportError {
   row: number
@@ -43,8 +44,8 @@ export interface ImportResult<T> {
  *   { prop: 'age', label: '年龄', required: true, validator: (v) => !isNaN(Number(v)) },
  * ])
  *
- * console.log(result.data)     // 成功解析的数据
- * console.log(result.errors)    // 错误详情
+ * logger.logMessage(result.data)     // 成功解析的数据
+ * logger.logMessage(result.errors)    // 错误详情
  * ```
  */
 export async function importFromCSV<T>(
@@ -156,7 +157,7 @@ export async function importFromCSV<T>(
 
         resolve({ data, errors })
       } catch (error) {
-        console.error('[importFromCSV] 解析失败:', error)
+        logger.errorMessage('[importFromCSV] 解析失败:', error)
         resolve({
           data: [],
           errors: [{ row: 0, message: `文件解析失败: ${error instanceof Error ? error.message : '未知错误'}` }],

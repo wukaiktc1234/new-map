@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Setting, Select, InfoFilled, Loading, House, School, OfficeBuilding, Flag } from '@element-plus/icons-vue'
 import StatusTag from '@/components/core/StatusTag.vue'
 import { usePermissionStore } from '@/stores/permission'
+import logger from '@/utils/logger'
 
 /**
  * 权限中心 4 种模式 - TemplateManagementTab
@@ -120,7 +121,7 @@ async function loadTemplates(): Promise<void> {
 
 onMounted(() => {
   loadTemplates().catch(err => {
-    console.error('[TemplateManagement] 加载模板失败:', err)
+    logger.errorMessage('[TemplateManagement] 加载模板失败:', err)
   })
 })
 
@@ -159,7 +160,7 @@ async function confirmApply() {
     }
     applyConfirmVisible.value = false
   } catch (storeError: unknown) {
-    console.error('[Template] Store层应用失败:', storeError)
+    logger.errorMessage('[Template] Store层应用失败:', storeError)
     ElMessage.error('应用模板失败，请重试')
   } finally {
     loading.value = false

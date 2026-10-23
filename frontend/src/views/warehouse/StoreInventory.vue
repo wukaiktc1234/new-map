@@ -37,6 +37,7 @@ import { useCrudTable, type CrudApi } from '@/composables/useCrudTable'
 import type { InventoryInfo, InventoryQueryForm, InventoryStatus } from '@/types/warehouse-inventory'
 import type { CategoryOption } from '@/types/product'
 import type { WarehouseInfo } from '@/types/warehouse'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -385,7 +386,7 @@ async function loadTransactionRecords(materialId: string, warehouseId: string) {
     // API 调用失败时显示空列表，不使用假数据
     transactionRecords.value = []
     if (error instanceof Error) {
-      console.error('[StoreInventory] 加载库存变动记录失败:', error.message)
+      logger.errorMessage('[StoreInventory] 加载库存变动记录失败:', error.message)
     }
   } finally {
     transactionLoading.value = false

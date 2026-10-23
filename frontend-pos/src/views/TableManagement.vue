@@ -272,6 +272,7 @@ import {
 import QrcodeVue from 'qrcode.vue'
 import request from '../api/request'
 import { formatDateTimeMinute } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface DiningTable {
   id: number
@@ -385,7 +386,7 @@ const loadTables = async () => {
     tables.value = Array.isArray(tablesRes) ? tablesRes : (tablesRes?.data || [])
     areas.value = Array.isArray(areaRes) ? areaRes : (areaRes?.data || [])
   } catch (error) {
-    console.error('加载桌台失败:', error)
+    logger.errorMessage('加载桌台失败:', error)
     ElMessage.error('加载桌台失败')
   } finally {
     loading.value = false

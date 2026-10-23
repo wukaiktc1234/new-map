@@ -43,6 +43,7 @@ import { assetApi } from '@/api/asset'
 
 import type { AssetStatisticsVO, CategoryStatVO, MonthlyTrendItem } from '@/types/asset'
 import { AssetStatus } from '@/types/asset'
+import logger from '@/utils/logger'
 
 const { chartColors, xAxisBaseOption, yAxisBaseOption, tooltipOption, legendOption, pieLabelStyle } = useEChartsTheme()
 
@@ -231,8 +232,7 @@ async function loadStatsOverview(): Promise<void> {
     statsOverview.value = data
   } catch (err) {
     statsOverview.value = null
-    // eslint-disable-next-line no-console
-    console.error('[AssetOverview] 加载统计概览失败:', err)
+    logger.errorMessage('[AssetOverview] 加载统计概览失败:', err)
   }
 }
 

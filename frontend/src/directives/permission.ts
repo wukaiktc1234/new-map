@@ -19,6 +19,7 @@
 
 import type { Directive, DirectiveBinding } from 'vue'
 import { usePermissionStore } from '@/stores/permission'
+import logger from '@/utils/logger'
 
 /** 标记元素被权限指令隐藏的data属性 */
 const PERMISSION_HIDDEN_ATTR = 'data-permission-hidden'
@@ -57,10 +58,10 @@ function getUserPermissions(): string[] {
  */
 function getFallbackPermissions(): string[] {
   if (import.meta.env.DEV) {
-    console.warn('[v-permission] 未检测到权限数据，已启用开发模式降级（超级管理员）')
+    logger.warnMessage('[v-permission] 未检测到权限数据，已启用开发模式降级（超级管理员）')
     return ['*']
   }
-  console.warn('[v-permission] 未检测到权限数据，生产环境不启用降级，所有受保护元素将隐藏')
+  logger.warnMessage('[v-permission] 未检测到权限数据，生产环境不启用降级，所有受保护元素将隐藏')
   return []
 }
 
@@ -194,7 +195,7 @@ function applyPermissionCheck(
   const requiredPermission = value
 
   if (!requiredPermission) {
-    console.warn('[v-permission] 未指定权限标识符')
+    logger.warnMessage('[v-permission] 未指定权限标识符')
     return
   }
 

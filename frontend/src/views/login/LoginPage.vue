@@ -32,6 +32,7 @@ import {
 import { usePermissionStore } from '@/stores/permission'
 import { authApi } from '@/api/auth'
 import type { LoginResult } from '@/api/auth'
+import logger from '@/utils/logger'
 
 // ========== 路由和Store ==========
 const router = useRouter()
@@ -291,7 +292,7 @@ async function fetchCaptcha(): Promise<void> {
       loginForm.captcha = ''
     }
   } catch (error) {
-    console.error('[Login] 获取验证码失败:', error)
+    logger.errorMessage('[Login] 获取验证码失败:', error)
   } finally {
     captchaLoading.value = false
   }
@@ -316,7 +317,7 @@ async function fetchRegisterCaptcha(): Promise<void> {
       registerForm.captcha = ''
     }
   } catch (error) {
-    console.error('[Register] 获取验证码失败:', error)
+    logger.errorMessage('[Register] 获取验证码失败:', error)
   } finally {
     registerCaptchaLoading.value = false
   }
@@ -566,9 +567,13 @@ async function tryDevAutoLogin(): Promise<boolean> {
 
 // ========== 忘记密码 ==========
 
-/** 跳转到忘记密码页面 */
+/**
+ * 忘记密码
+ * 说明：系统没有自助找回页面（未注册 /forgot-password 路由），
+ * 原 router.push('/forgot-password') 属死链，改为提示联系管理员重置。
+ */
 const handleForgotPassword = (): void => {
-  router.push('/forgot-password')
+  ElMessage.info('请联系管理员重置密码')
 }
 
 // ========== 初始化 ==========

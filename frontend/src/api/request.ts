@@ -60,7 +60,7 @@ let mockFallbackTriggered = false
 export function markMockFallback(): void {
   if (!mockFallbackTriggered) {
     mockFallbackTriggered = true
-    console.warn(
+    logger.warnMessage(
       '%c[API] 检测到 Mock fallback，部分接口使用本地演示数据',
       'color: #E6A23C; font-weight: bold; padding: 2px 8px; background: #FDF6EC; border-radius: 4px;'
     )
@@ -305,7 +305,7 @@ request.interceptors.response.use(
       }
 
       // silentGet/silentPost 的契约就是「调用方自行处理」，这里不能再打 error 级日志，
-      // 否则财务详情里的权限降级探测会刷出一串 403 console 噪音（E2E 按 console.error 判定会判失败）
+      // 否则财务详情里的权限降级探测会刷出一串 403 控制台噪音（E2E 按控制台 error 输出判定会判失败）
       if (silentError) {
         logger.info('Response', `业务错误 [${res.code}]（silent，由调用方处理）`, errorMessage)
       } else {
@@ -404,7 +404,7 @@ function enableMockMode(): void {
   if (!MOCK_ALLOWED) return
   if (!mockModeEnabled) {
     mockModeEnabled = true
-    console.warn(
+    logger.warnMessage(
       '%c[API] 已自动切换到 Mock 数据模式',
       'color: #E6A23C; font-weight: bold; padding: 2px 8px; background: #FDF6EC; border-radius: 4px;'
     )

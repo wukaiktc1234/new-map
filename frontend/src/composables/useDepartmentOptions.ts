@@ -13,6 +13,7 @@
 import { ref, type Ref } from 'vue'
 import { departmentApi } from '@/api/hr/department'
 import type { DepartmentDTO } from '@/types/hr'
+import logger from '@/utils/logger'
 
 /** 部门下拉选项（扁平结构，便于 el-select 直接使用） */
 export interface DepartmentOption {
@@ -22,8 +23,11 @@ export interface DepartmentOption {
   name: string
   /** 部门编码 */
   code?: string
-  /** 父部门 ID */
-  parentId?: string | null
+  /**
+   * 父部门 ID（R6 统一语义：顶级组织 = null）
+   * 后端可能下发 0 / '0' / null / ''，一律归一成 null，便于「上级组织」下拉匹配「无上级（顶级组织）」。
+   */
+  parentId?: number | null
   /** 部门层级 */
   level?: number
   /** 部门类型（company/department/store/team/office/group） */
@@ -32,6 +36,16 @@ export interface DepartmentOption {
   label: string
   /** 原始节点 */
   raw: DepartmentDTO
+}
+
+/**
+ * 归一上级部门ID：0 / '0' / '' / null / undefined 都表示「顶级组织」，统一返回 null（R6）。
+ */
+function toParentIdNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null
+  const num = Number(raw)
+  if (!Number.isFinite(num) || num <= 0) return null
+  return num
 }
 
 /** 将树结构扁平化为下拉选项列表 */
@@ -50,7 +64,7 @@ function flattenTree(
       id: String(node.id ?? ''),
       name: node.name,
       code: node.code,
-      parentId: node.parentId,
+      parentId: toParentIdNumber(node.parentId),
       level: node.level,
       type: node.type,
       label: label || node.name,
@@ -107,7 +121,7 @@ export function useDepartmentOptions(autoLoad = false): {
           id: String(d.id ?? ''),
           name: d.name,
           code: d.code,
-          parentId: d.parentId,
+          parentId: toParentIdNumber(d.parentId),
           level: d.level,
           type: d.type,
           label: d.name,
@@ -120,8 +134,7 @@ export function useDepartmentOptions(autoLoad = false): {
         departmentOptions.value = []
         departmentTree.value = []
         error.value = err instanceof Error ? err.message : '加载部门列表失败'
-        // eslint-disable-next-line no-console
-        console.error('[useDepartmentOptions] 加载部门数据失败:', innerErr)
+        logger.errorMessage('[useDepartmentOptions] 加载部门数据失败:', innerErr)
       }
     } finally {
       loading.value = false

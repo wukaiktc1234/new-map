@@ -433,6 +433,7 @@ import {
 import QrcodeVue from 'qrcode.vue'
 import { posApi, type OrderResult, type MemberBalance } from '@/api/posApi'
 import { formatDateTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface CartItem {
   id: string;
@@ -831,7 +832,7 @@ const handleAutoPrint = async (orderId: string) => {
     printStatus.value = 'success'
     ElMessage.success('小票已打印')
   } catch (error) {
-    console.error('小票打印失败:', error)
+    logger.errorMessage('小票打印失败:', error)
     printStatus.value = 'fail'
     ElMessage.warning('小票打印失败，请手动打印')
   } finally {

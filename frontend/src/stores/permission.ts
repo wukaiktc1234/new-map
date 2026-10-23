@@ -4,6 +4,7 @@ import type { MenuGroupConfig, MenuOverride, MenuTemplateConfig, ScaleLevel, Sub
 import { safeJsonParse } from '@/utils/storage'
 import { permissionTemplateApi, parseRoleConfig } from '@/api/system/permission-template'
 import { authApi } from '@/api/auth'
+import logger from '@/utils/logger'
 
 /**
  * 权限模板后端数据结构（已转换后）
@@ -479,7 +480,7 @@ export const usePermissionStore = defineStore('permission', () => {
         me = await authApi.getCurrentUser()
       } catch (error) {
         // /me 失败（token 无效/过期/服务异常）→ 登出，fail-closed，绝不降级放行
-        console.warn('[Permission] /v1/auth/me 获取用户信息失败，执行登出（fail-closed）:', error)
+        logger.warnMessage('[Permission] /v1/auth/me 获取用户信息失败，执行登出（fail-closed）:', error)
         clearUserInfo()
         localStorage.removeItem('token')
         localStorage.removeItem('refresh_token')
@@ -538,7 +539,7 @@ export const usePermissionStore = defineStore('permission', () => {
               localStorage.setItem('menu-template', activeCode)
             }
           } catch (e) {
-            console.warn('[Permission] 读取服务端激活模板失败，本次不应用模板:', e)
+            logger.warnMessage('[Permission] 读取服务端激活模板失败，本次不应用模板:', e)
           }
         }
       } else {
@@ -550,7 +551,7 @@ export const usePermissionStore = defineStore('permission', () => {
         fetchPermissionTemplates().catch(() => {})
       }
     } catch (error) {
-      console.error('[Permission] 初始化失败:', error)
+      logger.errorMessage('[Permission] 初始化失败:', error)
       // 异常时清除认证状态，不授予任何权限
       userInfo.value = null
     } finally {
@@ -832,7 +833,7 @@ export const usePermissionStore = defineStore('permission', () => {
   function registerMenuGroup(config: MenuGroupConfig): void {
     // F-008: 初始化完成后禁止动态注册（防止运行时注入恶意菜单）
     if (registrationLocked.value) {
-      console.warn(
+      logger.warnMessage(
         `[Permission] ⚠️ 菜单注册已锁定，忽略「${config.title}(${config.id})」的注册请求。` +
         `所有菜单应在应用启动时通过 registerAllMenus() 统一注册。`
       )
@@ -1037,7 +1038,7 @@ export const usePermissionStore = defineStore('permission', () => {
   function applyTemplate(templateId: string): void {
     // F-009: 防止重复点击（防重放锁）
     if (isApplyingTemplate.value) {
-      console.warn('[Permission] 模板应用正在进行中，忽略重复调用')
+      logger.warnMessage('[Permission] 模板应用正在进行中，忽略重复调用')
       return
     }
     isApplyingTemplate.value = true
@@ -1053,7 +1054,7 @@ export const usePermissionStore = defineStore('permission', () => {
       const tpl = permissionTemplates.value.find(t => t.templateCode === templateId)
       const brokenRoles = validateChainIntegrity(tpl)
       if (brokenRoles.length > 0) {
-        console.warn('[Permission] 供应链铁三角断裂（product/purchase/store-ops 未全开）:', brokenRoles.join('; '))
+        logger.warnMessage('[Permission] 供应链铁三角断裂（product/purchase/store-ops 未全开）:', brokenRoles.join('; '))
         addAuditLog({
           eventType: 'TEMPLATE_APPLIED',
           eventName: '权限模板供应链链完整性告警',
@@ -1080,7 +1081,7 @@ export const usePermissionStore = defineStore('permission', () => {
 
       // 持久化激活模板到服务端（多终端一致；失败仅 warn，不影响本地生效）
       permissionTemplateApi.setActiveTemplate(templateId).catch((err: unknown) => {
-        console.warn('[Permission] 激活模板持久化失败（仅本终端生效）:', err)
+        logger.warnMessage('[Permission] 激活模板持久化失败（仅本终端生效）:', err)
       })
     } finally {
       // 无论成功还是异常，都释放锁（同步执行场景下立即释放，为未来异步化预留）
@@ -1161,7 +1162,7 @@ export const usePermissionStore = defineStore('permission', () => {
       menusResolved.value = false
       menuVersion.value++
     } catch (error) {
-      console.error('[Permission] 加载权限模板失败:', error)
+      logger.errorMessage('[Permission] 加载权限模板失败:', error)
       // 加载失败时使用 fallback 默认模板（避免 UI 空白）
       permissionTemplates.value = getFallbackTemplates()
       templatesLoaded.value = true

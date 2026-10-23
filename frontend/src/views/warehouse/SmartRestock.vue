@@ -17,6 +17,7 @@ import type { PurchaseSuggestionItem, AIModelType, ModelSuggestionResult } from 
 import type { InventoryStatsOverview } from '@/types/warehouse-stats'
 import type { UrgencyLevel, SuggestionStatus, SuggestionRecord, SuggestionRecordItem } from '@/types/warehouse-smart-restock'
 import type { StatColorType } from '@/types/stat'
+import logger from '@/utils/logger'
 
 const router = useRouter()
 
@@ -92,7 +93,7 @@ async function loadStats() {
     statsOverview.value = res
   } catch (error: unknown) {
     // 统计加载失败不阻塞页面
-    console.error('加载统计概览失败', error)
+    logger.errorMessage('加载统计概览失败', error)
   }
 }
 

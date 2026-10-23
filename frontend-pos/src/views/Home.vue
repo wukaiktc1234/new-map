@@ -150,6 +150,7 @@ import { useHangingOrder } from '@/composables/useHangingOrder'
 import { useCustomerDisplayStore } from '@/stores/customer-display'
 import { useTheme } from '@/composables/useTheme'
 import { formatDate } from '@/utils/format'
+import logger from '@/utils/logger'
 
 const router = useRouter()
 
@@ -311,7 +312,7 @@ const queryOrdersSilent = async () => {
       }
     }
   } catch (error) {
-    console.error('静默查询订单失败:', error)
+    logger.errorMessage('静默查询订单失败:', error)
   }
 }
 
@@ -335,7 +336,7 @@ const queryOrders = async () => {
     }
   } catch (error) {
     // 订单查询失败时显示空列表，由用户决定是否重试
-    console.error('查询订单失败:', error)
+    logger.errorMessage('查询订单失败:', error)
     orderList.value = []
   }
 }
@@ -350,7 +351,7 @@ const viewOrderDetail = async (order: any) => {
       currentOrder.value = { ...order, ...result }
     }
   } catch (error) {
-    console.error('获取订单详情失败:', error)
+    logger.errorMessage('获取订单详情失败:', error)
   }
 }
 
@@ -520,7 +521,7 @@ onMounted(async () => {
     wsOrderStatusSubscription = await webSocketService.subscribe('/topic/orders/status', handleOrderStatusChange)
     wsOrderRefundSubscription = await webSocketService.subscribe('/topic/orders/refund', handleOrderRefund)
   } catch (error) {
-    console.error('WebSocket连接失败:', error)
+    logger.errorMessage('WebSocket连接失败:', error)
     // WebSocket连接失败时，设置一个较长的备用刷新间隔（30分钟）
     menuRefreshTimer = window.setInterval(() => {
       loadMenu(true)

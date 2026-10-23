@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// 【保留 · 待 Owner 裁决】员工自助门户入口，疑似产品规划中但尚未接线路由；
+// 当前 frontend/src 内无任何引用（router 未注册、无组件导入），暂不删除。
 import { ref, computed } from 'vue'
 import {
   User, Calendar, Money, Document, Reading,

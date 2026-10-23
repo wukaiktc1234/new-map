@@ -30,6 +30,7 @@ import {
   resolveIcon,
 } from '@/composables/useDomainPermission'
 import type { DomainAccessLevel } from '@/types/domain-permission'
+import logger from '@/utils/logger'
 
 const {
   // 状态
@@ -95,7 +96,7 @@ function getLevel(domainCode: string, roleCode: string): DomainAccessLevel {
 // ========== 模板切换 ==========
 function onTemplateChange(code: string): void {
   selectTemplate(code).catch((error) => {
-    console.error('[DomainPermissionTab] 切换模板失败:', error)
+    logger.errorMessage('[DomainPermissionTab] 切换模板失败:', error)
     ElMessage.error('切换模板失败')
   })
 }

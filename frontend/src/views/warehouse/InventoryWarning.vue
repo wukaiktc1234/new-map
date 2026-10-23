@@ -16,6 +16,7 @@ import { inventoryWarningApi, inventoryStatsApi, warehouseApi, inventoryWarningC
 import type { InventoryWarningRecordInfo, WarningType, WarningRecordQueryForm, WarningHandleForm } from '@/types/warehouse-warning'
 import type { WarehouseInfo } from '@/types/warehouse'
 import type { InventoryStatsOverview } from '@/types/warehouse-stats'
+import logger from '@/utils/logger'
 
 const router = useRouter()
 const { loading, pagination, handleSearch: stdSearch, handleReset: stdReset } = useStandardPage({
@@ -52,7 +53,7 @@ async function loadStats() {
     statsOverview.value = res
   } catch (error: unknown) {
     // 统计加载失败不阻塞页面
-    console.error('加载预警统计失败', error)
+    logger.errorMessage('加载预警统计失败', error)
   }
 }
 

@@ -148,6 +148,7 @@ import {
 } from '@element-plus/icons-vue';
 import type { KitchenOrderFullDTO, KitchenDishItem } from '@/types/kitchen';
 import { useKitchenStore } from '@/stores/kitchen';
+import logger from '@/utils/logger'
 
 // Props定义
 interface Props {
@@ -168,7 +169,7 @@ const parsedDishItems = computed<KitchenDishItem[]>(() => {
     }
     return props.order.dishItems as KitchenDishItem[];
   } catch (error) {
-    console.error('解析菜品列表失败:', error);
+    logger.errorMessage('解析菜品列表失败:', error);
     return [];
   }
 });
@@ -221,7 +222,7 @@ async function handleStartMake(): Promise<void> {
       ElMessage.error('操作失败');
     }
   } catch (error) {
-    console.error('开始制作失败:', error);
+    logger.errorMessage('开始制作失败:', error);
     ElMessage.error('操作失败');
   }
 }
@@ -236,7 +237,7 @@ async function handleComplete(): Promise<void> {
       ElMessage.error('操作失败');
     }
   } catch (error) {
-    console.error('完成制作失败:', error);
+    logger.errorMessage('完成制作失败:', error);
     ElMessage.error('操作失败');
   }
 }
@@ -262,7 +263,7 @@ async function handleServe(): Promise<void> {
     }
   } catch (error: unknown) {
     if (error !== 'cancel') {
-      console.error('出餐失败:', error);
+      logger.errorMessage('出餐失败:', error);
       ElMessage.error('操作失败');
     }
   }

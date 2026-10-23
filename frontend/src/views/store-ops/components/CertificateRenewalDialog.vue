@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
 import { Upload, Delete, Document, InfoFilled } from '@element-plus/icons-vue'
 import type { Certificate, CreateExpenseDTO } from '@/types/store-operation'
+import logger from '@/utils/logger'
 
 interface Props {
   modelValue: boolean
@@ -223,7 +224,7 @@ async function handleSubmit() {
 
     emit('update:modelValue', false)
   } catch (error) {
-    console.error('[CertificateRenewal] 提交失败:', error)
+    logger.errorMessage('[CertificateRenewal] 提交失败:', error)
     ElMessage.error('提交失败，请重试')
   } finally {
     submitLoading.value = false

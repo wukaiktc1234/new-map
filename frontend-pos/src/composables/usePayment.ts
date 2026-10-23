@@ -1,6 +1,7 @@
 import { ref, watch, nextTick, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { posApi, type OrderResult, type OrderRequest } from '@/api/posApi'
+import logger from '@/utils/logger'
 
 export function usePayment(
   cart: Ref<any[]>,
@@ -178,7 +179,7 @@ export function usePayment(
             inputElement.select()
           }
         } catch (e) {
-          console.error('聚焦失败:', e)
+          logger.errorMessage('聚焦失败:', e)
         }
       }
     }

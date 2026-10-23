@@ -33,6 +33,7 @@ import {
   getStoreTypeLabel,
   getStoreStatusLabel,
 } from '@/types/store-operation/store-archive'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -329,7 +330,7 @@ async function handleImport(uploadFile: UploadFile): Promise<void> {
     importLoading.value = true
     ElMessage.info('导入功能开发中...')
   } catch (error) {
-    console.error('导入失败:', error)
+    logger.errorMessage('导入失败:', error)
     ElMessage.error(error instanceof Error ? error.message : '导入失败，请检查文件格式')
   } finally {
     importLoading.value = false
@@ -344,7 +345,7 @@ async function handleExport(): Promise<void> {
     exportLoading.value = true
     ElMessage.info('导出功能开发中...')
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.errorMessage('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportLoading.value = false

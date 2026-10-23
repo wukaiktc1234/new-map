@@ -11,6 +11,7 @@ import { useStandardPage } from '@/composables/useStandardPage'
 import { taskApi } from '@/api/store-ops/task'
 import { taskDataConverter } from '@/api/store-ops/converters'
 import type { PendingTask } from '@/types/store-operation'
+import logger from '@/utils/logger'
 
 const { pagination } = useStandardPage()
 const router = useRouter()
@@ -189,7 +190,7 @@ async function loadData() {
     allRecords.value = result.records
     filteredRecords.value = result.records
   } catch (error) {
-    console.error('[StorePendingTasks] 加载失败:', error)
+    logger.errorMessage('[StorePendingTasks] 加载失败:', error)
     ElMessage.error('加载数据失败，请重试')
   } finally {
     loading.value = false
@@ -308,7 +309,7 @@ async function markTaskCompleted(row: PendingTask, remark?: string): Promise<boo
       return false
     }
   } catch (error) {
-    console.error('[markTaskCompleted] 标记完成失败:', error)
+    logger.errorMessage('[markTaskCompleted] 标记完成失败:', error)
     ElMessage.error('操作失败，请重试')
     return false
   } finally {
@@ -400,7 +401,7 @@ const processStrategies: Record<string, (row: PendingTask) => Promise<void>> = {
       await markTaskCompleted(row, result)
     } catch (action: unknown) {
       if (action !== 'cancel' && action !== 'close') {
-        console.error('[inspection] 巡检录入异常:', action)
+        logger.errorMessage('[inspection] 巡检录入异常:', action)
       }
       // 取消或关闭时不做处理
     }
@@ -540,7 +541,7 @@ async function handleComplete(row: PendingTask) {
     }
   } catch (error: unknown) {
     if (error !== 'cancel') {
-      console.error('[handleComplete] 完成任务失败:', error)
+      logger.errorMessage('[handleComplete] 完成任务失败:', error)
       ElMessage.error('操作失败，请重试')
     }
   } finally {

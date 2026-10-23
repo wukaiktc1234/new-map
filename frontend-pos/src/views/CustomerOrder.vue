@@ -222,6 +222,7 @@ import request from '../api/request'
 import { usePosMenu } from '@/composables/usePosMenu'
 import { getFullImageUrl } from '@/utils/image'
 import { formatMonthDayTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface Category {
   categoryId: string
@@ -358,7 +359,7 @@ const loadTableInfo = async () => {
     const res = await request.get(`/v1/pos/tables/qrcode/${qrCode}`) as any
     table.value = res
   } catch (error) {
-    console.error('获取桌台信息失败:', error)
+    logger.errorMessage('获取桌台信息失败:', error)
   }
 }
 
@@ -367,7 +368,7 @@ const loadMenu = async () => {
     // P1-POS-MENU-UNIFICATION-001 (3a)：legacy /v1/pos/api/menu → 产品中心三接口（usePosMenu 共享数据源）
     await loadMenuData()
   } catch (error) {
-    console.error('加载菜单失败:', error)
+    logger.errorMessage('加载菜单失败:', error)
   } finally {
     loading.value = false
   }
@@ -436,7 +437,7 @@ const submitOrder = async () => {
     showCart.value = false
     cart.value = []
   } catch (error: any) {
-    console.error('下单失败:', error)
+    logger.errorMessage('下单失败:', error)
     ElMessage.error(error.response?.data?.message || error.message || '下单失败')
   }
 }
@@ -454,7 +455,7 @@ const loadMyOrders = async () => {
     const res = await request.get(`/v1/pos/orders/table/${table.value.tableNumber}`) as any
     myOrders.value = res || []
   } catch (error) {
-    console.error('加载订单失败:', error)
+    logger.errorMessage('加载订单失败:', error)
   } finally {
     loadingOrders.value = false
   }

@@ -1,3 +1,4 @@
+import logger from '@/utils/logger'
 export interface TTSConfig {
   provider: 'browser' | 'baidu' | 'xunfei' | 'aliyun' | 'tencent' | 'azure'
   enabled: boolean
@@ -57,7 +58,7 @@ const defaultConfig: TTSConfig = {
   repeatInterval: 3
 }
 
-export class TTSService {
+class TTSService {
   private config: TTSConfig
 
   constructor() {
@@ -78,7 +79,7 @@ export class TTSService {
         }
       }
     } catch (e) {
-      console.error('加载TTS配置失败:', e)
+      logger.errorMessage('加载TTS配置失败:', e)
     }
   }
 
@@ -197,7 +198,7 @@ export class TTSService {
 
   private async playWithCloudTTS(text: string): Promise<void> {
     if (!this.config.apiKey) {
-      console.warn('未配置API密钥，回退到浏览器语音')
+      logger.warnMessage('未配置API密钥，回退到浏览器语音')
       return this.playWithBrowser(text)
     }
 
@@ -228,7 +229,7 @@ export class TTSService {
       
       await audio.play()
     } catch (error) {
-      console.error('云端TTS错误，回退到浏览器语音:', error)
+      logger.errorMessage('云端TTS错误，回退到浏览器语音:', error)
       return this.playWithBrowser(text)
     }
   }

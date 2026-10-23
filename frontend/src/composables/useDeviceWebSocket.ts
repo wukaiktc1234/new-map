@@ -21,6 +21,7 @@ import { ref, onBeforeUnmount } from 'vue'
 import { Client } from '@stomp/stompjs'
 import type { IFrame, IMessage, StompSubscription } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
+import logger from '@/utils/logger'
 
 /**
  * 设备状态推送消息（对应后端 DeviceStatus 实体）
@@ -93,7 +94,7 @@ function parseMessage(body: string): DeviceStatusMessage | null {
   try {
     return JSON.parse(body) as DeviceStatusMessage
   } catch (error) {
-    console.error('[DeviceWebSocket] 解析消息体失败:', error)
+    logger.errorMessage('[DeviceWebSocket] 解析消息体失败:', error)
     return null
   }
 }
@@ -127,7 +128,7 @@ export function useDeviceWebSocket() {
   function scheduleReconnect(): void {
     if (manuallyDisconnected) return
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.warn(`[DeviceWebSocket] 已达最大重连次数 (${MAX_RECONNECT_ATTEMPTS})，停止重连`)
+      logger.warnMessage(`[DeviceWebSocket] 已达最大重连次数 (${MAX_RECONNECT_ATTEMPTS})，停止重连`)
       return
     }
     const delay = getReconnectDelay()
@@ -183,7 +184,7 @@ export function useDeviceWebSocket() {
         isConnected.value = false
       },
       onStompError: (frame: IFrame) => {
-        console.error('[DeviceWebSocket] STOMP 协议错误:', frame.headers['message'] || frame.body)
+        logger.errorMessage('[DeviceWebSocket] STOMP 协议错误:', frame.headers['message'] || frame.body)
       },
       onWebSocketError: () => {
         isConnected.value = false
@@ -236,7 +237,7 @@ export function useDeviceWebSocket() {
     connectionCallback = null
     if (client) {
       client.deactivate().catch((error: unknown) => {
-        console.error('[DeviceWebSocket] 断开连接失败:', error)
+        logger.errorMessage('[DeviceWebSocket] 断开连接失败:', error)
       })
       client = null
     }

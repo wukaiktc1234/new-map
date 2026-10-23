@@ -73,6 +73,7 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
 import { Html5Qrcode } from 'html5-qrcode'
+import logger from '@/utils/logger'
 
 const emit = defineEmits<{
   (e: 'scan', code: string): void
@@ -116,7 +117,7 @@ const startScanning = async () => {
       () => {}
     )
   } catch (err: any) {
-    console.error('启动摄像头失败:', err)
+    logger.errorMessage('启动摄像头失败:', err)
     isScanning.value = false
     
     let errorMsg = '无法启动摄像头'
@@ -141,7 +142,7 @@ const stopScanning = async () => {
       await html5QrCode.stop()
       html5QrCode.clear()
     } catch (err) {
-      console.error('停止扫描失败:', err)
+      logger.errorMessage('停止扫描失败:', err)
     }
   }
   isScanning.value = false

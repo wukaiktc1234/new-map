@@ -68,6 +68,18 @@ function restoreExpandedState(nodes: OrgNode[]) {
 const organizationData = ref<OrgNode[]>([])
 
 /**
+ * 归一上级组织ID（R6）：后端 0 / '0' / '' / null / undefined 都表示「顶级组织」，
+ * 前端 OrgNode.parentId 语义是 string | null，统一归一成 null。
+ * 注意：不能把 0 转成字符串 '0'，否则「上级组织」下拉匹配不到「无上级（顶级组织）」选项。
+ */
+function normalizeParentId(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null
+  const text = String(raw).trim()
+  if (text === '' || text === '0' || text === 'null' || text === 'undefined') return null
+  return text
+}
+
+/**
  * 将后端 DepartmentDTO 转换为前端 OrgNode
  * 兼容字段：employeeCount → headcount
  * @param dto 后端返回的 DepartmentDTO（类型来自后端，与前端 DepartmentDTO 接口存在差异）
@@ -83,7 +95,7 @@ function toOrgNode(dto: any): OrgNode {
     headcount: dto.employeeCount ?? 0,
     level: dto.level,
     code: dto.code,
-    parentId: dto.parentId != null ? String(dto.parentId) : null,
+    parentId: normalizeParentId(dto.parentId),
     sort: dto.sort,
     status: dto.status,
     children: Array.isArray(dto.children) ? dto.children.map(toOrgNode) : undefined,
@@ -324,7 +336,7 @@ function handleEditNode(node: OrgNode) {
   dialogInitialForm.value = {
     name: node.name,
     type: node.type,
-    parentId: node.parentId || null,
+    parentId: node.parentId ?? null,
     manager: node.manager || '',
     phone: node.phone || '',
     location: node.location || '',

@@ -9,6 +9,7 @@ import { useStandardPage } from '@/composables/useStandardPage'
 import { transferTemplateApi } from '@/api/finance'
 import type { FinanceTransferTemplate, FinanceTransferTemplateQueryForm } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
+import logger from '@/utils/logger'
 
 const { pagination } = useStandardPage()
 const searchForm = ref({ ruleStatus: '', keyword: '' })
@@ -68,7 +69,7 @@ async function loadData(): Promise<void> {
       status: t.enabled ? 'active' : 'inactive',
     }))
   } catch (error) {
-    console.error('加载自动凭证规则列表失败:', error)
+    logger.errorMessage('加载自动凭证规则列表失败:', error)
     records.value = []
     displayRecords.value = []
     pagination.total = 0

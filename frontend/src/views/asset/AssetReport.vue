@@ -121,7 +121,8 @@ const currentPageStats = computed(() => {
 const categoryTableData = computed(() => {
   const totalValue = categoryList.value.reduce((sum, c) => sum + (c.totalValue || 0), 0)
   return categoryList.value
-    .filter(c => !c.parentId || c.parentId === '0')
+    // R6 同口径：parentId 为 null/''/'0'/0 都视为顶级分类
+    .filter(c => Number(c.parentId ?? 0) === 0)
     .map(c => ({
       id: c.id,
       name: c.name,
@@ -156,7 +157,8 @@ const statusPieData = computed(() => {
 /* ===== 分类价值柱状图数据 ===== */
 const categoryBarData = computed(() =>
   categoryList.value
-    .filter(c => !c.parentId || c.parentId === '0')
+    // R6 同口径：parentId 为 null/''/'0'/0 都视为顶级分类
+    .filter(c => Number(c.parentId ?? 0) === 0)
     .map(c => ({ name: c.name, value: c.totalValue || 0 }))
     .filter(d => d.value > 0),
 )

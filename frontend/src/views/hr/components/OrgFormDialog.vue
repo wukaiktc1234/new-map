@@ -55,10 +55,19 @@ const emit = defineEmits<{
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 
+/**
+ * 「无上级（顶级组织）」选项的哨兵值。
+ * 不能用 '' / null 当 value：Element Plus 的 el-select 会把空值判定为"未选择"从而显示 placeholder，
+ * 导致编辑顶级组织时下拉仍是空白。用一个非空哨兵值才能真正回显该选项文案。
+ *
+ * 注意：必须定义在 orgForm 初始化之前（表单初值直接引用它）。
+ */
+const ROOT_PARENT_VALUE = '__root__'
+
 const orgForm = ref<OrgFormData>({
   name: '',
   type: 'company',
-  parentId: null,
+  parentId: ROOT_PARENT_VALUE,
   manager: '',
   phone: '',
   location: '',
@@ -84,7 +93,8 @@ function resetOrgForm(type: OrgType = 'company') {
   orgForm.value = {
     name: '',
     type,
-    parentId: null,
+    // 使用哨兵值以正确回显「无上级（顶级组织）」（'' 会被 el-select 当成未选择）
+    parentId: ROOT_PARENT_VALUE,
     manager: '',
     phone: '',
     location: '',
@@ -92,11 +102,22 @@ function resetOrgForm(type: OrgType = 'company') {
   }
 }
 
+/**
+ * 归一「上级组织」表单值（R6）：
+ * 后端 0 / '0' / null / undefined / '' 都表示顶级组织 → 统一转成哨兵值 ROOT_PARENT_VALUE。
+ */
+function normalizeFormParentId(raw: unknown): string {
+  if (raw === null || raw === undefined) return ROOT_PARENT_VALUE
+  const text = String(raw).trim()
+  if (text === '' || text === '0' || text === 'null' || text === 'undefined') return ROOT_PARENT_VALUE
+  return text
+}
+
 function fillForm(data: Partial<OrgFormData>) {
   orgForm.value = {
     name: data.name ?? '',
     type: data.type ?? 'company',
-    parentId: data.parentId ?? null,
+    parentId: normalizeFormParentId(data.parentId),
     manager: data.manager ?? '',
     phone: data.phone ?? '',
     location: data.location ?? '',
@@ -161,7 +182,7 @@ function collectParentOptions(
 
 /** 上级组织下拉选项（顶级固定为 null） */
 const parentOrgOptions = computed(() => {
-  const topOption = { label: '无上级（顶级组织）', value: '' }
+  const topOption = { label: '无上级（顶级组织）', value: ROOT_PARENT_VALUE }
   const excludeIds = new Set<string>()
   if (props.mode === 'edit' && props.editingNodeId) {
     const editingNode = findNodeById(props.nodes, props.editingNodeId)
@@ -184,8 +205,9 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const selectedParentId = orgForm.value.parentId ? String(orgForm.value.parentId).trim() : ''
-    const parentIdValue = selectedParentId ? Number(selectedParentId) : 0
+    // R6：顶级组织 → 后端 parentId = 0；子组织 → 真实父ID（number）
+    const selectedParentId = normalizeFormParentId(orgForm.value.parentId)
+    const parentIdValue = selectedParentId === ROOT_PARENT_VALUE ? 0 : Number(selectedParentId)
 
     if (props.mode === 'edit' && props.editingNodeId) {
       const dto: DeptUpdatePayload = {

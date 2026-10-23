@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// 【保留 · 暂未接入路由】P1-SEC-009 设备白名单待接线（STATUS.md 要求补路由 + SecurityConfig permitAll），
+// 当前 frontend/src 内无任何引用，保留勿删。
 /**
  * APK 设备白名单管理
  * 生成激活码、设备列表、禁用/启用

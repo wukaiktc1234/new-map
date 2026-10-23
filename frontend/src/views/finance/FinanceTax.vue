@@ -11,6 +11,7 @@ import { taxRateApi } from '@/api/finance'
 import { taxCalculationApi } from '@/api/finance/tax-calculation'
 import type { TaxRateConfig, TaxType } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
+import logger from '@/utils/logger'
 
 /** 当前激活的Tab */
 const activeTab = ref('records')
@@ -158,7 +159,7 @@ async function loadDeclarationRecords(): Promise<void> {
   } catch (error: unknown) {
     declarationRecords.value = []
     if (error instanceof Error) {
-      console.error('[FinanceTax] 加载申报表失败:', error.message)
+      logger.errorMessage('[FinanceTax] 加载申报表失败:', error.message)
     }
   } finally {
     declarationLoading.value = false

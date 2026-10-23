@@ -159,6 +159,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { formatDate, formatDateTime, formatTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface OrderItem {
   orderNumber: string
@@ -480,7 +481,7 @@ const loadTodayOrders = async (): Promise<void> => {
   } catch (error) {
     // 明细拿不到时静默降级（统计仍可能来自 /shift/summary）
     orders.value = []
-    console.warn('[交班] 订单明细加载失败：', resolveErrorMessage(error, '未知错误'))
+    logger.warnMessage('[交班] 订单明细加载失败：', resolveErrorMessage(error, '未知错误'))
   } finally {
     loading.value = false
   }
@@ -505,7 +506,7 @@ const loadShiftSummary = async (): Promise<void> => {
     shiftInfo.value = null
     summaryStartTime.value = ''
     summaryOrderStats.value = null
-    console.warn('[交班] 班次统计加载失败，已降级为本地统计：', resolveErrorMessage(error, '未知错误'))
+    logger.warnMessage('[交班] 班次统计加载失败，已降级为本地统计：', resolveErrorMessage(error, '未知错误'))
   } finally {
     summaryLoading.value = false
   }

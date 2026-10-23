@@ -1,5 +1,6 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import logger from '@/utils/logger'
 
 export interface CartItem {
   id: string
@@ -215,7 +216,7 @@ export function useCart() {
         currentOrderNumber.value = savedOrderNumber
       }
     } catch (e) {
-      console.error('从localStorage恢复购物车数据失败:', e)
+      logger.errorMessage('从localStorage恢复购物车数据失败:', e)
     }
   }
 

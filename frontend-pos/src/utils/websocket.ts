@@ -1,6 +1,7 @@
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import type { OrderStatusNotification, WebSocketConfig } from '@/types/websocket';
+import logger from '@/utils/logger'
 
 const getWebSocketUrl = (): string => {
   const host = window.location.hostname
@@ -92,7 +93,7 @@ class WebSocketService {
         };
 
         this.client.onStompError = (frame) => {
-          console.error('STOMP错误:', frame);
+          logger.errorMessage('STOMP错误:', frame);
           this.isConnected = false;
           this.connectionPromise = null;
           this.onConnectionChange?.(false);
@@ -103,7 +104,7 @@ class WebSocketService {
         };
 
         this.client.onWebSocketError = (event) => {
-          console.error('WebSocket错误:', event);
+          logger.errorMessage('WebSocket错误:', event);
           this.isConnected = false;
           this.onConnectionChange?.(false);
         };
@@ -123,7 +124,7 @@ class WebSocketService {
 
         this.client.activate();
       } catch (error) {
-        console.error('WebSocket初始化失败:', error);
+        logger.errorMessage('WebSocket初始化失败:', error);
         this.isConnected = false;
         this.connectionPromise = null;
         this.onConnectionChange?.(false);
@@ -150,7 +151,7 @@ class WebSocketService {
         const data = JSON.parse(message.body);
         callback(data);
       } catch (error) {
-        console.error('解析WebSocket消息失败:', error);
+        logger.errorMessage('解析WebSocket消息失败:', error);
       }
     });
 

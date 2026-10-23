@@ -33,6 +33,7 @@ import { useCrudTable, type CrudApi } from '@/composables/useCrudTable'
 import type { Food, FoodFormData, ProductPageParams, CategoryOption, ProductStatus, RecipeItemDTO } from '@/types/product'
 import { productDataConverter } from '@/api/product/converters'
 import { yuanToFen, fenToYuanNumber } from '@/utils/money'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -538,7 +539,7 @@ async function handleImport(uploadFile: UploadFile): Promise<void> {
     // 刷新列表数据
     refresh()
   } catch (error) {
-    console.error('导入失败:', error)
+    logger.errorMessage('导入失败:', error)
     ElMessage.error(error instanceof Error ? error.message : '导入失败，请检查文件格式')
   } finally {
     importLoading.value = false
@@ -585,7 +586,7 @@ async function handleExport(): Promise<void> {
 
     ElMessage.success('导出成功！文件已开始下载')
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.errorMessage('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportLoading.value = false

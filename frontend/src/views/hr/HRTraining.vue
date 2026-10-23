@@ -31,6 +31,7 @@ import {
   CoursePublishStatusOptions,
   CoursePublishStatusTagMap,
 } from '@/types/hr/training'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -310,7 +311,7 @@ async function handleImport(uploadFile: UploadFile): Promise<void> {
       importLoading.value = false
     }, 1500)
   } catch (error) {
-    console.error('导入失败:', error)
+    logger.errorMessage('导入失败:', error)
     ElMessage.error('导入失败，请检查文件格式')
     importLoading.value = false
   }
@@ -330,7 +331,7 @@ async function handleExport(): Promise<void> {
       exportLoading.value = false
     }, 1500)
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.errorMessage('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
     exportLoading.value = false
   }

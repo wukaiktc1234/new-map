@@ -19,6 +19,7 @@ import type {
   FundFlowStatistics,
   PageResponse,
 } from '@/types/finance'
+import logger from '@/utils/logger'
 
 /**
  * 剔除空值参数（''/undefined/null/NaN 一律不下发）
@@ -153,7 +154,7 @@ export const fundFlowApi = {
     }
     // 守卫：accountId 为空时后端 @PathVariable Long 会 400「参数类型不匹配：accountId」
     if (!isPresentId(accountId)) {
-      console.warn('[fundFlowApi.getByAccountId] accountId 为空，已跳过请求', { accountId })
+      logger.warnMessage('[fundFlowApi.getByAccountId] accountId 为空，已跳过请求', { accountId })
       return fallback
     }
     const query = mapQueryParams(params)
@@ -190,7 +191,7 @@ export const fundFlowApi = {
     endDate: string,
   ): Promise<FundFlowStatistics> {
     if (!isPresentId(accountId)) {
-      console.warn('[fundFlowApi.getStatisticsByAccount] accountId 为空，已跳过统计请求', { accountId, startDate, endDate })
+      logger.warnMessage('[fundFlowApi.getStatisticsByAccount] accountId 为空，已跳过统计请求', { accountId, startDate, endDate })
       return { totalIncome: 0, totalExpense: 0, netAmount: 0, count: 0 }
     }
     const query = compactParams({ startDate, endDate })

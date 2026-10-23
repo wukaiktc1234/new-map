@@ -10,6 +10,7 @@ import { budgetApi, BudgetStatusMap } from '@/api/finance'
 import type { FinanceBudget, BudgetStatus, BudgetType, FinanceBudgetQueryForm } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
 import BudgetFormDialog from './components/BudgetFormDialog.vue'
+import logger from '@/utils/logger'
 
 const { pagination } = useStandardPage()
 const searchForm = ref({ year: String(new Date().getFullYear()) })
@@ -121,7 +122,7 @@ async function loadData(): Promise<void> {
       }
     })
   } catch (error) {
-    console.error('加载预算列表失败:', error)
+    logger.errorMessage('加载预算列表失败:', error)
     records.value = []
     displayRecords.value = []
     pagination.total = 0

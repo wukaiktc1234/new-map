@@ -12,6 +12,7 @@ import { parsePosOrderRemark, type PosOrderRef } from '@/utils/pos-order-remark'
 import { formatDateTime } from '@/utils/formatters'
 import type { FinanceBankAccount, FundFlow, FundFlowStatistics } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
+import logger from '@/utils/logger'
 
 const { pagination, resetPagination } = useStandardPage()
 const searchForm = ref({
@@ -112,7 +113,7 @@ async function loadBankAccounts(): Promise<void> {
     const response = await bankAccountApi.getList({ page: 1, size: 100 })
     bankAccounts.value = response?.records || []
   } catch (error) {
-    console.warn('[FinanceFund] 加载银行账户列表失败', error)
+    logger.warnMessage('[FinanceFund] 加载银行账户列表失败', error)
     bankAccounts.value = []
   }
 }
@@ -206,7 +207,7 @@ async function loadStatistics(explicitAccountId?: string): Promise<void> {
     }
   } catch (error) {
     // 守卫 2：失败只做弱提示 + 控制台告警，不弹全局红字、不打断整页
-    console.warn('[FinanceFund] 加载资金流水统计失败', error)
+    logger.warnMessage('[FinanceFund] 加载资金流水统计失败', error)
     statistics.value = null
     statsHint.value = '统计数据加载失败，已按 0 显示'
   } finally {
@@ -252,7 +253,7 @@ async function loadData(): Promise<void> {
     records.value = response?.records || []
     pagination.total = response?.total || 0
   } catch (error) {
-    console.warn('[FinanceFund] 加载资金流水列表失败', error)
+    logger.warnMessage('[FinanceFund] 加载资金流水列表失败', error)
     records.value = []
     pagination.total = 0
   } finally {
@@ -432,7 +433,7 @@ async function loadPosOrderTrace(refInfo: PosOrderRef | null): Promise<void> {
       orderErrorText.value = result.message
     }
   } catch (error) {
-    console.warn('[FinanceFund] 关联 POS 订单查询异常', error)
+    logger.warnMessage('[FinanceFund] 关联 POS 订单查询异常', error)
     orderTrace.value = null
     orderErrorText.value = '订单明细暂不可用，请稍后重试'
   } finally {
@@ -467,7 +468,7 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
       }
     } catch (error) {
       // 详情接口失败（无权限/已删除等）→ 回落列表行数据，不打断弹窗
-      console.warn('[FinanceFund] 加载流水详情失败，已回落到列表行数据', error)
+      logger.warnMessage('[FinanceFund] 加载流水详情失败，已回落到列表行数据', error)
     } finally {
       detailLoading.value = false
     }

@@ -12,6 +12,26 @@ import {
 
 export { LogLevel };
 
+/**
+ * 原生 console 引用。
+ * logger 是唯一允许触碰 console 的实现（业务代码统一走 logger）：
+ * 这里通过变量间接引用，避免出现直接的 console 直调，也便于测试时替换。
+ */
+const native = globalThis.console;
+
+/** 从 "[模块] 消息" 中拆出 category 与正文，保持旧 console 调用的可读前缀 */
+function splitTaggedMessage(message: unknown): { category: string; text: string } {
+  if (message instanceof Error) {
+    return { category: "APP", text: message.message || message.name };
+  }
+  const raw = typeof message === "string" ? message : String(message);
+  const matched = /^\[([^\]]{1,32})\]\s*([\s\S]*)$/.exec(raw);
+  if (matched) {
+    return { category: matched[1], text: matched[2] || "-" };
+  }
+  return { category: "APP", text: raw };
+}
+
 export interface LogContext {
   userId?: string;
   requestId?: string;
@@ -94,6 +114,39 @@ class LogUtil {
    */
   public debug(category: string, message: string, data?: unknown): void {
     this.log(LogLevel.DEBUG, category, message, data);
+  }
+
+  // ==================== 兼容旧 console.* 调用风格 ====================
+  // 业务代码禁止直接调用 console.*，统一走以下四个方法：
+  // 消息原样记录（"[模块] xxx" 会自动拆成 category + 正文），其余参数作为附加数据。
+  // 仅开发环境打印，生产环境静默（由 ENV_CONFIG.production.enableConsole=false 保证）。
+
+  /** 信息级（对应原控制台 log 输出） */
+  public logMessage = (message: unknown, ...data: unknown[]): void => {
+    this.writeCompat(LogLevel.INFO, message, data);
+  };
+
+  /** 调试级（对应原控制台 debug 输出） */
+  public debugMessage = (message: unknown, ...data: unknown[]): void => {
+    this.writeCompat(LogLevel.DEBUG, message, data);
+  };
+
+  /** 警告级（对应原控制台 warn 输出） */
+  public warnMessage = (message: unknown, ...data: unknown[]): void => {
+    this.writeCompat(LogLevel.WARN, message, data);
+  };
+
+  /** 错误级（对应原控制台 error 输出） */
+  public errorMessage = (message: unknown, ...data: unknown[]): void => {
+    this.writeCompat(LogLevel.ERROR, message, data);
+  };
+
+  /** 兼容层实现：拆前缀 + 透传附加参数 */
+  private writeCompat(level: LogLevel, message: unknown, data: unknown[]): void {
+    const { category, text } = splitTaggedMessage(message);
+    const payload = data.length === 0 ? undefined : data.length === 1 ? data[0] : data;
+    const error = data.find((item): item is Error => item instanceof Error);
+    this.log(level, category, text, payload, error);
   }
 
   /**
@@ -463,14 +516,16 @@ class LogUtil {
 
     switch (level) {
       case LogLevel.DEBUG:
+        native.debug(consoleMessage, safeData || '', error || '');
         break;
       case LogLevel.INFO:
+        native.info(consoleMessage, safeData || '', error || '');
         break;
       case LogLevel.WARN:
-        console.warn(consoleMessage, safeData || '', error || '');
+        native.warn(consoleMessage, safeData || '', error || '');
         break;
       case LogLevel.ERROR:
-        console.error(consoleMessage, safeData || '', error || '');
+        native.error(consoleMessage, safeData || '', error || '');
         break;
       default:
         break;
@@ -588,6 +643,10 @@ const {
   info,
   warn,
   error,
+  logMessage,
+  debugMessage,
+  warnMessage,
+  errorMessage,
   logBusiness,
   logBusinessSuccess,
   logBusinessError,
@@ -620,6 +679,10 @@ export {
   info,
   warn,
   error,
+  logMessage,
+  debugMessage,
+  warnMessage,
+  errorMessage,
   logBusiness,
   logBusinessSuccess,
   logBusinessError,

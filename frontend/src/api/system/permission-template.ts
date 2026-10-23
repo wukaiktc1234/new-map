@@ -9,6 +9,7 @@
  * - custom: 自定义（admin 全开，用户自行编辑）
  */
 import { get, post, put, del } from '../request'
+import logger from '@/utils/logger'
 
 /** 后端返回的权限模板 DTO */
 export interface PermissionTemplateDTO {
@@ -39,7 +40,7 @@ export function parseRoleConfig(roleConfig: string): Record<string, string[]> {
       return parsed as Record<string, string[]>
     }
   } catch (e) {
-    console.error('[permission-template] 解析 roleConfig 失败:', e)
+    logger.errorMessage('[permission-template] 解析 roleConfig 失败:', e)
   }
   return {}
 }

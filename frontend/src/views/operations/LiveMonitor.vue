@@ -10,6 +10,7 @@ import { useStandardPage } from '@/composables/useStandardPage'
 import { useECharts } from '@/composables/useECharts'
 import { liveMonitorApi } from '@/api/operations/live-monitor'
 import type { StoreRecord, TrendDimension } from '@/api/operations/live-monitor'
+import logger from '@/utils/logger'
 
 /* ===== 类型定义 ===== */
 // StoreRecord 类型从 @/api/operations/live-monitor 导入，保持与 API 层一致
@@ -321,7 +322,7 @@ async function loadData() {
     // 保存数据快照用于变化检测
     lastDataSnapshot = JSON.parse(JSON.stringify(storeRecords.value))
   } catch (error) {
-    console.error('[LiveMonitor] 加载失败:', error)
+    logger.errorMessage('[LiveMonitor] 加载失败:', error)
     ElMessage.error('加载数据失败，请重试')
   } finally {
     loading.value = false
@@ -480,7 +481,7 @@ async function smartRefresh() {
     // 更新数据快照
     lastDataSnapshot = JSON.parse(JSON.stringify(newData))
   } catch (error) {
-    console.error('[LiveMonitor] 自动刷新失败:', error)
+    logger.errorMessage('[LiveMonitor] 自动刷新失败:', error)
   }
 }
 

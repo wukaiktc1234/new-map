@@ -37,6 +37,7 @@ import {
   DeviceConnectionTypeText,
 } from '@/types/device'
 import type { DeviceInfo, DeviceFormData, DeviceQueryForm, DeviceType, DeviceStatus, DeviceConnectionType } from '@/types/device'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -352,7 +353,7 @@ async function handleImport(uploadFile: UploadFile): Promise<void> {
     ElMessage.info('设备导入功能开发中...')
     // 实际项目中调用 deviceApi.importDevices(uploadFile.raw)
   } catch (error) {
-    console.error('导入失败:', error)
+    logger.errorMessage('导入失败:', error)
     ElMessage.error(error instanceof Error ? error.message : '导入失败，请检查文件格式')
   } finally {
     importLoading.value = false
@@ -368,7 +369,7 @@ async function handleExport(): Promise<void> {
     ElMessage.info('设备导出功能开发中...')
     // 实际项目中调用 deviceApi.exportDevices(params)
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.errorMessage('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportLoading.value = false

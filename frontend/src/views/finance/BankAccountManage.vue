@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// 【保留 · 待 Owner 裁决】§11 收编页面（银行/现金账户主数据管理），尚未挂到现行路由；
+// 当前 frontend/src 内无任何引用，暂不删除（资金管理页已用 FinanceFund 承载同名能力）。
 /**
  * 银行/现金账户主数据管理
  *
@@ -25,6 +27,7 @@ import type {
   BankAccountType,
   BankAccountStatus,
 } from '@/types/finance'
+import logger from '@/utils/logger'
 
 defineOptions({ name: 'BankAccountManage' })
 
@@ -123,7 +126,7 @@ async function loadList() {
     pagination.total = res.total
   } catch (e: unknown) {
     // 拦截器已统一弹错，这里只留日志，避免重复提示
-    console.error('[BankAccountManage] loadList error:', e)
+    logger.errorMessage('[BankAccountManage] loadList error:', e)
   } finally {
     loading.value = false
   }

@@ -217,6 +217,7 @@ import { ttsService } from '@/services/tts'
 import request from '@/api/request'
 import { callNumberHardwareApi, type HardwareVoiceResponse } from '@/api/callNumberApi'
 import CallHistoryPanel from '@/components/pos/CallHistoryPanel.vue'
+import logger from '@/utils/logger'
 
 interface CallRecord {
   id: number
@@ -354,7 +355,7 @@ const broadcastCallEvent = (action: string, data: {
     localStorage.removeItem('calling-event')
     localStorage.setItem('calling-event', JSON.stringify(eventData))
   } catch (e) {
-    console.warn('[广播] localStorage 写入失败:', e)
+    logger.warnMessage('[广播] localStorage 写入失败:', e)
   }
 }
 
@@ -387,7 +388,7 @@ const loadPendingOrders = async () => {
       pendingOrders.value = (res as any).data || []
     }
   } catch (e) {
-    console.error('加载待取餐订单失败:', e)
+    logger.errorMessage('加载待取餐订单失败:', e)
   }
 }
 
@@ -407,7 +408,7 @@ const loadStats = async () => {
       }
     }
   } catch (e) {
-    console.error('加载统计数据失败:', e)
+    logger.errorMessage('加载统计数据失败:', e)
   }
 }
 
@@ -425,7 +426,7 @@ const checkHardwareStatus = async () => {
     hardwareAvailable.value = status?.anyHardwareAvailable || false
     hardwareSpeakerAvailable.value = status?.speakerAvailable || false
   } catch (e) {
-    console.warn('检查硬件状态失败:', e)
+    logger.warnMessage('检查硬件状态失败:', e)
     hardwareAvailable.value = false
     hardwareSpeakerAvailable.value = false
   }
@@ -453,9 +454,9 @@ const speakWithHardwareFallback = async (orderData: {
         return // 硬件播报成功，直接返回
       }
       // 硬件返回但不可用，继续fallback到浏览器TTS
-      console.warn('[硬件] 设备不可用，回退到浏览器TTS')
+      logger.warnMessage('[硬件] 设备不可用，回退到浏览器TTS')
     } catch (e) {
-      console.warn('[硬件] 播报请求异常，回退到浏览器TTS:', e)
+      logger.warnMessage('[硬件] 播报请求异常，回退到浏览器TTS:', e)
     }
   }
 
@@ -482,7 +483,7 @@ const sendToDisplay = async (orderData: {
       // 显示屏发送成功
     }
   } catch (e) {
-    console.warn('[显示屏] 发送失败:', e)
+    logger.warnMessage('[显示屏] 发送失败:', e)
     // 显示屏发送失败不阻断主流程
   }
 }
@@ -495,7 +496,7 @@ const syncFromKitchen = async () => {
     await loadPendingOrders()
     await loadStats()
   } catch (e) {
-    console.error('同步失败:', e)
+    logger.errorMessage('同步失败:', e)
     ElMessage.error('同步失败')
   } finally {
     syncing.value = false
@@ -568,7 +569,7 @@ const callOrder = async (order: CallRecord, autoCall = false) => {
       status: order.status
     })
   } catch (e) {
-    console.error('叫号失败:', e)
+    logger.errorMessage('叫号失败:', e)
     ElMessage.error('叫号失败')
   } finally {
     order.calling = false
@@ -617,7 +618,7 @@ const callAgain = async () => {
       status: currentOrder.value.status
     })
   } catch (e) {
-    console.error('重叫失败:', e)
+    logger.errorMessage('重叫失败:', e)
     ElMessage.error('重叫失败')
   } finally {
     recalling.value = false
@@ -647,7 +648,7 @@ const markOrderPicked = async (order: CallRecord) => {
     ElMessage.success(`${displayNo(order)} 已取餐`)
     await loadStats()
   } catch (e) {
-    console.error('标记取餐失败:', e)
+    logger.errorMessage('标记取餐失败:', e)
     ElMessage.error('标记取餐失败')
   } finally {
     order.pickingUp = false
@@ -673,7 +674,7 @@ const handleNewCallRecord = async (message: IMessage) => {
         try {
           await callOrder(data, true)
         } catch (e) {
-          console.error('自动叫号失败:', e)
+          logger.errorMessage('自动叫号失败:', e)
           ElMessage.warning(`订单 ${data.callNumber || data.orderNumber} 自动叫号失败，请手动处理`)
         }
       } else {
@@ -684,7 +685,7 @@ const handleNewCallRecord = async (message: IMessage) => {
       await loadStats()
     }
   } catch (e) {
-    console.error('解析消息失败:', e)
+    logger.errorMessage('解析消息失败:', e)
   }
 }
 
@@ -707,7 +708,7 @@ const handleCalledRecord = (message: IMessage) => {
     // 刷新统计
     loadStats()
   } catch (e) {
-    console.error('解析消息失败:', e)
+    logger.errorMessage('解析消息失败:', e)
   }
 }
 
@@ -727,7 +728,7 @@ const handlePickedRecord = (message: IMessage) => {
       // 如果还有待叫号的订单且开启了自动叫号，自动叫下一个
       if (autoCallEnabled.value && nextPending && nextPending.status === 'pending') {
         callOrder(nextPending, true).catch((e: unknown) => {
-          console.error('自动叫号下一个失败:', e)
+          logger.errorMessage('自动叫号下一个失败:', e)
         })
       }
     }
@@ -735,7 +736,7 @@ const handlePickedRecord = (message: IMessage) => {
     // 实时刷新统计数据
     loadStats()
   } catch (e) {
-    console.error('解析消息失败:', e)
+    logger.errorMessage('解析消息失败:', e)
   }
 }
 
@@ -773,12 +774,12 @@ const initWebSocket = () => {
     },
 
     onDisconnect: () => {
-      console.warn('WebSocket连接断开，启动轮询')
+      logger.warnMessage('WebSocket连接断开，启动轮询')
       startPolling()
     },
     
     onStompError: (frame) => {
-      console.error('❌ STOMP错误:', frame)
+      logger.errorMessage('❌ STOMP错误:', frame)
       startPolling()
     }
   })
@@ -872,7 +873,7 @@ onMounted(async () => {
         autoCallEnabled.value = parsed.autoCall
       }
     } catch (e) {
-      console.error('加载设置失败:', e)
+      logger.errorMessage('加载设置失败:', e)
     }
   }
 
@@ -940,7 +941,7 @@ const handleStorageEvent = (event: StorageEvent): void => {
     // 转发给 CustomEvent 处理器
     handleCallingBroadcast({ detail: eventData } as unknown as Event)
   } catch (e) {
-    console.warn('[广播接收] 解析事件数据失败:', e)
+    logger.warnMessage('[广播接收] 解析事件数据失败:', e)
   }
 }
 

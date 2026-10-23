@@ -21,6 +21,7 @@ import { useStandardPage } from '@/composables/useStandardPage'
 import { voucherApi, fenToYuanNumber, VoucherStatusMap } from '@/api/finance'
 import type { FinanceVoucherNew, VoucherStatus, VoucherQueryForm } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
+import logger from '@/utils/logger'
 
 const { pagination } = useStandardPage()
 const searchForm = ref({ dateRange: null as [string, string] | null })
@@ -94,7 +95,7 @@ async function loadData(): Promise<void> {
       status: mapVoucherStatus(v.status),
     }))
   } catch (error) {
-    console.error('加载凭证列表失败:', error)
+    logger.errorMessage('加载凭证列表失败:', error)
     records.value = []
     displayRecords.value = []
     pagination.total = 0

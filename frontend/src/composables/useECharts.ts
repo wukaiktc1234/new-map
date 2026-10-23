@@ -13,6 +13,7 @@
 
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import type { Ref } from 'vue'
+import logger from '@/utils/logger'
 
 // 使用 any 类型避免 ECharts 类型导入问题
 type EChartsInstance = any
@@ -71,7 +72,7 @@ async function loadEcharts(): Promise<any> {
       cachedEcharts = echarts
       return echarts
     } catch (error) {
-      console.error('[useECharts] 加载模块失败:', error)
+      logger.errorMessage('[useECharts] 加载模块失败:', error)
       loadingPromise = null // 失败时清空，允许重试
       throw error
     }
@@ -125,7 +126,7 @@ export function useECharts(
         pendingOption = null
       }
     } catch (error) {
-      console.error('[useECharts] 初始化失败:', error)
+      logger.errorMessage('[useECharts] 初始化失败:', error)
     } finally {
       isLoading.value = false
     }
@@ -140,7 +141,7 @@ export function useECharts(
     try {
       chartInstance.value.setOption(option, notMerge)
     } catch (error) {
-      console.error('[useECharts] 设置配置失败:', error)
+      logger.errorMessage('[useECharts] 设置配置失败:', error)
     }
   }
 

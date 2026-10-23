@@ -14,7 +14,7 @@ export interface Tab {
 const TABS_STORAGE_KEY = 'tab-bar-tabs'
 
 /** 不应出现在标签页中的路径 */
-const STANDALONE_PATHS = ['/login', '/forgot-password', '/register', '/404', '/403']
+const STANDALONE_PATHS = ['/login', '/register', '/404', '/403']
 
 function loadTabs(): Tab[] {
   const stored = localStorage.getItem(TABS_STORAGE_KEY)

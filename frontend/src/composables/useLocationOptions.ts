@@ -14,6 +14,7 @@
  */
 import { ref, type Ref } from 'vue'
 import { locationApi, type LocationOption } from '@/api/location'
+import logger from '@/utils/logger'
 
 export function useLocationOptions(autoLoad = false): {
   /** 位置选项列表 */
@@ -40,8 +41,7 @@ export function useLocationOptions(autoLoad = false): {
     } catch (err) {
       locationOptions.value = []
       error.value = err instanceof Error ? err.message : '加载位置列表失败'
-      // eslint-disable-next-line no-console
-      console.error('[useLocationOptions] 加载位置数据失败:', err)
+      logger.errorMessage('[useLocationOptions] 加载位置数据失败:', err)
     } finally {
       loading.value = false
     }

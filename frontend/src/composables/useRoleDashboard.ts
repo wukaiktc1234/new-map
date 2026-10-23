@@ -25,6 +25,7 @@ import {
   type StatCardConfig,
   type StatDataSource,
 } from '@/views/dashboard/role-profiles'
+import logger from '@/utils/logger'
 
 // ============================================================
 // 类型定义
@@ -284,25 +285,25 @@ export function useRoleDashboard(): UseRoleDashboardReturn {
       const [todaySales, inventory, member, finance] = await Promise.all([
         required.needTodaySales
           ? dashboardApi.getTodaySales().catch(err => {
-              console.warn('[useRoleDashboard] 今日销售不可用（已静默降级）:', err)
+              logger.warnMessage('[useRoleDashboard] 今日销售不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needInventory
           ? dashboardApi.getInventoryAlerts().catch(err => {
-              console.warn('[useRoleDashboard] 库存预警不可用（已静默降级）:', err)
+              logger.warnMessage('[useRoleDashboard] 库存预警不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needMember
           ? dashboardApi.getMemberGrowth(30).catch(err => {
-              console.warn('[useRoleDashboard] 会员增长不可用（已静默降级）:', err)
+              logger.warnMessage('[useRoleDashboard] 会员增长不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
         required.needFinance
           ? dashboardApi.getFinanceSummary().catch(err => {
-              console.warn('[useRoleDashboard] 财务概况不可用（已静默降级）:', err)
+              logger.warnMessage('[useRoleDashboard] 财务概况不可用（已静默降级）:', err)
               return null
             })
           : Promise.resolve(null),
@@ -337,7 +338,7 @@ export function useRoleDashboard(): UseRoleDashboardReturn {
       })
       isEmpty.value = allZero && alerts.value.length === 0
     } catch (error) {
-      console.error('[useRoleDashboard] 加载工作台数据失败:', error)
+      logger.errorMessage('[useRoleDashboard] 加载工作台数据失败:', error)
       errorMessage.value = error instanceof Error ? error.message : '加载工作台数据失败'
       // 失败时保留空卡片，避免显示旧数据
       statsCards.value = profile.value.statsCards.map(cardConfig => ({

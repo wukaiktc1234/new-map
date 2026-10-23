@@ -37,6 +37,7 @@ import { orderStatisticsApi, orderRefundApi } from '@/api/order'
 import type { DailyStats, OrderTrendData, TopSellingFood, HourlyDistribution } from '@/types/order'
 import { useLayoutStore } from '@/stores/layout'
 import { useECharts } from '@/composables/useECharts'
+import logger from '@/utils/logger'
 
 const router = useRouter()
 const layoutStore = useLayoutStore()
@@ -650,7 +651,7 @@ async function updateCharts(data: TrendChartPoint[], startDate?: string, endDate
     hideProductLoading()
     hideHourLoading()
   } catch (e) {
-    console.error('图表初始化失败:', e)
+    logger.errorMessage('图表初始化失败:', e)
   }
 }
 

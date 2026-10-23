@@ -19,6 +19,7 @@ import { DeviceTypeOptions, DeviceTypeText } from '@/types/device'
 import type { DeviceStatusHistoryInfo } from '@/types/device'
 import { useCrudTable, type CrudApi } from '@/composables/useCrudTable'
 import { useStoreOptions } from '@/composables/useStoreOptions'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -184,7 +185,7 @@ async function handleExport(): Promise<void> {
 
     ElMessage.success('导出成功！文件已开始下载')
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.errorMessage('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportLoading.value = false

@@ -51,57 +51,6 @@ export const LOG_LEVEL_NAMES = {
   [LogLevel.ERROR]: "ERROR",
 };
 
-// 日志类型常量
-export const LOG_TYPES = {
-  BUSINESS: "BUSINESS",
-  SYSTEM: "SYSTEM",
-  API: "API",
-  PERFORMANCE: "PERFORMANCE",
-  USER_ACTION: "USER_ACTION",
-  NAVIGATION: "NAVIGATION",
-  ERROR: "ERROR",
-} as const;
-
-// 业务日志子类型
-export const BUSINESS_LOG_SUBTYPES = {
-  LOGIN: "LOGIN",
-  LOGOUT: "LOGOUT",
-  CREATE: "CREATE",
-  UPDATE: "UPDATE",
-  DELETE: "DELETE",
-  SEARCH: "SEARCH",
-  EXPORT: "EXPORT",
-  IMPORT: "IMPORT",
-} as const;
-
-// 系统日志子类型
-export const SYSTEM_LOG_SUBTYPES = {
-  STARTUP: "STARTUP",
-  SHUTDOWN: "SHUTDOWN",
-  CONFIG_CHANGE: "CONFIG_CHANGE",
-  ERROR: "ERROR",
-  WARNING: "WARNING",
-  INFO: "INFO",
-} as const;
-
-// 性能监控阈值（毫秒）
-export const PERFORMANCE_THRESHOLDS = {
-  SLOW_QUERY: 100,
-  SLOW_API: 500,
-  SLOW_PAGE_LOAD: 2000,
-  SLOW_OPERATION: 1000,
-} as const;
-
-// 错误类型常量
-export const ERROR_TYPES = {
-  VALIDATION: "VALIDATION",
-  BUSINESS: "BUSINESS",
-  SYSTEM: "SYSTEM",
-  NETWORK: "NETWORK",
-  AUTH: "AUTH",
-  PERMISSION: "PERMISSION",
-} as const;
-
 // 环境配置
 export const ENV_CONFIG = {
   development: {

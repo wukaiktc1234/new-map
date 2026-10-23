@@ -28,6 +28,7 @@ import type {
   QueueType,
 } from '@/types/store-operation'
 import type { StoreOption } from '@/types/store-operation/store-archive'
+import logger from '@/utils/logger'
 
 const layoutStore = useLayoutStore()
 
@@ -152,7 +153,7 @@ async function loadStats(): Promise<void> {
     const result = await queueApi.getStats()
     stats.value = result
   } catch {
-    console.error('[StoreQueueHistory] 加载统计数据失败')
+    logger.errorMessage('[StoreQueueHistory] 加载统计数据失败')
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Router } from 'vue-router'
 import { usePermissionStore, UserRole, OrgLevel } from '@/stores/permission'
+import logger from '@/utils/logger'
 
 /**
 /**
@@ -186,7 +187,7 @@ export function setupRouterGuards(router: Router): void {
     if (!domain && !noDomainRequiredRoutes.includes(to.path)) {
       // 安全策略：未配置 meta.domain 的业务路由默认拒绝访问
       // 防止开发者忘记配置域权限导致越权
-      console.warn(`[路由守卫] ⚠️ 路由 ${to.path} 未配置 meta.domain，已拒绝访问`)
+      logger.warnMessage(`[路由守卫] ⚠️ 路由 ${to.path} 未配置 meta.domain，已拒绝访问`)
       handleAccessDenied(to.path, to.meta.title as string || '该页面')
       return false
     }
@@ -308,7 +309,7 @@ function handleAccessDenied(
   targetPath: string,
   moduleName: string
 ): void {
-  console.warn(`[路由守卫] ⛔ 用户无权访问 ${moduleName} 模块: ${targetPath}`)
+  logger.warnMessage(`[路由守卫] ⛔ 用户无权访问 ${moduleName} 模块: ${targetPath}`)
   
   showAccessDeniedMessage(moduleName)
 }

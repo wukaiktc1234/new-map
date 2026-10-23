@@ -13,6 +13,7 @@
 import { ref, type Ref } from 'vue'
 import { storeArchiveApi } from '@/api/store-ops/store-archive'
 import type { StoreOption } from '@/types/store-operation/store-archive'
+import logger from '@/utils/logger'
 
 /**
  * 门店下拉选项 Composable
@@ -47,8 +48,7 @@ export function useStoreOptions(autoLoad = false): {
     } catch (err) {
       storeOptions.value = []
       error.value = err instanceof Error ? err.message : '加载门店列表失败'
-      // eslint-disable-next-line no-console
-      console.error('[useStoreOptions] 加载门店数据失败:', err)
+      logger.errorMessage('[useStoreOptions] 加载门店数据失败:', err)
     } finally {
       loading.value = false
     }

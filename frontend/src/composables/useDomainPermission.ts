@@ -37,6 +37,7 @@ import type {
   DomainCompareDiff,
   CustomTemplateStorage,
 } from '@/types/domain-permission'
+import logger from '@/utils/logger'
 
 /** 图标名 → 图标组件 映射（用于域图标和菜单图标渲染） */
 const iconMap: Record<string, Component> = {
@@ -262,7 +263,7 @@ function loadCustomFromStorage(): CustomTemplateStorage | null {
     if (!saved) return null
     return JSON.parse(saved) as CustomTemplateStorage
   } catch (error) {
-    console.error('[useDomainPermission] 解析本地自定义模板失败:', error)
+    logger.errorMessage('[useDomainPermission] 解析本地自定义模板失败:', error)
     return null
   }
 }
@@ -539,7 +540,7 @@ export function useDomainPermission() {
       // 默认加载 centralized-single 模板
       await selectTemplate('centralized-single')
     } catch (error) {
-      console.error('[useDomainPermission] 加载权限模板失败:', error)
+      logger.errorMessage('[useDomainPermission] 加载权限模板失败:', error)
       loadError.value = true
     } finally {
       loading.value = false
@@ -713,14 +714,14 @@ export function useDomainPermission() {
         }
       } catch (error) {
         // 后端保存失败不阻塞，仅提示（本地存储已成功）
-        console.warn('[useDomainPermission] 后端保存自定义模板失败（本地已保存）:', error)
+        logger.warnMessage('[useDomainPermission] 后端保存自定义模板失败（本地已保存）:', error)
         ElMessage.warning('自定义模板已保存到本地，但后端同步失败（可不影响使用）')
         return
       }
 
       ElMessage.success('自定义模板已保存（含完整访问级别），可在模板切换中查看')
     } catch (error: unknown) {
-      console.error('[useDomainPermission] 保存自定义模板失败:', error)
+      logger.errorMessage('[useDomainPermission] 保存自定义模板失败:', error)
       ElMessage.error('保存自定义模板失败')
     } finally {
       savingCustom.value = false

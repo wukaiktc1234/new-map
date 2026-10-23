@@ -112,7 +112,12 @@ export interface DepartmentDTO {
   id: string | null;
   name: string;
   code?: string;
-  parentId?: string | null;
+  /**
+   * 上级部门ID（R6）：
+   * 后端 /v1/departments 实际下发 **number**，0 表示顶级组织（后端改造后也可能下发 null）。
+   * 前端在 useDepartmentOptions / 组织架构视图里统一归一为「顶级 = null」，不要把 0 当字符串比较。
+   */
+  parentId?: number | null;
   level?: number;
   employeeCount?: number;
   manager?: string;

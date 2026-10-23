@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// 【保留 · 暂未接入路由】P1-APK-DEVICE-001 待接线：STATUS.md 明确要补 router/index.ts 路由 + SecurityConfig permitAll，
+// 当前 frontend/src 内无任何引用（不走路由、无组件导入），保留勿删。
 /**
  * APK 设备激活页
  * 未白名单的设备在原生 App 内打开时，强制进入本页输入激活码

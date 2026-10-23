@@ -94,18 +94,3 @@ export async function getDeviceId(): Promise<string> {
   return cachedDeviceId
 }
 
-/** 原生层注入 ANDROID_ID 后调用，唤醒等待者（main.ts 挂载 __ftsSafeApplied 时顺带注册） */
-export function onAndroidIdReady(): void {
-  androidIdReady = true
-  const waiters = androidIdWaiters
-  androidIdWaiters = []
-  waiters.forEach((w) => w())
-}
-
-export function resetDeviceId(): void {
-  cachedDeviceId = null
-  if (window.Capacitor?.isNativePlatform?.()) {
-    void Preferences.remove({ key: PREFS_KEY })
-  }
-  localStorage.removeItem(LS_KEY)
-}

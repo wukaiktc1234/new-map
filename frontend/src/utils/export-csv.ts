@@ -7,6 +7,7 @@
  * 3. 动态文件名生成（含时间戳）
  */
 
+import logger from '@/utils/logger'
 /**
  * 将数据导出为 CSV 文件并触发浏览器下载
  *
@@ -30,7 +31,7 @@ export function exportToCSV<T>(
   filename: string
 ): void {
   if (!data || data.length === 0) {
-    console.warn('[exportToCSV] 数据为空，不生成文件')
+    logger.warnMessage('[exportToCSV] 数据为空，不生成文件')
     return
   }
 

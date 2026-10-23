@@ -18,6 +18,7 @@ import { sealApi } from '@/api/seal'
 import type { SealInfo } from '@/types/seal'
 import { usePermissionStore } from '@/stores/permission'
 import type { ElectronicContractInfo } from '@/types/purchase-electronic-contract'
+import logger from '@/utils/logger'
 
 interface Props {
   /** 对话框可见性（v-model） */
@@ -146,7 +147,7 @@ async function executeSign() {
         signFormData.confirmedBy,
       )
     } catch {
-      console.warn('印章使用记录写入失败')
+      logger.warnMessage('印章使用记录写入失败')
     }
     ElMessage.success('签署操作成功')
     emit('update:visible', false)

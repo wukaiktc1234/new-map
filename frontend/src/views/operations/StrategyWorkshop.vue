@@ -25,6 +25,7 @@ import { useStandardPage } from '@/composables/useStandardPage'
 import { useStoreOptions } from '@/composables/useStoreOptions'
 import { strategyApi } from '@/api/operations/strategy'
 import type { Campaign, ChannelType, CampaignStatus, CampaignFormData } from '@/api/operations/strategy'
+import logger from '@/utils/logger'
 
 /* ===== 类型定义 ===== */
 
@@ -375,7 +376,7 @@ async function loadCampaigns() {
     campaigns.value = list
     filteredCampaigns.value = [...list]
   } catch (error) {
-    console.error('[StrategyWorkshop] 加载活动列表失败:', error)
+    logger.errorMessage('[StrategyWorkshop] 加载活动列表失败:', error)
   } finally {
     loading.value = false
   }

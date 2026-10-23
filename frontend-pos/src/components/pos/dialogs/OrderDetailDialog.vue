@@ -106,6 +106,7 @@
 
 <script setup lang="ts">
 import { formatDateTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface Props {
   modelValue: boolean
@@ -216,7 +217,7 @@ const parseDishItems = (dishItems: any): any[] => {
     }
     return []
   } catch (error) {
-    console.error('解析菜品明细失败:', error)
+    logger.errorMessage('解析菜品明细失败:', error)
     return []
   }
 }

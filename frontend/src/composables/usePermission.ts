@@ -1,6 +1,7 @@
 import { computed } from 'vue';
 import { usePermissionStore, UserRole } from '@/stores/permission';
 import type { DataScopeType } from '@/types/permission';
+import logger from '@/utils/logger'
 
 export function usePermission() {
   const permissionStore = usePermissionStore();
@@ -71,7 +72,7 @@ export function usePermission() {
    * TODO: 数据范围由后端控制，前端暂不实现设置方法
    */
   const setDataScope = (_scope: DataScopeType): void => {
-    console.warn('[usePermission] setDataScope: 数据范围由后端控制，前端暂不实现');
+    logger.warnMessage('[usePermission] setDataScope: 数据范围由后端控制，前端暂不实现');
   };
 
   /**
@@ -79,7 +80,7 @@ export function usePermission() {
    * TODO: 可访问门店由后端控制，前端暂不实现设置方法
    */
   const setAccessibleStores = (_stores: string[]): void => {
-    console.warn('[usePermission] setAccessibleStores: 可访问门店由后端控制，前端暂不实现');
+    logger.warnMessage('[usePermission] setAccessibleStores: 可访问门店由后端控制，前端暂不实现');
   };
 
   /**
@@ -87,7 +88,7 @@ export function usePermission() {
    * TODO: 可访问部门由后端控制，前端暂不实现设置方法
    */
   const setAccessibleDepartments = (_depts: string[]): void => {
-    console.warn('[usePermission] setAccessibleDepartments: 可访问部门由后端控制，前端暂不实现');
+    logger.warnMessage('[usePermission] setAccessibleDepartments: 可访问部门由后端控制，前端暂不实现');
   };
 
   const canManageDepartment = computed(() => {

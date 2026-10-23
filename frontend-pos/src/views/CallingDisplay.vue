@@ -73,6 +73,7 @@ import { Client, type IMessage } from '@stomp/stompjs'
 import request from '@/api/request'
 import { formatDateTime, formatTime, parseDateTime } from '@/utils/format'
 import CallingQueuePanel from '@/components/pos/CallingQueuePanel.vue'
+import logger from '@/utils/logger'
 
 /** 大屏只认两种活动状态；picked / passed 不上大屏，只留历史页 */
 type DisplayStatus = 'pending' | 'called'
@@ -303,7 +304,7 @@ const loadRecords = async () => {
     }
     records.value = next
   } catch (error) {
-    console.error('[CallingDisplay] 拉取待取餐列表失败:', error)
+    logger.errorMessage('[CallingDisplay] 拉取待取餐列表失败:', error)
   } finally {
     loading = false
   }
@@ -339,7 +340,7 @@ const handleCalledEvent = (message: IMessage) => {
     const data = JSON.parse(message.body) as CallRecordPayload
     upsertRecord(data, 'called')
   } catch (error) {
-    console.error('[CallingDisplay] 解析叫号消息失败:', error)
+    logger.errorMessage('[CallingDisplay] 解析叫号消息失败:', error)
   }
 }
 
@@ -348,7 +349,7 @@ const handlePickedEvent = (message: IMessage) => {
     const data = JSON.parse(message.body) as CallRecordPayload
     removeRecord(data.orderId, data.orderNumber)
   } catch (error) {
-    console.error('[CallingDisplay] 解析取餐消息失败:', error)
+    logger.errorMessage('[CallingDisplay] 解析取餐消息失败:', error)
   }
 }
 
@@ -358,7 +359,7 @@ const handlePassedEvent = (message: IMessage) => {
     const data = JSON.parse(message.body) as CallRecordPayload
     removeRecord(data.orderId, data.orderNumber)
   } catch (error) {
-    console.error('[CallingDisplay] 解析过号消息失败:', error)
+    logger.errorMessage('[CallingDisplay] 解析过号消息失败:', error)
   }
 }
 
@@ -367,7 +368,7 @@ const handleNewOrderEvent = (message: IMessage) => {
     const data = JSON.parse(message.body) as CallRecordPayload
     upsertRecord(data, 'pending')
   } catch (error) {
-    console.error('[CallingDisplay] 解析新订单消息失败:', error)
+    logger.errorMessage('[CallingDisplay] 解析新订单消息失败:', error)
   }
 }
 
@@ -414,7 +415,7 @@ const initWebSocket = () => {
 
     onStompError: (frame) => {
       wsConnected.value = false
-      console.error('[CallingDisplay] STOMP错误:', frame)
+      logger.errorMessage('[CallingDisplay] STOMP错误:', frame)
     }
   })
 

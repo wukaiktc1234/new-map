@@ -17,6 +17,7 @@ import { useStoreOptions } from '@/composables/useStoreOptions'
 import { useLocationOptions } from '@/composables/useLocationOptions'
 import { userApi, type UserItem, type UserQueryParams } from '@/api/system/user'
 import { roleApi, type RoleVO } from '@/api/system/role'
+import logger from '@/utils/logger'
 
 // ==================== 类型定义 ====================
 
@@ -424,8 +425,7 @@ async function handleView(row: UserItem) {
   try {
     currentUserRoleNames.value = await userApi.getUserRoleNames(row.id)
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[UserManagementTab] 获取角色名称失败:', err)
+    logger.errorMessage('[UserManagementTab] 获取角色名称失败:', err)
   }
 }
 

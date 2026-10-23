@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import logger from '@/utils/logger'
 
 /**
  * 操作反馈配置接口
@@ -112,7 +113,7 @@ export function useOperationFeedback() {
         isPlaying.value = false
       }, config.duration)
     } catch (error) {
-      console.warn('播放音效失败:', error)
+      logger.warnMessage('播放音效失败:', error)
       isPlaying.value = false
     }
   }

@@ -8,6 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { formatDateTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 /** 购物车商品项 */
 export interface CartItem {
@@ -93,7 +94,7 @@ export const useHangingOrderStore = defineStore('hangingOrder', () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(heldOrders.value))
     } catch (e) {
-      console.error('保存挂单数据失败:', e)
+      logger.errorMessage('保存挂单数据失败:', e)
     }
   }
 

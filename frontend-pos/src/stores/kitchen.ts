@@ -13,6 +13,7 @@ import type {
   WebSocketStatus,
   ChefInfo,
 } from '@/types/kitchen';
+import logger from '@/utils/logger'
 
 /** 默认门店ID（后续可从配置或登录信息获取） */
 // const DEFAULT_STORE_ID = 1;
@@ -112,7 +113,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
         lastUpdateTime.value = formatDateTime(new Date());
       }
     } catch (error) {
-      console.error('加载活跃订单失败:', error);
+      logger.errorMessage('加载活跃订单失败:', error);
     } finally {
       loading.value = false;
     }
@@ -132,7 +133,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       }
       return false;
     } catch (error) {
-      console.error('接单失败:', error);
+      logger.errorMessage('接单失败:', error);
       return false;
     }
   }
@@ -150,7 +151,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       }
       return false;
     } catch (error) {
-      console.error('开始制作失败:', error);
+      logger.errorMessage('开始制作失败:', error);
       return false;
     }
   }
@@ -168,7 +169,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       }
       return false;
     } catch (error) {
-      console.error('完成制作失败:', error);
+      logger.errorMessage('完成制作失败:', error);
       return false;
     }
   }
@@ -189,7 +190,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       }
       return false;
     } catch (error) {
-      console.error('出餐失败:', error);
+      logger.errorMessage('出餐失败:', error);
       return false;
     }
   }
@@ -213,7 +214,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       }
       return false;
     } catch (error) {
-      console.error('取消订单失败:', error);
+      logger.errorMessage('取消订单失败:', error);
       return false;
     }
   }
@@ -298,7 +299,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       try {
         currentChef.value = JSON.parse(savedChef);
       } catch (e) {
-        console.error('恢复厨师信息失败:', e);
+        logger.errorMessage('恢复厨师信息失败:', e);
       }
     }
   }

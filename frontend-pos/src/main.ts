@@ -36,6 +36,19 @@ if (isTouchDevice()) {
 
 const app = createApp(App)
 
+// ============================================================
+// 全局兜底错误处理
+// 业务代码统一走 src/utils/logger（dev 打印 / prod 静默）；
+// 这里是保留 console.error 的兜底出口，保证生产环境也能看到真实堆栈。
+// ============================================================
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[global-error] 未捕获的组件错误:', info, err)
+}
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[global-error] 未处理的 Promise 拒绝:', event.reason)
+})
+
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }

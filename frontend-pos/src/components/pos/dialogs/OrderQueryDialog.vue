@@ -80,6 +80,7 @@ import { ref, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { posApi } from '@/api/posApi'
 import { formatDate, formatDateTime } from '@/utils/format'
+import logger from '@/utils/logger'
 
 interface Props {
   modelValue: boolean
@@ -159,7 +160,7 @@ const queryOrders = async () => {
       orderList.value = []
     }
   } catch (error) {
-    console.error('查询订单失败:', error)
+    logger.errorMessage('查询订单失败:', error)
     orderList.value = []
     ElMessage.error(error instanceof Error ? error.message : '查询订单失败，请重试')
   }
@@ -185,7 +186,7 @@ const queryOrdersSilent = async () => {
       }
     }
   } catch (error) {
-    console.error('静默查询订单失败:', error)
+    logger.errorMessage('静默查询订单失败:', error)
   }
 }
 

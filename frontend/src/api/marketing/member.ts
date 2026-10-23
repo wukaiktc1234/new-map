@@ -5,6 +5,7 @@
 import { get, post, put } from '../request'
 import type { MemberInfo, MemberQueryForm, MemberCreateForm, MemberUpdateForm, MemberStatsOverview, MemberConsumeRecord, MemberRechargeRecord, MemberStatus } from '@/types/member'
 import { memberConverter } from './converters'
+import logger from '@/utils/logger'
 
 /**
  * 映射分页查询参数：前端 page/size → 后端 current/size
@@ -110,7 +111,7 @@ export const memberApi = {
   async getConsumeRecords(memberId: string): Promise<MemberConsumeRecord[]> {
     // 已知风险：后端会员消费记录模块尚未实现（无对应 Controller/Service/Entity）
     // 返回空数组避免 UI 报错，待后端消费记录模块开发完成后对接
-    console.warn('[memberApi] 会员消费记录后端端点未实现，返回空数组: memberId=', memberId)
+    logger.warnMessage('[memberApi] 会员消费记录后端端点未实现，返回空数组: memberId=', memberId)
     return []
   },
 

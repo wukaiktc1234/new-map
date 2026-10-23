@@ -17,6 +17,7 @@ import { certificateDataConverter } from '@/api/store-ops/converters'
 import { exportToCSV } from '@/utils/export-csv'
 import { fenToYuan } from '@/utils/money'
 import type { Certificate, CreateCertificateDTO, CertificateRenewalRecord, CertificateExpenseRecord, ExpenseStatus, CreateExpenseDTO, ExpenseAuditLog } from '@/types/store-operation'
+import logger from '@/utils/logger'
 
 const { pagination } = useStandardPage()
 
@@ -657,7 +658,7 @@ async function handleExpenseCreated(expenseData: CreateExpenseDTO) {
       ElMessage.warning(result.message || '费用记录创建未成功')
     }
   } catch (error) {
-    console.error('[handleExpenseCreated] 创建费用记录失败:', error)
+    logger.errorMessage('[handleExpenseCreated] 创建费用记录失败:', error)
     // 静默失败，不影响续期主流程
   }
 }
@@ -669,7 +670,7 @@ async function loadExpenseRecords() {
     const result = await certificateApi.getAllExpenseRecords({})
     expenseRecords.value = result.records
   } catch (error) {
-    console.error('[loadExpenseRecords] 加载费用记录失败:', error)
+    logger.errorMessage('[loadExpenseRecords] 加载费用记录失败:', error)
   }
 }
 
@@ -688,7 +689,7 @@ async function handleUpdateExpenseStatus(expenseId: string, newStatus: ExpenseSt
       ElMessage.error(result.message || '更新失败')
     }
   } catch (error) {
-    console.error('[handleUpdateExpenseStatus] 更新失败:', error)
+    logger.errorMessage('[handleUpdateExpenseStatus] 更新失败:', error)
     ElMessage.error('更新失败，请重试')
   }
 }
@@ -782,7 +783,7 @@ async function handleRenewalSubmit(data: RenewalData) {
     // 刷新数据列表（从后端重新加载，确保数据一致）
     await loadData()
   } catch (error) {
-    console.error('[handleRenewalSubmit] 续期失败:', error)
+    logger.errorMessage('[handleRenewalSubmit] 续期失败:', error)
     ElMessage.error('续期失败，请重试')
   } finally {
     loading.value = false
@@ -802,7 +803,7 @@ async function viewRenewalHistory(row: Certificate) {
     // 后端落地后改为调用真实 API 获取续期记录，当前显示空列表（el-empty 占位）。
     selectedCertHistory.value = []
   } catch (error) {
-    console.error('[viewRenewalHistory] 获取历史记录失败:', error)
+    logger.errorMessage('[viewRenewalHistory] 获取历史记录失败:', error)
     ElMessage.error('获取续期历史失败')
     selectedCertHistory.value = []
   } finally {
@@ -935,7 +936,7 @@ async function loadData() {
     allRecords.value = result.records
     filteredRecords.value = result.records
   } catch (error) {
-    console.error('[StoreCertificate] 加载失败:', error)
+    logger.errorMessage('[StoreCertificate] 加载失败:', error)
     ElMessage.error('加载数据失败，请重试')
   } finally {
     loading.value = false
@@ -1075,7 +1076,7 @@ async function handleSubmit() {
       }
     }
   } catch (error) {
-    console.error('[handleSubmit] 操作失败:', error)
+    logger.errorMessage('[handleSubmit] 操作失败:', error)
     ElMessage.error('操作失败，请重试')
   } finally {
     loading.value = false
@@ -1142,7 +1143,7 @@ async function handleDeactivate(row: Certificate) {
     }
   } catch (error: unknown) {
     if (error !== 'cancel') {
-      console.error('[handleDeactivate] 停用失败:', error)
+      logger.errorMessage('[handleDeactivate] 停用失败:', error)
       ElMessage.error('操作失败，请重试')
     }
   } finally {
