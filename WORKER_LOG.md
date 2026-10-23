@@ -635,3 +635,145 @@ cd frontend-pos && npx vue-tsc --noEmit# POS 类型
 python scripts/qa/consistency_check.py # 数据巡检（4 类必须 0）
 python scripts/qa/ui_e2e_payment.py    # UI 三处一致 + 截图
 ```
+
+---
+
+## 23. R 系列销账 + C 卡 + 路由/孤儿 + 废弃代码与 console 收口（2026-10-24）
+
+### 23.1 本轮范围（Owner 指令 4 项）
+
+1. **R 系列销账**：R1–R10 逐条裁决并落表（§23.4）——能修的修、能关的关、必须留的写明原因；
+2. **C 卡（P1-AUTH-CHAIN-001）**：`users.roles` 彻底退出鉴权链路（§23.2）；
+3. **路由与孤儿**：删除 21+3 个孤儿页面、修 6 处死链、保留 6 项并注明原因（§23.5）；
+4. **废弃代码与 console**：死代码约 −176 行、双端 `console.log/warn/debug` 归零（§23.3、§23.6）。
+
+### 23.2 P1-AUTH-CHAIN-001 C 卡完成：`users.roles` 退出全部鉴权路径
+
+- **改动面**：backend **13 个文件**；`users.roles` 退出**全部**鉴权路径（授权权威源只剩 `user_roles → roles`）；
+- **单测**：`AuthRoleSourceTest` **3 例**（3/3 绿）；
+- **审计脚本**：`scripts/db-fix/2026-10-24-audit-users-roles-divergence.sql`（核对 `users.roles` 与 `user_roles` 的口径分歧，只报不改）；
+- **篡改验证（活体）**：把 `qa_admin` 的 `users.roles` 改成 `["1"]` 后，其 **roles / 权限不变** → 证明鉴权已不看该列；
+- **admin 特判收敛**：按用户名判 admin 的逻辑全系统**仅剩 `PosAuthServiceImpl` 一处**，且已加注释说明为何保留（POS 登录链路）；
+- **接口口径**：`getUserRoleNames` 改为返回 **role_code**（不再是中文名，N28 的兼容债在此收口）；另新增 `getUserRoleDisplayNames` 负责中文展示名，读侧要中文请用后者；
+- **影响面（已核实）**：仅 **3 个 FINQA 测试账号**受影响——它们的 `users.roles` 存的不是 JSON 字面量，旧解析本就失败（本来就没生效），因此**未掉权**。
+
+### 23.3 死代码清理（约 −176 行）
+
+| 项 | 内容 |
+|---|---|
+| 字段/构造参数 | `OrderCompletedEventListener` 删除 `costRecordService` 字段 + 对应构造参数 |
+| 规模 | **14 个方法 + 2 个字段**，跨 **12 个文件**，净约 **−176 行** |
+| 其中最大一块 | `PosOrderCreateServiceImpl` 旧建单流程 **7 个方法 184 行**（POS 已统一走 `/v1/pos/orders/order`） |
+| 保留 | **12 项**（逐项见下表 §23.3.1）；其中**第 9 项必须保留**、**第 11 项属死字段但本轮未删**、第 12 项为汇总口径 |
+
+#### 23.3.1 保留清单 12 项（ts-purchase 交付，逐项结论照录）
+
+| # | 符号 | 性质与结论 |
+|---|---|---|
+| 1 | `MaterialTraceCodeServiceImpl.updateStoreInventory` | 疑似漏接线；后续核查结论为「**被 `updateInventoryAfterConfirm` 取代的生成期残本，全仓 0 引用，建议删而非接**」（同时派生 DATA-007 卡） |
+| 2 | `DevicePrintServiceImpl.executePrintThermalPaper / executePrintFile / executePrintInvoice` | 设备直打三分支全无调用，疑似打印链未接线 |
+| 3 | `DatabaseBackupServiceImpl.encryptFile / decryptFile` | 备份加密预留，未接线 |
+| 4 | `LabelTemplateController.getDefaultFoodTemplate` | 默认模板构造器未接线 |
+| 5 | `controller/hardware/EpsonPrinterTestController.drawCode128Barcode` | 测试控制器内的条码绘制死代码 |
+| 6 | `OnnxOcrServiceImpl.preprocessImage(Mat)` | 与在用的 `preprocessImageWithRGB` 并存的模型分支 |
+| 7 | `RapidOcrServiceImpl.extractPersonNameFromMultipleLines` | 无调用 |
+| 8 | `GlobalExceptionHandler.isProduction` | 无调用 |
+| 9 | `TableReservationNewController.extractSecurityUser` | 显式 `@SuppressWarnings("unused")` 的扩展点，**必须保留** |
+| 10 | 未用日志槽/常量：`PosCouponController.log`、`WeComController.logger`、`ScheduleShiftTypeServiceImpl.log`、`TemplateDataServiceImpl.log`、`CACHE_EXPIRE_SECONDS` ×5、`LOCATION_HEADQUARTERS`、`WSD_PRINT_SERVICE`、`ElectronicSignatureController.storagePath` | 删除收益低、易与并行分支冲突，保留 |
+| 11 | `OrderCompletedEvent.materialCost / laborCost / totalCost / profit` 四个字段（含 setter） | 全仓无赋值，属死字段；但事件对象可能被序列化/日志消费，**本轮未删**，建议随事件契约清理一并处理 |
+| 12 | （汇总项）「疑似漏接线但保留」这一类 | 在报告里统一标注为：**保留 + 待 Owner 裁决是否接线**，不计入已删 |
+
+> 口径：第 1–8 项为「无调用/未接线」类谓词事实，第 9 项为显式保留的扩展点，第 10 项为低收益清理项，第 11 项为事件契约死字段，第 12 项为汇总分类规则——本轮一律**只标注不删除**，不计入 §23.3 的 −176 行。
+
+### 23.4 R 系列逐条裁决（R1–R10）
+
+| 编号 | 事项 | 裁决 | 依据 / 证据 |
+|---|---|---|---|
+| R1 | 建单不取号 | **已裁决关闭** | 全仓 **0 调用**（POS 走 `/v1/pos/orders/order`）；`ensureCallNumber` 已在收尾幂等补齐。本轮仅加 Javadoc 标注 |
+| R2 | legacy 支付写入双轨 | **保留待裁决** | 下线 `orders_legacy` 写入需数据迁移 + Owner 放行；本轮仅确认 C 卡后新表链路为唯一真相源 |
+| R3 | `orders` 无 `openid` 列 | **保留待裁决** | 涉及 schema 变更与顾客端「我的订单」 |
+| R4 | 混合期列表只显示新表 | **关闭（WON'T FIX）** | 旧表只读，历史单不进 POS 列表属既定设计 |
+| R5 | `inventory_check` creatorId | **已修复** | 真表名 `inventory_checks`，列 `create_user_id` 已存在但**从未落值**；`createCheck` 已写 `SecurityUtils.getCurrentUserId()` |
+| R6 | `Department.parentId` 语义 | **已修复** | 后端 `update` 归一 `null→0` 并重算 `level`；`getChildrenDepartments` 覆盖 `parent_id IS NULL`；DB 1 行 NULL 已归一；前端 `toOrgNode`/`useDepartmentOptions` 同步 |
+| R7 | = C 卡 | **已完成** | 见 §23.2 |
+| R8 | 看板门店过滤 | **已实现（开关默认关）** | `app.dashboard.store-scope.enabled` 默认 `false`；口径见 STATUS.md P1-DASHBOARD-FILTER-001；Owner 放行后置 true |
+| R9 | 托盘 E2E 恒 SKIP | **已解决** | `scripts/db-fix/2026-10-24-release-one-tray.sql`，实测 SKIP→PASS：`PASS=13 SKIP=0` |
+| R10 | 收编页面真机联调 | **清单已交付** | `scripts/qa/README-ui-manual.md`（含签名画板 **10 条可执行项**）；扫码桥/离线重传如实标注「仓库未实现」，需先定范围 |
+
+### 23.5 路由 / 孤儿清理
+
+- **删除孤儿**：**21 + 3 = 24 个**，约 **6.9k 行**；
+- **死链修复**：**6 处**；
+- **保留 6 项（含原因）**：
+
+| 保留项 | 原因 |
+|---|---|
+| `DeviceActivationPage` | 属 **P1-APK-DEVICE-001**、**P1-SEC-009**，等接线 |
+| `DeviceWhitelistPage` | 同上 |
+| `VerifyCodePage` | 同上 |
+| `SelfServicePortal` | 待 Owner 裁决 |
+| `BankAccountManage` | 待 Owner 裁决 |
+| `ReceivingMobile` | 待 Owner 裁决 |
+
+- **验证**：双端 `vue-tsc` **0 / 0**；`vite build` → **✓ built in 4.04s**。
+
+### 23.6 console 与废弃代码
+
+- `frontend` 与 `frontend-pos` 的 `console.log` / `console.warn` / `console.debug` **归零**；
+- **`console.error` 仅保留全局兜底**，共 4 处（2026-10-24 实测，两棵 src 树 709 个源文件全量扫描，命中即此 6 行含 2 行注释）：
+
+| 位置 | 用途 |
+|---|---|
+| `frontend/src/main.ts:26` | `app.config.errorHandler` 捕获的组件错误 |
+| `frontend/src/main.ts:30` | `unhandledrejection` 未处理 Promise 拒绝 |
+| `frontend-pos/src/main.ts:45` | 同上（POS 端组件错误） |
+| `frontend-pos/src/main.ts:49` | 同上（POS 端 Promise 拒绝） |
+
+- **logger 封装**：`frontend/src/utils/logger.ts`（+ `logger.config.ts`、`logger.test.ts`）——业务代码统一走 logger，logger 内部间接持有 `globalThis.console`，是唯一允许触碰 console 的实现；
+- 备注：`frontend/src/main.ts:22` 的注释提到「另一个出口是 api/request 拦截器」，实测该处已无 `console.error`（已改走 logger），共 4 个真实出口。
+
+### 23.7 数据订正（均已在活库执行，脚本可复放）
+
+| 项 | 处理 |
+|---|---|
+| DATA-006 历史 0 元财务流水 | `finance_records` 中 **10 条** `amount=0` 的「订单收入」流水**软删**（`deleted=1`），不再污染报表 |
+| `departments.parent_id` | **NULL→0 归一 1 行**（顶级组织统一用 0，与 R6 后端语义一致） |
+| 孤儿管理员账号 `test-admin`(`user_id=999`) | **停用并撤销 `ROLE_ADMIN`**；脚本 `scripts/db-fix/2026-10-24-disable-orphan-test-admin.sql`（含**备份表与回滚段**） |
+| R5 `inventory_checks.create_user_id` | **已落值**（此前该列恒空，现由 `createCheck` 写当前登录用户） |
+
+### 23.8 顺带修复的真缺陷
+
+1. **inventory-alerts 查幻列**：`DashboardServiceImpl.getInventoryAlerts` 用 `inventory.warning_status`，该列**不存在** → `BadSqlGrammarException` 被 catch 吞成常量 0。真值（SQL 直接统计）为 **4 / 4 / 0**；已按 `quantity` / `safety_stock` / `max_stock` 真实列重写，端点输出与 SQL 真值一致；
+2. **部门 parentId 语义**：`DepartmentServiceImpl.update` 未归一 `parentId=null`；`getChildrenDepartments` 漏 `parent_id IS NULL`。已修（并回填 DB 1 行，见 §23.7）；
+3. **R8 看板门店过滤开关式落地**：默认关闭；A/B 实测——开关开 + 门店用户 `125 笔 / 227080 分`，开关关/无绑定用户 `139 笔 / 252280 分`（详见 STATUS.md 该卡）。
+
+### 23.9 新增建议卡（建议下轮裁决）
+
+| 编号建议 | 事实 | 影响 |
+|---|---|---|
+| **扫码确认入库不落统一库存账** | `MaterialTraceCodeServiceImpl.updateInventoryAfterConfirm` 只 `new Inventory` + 写日志，**未调用** `InventoryService.increaseStockAtLocation`；且 `createPurchaseStockinRecord` 绕过 `PurchaseStockInEvent` → `cost_records` 不写 | 扫码入库与采购入库两套账，库存与成本双口径 |
+| **TECH-DEBT-001 单/复数双表清理** | `cost_record`/`cost_records`、`tray`/`trays`、`dish_recipe`/`dish_recipes` 等并存；`dining_table` 实为视图 | 未做；"查对表名却查空"的复发面仍在 |
+| **`OrderCompletedEvent` 成本字段恒 null** | `materialCost` 恒为 null（成本由 lifecycle 同步写 `cost_records`） | 属死字段，应随事件契约一起清理（本轮只保留不删，见 §23.3） |
+
+### 23.10 验证矩阵（本轮实测）
+
+| 项 | 结果 |
+|---|---|
+| 后端编译 | `mvn -o -B compile` → **BUILD SUCCESS** |
+| `AuthRoleSourceTest` | **3/3** |
+| `DashboardStoreScopeTest` | **6/6** |
+| `DepartmentServiceImplTest` | **5/5** |
+| `InventoryCheckServiceImplTest` | **13/13** |
+| 双端 `vue-tsc` | **0 / 0** |
+| `e2e_core_chain` | **PASS=13 / SKIP=0**（托盘已解绑，原恒 SKIP 项转 PASS） |
+| `consistency_check` | **5 PASS** + **A6 INFO** |
+| `ui_e2e_payment` | **PASS 7/7** |
+
+### 23.11 收尾补充（同日 02:20–02:50）
+
+- **console 归零**：替换 **173 处**（`frontend` 104 / `frontend-pos` 68 + 1 处文档注释），涉及 **73 个文件**；新建 `frontend-pos/src/utils/logger.ts`，增强 `frontend/src/utils/logger.ts`（`logMessage` / `warnMessage` / `errorMessage` 兼容层，内部经 `globalThis.console` 间接引用）；新增两处全局兜底 `app.config.errorHandler` + `unhandledrejection`（`frontend/src/main.ts:26,30`；`frontend-pos/src/main.ts:45,49`），这是**仅存的 4 处 `console.error`**。
+- **废弃代码删除**：整文件 **28 个**（B1 utils 16 + B3 composables 11 + B4 pos broadcast 1）、导出符号 **11 个**（`logger.config` 5 / `storage` 2 / `device-id` 2 / `TTSService` 导出 1 / `posBroadcast` 1）；`barcode-ean13.ts` 因文件内自用**回滚 1 文件**；剩余候选 **120 符号 / 39 文件**（多为 api converter 与保留文件内的符号，本轮按裁决保留）。
+- **C 卡回归修复**：admin 的 `/auth/me` roles 曾变空（`user_roles` 无行 + C 卡去掉 `users.roles` 兜底）→ 新增 `resolveRoleCodesWithAdminFallback`（**仅当 principal 是管理员且目标用户是本人时**补 admin，**fail-closed**），`AuthRoleSourceTest` 扩到 **6 例全绿**；实测 admin `roles=['admin']`/`313 权限`、qa_admin `roles=['finance_director']`/`95 权限` 不变。
+- **测试脚本修复**：`scripts/e2e_shift_summary.py` 的 `shift_rows()` 由「跨历史取 MAX」改为「按 `shift_id DESC LIMIT 1` 取最新班次行」并新增 status 严格校验，**5/5 PASS ×2**；托盘项按 `scripts/db-fix/2026-10-24-release-one-tray.sql` 预释放后 `e2e_core_chain` 稳定 **13/0/SKIP=0 ×2**（**每轮必须先 release**，已写成流程）。
+- **前端 R6 收口**：`HROrganization.normalizeParentId`（`0`/`'0'`/`''` → null）、`OrgFormDialog` 用非空哨兵 `'__root__'` 解决 el-select 空值判"未选择"导致回显为空白的问题、`useDepartmentOptions.parentId` 改 `number|null`、`types/hr.ts` 同步、`AssetReport` 两处字符串比较改为 `Number(...)`；浏览器实测「编辑顶级组织 → 上级组织显示『无上级（顶级组织）』」。
+- **数据/账号**：`test-admin`(`user_id=999`) 停用 + 撤 `ROLE_ADMIN`（备份 + 回滚语句在 `scripts/db-fix/2026-10-24-disable-orphan-test-admin.sql`）；`departments.parent_id` NULL→0 归一 **1 行**。
