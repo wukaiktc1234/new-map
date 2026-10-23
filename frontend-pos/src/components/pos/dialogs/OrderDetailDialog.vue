@@ -129,14 +129,18 @@ function canRefund(order: any): boolean {
   return !['pending', 'unpaid', 'cancelled', 'refunded', 'partial_refunded'].includes(status)
 }
 
+/**
+ * 支付方式文案：**直接使用后端给的中文**（POS 列表 / 财务详情同源），
+ * 本函数只做"代码 → 中文"的兜底，不再把"现金"改写成"现金支付"。
+ * （2026-10-24：三处文案漂移由这里造成，已按统一口径修正）
+ */
 const getPaymentMethodText = (method: string) => {
   const map: Record<string, string> = {
-    cash: '现金支付',
+    cash: '现金',
     wechat: '微信支付',
     alipay: '支付宝',
-    '现金': '现金支付',
-    '微信支付': '微信支付',
-    '支付宝': '支付宝'
+    card: '银行卡',
+    balance: '余额支付'
   }
   return map[method] || method
 }
