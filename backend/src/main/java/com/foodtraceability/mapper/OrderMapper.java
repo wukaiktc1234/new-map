@@ -32,8 +32,18 @@ public interface OrderMapper extends BaseMapper<Order> {
     @Update("UPDATE order_sequence SET sequence_value = sequence_value + 1 WHERE sequence_key = #{sequenceKey} RETURNING sequence_value")
     int incrementSequence(@Param("sequenceKey") String sequenceKey);
 
-    @Select("SELECT sequence_value FROM order_sequence WHERE sequence_key = #{sequenceKey}")
-    int getLastInsertId();
+    /**
+     * 原实现 {@code int getLastInsertId()} 没有入参却引用 #{sequenceKey}，MyBatis 绑不出参数 →
+     * 永远返回 null → 基本类型转换异常 → POS 订单号每次都降级到「遗留表 max+1」，
+     * 一旦遗留表与 orders 表不同步（如数据库异常恢复后）就会撞 orders_order_number_key 唯一键。
+     *
+     * <p>2026-10-23 修复：改为单语句原子取号（插入或 +1 后直接 RETURNING 新值），
+     * 行锁串行化并发请求，不再有「先 increment 再 SELECT」的读-改-写竞态。</p>
+     */
+    @Select("INSERT INTO order_sequence (sequence_key, sequence_value, create_time) VALUES (#{sequenceKey}, 1, NOW()) "
+            + "ON CONFLICT (sequence_key) DO UPDATE SET sequence_value = order_sequence.sequence_value + 1 "
+            + "RETURNING sequence_value")
+    Integer nextSequenceValue(@Param("sequenceKey") String sequenceKey);
 
     // ==================== 日结对账聚合查询方法 ====================
 

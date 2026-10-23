@@ -8,7 +8,9 @@
   C 交班日结      打开交班对话框：出现真实金额（¥x.xx 且非 0.00 或有订单数），且无「待后端接线 / 暂不可执行」占位文案
   D 订单查询      用 API 取到的真实单号搜索 → 表格命中该单号
   E 叫号历史      打开历史面板 → 按取餐号搜索 → 命中 → 点「取餐」→ 状态变「已取餐」
-  F 资金管理(可选) 管理端 /finance/fund：无 500、表格有数据；做不到 SKIP
+  F 资金管理      管理端 qa_admin 真实登录（浏览器表单）→ 打开 /finance/fund：表格有数据行、无 5xx
+  G POS支付入账   API 真实下单+现金支付（POST /v1/pos/orders/order + /order/pay，返回 fundFlowNo）
+                  → 浏览器打开资金管理并刷新 → 命中「POS销售入账：<单号>」且收入金额与订单一致
 
 每一步都收集该页面的 console error / 未捕获异常 / HTTP >= 400 请求，最后汇总打印。
 存在 FAIL 步骤或非白名单错误 → 退出码 1。
@@ -23,6 +25,7 @@
   ADMIN_BASE 默认 http://localhost:3002（管理端 vite 默认端口；不存在则尝试 3000）
   API_BASE   默认 http://localhost:8081/api
   POS_USER / POS_PASS 默认 vcashier01 / 123456
+  ADMIN_USER / ADMIN_PASS 默认 qa_admin / Admin@123456
   HEADLESS   1=无头（默认），0=有头
 
 产物：.verify-tmp/e2e-browser/*.png 截图 + report.json
@@ -53,9 +56,9 @@ ADMIN_FALLBACK = os.environ.get("ADMIN_FALLBACK", "http://localhost:3000").rstri
 API_BASE = os.environ.get("API_BASE", "http://localhost:8081/api").rstrip("/")
 POS_USER = os.environ.get("POS_USER", "vcashier01")
 POS_PASS = os.environ.get("POS_PASS", "123456")
-# 管理端（可选步骤 F）：没有可用账号就 SKIP；提供后自动走真实登录
-ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-ADMIN_PASS = os.environ.get("ADMIN_PASS", "admin123")
+# 管理端账号（C4 创建的测试账号，可用环境变量覆盖）
+ADMIN_USER = os.environ.get("ADMIN_USER", "qa_admin")
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "Admin@123456")
 HEADLESS = os.environ.get("HEADLESS", "1").strip() not in ("0", "false", "False")
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -415,53 +418,122 @@ class Runner:
             self.shot("E-error")
             self.add("E", "叫号历史取餐", "FAIL", f"异常：{exc}")
 
-    # -- F 管理端资金管理 --
-    def step_admin_fund(self, admin_base: str | None, admin_login: dict | None, admin_note: str) -> None:
-        self.col.set_step("F 管理端资金管理")
+    # -- F 管理端登录 + 资金管理 --
+    def admin_login_browser(self, admin_base: str) -> bool:
+        """在浏览器里用 qa_admin 走真实登录表单（不做 token 注入）。"""
+        page = self.page
+        page.goto(admin_base + "/login", wait_until="domcontentloaded", timeout=60000)
+        user_input = page.locator(".login-page .float-label input").first
+        user_input.wait_for(state="visible", timeout=60000)
+        user_input.fill(ADMIN_USER)
+        page.locator(".login-page .float-label input[type='password']").first.fill(ADMIN_PASS)
+        page.locator(".login-page .submit-btn").first.click()
+        # 以「token 已落库」作为登录成功的判据：登录接口一返回就写 localStorage，
+        # 不依赖随后跳转 /home（vite 冷启动现编译管理端模块时，页面跳转可能滞后 1~3 分钟）
+        return wait_until(lambda: bool(page.evaluate("localStorage.getItem('token')")), 60.0, interval=0.5)
+
+    def step_admin_fund(self, admin_base: str | None) -> bool:
+        self.col.set_step("F 管理端登录/资金管理")
         page = self.page
         if not admin_base:
-            self.add("F", "资金管理(管理端)", "SKIP", "管理端 dev server 未启动（3002/3000 均不可达），按要求 SKIP")
-            return
-        if not admin_login:
-            self.add("F", "资金管理(管理端)", "SKIP",
-                     f"{admin_base} 已启动，但 {admin_note}；未提供可用管理端账号"
-                     f"（可用 ADMIN_USER / ADMIN_PASS 环境变量传入），SKIP")
-            return
+            self.add("F", "管理端登录/资金管理", "FAIL", "管理端 dev server 未启动（3002/3000 均不可达）")
+            return False
         try:
-            token = str(admin_login.get("token") or "")
-            refresh = str(admin_login.get("refreshToken") or "")
-            info = admin_login.get("userInfo") or {}
-            page.goto(admin_base + "/login", wait_until="domcontentloaded", timeout=30000)
-            page.evaluate(
-                """([token, refresh, userId, username]) => {
-                    localStorage.setItem('token', token);
-                    if (refresh) localStorage.setItem('refresh_token', refresh);
-                    if (userId) localStorage.setItem('user_id', userId);
-                    if (username) localStorage.setItem('username', username);
-                }""",
-                [token, refresh, str(info.get("id") or ""), str(info.get("username") or ADMIN_USER)],
-            )
-            page.goto(admin_base + "/finance/fund", wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
+            if not self.admin_login_browser(admin_base):
+                self.shot("F-admin-login-fail")
+                box = ""
+                if page.locator(".el-message").count():
+                    box = page.locator(".el-message").first.inner_text()
+                self.add("F", "管理端登录/资金管理", "FAIL",
+                         f"{ADMIN_USER} 登录后仍停留在 {page.url}；提示：{box or '无'}")
+                return False
+
+            page.goto(admin_base + "/finance/fund", wait_until="domcontentloaded", timeout=180000)
+            rows = page.locator(".el-table__row")
+            loaded = wait_until(lambda: rows.count() > 0, 180.0, interval=0.5)
+            if not loaded and "/login" in page.url:
+                # 兜底：SPA 内跳转（等价点击左侧「资金管理」菜单），绕开整页冷启动
+                page.evaluate(
+                    "() => { history.pushState({}, '', '/finance/fund');"
+                    " window.dispatchEvent(new PopStateEvent('popstate')); }")
+                loaded = wait_until(lambda: rows.count() > 0, 60.0, interval=0.5)
+            page.wait_for_timeout(600)
             self.shot("F-admin-fund")
             if "/login" in page.url:
-                self.add("F", "资金管理(管理端)", "SKIP",
-                         f"带真实登录态仍被重定向到 /login（权限/菜单校验未通过），SKIP；当前 {page.url}")
-                return
-            text = self.body_text()
-            rows = page.locator(".el-table__row").count()
-            server_errors = [e for e in self.col.events if e["step"] == "F 管理端资金管理" and e["status"] and e["status"] >= 500]
+                self.add("F", "管理端登录/资金管理", "FAIL", f"打开 /finance/fund 被弹回登录页：{page.url}")
+                return False
+            server_errors = [e for e in self.col.events
+                             if e["step"] == "F 管理端登录/资金管理" and e["status"] and e["status"] >= 500]
+            row_count = rows.count()
             if server_errors:
-                self.add("F", "资金管理(管理端)", "SKIP",
-                         f"页面出现 {len(server_errors)} 个 5xx：{[e['status'] for e in server_errors]}（按 SKIP 处理，见错误清单）")
-                return
-            if rows > 0 or ("暂无数据" not in text and len(text) > 120):
-                self.add("F", "资金管理(管理端)", "PASS", f"{admin_base}/finance/fund 渲染正常，表格行数={rows}，无 5xx")
-            else:
-                self.add("F", "资金管理(管理端)", "SKIP", f"页面渲染但表格无数据（行数={rows}），按 SKIP 处理")
+                self.add("F", "管理端登录/资金管理", "FAIL",
+                         f"资金管理页出现 {len(server_errors)} 个 5xx：{[e['status'] for e in server_errors]}")
+                return False
+            page_text = self.body_text()
+            header_ok = ("资金管理" in page_text) and ("摘要" in page_text) and ("收支类型" in page_text)
+            if not loaded or row_count == 0 or not header_ok:
+                self.add("F", "管理端登录/资金管理", "FAIL",
+                         f"{ADMIN_USER} 登录成功但资金管理页未正常渲染：url={page.url}，row_count={row_count}，"
+                         f"表头/标题命中={header_ok}")
+                return False
+            self.add("F", "管理端登录/资金管理", "PASS",
+                     f"{ADMIN_USER} 浏览器真实登录 → {page.url} 标题+表头渲染正常，资金流水 {row_count} 行，无 5xx")
+            return True
         except Exception as exc:
             self.shot("F-error")
-            self.add("F", "资金管理(管理端)", "SKIP", f"异常（可选步骤）：{exc}")
+            self.add("F", "管理端登录/资金管理", "FAIL", f"异常：{exc}")
+            return False
+
+    # -- G POS 支付 → 资金流水（浏览器验证） --
+    def step_pos_sale_to_fund(self, admin_base: str | None, sale: dict | None) -> None:
+        self.col.set_step("G POS支付入账")
+        page = self.page
+        if not sale:
+            self.add("G", "POS支付入账", "FAIL", "POS 下单/支付接口调用失败，无法验证资金流水（见上方 [data] 日志）")
+            return
+        order_no = sale["orderNo"]
+        amount_text = f"{sale['amount']:.2f}"
+        flow_no = sale.get("fundFlowNo") or ""
+        try:
+            page.goto(admin_base + "/finance/fund", wait_until="domcontentloaded", timeout=60000)
+            rows = page.locator(".el-table__row")
+            wait_until(lambda: rows.count() > 0, 60.0, interval=0.4)
+            # 前端列表首屏 10 条按 business_date/flow_id 倒序，新流水必在第 1 条；关键字行必须出现
+            hit = wait_until(lambda: rows.filter(has_text=order_no).count() > 0, 30.0, interval=0.4)
+            self.shot("G-fund-flow")
+            if not hit:
+                self.add("G", "POS支付入账", "FAIL",
+                         f"资金管理页未出现单号 {order_no} 的流水；当前首行={self._short(rows.first.inner_text() if rows.count() else '(空表)', 160)}")
+                return
+            row = rows.filter(has_text=order_no).first
+            row_text = row.inner_text()
+            ok_remark = "POS销售入账" in row_text and order_no in row_text
+            if not ok_remark:
+                self.add("G", "POS支付入账", "FAIL",
+                         f"命中单号行但摘要不含「POS销售入账」+单号；行文本={self._short(row_text, 200)}")
+                return
+
+            # 列表「收入(元)/支出(元)」列当前不渲染金额（页面 columns 未声明 slot），金额改在「详情」弹窗里核对
+            row.get_by_role("button", name="详情").first.click()
+            dlg = page.locator(".el-dialog").filter(has_text="资金流水详情").first
+            dlg.wait_for(state="visible", timeout=15000)
+            dlg_text = dlg.inner_text()
+            self.shot("G-fund-detail")
+            ok_amount = amount_text in dlg_text
+            ok_flow = (flow_no in dlg_text) if flow_no else True
+            ok_summary = "POS销售入账" in dlg_text and order_no in dlg_text
+            dlg.get_by_role("button", name="关闭").first.click()
+            if not (ok_amount and ok_flow and ok_summary):
+                self.add("G", "POS支付入账", "FAIL",
+                         f"详情弹窗核对失败：金额 {amount_text}={ok_amount}，流水号 {flow_no}={ok_flow}，"
+                         f"摘要含单号={ok_summary}；弹窗文本={self._short(dlg_text, 240)}")
+                return
+            self.add("G", "POS支付入账", "PASS",
+                     f"订单 {order_no} 支付 ¥{amount_text} → 资金管理列表命中「POS销售入账」行；"
+                     f"详情弹窗：流水号 {flow_no or '-'}、金额(元) {amount_text}、摘要含单号")
+        except Exception as exc:
+            self.shot("G-error")
+            self.add("G", "POS支付入账", "FAIL", f"异常：{exc}")
 
 
 # ---------------------------------------------------------------- 数据准备
@@ -512,25 +584,57 @@ def pick_call_record(token: str | None) -> str | None:
     return None
 
 
-def admin_login_api() -> tuple[dict | None, str]:
-    """管理端真实登录（可选步骤 F）。返回 (登录数据, 说明)，拿不到就返回说明用于 SKIP。"""
-    status, body = http_json("POST", "/v1/auth/login", body={
-        "username": ADMIN_USER, "password": ADMIN_PASS, "rememberMe": True,
-    })
-    if status == 200 and isinstance(body, dict) and body.get("data"):
-        data = body["data"]
-        if data.get("token"):
-            return data, f"{ADMIN_USER} 登录成功"
-        return None, f"{ADMIN_USER} 登录响应无 token"
-    message = ""
-    biz_code = ""
-    if isinstance(body, dict):
-        message = str(body.get("message") or body.get("_raw") or "")
-        biz_code = str(body.get("code", ""))
-    detail = f"HTTP {status}" + (f", code={biz_code}" if biz_code else "")
-    if message:
-        detail += f"：{message[:80]}"
-    return None, f"{ADMIN_USER} 登录失败（{detail}）"
+def create_and_pay_pos_order(pos_token: str | None) -> dict | None:
+    """步骤 G 造数：POS 真实下单 + 现金支付（同收银台按钮对应的接口），返回订单号/金额/资金流水号。
+
+    说明：资金管理页面的断言仍然走浏览器真实渲染，这里只负责产生一笔真实业务数据。
+    """
+    if not pos_token:
+        print("[warn] 无 POS token，跳过造单")
+        return None
+
+    status, body = http_json("GET", "/v1/pos/api/dishes", token=pos_token)
+    dishes = (body.get("data") if isinstance(body, dict) else None) or []
+    dish = next((d for d in dishes if isinstance(d, dict) and d.get("dishId") and (d.get("price") or 0) > 0), None)
+    if not dish:
+        print(f"[warn] 无可用菜品（HTTP {status}），无法造单")
+        return None
+
+    item = {
+        "productId": str(dish["dishId"]),
+        "productName": str(dish.get("dishName") or ""),
+        "quantity": 1,
+        "price": float(dish.get("price") or 0),
+        "dishType": str(dish.get("dishType") or "single"),
+    }
+    order_body = {
+        "orderType": "dinein",
+        "items": [item],
+        "idempotencyKey": "e2e-c4-" + str(int(time.time() * 1000)),
+    }
+    status, body = http_json("POST", "/v1/pos/orders/order", token=pos_token, body=order_body)
+    data = (body.get("data") if isinstance(body, dict) else None) or {}
+    order_id = data.get("orderId")
+    amount = data.get("totalAmount")
+    if not order_id:
+        print(f"[warn] POS 下单失败 HTTP {status}：{str(body)[:250]}")
+        return None
+
+    status, body = http_json("POST", "/v1/pos/orders/order/pay", token=pos_token,
+                             body={"orderId": order_id, "paymentMethod": "现金", "amount": amount})
+    pay = (body.get("data") if isinstance(body, dict) else None) or {}
+    if not pay.get("orderNumber"):
+        print(f"[warn] POS 支付失败 HTTP {status}：{str(body)[:250]}")
+        return None
+
+    sale = {
+        "orderNo": str(pay.get("orderNumber")),
+        "orderId": str(order_id),
+        "amount": float(pay.get("totalAmount") or amount or 0),
+        "fundFlowNo": pay.get("fundFlowNo"),
+    }
+    print(f"[data] G 造单：{sale['orderNo']} ¥{sale['amount']:.2f} 流水号={sale['fundFlowNo']}")
+    return sale
 
 
 def launch_browser(pw):
@@ -580,10 +684,7 @@ def main() -> int:
     print(f"[data] 员工={display_name or POS_USER} 真实单号={order_no} 叫号记录={call_no}")
 
     admin_base = probe_admin_base()
-    admin_login: dict | None = None
-    admin_note = "管理端未启动"
-    if admin_base:
-        admin_login, admin_note = admin_login_api()
+    print(f"[data] 管理端入口={admin_base or '(未启动)'}  账号={ADMIN_USER}")
 
     collector = Collector()
     with sync_playwright() as pw:
@@ -615,15 +716,24 @@ def main() -> int:
                                ("D", "订单查询"), ("E", "叫号历史取餐")):
                 runner.add(key, title, "SKIP", "前置步骤 A 登录失败，未执行")
 
-        runner.step_admin_fund(admin_base, admin_login, admin_note)
+        runner.step_admin_fund(admin_base)
+
+        # G：API 造一笔真实 POS 销售（下单+现金支付），再用浏览器验证资金管理里的入账流水
+        sale = create_and_pay_pos_order(token)
+        runner.step_pos_sale_to_fund(admin_base, sale)
 
         browser.close()
 
     # ---------------- 汇总 ----------------
     results = runner.results
     fail_status = {r.key: r.status for r in results}
-    f_skipped = fail_status.get("F") == "SKIP"
-    counted_errors = [e for e in collector.events if not (f_skipped and e["step"] == "F 管理端资金管理")]
+    skipped_steps = {f"F 管理端登录/资金管理"} if fail_status.get("F") == "SKIP" else set()
+    counted_errors = [e for e in collector.events if e["step"] not in skipped_steps]
+    # 去重：浏览器对「已白名单静态资源（favicon 等）」的加载失败只会打一条无 URL 的 console.error，
+    # 若网络层没有记录任何真实 4xx/5xx，这类通用噪音不计入判定（真实接口失败会有带 URL 的 http 事件）。
+    if not [e for e in counted_errors if e["kind"] == "http"]:
+        counted_errors = [e for e in counted_errors
+                          if not (e["kind"] == "console.error" and e["text"].startswith("Failed to load resource"))]
     fail_steps = [r for r in results if r.status == "FAIL"]
 
     print()

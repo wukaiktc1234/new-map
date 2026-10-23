@@ -13,6 +13,7 @@ import com.foodtraceability.controller.websocket.OrderWebSocketController;
 import com.foodtraceability.service.MemberService;
 import com.foodtraceability.service.PosCallNumberService;
 import com.foodtraceability.service.PosOrderPaymentService;
+import com.foodtraceability.service.finance.PosSaleFinanceRecorder;
 import com.foodtraceability.service.SensitiveDataService;
 import com.foodtraceability.service.ReceiptPrinterService;
 import com.foodtraceability.utils.SecurityUtils;
@@ -63,6 +64,9 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     /** POS 叫号号服务：支付成功旁路补号（下单时已取号则以读回为主，幂等） */
     private final PosCallNumberService posCallNumberService;
 
+    /** POS 销售财务副作用：资金流水入账 + 挂账核销（独立事务，失败不影响支付） */
+    private final PosSaleFinanceRecorder posSaleFinanceRecorder;
+
     public PosOrderPaymentServiceImpl(
             KitchenOrderMapper kitchenOrderMapper,
             OrderMapper orderMapper,
@@ -80,7 +84,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             OrderItemNewMapper orderItemNewMapper,
             OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
             OrderRefundRecordNewMapper orderRefundRecordNewMapper,
-            PosCallNumberService posCallNumberService) {
+            PosCallNumberService posCallNumberService,
+            PosSaleFinanceRecorder posSaleFinanceRecorder) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -98,6 +103,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
         this.orderRefundRecordNewMapper = orderRefundRecordNewMapper;
         this.posCallNumberService = posCallNumberService;
+        this.posSaleFinanceRecorder = posSaleFinanceRecorder;
     }
 
     /**
@@ -666,6 +672,24 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         log.info("新表订单支付完成: orderId={}, orderNumber={}, amount={}分, method={}, operator={}",
                 order.getOrderId(), order.getOrderNumber(), dueCents, paymentMethodInt, operatorName);
 
+        // 支付成功后的财务副作用（资金流水收入 + 挂账核销）。
+        // 资金流水写 fund_flows（direction=1 收入 / category=1 销售收款），金额=本次实收（分）；
+        // 独立事务执行：入账失败只回滚财务侧并记 ERROR/METRIC 日志，绝不让支付回滚；
+        // 幂等：同订单已有 SALE 收入流水则跳过（repeat pay / 回调重放不会重复入账）。
+        String orderNumberForFinance = order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode();
+        PosSaleFinanceRecorder.PosSaleFinanceOutcome finance =
+                posSaleFinanceRecorder.recordAfterPayment(order.getOrderId(), orderNumberForFinance, dueCents,
+                        paymentMethodInt, order.getStoreId(), order.getCustomerName());
+        if (finance.getFundFlowNo() != null) {
+            log.info("POS 销售入账完成: orderId={}, orderNumber={}, flowNo={}, accountId={}, receivableSettled={}分",
+                    order.getOrderId(), orderNumberForFinance, finance.getFundFlowNo(),
+                    finance.getAccountId(), finance.getReceivableSettledFen());
+        } else {
+            log.error("POS 销售入账未完成（支付已成功，需财务人工补录）: orderId={}, orderNumber={}, amount={}分, status={}, note={}",
+                    order.getOrderId(), orderNumberForFinance, dueCents,
+                    finance.getFundFlowStatus(), finance.getNote());
+        }
+
         // 支付成功旁路：确认叫号号（下单时已取号 → 读回同一个号，幂等；历史单 → 此时补号）
         String callNumber = null;
         try {
@@ -679,6 +703,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         result.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
         result.setCallNumber(callNumber);
         result.setPickupNumber(callNumber);
+        // 资金流水号回传：前端/对账可据此直接定位 fund_flows 记录（入账失败时为 null）
+        result.setFundFlowNo(finance.getFundFlowNo());
         result.setStatus(order.getOrderStatus() != null ? String.valueOf(order.getOrderStatus()) : "0");
         result.setTotalAmount(BigDecimal.valueOf(dueCents).movePointLeft(2));
         result.setOrderSource(order.getOrderSource());

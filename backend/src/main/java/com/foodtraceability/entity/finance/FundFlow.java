@@ -64,6 +64,14 @@ public class FundFlow extends BaseEntity implements Serializable {
     /** 创建人ID */
     private Long createUserId;
 
+    /**
+     * 流水状态
+     * 1-待处理 2-已完成 3-已取消（口径见 docs/alignment/finance-system-state-machine.md 3.7）
+     * 历史数据里该列曾是 0（列默认值，无对应状态），已由
+     * scripts/db-fix/2026-10-23-fund-flow-status-normalize.sql 归一为 1。
+     */
+    private Integer status;
+
     /** 逻辑删除标记 */
     @TableLogic
     private Integer deleted;
@@ -170,6 +178,14 @@ public class FundFlow extends BaseEntity implements Serializable {
 
     public void setCreateUserId(Long createUserId) {
         this.createUserId = createUserId;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
     }
 
     @Override

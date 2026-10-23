@@ -63,9 +63,14 @@ public class PosOrderNumberGenerator {
         String prefix = tableNumber != null ? "T" : "W";
         String sequenceKey = prefix + dateStr;
         try {
-            orderMapper.initSequence(sequenceKey);
-            orderMapper.incrementSequence(sequenceKey);
-            int sequence = orderMapper.getLastInsertId();
+            // 单语句原子取号（INSERT ... ON CONFLICT DO UPDATE ... RETURNING）。
+            // 原实现是「initSequence + incrementSequence + getLastInsertId」三步，而 getLastInsertId 没入参、
+            // MyBatis 绑不出 #{sequenceKey} → 恒抛异常 → 订单号长期走遗留表 max+1 的降级路径；
+            // 遗留表与 orders 不同步时（例如数据库异常恢复后）就会撞 orders_order_number_key。
+            Integer sequence = orderMapper.nextSequenceValue(sequenceKey);
+            if (sequence == null || sequence <= 0) {
+                throw new IllegalStateException("订单号段分配失败: sequenceKey=" + sequenceKey);
+            }
             return sequenceKey + String.format("%03d", sequence);
         } catch (Exception e) {
             log.warn("数据库序列生成失败，降级使用同步方法: {}", e.getMessage());

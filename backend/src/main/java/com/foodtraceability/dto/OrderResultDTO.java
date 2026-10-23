@@ -33,6 +33,8 @@ public class OrderResultDTO {
     private String createTime;
     @Schema(description = "订单来源(0-APP/1-支付宝/2-现金/3-银行卡/4-POS终端)")
     private Integer orderSource;
+    @Schema(description = "资金流水号（POS 支付入账成功后返回，如 FF202610230001）")
+    private String fundFlowNo;
     @Schema(description = "订单项列表")
     private List<OrderItemInfo> orderItems;
     @Schema(description = "扫码支付二维码URL（仅微信/支付宝返回，前端需弹窗展示）")
@@ -180,6 +182,14 @@ public class OrderResultDTO {
 
     public String getCreateTime() {
         return this.createTime;
+    }
+
+    public String getFundFlowNo() {
+        return this.fundFlowNo;
+    }
+
+    public void setFundFlowNo(final String fundFlowNo) {
+        this.fundFlowNo = fundFlowNo;
     }
 
     public List<OrderItemInfo> getOrderItems() {

@@ -52,6 +52,8 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         FundFlow entity = new FundFlow();
         BeanUtils.copyProperties(dto, entity);
         entity.setFlowNo(generateFlowNo());
+        // 状态初值：1-待处理（口径见 docs/alignment/finance-system-state-machine.md 3.7）
+        entity.setStatus(1);
 
         // 计算交易后余额
         Long currentBalance = account.getBalance() != null ? account.getBalance() : 0L;
@@ -206,6 +208,25 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     private FundFlowVO convertToVO(FundFlow entity) {
         FundFlowVO vo = new FundFlowVO();
         BeanUtils.copyProperties(entity, vo);
+        // 状态兜底：历史行可能是 0/NULL（无对应状态），统一按「待处理」呈现，避免前端显示「未知」
+        if (vo.getStatus() == null || vo.getStatus() < 1 || vo.getStatus() > 3) {
+            vo.setStatus(1);
+        }
+        vo.setStatusName(getStatusName(vo.getStatus()));
         return vo;
+    }
+
+    /**
+     * 流水状态中文名：1-待处理 2-已完成 3-已取消
+     */
+    private String getStatusName(Integer status) {
+        if (status == null) {
+            return "待处理";
+        }
+        return switch (status) {
+            case 2 -> "已完成";
+            case 3 -> "已取消";
+            default -> "待处理";
+        };
     }
 }

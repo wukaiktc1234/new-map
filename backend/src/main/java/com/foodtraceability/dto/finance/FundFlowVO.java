@@ -61,6 +61,12 @@ public class FundFlowVO implements Serializable {
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 
+    @Schema(description = "流水状态：1-待处理 2-已完成 3-已取消")
+    private Integer status;
+
+    @Schema(description = "流水状态名称：待处理/已完成/已取消")
+    private String statusName;
+
     public Long getFlowId() {
         return flowId;
     }
@@ -179,5 +185,21 @@ public class FundFlowVO implements Serializable {
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
+    }
+
+    public String getStatusName() {
+        return statusName;
+    }
+
+    public void setStatusName(String statusName) {
+        this.statusName = statusName;
     }
 }

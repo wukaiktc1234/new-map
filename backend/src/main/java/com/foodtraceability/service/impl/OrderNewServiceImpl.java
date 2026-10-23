@@ -2214,6 +2214,9 @@ public class OrderNewServiceImpl implements OrderNewService {
     private String getPaymentMethodName(Integer method) {
         if (method == null) return "未知";
         switch (method) {
+            // 0-未记录：历史回填/无渠道信息的支付记录专用（见 scripts/db-fix/2026-10-23-backfill-missing-payment-records.sql），
+            // 语义是「当时没记下支付方式」，不是「未知错误」，也绝不能被猜成某个渠道。
+            case 0: return "未记录";
             case 1: return "现金";
             case 2: return "微信";
             case 3: return "支付宝";
