@@ -1,6 +1,7 @@
 package com.foodtraceability.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.InventoryDeductionDTO;
 import com.foodtraceability.entity.*;
 import com.foodtraceability.mapper.*;
@@ -197,7 +198,12 @@ public class InventoryDeductionServiceImpl implements InventoryDeductionService 
             log.info("批次扣减完成：追溯码={}, 扣减数量={}, 剩余数量={}", traceCodeEntity.getTraceCode(), useQty, remainingQty);
         }
         if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
-            log.warn("批次库存不足，缺少数量：{}", remainingQty);
+            // P1-1：批次总量不足时只告警会让调用方误判成功（假成功），改为明确失败并由事务回滚，
+            // 异常信息带缺口数量，前端可直接提示补货量。
+            String shortage = remainingQty.stripTrailingZeros().toPlainString();
+            log.warn("批次库存不足，缺少数量：{}，订单：{}", shortage, kitchenOrderId);
+            throw new BusinessException(400, "批次库存不足，缺少数量：" + shortage
+                    + "（原料=" + materialId + "，批次=" + batchCode + "）");
         }
     }
 

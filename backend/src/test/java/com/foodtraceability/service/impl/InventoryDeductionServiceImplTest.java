@@ -1,5 +1,6 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.InventoryDeductionDTO;
 import com.foodtraceability.entity.DishRecipe;
 import com.foodtraceability.entity.FoodTraceCode;
@@ -290,14 +291,14 @@ class InventoryDeductionServiceImplTest {
     }
 
     @Test
-    @DisplayName("deductByBatchCode：批次合计不足时只扣可用部分，不抛错（当前实现仅告警）")
-    void deductByBatchCode_insufficient_logsOnly() {
+    @DisplayName("deductByBatchCode：批次合计不足时抛业务异常（P1-1 不再假成功），异常带缺口数量")
+    void deductByBatchCode_insufficient_throws() {
         when(materialTraceCodeMapper.selectList(any())).thenReturn(List.of(trace("T1", "1", null, null)));
 
-        service.deductByBatchCode("100", "B1", new BigDecimal("5"), "KO-1", "U1", "张三");
-
-        verify(materialUsageRecordMapper, times(1)).insert(any(MaterialUsageRecord.class));
-        assertNotNull(service.getDeductionRecord("KO-1"));
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.deductByBatchCode("100", "B1", new BigDecimal("5"), "KO-1", "U1", "张三"));
+        assertTrue(ex.getMessage().contains("批次库存不足"), "异常信息必须说明库存不足，实际: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("4"), "异常信息应带出缺口数量 4，实际: " + ex.getMessage());
     }
 
     @Test
