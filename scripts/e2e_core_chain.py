@@ -107,11 +107,12 @@ class Runner:
 
     # ---------- 3 支付（quick-pay 新路由） ----------
     def pay_order(self):
-        cents = int(round(self.a.food_price * self.a.quantity * 100))
-        st, body = call("POST", "/v1/pos/orders/%s/quick-pay" % self.order_id, token=self.token,
-                        body={"payments": [{"paymentMethod": 1, "amount": cents}]})
+        """标准支付入口：POST /v1/pos/orders/order/pay（新表优先，旧表兜底）"""
+        yuan = round(self.a.food_price * self.a.quantity, 2)
+        st, body = call("POST", "/v1/pos/orders/order/pay", token=self.token,
+                        body={"orderId": self.order_id, "paymentMethod": "cash", "amount": yuan})
         ok = ok_code(body)
-        self.step("POS 支付 quick-pay（现金 %d 分）" % cents, ok,
+        self.step("POS 标准支付 order/pay（现金 %.2f 元）" % yuan, ok,
                   "HTTP %s %s" % (st, "支付成功" if ok else json.dumps(body, ensure_ascii=False)[:180]))
         return ok
 
