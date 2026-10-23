@@ -103,9 +103,11 @@ const {
 /**
  * 表单数据状态类型
  */
-type PlanFormState = Partial<PurchasePlanFormData> & {
+// items 必须保持必填（Partial 会把数组变成可空，导致 formData.items.length 等 8 处 TS18048）
+type PlanFormState = Omit<Partial<PurchasePlanFormData>, 'items'> & {
   planId: string
   planNo: string
+  items: PurchasePlanFormData['items']
 }
 
 const formData = reactive<PlanFormState>({

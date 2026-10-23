@@ -145,6 +145,16 @@ export interface ReceiptConfirmationItem {
   productionDate?: string
   expiryDate?: string
   remark?: string
+  /** 已落库的凭证照片（后端回放历史时透出） */
+  evidence?: ReceiptEvidenceForm[]
+  /** 逐条质检结论 */
+  qualityCheckResult?: number
+  /** 验收结论（回放用） */
+  accept?: 'receive' | 'reject' | ''
+  /** 本次实收数量（回放用） */
+  quantity?: number | null
+  /** 是否手工匹配产生 */
+  manualMatched?: boolean
 }
 
 /** 收货确认单 */
@@ -169,6 +179,13 @@ export interface ReceiptConfirmationInfo {
   createTime: string
   updateTime: string
   items?: ReceiptConfirmationItem[]
+  /** 供应商名称（后端 ReceiptConfirmation 已透出） */
+  supplierName?: string
+  /** 防伪码（16 位，供打印与查验） */
+  verifyCode?: string
+  /** 已打印次数 / 最近打印时间（服务端计数） */
+  printCount?: number
+  lastPrintTime?: string
 }
 
 /** 收货确认单查询表单 */
@@ -181,6 +198,37 @@ export interface ReceiptConfirmationQueryForm {
   warehouseId?: string
 }
 
+/** 收货凭证照片（质检驳回 / 手工匹配 的现场证据链） */
+export interface ReceiptEvidenceForm {
+  /** 取证类型：QC_REJECT-质检驳回 / MANUAL_MATCH-手工匹配 */
+  evidenceType: 'QC_REJECT' | 'MANUAL_MATCH' | string
+  /** 已上传后的图片地址（离线暂存时为空串） */
+  photoUrl: string
+  /** 离线暂存时的本地 dataURL，恢复网络后重传 */
+  localDataUrl?: string
+  /** 是否还在等待上传 */
+  pendingUpload?: boolean
+  /** 拍摄时间（EXIF 优先，缺失时用拍摄动作时刻兜底） */
+  photoTakenAt?: string
+  /** 设备机型（EXIF 缺失时用 UA 兜底） */
+  deviceModel?: string
+  /** GPS 坐标（EXIF 优先，缺失时用定位兜底） */
+  gps?: string
+}
+
+/** 收货确认签名存证（对应后端 receipt_confirmation_signatures） */
+export interface ReceiptSignatureInfo {
+  signatureId?: string | number
+  confirmationId?: string | number
+  /** 签名方：RECEIVER-收货方 / SUPPLIER-供应商 */
+  signerType?: 'RECEIVER' | 'SUPPLIER' | string
+  signerName?: string
+  /** 笔迹图片（base64 或 URL） */
+  signatureImage?: string
+  signTime?: string
+  createTime?: string
+}
+
 /** 收货确认明细表单 */
 export interface ReceiptConfirmationItemForm {
   arrivalItemId: string
@@ -190,13 +238,26 @@ export interface ReceiptConfirmationItemForm {
   unit?: string
   expectedQuantity: number
   receivedQuantity: number
-  confirmedQuantity: number
-  rejectedQuantity: number
+  /** 确认数量：移动收货台用 quantity 录入，提交时由 converter 兜底映射 */
+  confirmedQuantity?: number
+  rejectedQuantity?: number
   unitPrice: number
   batchNo?: string
   productionDate?: string
   expiryDate?: string
   remark?: string
+  /** 本次实收数量（移动收货台逐条录入，可空表示未填） */
+  quantity?: number | null
+  /** 验收结论：receive-接收 / reject-拒收；空串表示未选 */
+  accept?: 'receive' | 'reject' | ''
+  /** 现场凭证照片（拒收必填，手工匹配可附） */
+  evidence?: ReceiptEvidenceForm[]
+  /** 是否由手工匹配（扫码/名单未命中后人工指定）产生 */
+  manualMatched?: boolean
+  /** 逐条质检结论：1-合格 2-不合格 3-让步接收 */
+  qualityCheckResult?: number
+  /** 供应商名称（列表/历史展示用，前端透传） */
+  supplierName?: string
 }
 
 /** 收货确认单创建表单 */
@@ -209,6 +270,8 @@ export interface ReceiptConfirmationFormData {
   qualityCheckResult?: number
   qualityRemark?: string
   remark?: string
+  /** 条码（扫码收货时随单上送，用于追溯绑定） */
+  barcode?: string
 }
 
 /** 状态选项 */

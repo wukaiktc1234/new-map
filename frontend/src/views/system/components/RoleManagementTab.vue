@@ -15,11 +15,11 @@ import { userApi, type UserItem } from '@/api/system/user'
 
 /** 模拟用户数据（用于分配用户对话框演示） */
 const mockUsers: UserItem[] = [
-  { id: 1, username: 'admin', fullName: '系统管理员', status: 1 } as UserItem,
-  { id: 2, username: 'manager', fullName: '门店经理', status: 1 } as UserItem,
-  { id: 3, username: 'staff', fullName: '普通员工', status: 1 } as UserItem,
-  { id: 4, username: 'chef', fullName: '厨师长', status: 1 } as UserItem,
-  { id: 5, username: 'waiter', fullName: '服务员', status: 1 } as UserItem,
+  { id: 1, username: 'admin', fullName: '系统管理员', status: 1 } as unknown as UserItem,
+  { id: 2, username: 'manager', fullName: '门店经理', status: 1 } as unknown as UserItem,
+  { id: 3, username: 'staff', fullName: '普通员工', status: 1 } as unknown as UserItem,
+  { id: 4, username: 'chef', fullName: '厨师长', status: 1 } as unknown as UserItem,
+  { id: 5, username: 'waiter', fullName: '服务员', status: 1 } as unknown as UserItem,
 ]
 
 /** 角色列表 */
@@ -388,7 +388,7 @@ async function handleUserSubmit() {
   try {
     // 逐个为用户分配角色
     const promises = selectedUserIds.value.map(userId =>
-      userApi.assignRoles(Number(userId), [String(userRoleId.value)])
+      userApi.assignRoles(String(userId), [String(userRoleId.value)])
     )
     await Promise.all(promises)
     ElMessage.success('用户分配成功')

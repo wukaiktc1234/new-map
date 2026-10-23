@@ -65,6 +65,8 @@ export interface MaterialArchiveQueryForm {
   departmentId?: string;
   /** 搜索关键词（名称或编码） */
   keyword?: string;
+  /** 条码（扫码收货时按条码精确匹配商品，移动收货台使用） */
+  barcode?: string;
   /** 状态 */
   status?: MaterialArchiveStatus | null;
 }

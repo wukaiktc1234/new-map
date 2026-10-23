@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 /**
  * 手持收货（H5 移动端）页面
  * 卡片式逐项验收：接收/拒收大按钮 + 称重数量 + 批次效期 + 质检，触控优先
@@ -1557,7 +1557,8 @@ async function scanBarcode(): Promise<string | null> {
               resolve(null)
             }
           }
-        ftsNative.startScan()
+        // 这里已由上方 if (ftsNative?.startScan) 收窄，但闭包内 TS 会丢失收窄，显式断言
+        ftsNative.startScan!()
       })
     } catch (err) {
       ElMessage.warning(`JS桥扫码失败（${String(err).slice(0, 30)}），尝试插件…`)

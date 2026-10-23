@@ -696,6 +696,8 @@ export interface FinanceBankAccountFormData {
   openDate: string
   initialBalance?: number
   remark?: string
+  /** 账户状态：用于启用/停用切换（后端 updateDTO 支持 status） */
+  status?: BankAccountStatus
 }
 
 /** 银行账户查询表单 */

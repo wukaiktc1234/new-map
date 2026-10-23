@@ -17,6 +17,7 @@ import type {
   ReceiptConfirmationItem,
   ReceiptConfirmationQueryForm,
   ReceiptConfirmationFormData,
+  ReceiptSignatureInfo,
   ReceiverType,
 } from '@/types/purchase-arrival'
 
@@ -144,7 +145,8 @@ export const receiptConfirmationConverter = {
   toCreateDTO(form: ReceiptConfirmationFormData): Record<string, unknown> {
     const items = (form.items ?? []).map(item => ({
       arrivalItemId: item.arrivalItemId ? Number(item.arrivalItemId) : null,
-      confirmedQuantity: item.confirmedQuantity,
+      // 移动收货台逐条录入用的是 quantity/accept，这里统一兜底映射成后端要的 confirmedQuantity
+      confirmedQuantity: item.confirmedQuantity ?? item.quantity ?? 0,
       rejectedQuantity: item.rejectedQuantity ?? 0,
       batchNo: item.batchNo ?? null,
       productionDate: item.productionDate ?? null,
@@ -228,6 +230,51 @@ export const receiptConfirmationApi = {
     const dto = receiptConfirmationConverter.toCreateDTO(data)
     const res = await post<ReceiptConfirmationBackend>('/v1/receipt-confirmations', dto)
     return receiptConfirmationConverter.toFrontend(res)
+  },
+
+  /**
+   * 新增收货确认签名（收货方 / 供应商双签存证）
+   * 后端：POST /v1/receipt-confirmations/{confirmationId}/signatures
+   */
+  async addSignature(
+    confirmationId: string | number,
+    payload: { signerType: 'RECEIVER' | 'SUPPLIER'; signerName?: string; signatureImage: string },
+  ): Promise<ReceiptSignatureInfo> {
+    return await post<ReceiptSignatureInfo>(
+      `/v1/receipt-confirmations/${confirmationId}/signatures`,
+      payload,
+    )
+  },
+
+  /**
+   * 查询收货确认单的签名存证列表
+   * 后端：GET /v1/receipt-confirmations/{confirmationId}/signatures
+   */
+  async getSignatures(confirmationId: string | number): Promise<ReceiptSignatureInfo[]> {
+    return (await get<ReceiptSignatureInfo[] | null>(
+      `/v1/receipt-confirmations/${confirmationId}/signatures`,
+    )) ?? []
+  },
+
+  /**
+   * 登记一次打印（服务端累计 printCount / lastPrintTime，防打印泛滥）
+   * 后端：POST /v1/receipt-confirmations/{confirmationId}/print-records
+   */
+  async recordPrint(confirmationId: string | number): Promise<ReceiptConfirmationInfo | null> {
+    const res = await post<ReceiptConfirmationBackend | null>(
+      `/v1/receipt-confirmations/${confirmationId}/print-records`,
+    )
+    return res ? receiptConfirmationConverter.toFrontend(res) : null
+  },
+
+  /**
+   * 防伪码查验（免登录，靠后端限流防遍历）
+   * 后端：GET /v1/receipt-confirmations/verify/{verifyCode}
+   */
+  async verifyByCode(verifyCode: string): Promise<unknown | null> {
+    return await get<unknown | null>(
+      `/v1/receipt-confirmations/verify/${encodeURIComponent(verifyCode)}`,
+    )
   },
 }
 
