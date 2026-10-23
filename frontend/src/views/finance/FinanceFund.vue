@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import PageHeader from '@/components/core/PageHeader.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue'
@@ -7,6 +7,9 @@ import StatusTag from '@/components/core/StatusTag.vue'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { useStandardPage } from '@/composables/useStandardPage'
 import { bankAccountApi, fundFlowApi } from '@/api/finance'
+import { getPosOrderTrace, type PosOrderTrace } from '@/api/order/order'
+import { parsePosOrderRemark, type PosOrderRef } from '@/utils/pos-order-remark'
+import { formatDateTime } from '@/utils/formatters'
 import type { FinanceBankAccount, FundFlow, FundFlowStatistics } from '@/types/finance'
 import type { StatColorType } from '@/types/stat'
 
@@ -304,14 +307,99 @@ onMounted(async () => {
   updateStatsCards()
 })
 
-/** 详情对话框 */
+/** ==================== 详情对话框（流水详情 + POS 订单穿透） ==================== */
 const detailDialogVisible = ref(false)
 const detailData = ref<Record<string, unknown>>({})
+/** 详情接口加载态（仅弹窗内 loading，不阻塞整页） */
+const detailLoading = ref(false)
+/** 从 remark 解析出的关联 POS 订单 */
+const posOrderRef = ref<PosOrderRef | null>(null)
+/** 关联订单明细（统一视图，金额为元） */
+const orderTrace = ref<PosOrderTrace | null>(null)
+const orderLoading = ref(false)
+/** 订单查询失败时的降级文案（无权限 / 不存在 / 暂不可用） */
+const orderErrorText = ref('')
 
-/** 打开详情对话框 */
-function handleViewDetail(row: Record<string, unknown>): void {
+/** 备注原文（remark 优先，其次 Converter 映射出的 summary） */
+const detailRemarkText = computed<string>(() => {
+  const remark = (detailData.value.remark as string) || (detailData.value.summary as string) || ''
+  return remark || '-'
+})
+
+/** 关联订单菜品小计合计（元） */
+const orderItemsTotal = computed<number>(() => {
+  const items = orderTrace.value?.items ?? []
+  const total = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+  return Math.round(total * 100) / 100
+})
+
+/** 后端 LocalDateTime.toString() 形如 2026-10-23T22:30:42.064207 → 统一 YYYY-MM-DD HH:mm:ss */
+function formatOrderTime(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return '-'
+  const normalized = text.replace('T', ' ').replace(/\.\d+$/, '')
+  const formatted = formatDateTime(normalized)
+  return formatted || normalized
+}
+
+/** 查询关联 POS 订单明细（失败只做局部提示，不抛错、不弹全局红字） */
+async function loadPosOrderTrace(refInfo: PosOrderRef | null): Promise<void> {
+  if (!refInfo) return
+  orderLoading.value = true
+  try {
+    const result = await getPosOrderTrace(refInfo.orderNumber, refInfo.orderId)
+    if (result.ok) {
+      orderTrace.value = result.trace
+      orderErrorText.value = ''
+    } else {
+      orderTrace.value = null
+      orderErrorText.value = result.message
+    }
+  } catch (error) {
+    console.warn('[FinanceFund] 关联 POS 订单查询异常', error)
+    orderTrace.value = null
+    orderErrorText.value = '订单明细暂不可用，请稍后重试'
+  } finally {
+    orderLoading.value = false
+  }
+}
+
+/** 打开详情对话框：先用列表行渲染，再补拉详情接口 + 联查关联订单 */
+async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
   detailData.value = { ...row }
+  detailLoading.value = false
+  orderTrace.value = null
+  orderErrorText.value = ''
+  orderLoading.value = false
+  // 列表行经 FundFlowDataConverter 转换后 remark 同时存在于 summary/remark
+  posOrderRef.value = parsePosOrderRemark(
+    (row.summary as string) || (row.remark as string) || '',
+  )
   detailDialogVisible.value = true
+
+  const flowId = String(row.id ?? '').trim()
+  if (flowId) {
+    detailLoading.value = true
+    try {
+      const detail = (await fundFlowApi.getById(flowId)) as unknown as Record<string, unknown>
+      if (detail) {
+        detailData.value = { ...row, ...detail }
+        const parsed = parsePosOrderRemark(
+          (detail.remark as string) || (detail.summary as string) || '',
+        )
+        if (parsed) posOrderRef.value = parsed
+      }
+    } catch (error) {
+      // 详情接口失败（无权限/已删除等）→ 回落列表行数据，不打断弹窗
+      console.warn('[FinanceFund] 加载流水详情失败，已回落到列表行数据', error)
+    } finally {
+      detailLoading.value = false
+    }
+  }
+
+  if (posOrderRef.value) {
+    await loadPosOrderTrace(posOrderRef.value)
+  }
 }
 </script>
 
@@ -354,24 +442,84 @@ function handleViewDetail(row: Record<string, unknown>): void {
     <div class="pagination-wrapper">
       <el-pagination :current-page="pagination.current" :page-size="pagination.size" :total="pagination.total" layout="total,prev,pager,next,jumper" @size-change="handleSizeChange" @current-change="handleCurrentChange" />
     </div>
-    <!-- 详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="资金流水详情" width="600px">
-      <el-descriptions :column="2" border label-class-name="detail-label">
-        <el-descriptions-item label="流水号">{{ (detailData.flowNo as string) || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="交易日期">{{ detailData.transactionDate as string }}</el-descriptions-item>
-        <el-descriptions-item label="收支类型">
-          <StatusTag :status="getFlowTypeTag(detailData.flowType as string).type" :label="getFlowTypeTag(detailData.flowType as string).label" size="small" />
-        </el-descriptions-item>
-        <el-descriptions-item label="金额(元)">{{ detailData.flowType === 'income' ? getIncome(detailData as unknown as FundFlow) : getExpense(detailData as unknown as FundFlow) }}</el-descriptions-item>
-        <el-descriptions-item label="银行账户">{{ (detailData.bankAccountName as string) || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="对方单位">{{ (detailData.counterparty as string) || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="余额(元)">{{ getBalance(detailData as unknown as FundFlow) }}</el-descriptions-item>
-        <el-descriptions-item label="凭证号">{{ (detailData.voucherNo as string) || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <StatusTag :status="getFlowStatusTag(detailData.status as string).type" :label="getFlowStatusTag(detailData.status as string).label" size="small" />
-        </el-descriptions-item>
-        <el-descriptions-item label="摘要" :span="2">{{ (detailData.summary as string) || '-' }}</el-descriptions-item>
-      </el-descriptions>
+    <!-- 详情对话框：流水详情 + 关联 POS 订单穿透 -->
+    <el-dialog v-model="detailDialogVisible" title="资金流水详情" width="760px" class="fund-detail-dialog">
+      <div v-loading="detailLoading" class="fund-detail">
+        <el-descriptions :column="2" border label-class-name="detail-label">
+          <el-descriptions-item label="流水号">{{ (detailData.flowNo as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="交易日期">{{ (detailData.transactionDate as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="收支类型">
+            <StatusTag :status="getFlowTypeTag(detailData.flowType as string).type" :label="getFlowTypeTag(detailData.flowType as string).label" size="small" />
+          </el-descriptions-item>
+          <el-descriptions-item label="流水状态">
+            <StatusTag :status="getFlowStatusTag(detailData.status as string).type" :label="(detailData.statusName as string) || getFlowStatusTag(detailData.status as string).label" size="small" />
+          </el-descriptions-item>
+          <el-descriptions-item label="金额(元)">{{ formatYuan(detailData.amount as number) }}</el-descriptions-item>
+          <el-descriptions-item label="交易后余额(元)">{{ getBalance(detailData as unknown as FundFlow) }}</el-descriptions-item>
+          <el-descriptions-item label="银行账户">{{ (detailData.bankAccountName as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="对方单位">{{ (detailData.counterparty as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="凭证号">{{ (detailData.voucherNo as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="操作人">{{ (detailData.createUserName as string) || (detailData.createBy as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">
+            <span class="fund-detail__remark">{{ detailRemarkText }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="order-section">
+          <div class="order-section__title">关联 POS 订单</div>
+
+          <template v-if="posOrderRef">
+            <el-descriptions :column="2" border label-class-name="detail-label">
+              <el-descriptions-item label="订单号">{{ posOrderRef.orderNumber || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="订单ID">{{ posOrderRef.orderId || '-' }}</el-descriptions-item>
+            </el-descriptions>
+
+            <div v-if="orderLoading" class="order-loading">正在查询订单明细...</div>
+
+            <template v-else-if="orderTrace">
+              <el-descriptions :column="2" border label-class-name="detail-label" class="order-meta">
+                <el-descriptions-item label="下单时间">{{ formatOrderTime(orderTrace.createTime) }}</el-descriptions-item>
+                <el-descriptions-item label="支付方式">{{ orderTrace.paymentMethod || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="订单状态">{{ orderTrace.status || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="订单金额(元)">{{ formatYuan(orderTrace.totalAmount) }}</el-descriptions-item>
+              </el-descriptions>
+
+              <table v-if="orderTrace.items.length" class="order-items-table">
+                <thead>
+                  <tr><th>菜品</th><th>单价(元)</th><th>数量</th><th>小计(元)</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, idx) in orderTrace.items" :key="idx">
+                    <td>{{ item.name }}</td>
+                    <td class="num">{{ formatYuan(item.price) }}</td>
+                    <td class="num">{{ item.quantity }}</td>
+                    <td class="num">{{ formatYuan(item.amount) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3" class="num">菜品合计</td>
+                    <td class="num">{{ formatYuan(orderItemsTotal) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div v-else class="order-empty">该订单无菜品明细</div>
+            </template>
+
+            <el-alert
+              v-else-if="orderErrorText"
+              :title="orderErrorText"
+              type="info"
+              :closable="false"
+              show-icon
+            />
+          </template>
+
+          <div v-else class="order-empty">
+            该流水未关联 POS 订单（非 POS 销售入账，或备注缺少关联信息）
+          </div>
+        </div>
+      </div>
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
@@ -400,5 +548,73 @@ function handleViewDetail(row: Record<string, unknown>): void {
 .stats-hint__loading {
   margin-left: 4px;
   opacity: 0.8;
+}
+
+/* ====== 详情弹窗：流水 + 关联订单 ====== */
+.fund-detail {
+  min-height: 80px;
+}
+
+.fund-detail__remark {
+  word-break: break-all;
+}
+
+.order-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--el-border-color, #dcdfe6);
+}
+
+.order-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #303133);
+  margin-bottom: 10px;
+}
+
+.order-meta {
+  margin-top: 10px;
+}
+
+.order-loading {
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary, #909399);
+}
+
+.order-empty {
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary, #909399);
+}
+
+.order-items-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.order-items-table th,
+.order-items-table td {
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.order-items-table th {
+  background: var(--el-fill-color-light, #f5f7fa);
+  font-weight: 600;
+  color: var(--el-text-color-regular, #606266);
+}
+
+.order-items-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-items-table tfoot td {
+  font-weight: 600;
+  background: var(--el-fill-color-lighter, #fafafa);
 }
 </style>

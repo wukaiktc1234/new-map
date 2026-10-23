@@ -10,7 +10,7 @@
  *   - 流水类型数字↔字符串（后端 1/2 ↔ 前端 'income'/'expense'）
  *   - 金额字段 amount/balance 分↔元
  */
-import { get, post } from '../request'
+import { get, post, silentGet } from '../request'
 import { FundFlowDataConverter, FundFlowTypeMap, fenToYuanNumber } from './converters'
 import type {
   FundFlow,
@@ -114,11 +114,15 @@ export const fundFlowApi = {
 
   /**
    * 根据ID获取资金流水详情
+   *
+   * 【静默】详情弹窗对失败做本地降级（回落到列表行数据），
+   * 因此使用 silentGet，避免接口异常时全局弹出红色错误提示打断页面。
+   *
    * @param id - 流水ID
    * @returns 流水详情（已转换状态/类型/金额）
    */
   async getById(id: string): Promise<FundFlow> {
-    const res = await get<Record<string, unknown>>(`/v1/finance/fund-flows/${id}`)
+    const res = await silentGet<Record<string, unknown>>(`/v1/finance/fund-flows/${encodeURIComponent(id)}`)
     return FundFlowDataConverter.toFrontend(res) as unknown as FundFlow
   },
 

@@ -304,7 +304,13 @@ request.interceptors.response.use(
           if (!silentError) ElMessage.error(errorMessage)
       }
 
-      logger.error('Response', `业务错误 [${res.code}]`, errorMessage)
+      // silentGet/silentPost 的契约就是「调用方自行处理」，这里不能再打 error 级日志，
+      // 否则财务详情里的权限降级探测会刷出一串 403 console 噪音（E2E 按 console.error 判定会判失败）
+      if (silentError) {
+        logger.info('Response', `业务错误 [${res.code}]（silent，由调用方处理）`, errorMessage)
+      } else {
+        logger.error('Response', `业务错误 [${res.code}]`, errorMessage)
+      }
       return Promise.reject(new Error(errorMessage))
     }
 

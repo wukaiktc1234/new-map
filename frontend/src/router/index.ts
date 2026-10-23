@@ -117,13 +117,17 @@ const router = createRouter({
     { path: '/finance/fund-flow', redirect: '/finance/fund' },
     { path: '/finance/tax', name: 'FinanceTax', component: () => import('@/views/finance/FinanceTax.vue'), meta: { title: '税务管理', domain: 'finance' } },
     { path: '/finance/invoice-reimbursement', name: 'InvoiceReimbursement', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票报销', domain: 'finance' } },
-    // 工作台财务快捷入口的历史 path（报销管理 / 发票管理 / 记账凭证）补齐，防死链
+    // 工作台财务快捷入口的历史 path（报销管理）补齐，防死链
     // 报销管理：暂无独立页面，落到建设中占位页（可跳转到已上线的发票报销页）
     { path: '/finance/reimbursement', name: 'ReimbursementManage', component: () => import('@/views/finance/ReimbursementManage.vue'), meta: { title: '报销管理', domain: 'finance' } },
-    // 发票管理：复用已有真实发票页面 InvoiceReimbursement.vue（与 /finance/invoice-reimbursement 同一组件，仅入口标题不同）
-    { path: '/finance/invoice', name: 'FinanceInvoice', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票管理', domain: 'finance' } },
-    // 凭证管理：复用已有真实凭证台账 FinanceLedger.vue（voucherApi 列表 + 新增/审核/过账）
-    { path: '/finance/voucher', name: 'FinanceVoucher', component: () => import('@/views/finance/FinanceLedger.vue'), meta: { title: '凭证管理', domain: 'finance' } },
+    // 【路由去重（模块 3.1）】以下两条曾与真实路由指向同一组件，造成重复入口 + 双份导航栈：
+    //   /finance/invoice  ⇄ /finance/invoice-reimbursement（均为 InvoiceReimbursement.vue）
+    //   /finance/voucher  ⇄ /finance/ledger               （均为 FinanceLedger.vue）
+    // 现保留「左侧菜单 / /finance 默认落地」实际使用的那条为真实路由，旧路径改为 redirect：
+    // 菜单（modules/finance/menu.ts）用 /finance/invoice-reimbursement、/finance/ledger；
+    // 工作台快捷入口已同步改指上面两条真实路由，这里的 redirect 仅兜住历史书签/外链，避免死链。
+    { path: '/finance/invoice', redirect: '/finance/invoice-reimbursement' },
+    { path: '/finance/voucher', redirect: '/finance/ledger' },
     { path: '/finance/report', name: 'FinanceReport', component: () => import('@/views/finance/FinanceReport.vue'), meta: { title: '财务报表', domain: 'finance', permissions: ['finance:report:view'] } },
     { path: '/finance/approval', name: 'FinanceApproval', component: () => import('@/views/finance/FinanceApproval.vue'), meta: { title: '财务审批', domain: 'finance', permissions: ['finance:approval:view'] } },
     { path: '/finance/auto-voucher', name: 'AutoVoucher', component: () => import('@/views/finance/AutoVoucher.vue'), meta: { title: '自动凭证管理', domain: 'finance' } },
