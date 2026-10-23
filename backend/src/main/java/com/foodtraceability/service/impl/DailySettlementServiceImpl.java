@@ -337,15 +337,14 @@ public class DailySettlementServiceImpl implements DailySettlementService {
     private LambdaQueryWrapper<DailySettlement> buildQueryWrapper(SettlementQueryDTO query, User currentUser) {
         LambdaQueryWrapper<DailySettlement> wrapper = new LambdaQueryWrapper<>();
 
-        // 防御性处理：currentUser 为空时跳过门店过滤，避免 NPE
-        if (currentUser == null) {
-            return wrapper;
-        }
-
-        // 区域经理和店长只能查看自己辖区的数据
-        String role = getUserRole(currentUser);
-        if (!ROLE_FINANCE_DIRECTOR.equals(role) && LocationIdBridge.storeIdOf(currentUser.getLocationId()) != null) {
-            wrapper.eq(DailySettlement::getStoreId, LocationIdBridge.storeIdOf(currentUser.getLocationId()));
+        // P0-3：currentUser 为空（内部任务 / 单元测试 / 匿名导出）时只跳过「门店收敛」，
+        // 日期、状态等查询条件必须照常拼装，否则会退化成拉全表分页。
+        if (currentUser != null) {
+            // 区域经理和店长只能查看自己辖区的数据
+            String role = getUserRole(currentUser);
+            if (!ROLE_FINANCE_DIRECTOR.equals(role) && LocationIdBridge.storeIdOf(currentUser.getLocationId()) != null) {
+                wrapper.eq(DailySettlement::getStoreId, LocationIdBridge.storeIdOf(currentUser.getLocationId()));
+            }
         }
 
         // 日期范围筛选

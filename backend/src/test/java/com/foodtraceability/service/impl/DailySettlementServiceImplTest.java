@@ -172,8 +172,8 @@ class DailySettlementServiceImplTest {
     }
 
     @Test
-    @DisplayName("getSettlementList：currentUser 为空时提前返回空条件（当前实现的特征化行为，不抛 NPE）")
-    void getSettlementList_nullUser_returnsEmptyWrapperWithoutNpe() {
+    @DisplayName("getSettlementList：currentUser 为空时跳过门店收敛但保留其它筛选条件（P0-3 已修）")
+    void getSettlementList_nullUser_keepsFiltersWithoutStoreNarrowing() {
         Page<DailySettlement> page = new Page<>(1, 10);
         page.setRecords(List.of());
         when(dailySettlementMapper.selectPage(any(), any())).thenReturn(page);
@@ -189,9 +189,13 @@ class DailySettlementServiceImplTest {
         ArgumentCaptor<Wrapper<DailySettlement>> captor = ArgumentCaptor.forClass(Wrapper.class);
         verify(dailySettlementMapper).selectPage(any(), captor.capture());
         assertTrue(captor.getValue() instanceof LambdaQueryWrapper);
-        // 现状：currentUser == null 时 buildQueryWrapper 直接 return，日期/状态条件全部未生效
-        assertTrue(((LambdaQueryWrapper<DailySettlement>) captor.getValue()).getParamNameValuePairs().isEmpty(),
-                "currentUser 为 null 时不应产生任何查询参数（当前实现如此）");
+        LambdaQueryWrapper<DailySettlement> wrapper = (LambdaQueryWrapper<DailySettlement>) captor.getValue();
+        wrapper.getSqlSegment(); // 触发参数装配
+        List<Object> values = new ArrayList<>(wrapper.getParamNameValuePairs().values());
+        // P0-3：无用户只跳过门店收敛，状态与日期条件必须照样生效，防止退化成全表扫描
+        assertTrue(values.contains("approved"), "currentUser 为 null 时状态条件仍应生效，实际参数: " + values);
+        assertTrue(values.contains(LocalDate.of(2026, 10, 1)), "currentUser 为 null 时日期条件仍应生效，实际参数: " + values);
+        assertEquals(2, values.size(), "无用户时不应产生门店参数，实际参数: " + values);
     }
 
     @Test
