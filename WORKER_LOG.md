@@ -553,3 +553,79 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 - 库存流水（`/v1/inventory/logs`）的订单号不在独立列，而是拼在 `remark`（「KDS完成制作扣料 - 订单:T2026…」），报表按单号聚合只能靠字符串解析 —— 建议加 `business_id` 列；
 - 日结列表历史数据里 `storeName`/`totalCost`/`netProfit` 为 null（旧记录未回填），今日新建记录正常；
 - 叫号 `orderType` 落的是数字字符串（"0"），历史页展示需前端映射，建议后端直接给中文名。
+
+---
+
+## 16. 叫号历史二次返工：脏数据、查询能力与过号机制（2026-10-23 14:13–14:45）
+
+### 16.1 为什么上一轮「修好了」Owner 还是查不到（两个独立原因）
+
+1. **回填脚本 v1 写错了对象**：它只更新「已存在但缺号」的 `call_record` 行，**从不给完全没有历史行的订单补行**。活库实测：70 个有叫号号的订单里有 **23 个在 call_record 中根本没有行**。Owner 看到的 B001（`T20261023034`，今天下的）正属这一类。
+2. **历史接口只有「今日」一个口径**：`getHistoryByDate(LocalDate.now())` 硬编码当天，B001（8 月单 `DEV-L206-TEST-001`）与 A006（9 月单 `T20260915011`）即使有历史行也永远查不到。
+
+### 16.2 数据补救（已在活库执行）
+
+`scripts/db-fix/2026-10-23-call-record-backfill.sql` 重写为 v2：
+- 按 `orders` 补行（`create_time` 取订单创建时间，落到正确业务日；`status` 按订单真实终态映射，已完成单用 `update_time` 作取餐时间，不臆造呼叫时间）；
+- 历史行与订单终态对齐（已完成但仍显示待取餐/已呼叫 → 置为已取餐）；
+- **实跑结果**：`INSERT 0 23` + `UPDATE 19`；二次执行 `INSERT 0 0 / UPDATE 0`（可复放）；
+- 校验：`orders_missing_history = 0`；`B001` 查出 2 条（`DEV-L206-TEST-001` picked、`T20261023034` pending）、`A006` 查出 1 条（`T20260915011`）。
+
+### 16.3 历史接口升级为标杆级查询
+
+`GET /v1/call-number/history` 新增参数并返回分页对象：
+
+| 参数 | 说明 |
+|---|---|
+| `keyword` | 取餐号 / 订单号 模糊（OR） |
+| `range` | `today` / `7d` / `30d` / `all`（默认 today，向后兼容） |
+| `status` | `pending,called,picked,passed`，逗号分隔多选 |
+| `page` / `size` | 分页，size 上限 200 |
+
+返回 `Result<PageResult<CallRecord>>`：`{ records, total, current, size }`（原来是裸数组、全量、只今日）。
+
+### 16.4 过号机制（passed）
+
+- 新增 `pass_time` 列（`scripts/db-fix/2026-10-23-call-record-pass-time.sql`，含 `(status, create_time DESC)` 索引，可复放）；
+- `POST /v1/call-number/pass {orderId}` → `status=passed`、`pass_time=NOW()`、`update_time`，已取餐的单不允许被过号覆盖；
+- 修了序列化坑：`CallRecord.passTime` 加了实体字段但漏 getter/setter（本项目实体是手写访问器，不是 Lombok），导致接口返回 `passTime=null`，巡检当场抓到并修复；
+- WebSocket 新增 `/topic/call-number/passed` 广播。
+
+### 16.5 前端（两个页面重做，均 `vue-tsc` 0 error）
+
+**历史页**：新增 `components/pos/CallHistoryPanel.vue`，`CallNumber.vue` 增量接入：
+- 筛选栏：关键字（回车/清空即查）、时间快捷（今日/近7天/近30天/全部）、状态下拉（含已过号）、查询/重置；
+- 列表：取餐号大字 + 类型/桌号/份数 chip、订单号等宽、状态语义 tag、呼叫次数（>1 高亮）、首次呼叫/取餐/过号/创建时间全部格式化；
+- 行内操作：取餐、过号（已呼叫追加重叫），按钮级 loading 互斥，成功后刷新 stats/活动列表/当前页，页内清空自动回退一页；
+- 分页：`el-pagination`（total/sizes/pager/jumper，默认 20，可选 10/20/50）；
+- 统计卡片 3 → 4（新增「已过号」），stats 逐字段归一化，后端缺字段不再整体覆盖。
+
+**叫号大屏**：`CallingDisplay.vue` 重写 + 新增 `CallingQueuePanel.vue`：
+- 顶部「请 A006 取餐」三段式，号码 `clamp(96px, 13vw, 140px)` + 呼吸光晕，叫号变化时换键过渡 + 3.2s 外扩光环；二次呼叫显示「第 N 次呼叫」；
+- 并排「制作中(pending)」「待取餐(called)」两区块，标题带数量角标，号牌 grid 超出时 rAF 26px/s 自动滚动（到底停 1.6s 回首），≤1024px 堆叠；
+- 已取餐/已过号在大屏直接过滤；轮询 5s + 原 STOMP 监督重连保留；
+- 顺带修掉原文件 `/api/v1/...` 与 baseURL `/api` 叠加导致的 `/api/api/v1/...`（大屏此前一直拿不到数据的老 bug）。
+
+### 16.6 验收用例（写进巡检，可随时复跑）
+
+`scripts/e2e_pos_experience.py` 新增「下单 → 历史模糊搜 → 取餐 → 刷新为已取餐 → 过号留痕」完整链路：
+1. 下单拿到叫号号（如 A067）→ `history?keyword=A067&range=today` 必须命中；
+2. `size=2` 校验分页契约、`range=30d` 校验时间筛选；
+3. 呼叫 → 重叫（callCount=2）→ 取餐（pickTime/waitSeconds）→ `history?status=picked` 命中；
+4. 再造一单 → 呼叫 → **过号** → `status=passed` 且 `passTime` 有值 → `history?status=passed` 能筛出。
+
+### 16.7 本轮验证
+
+| 项 | 结果 |
+|---|---|
+| 活库回填 | `INSERT 23 / UPDATE 19`，二次执行 0 变化；`orders_missing_history=0` |
+| B001 / A006 | `range=all&keyword=B001` → 2 条；`keyword=A006` → 1 条 |
+| `e2e_pos_experience.py` | **PASS=32 / FAIL=0 / SKIP=1** |
+| `e2e_core_chain.py` | 核心链路全绿 |
+| frontend-pos `vue-tsc` | 0 error（两个页面重做后） |
+| `mvn -o -B compile` | BUILD SUCCESS |
+
+### 16.8 仍未做（记录）
+
+- 大屏语音播报：原页面没有语音调用（tts 只在收银工作台），本轮不新增，避免双端重复播报；需要的话接 `tts.ts` 播「请 X 号取餐」即可；
+- 历史数据里 8/9 月的老单状态是按订单终态映射的（完成=已取餐），不是真实取餐动作留痕——已在脚本注释与本文说明，不当作事实性时间使用。
