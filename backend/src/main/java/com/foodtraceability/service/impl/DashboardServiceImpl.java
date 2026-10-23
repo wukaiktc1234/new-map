@@ -9,6 +9,7 @@ import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.DashboardConfig;
 import com.foodtraceability.entity.SalesOrder;
 import com.foodtraceability.entity.SalesAnalysisReport;
+import com.foodtraceability.entity.Inventory;
 import com.foodtraceability.entity.InventoryAnalysisReport;
 import com.foodtraceability.entity.CustomerAnalysisReport;
 import com.foodtraceability.mapper.DashboardConfigMapper;
@@ -19,6 +20,7 @@ import com.foodtraceability.dto.DashboardConfigVO;
 import com.foodtraceability.dto.DashboardConfigQueryDTO;
 import com.foodtraceability.dto.DashboardConfigCreateDTO;
 import com.foodtraceability.dto.PageResult;
+import com.foodtraceability.security.scope.DashboardStoreScopeResolver;
 import com.foodtraceability.service.DashboardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,10 +45,21 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
     private final MemberMapper memberMapper;
     private final InventoryMapper inventoryMapper;
 
-    public DashboardServiceImpl(SalesOrderMapper salesOrderMapper, MemberMapper memberMapper, InventoryMapper inventoryMapper) {
+    /**
+     * 门店作用域解析器（P1-DASHBOARD-FILTER-001）。
+     * 开关 {@code app.dashboard.store-scope.enabled} 默认 false：此时解析结果恒为 empty，
+     * 所有查询条件与历史版本完全一致。
+     */
+    private final DashboardStoreScopeResolver storeScopeResolver;
+
+    public DashboardServiceImpl(SalesOrderMapper salesOrderMapper,
+                                MemberMapper memberMapper,
+                                InventoryMapper inventoryMapper,
+                                DashboardStoreScopeResolver storeScopeResolver) {
         this.salesOrderMapper = salesOrderMapper;
         this.memberMapper = memberMapper;
         this.inventoryMapper = inventoryMapper;
+        this.storeScopeResolver = storeScopeResolver;
     }
 
     /**
@@ -129,9 +142,12 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
      * 统计 [from, to) 区间内的订单数（orders.create_time，不按状态过滤，口径见 getTodaySalesOverview 注释）。
      */
     private long countOrders(LocalDateTime from, LocalDateTime to) {
-        Long count = salesOrderMapper.selectCount(new QueryWrapper<SalesOrder>()
+        QueryWrapper<SalesOrder> wrapper = new QueryWrapper<SalesOrder>()
                 .ge("create_time", from)
-                .lt("create_time", to));
+                .lt("create_time", to);
+        // 门店作用域：开关关闭 / 解析不到门店 → wrapper 原样（默认行为零变化）
+        storeScopeResolver.applyStoreId(wrapper);
+        Long count = salesOrderMapper.selectCount(wrapper);
         return count == null ? 0L : count;
     }
 
@@ -139,10 +155,12 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
      * 汇总 [from, to) 区间内订单金额，单位：分（orders.total_amount 为 bigint 分）。
      */
     private long sumAmountFen(LocalDateTime from, LocalDateTime to) {
-        List<Object> objs = salesOrderMapper.selectObjs(new QueryWrapper<SalesOrder>()
+        QueryWrapper<SalesOrder> wrapper = new QueryWrapper<SalesOrder>()
                 .select("COALESCE(SUM(total_amount), 0)")
                 .ge("create_time", from)
-                .lt("create_time", to));
+                .lt("create_time", to);
+        storeScopeResolver.applyStoreId(wrapper);
+        List<Object> objs = salesOrderMapper.selectObjs(wrapper);
         if (objs == null || objs.isEmpty() || objs.get(0) == null) {
             return 0L;
         }
@@ -170,20 +188,42 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
         Map<String, Object> result = new HashMap<>();
 
         try {
-            // 查询预警数量（通过InventoryMapper读取仓储模块数据）
-            Long warningCount = inventoryMapper.selectCount(
-                    new QueryWrapper<com.foodtraceability.entity.Inventory>()
-                            .eq("warning_status", 1)
-            );
+            // 2026-10-24 修复（P1-DASHBOARD-FILTER-001 附带项；与 STATUS 记的 DashboardServiceImpl 500 同族）：
+            // 原实现按 `inventory.warning_status = 1` 统计，但 inventory 表**没有 warning_status 列**
+            // （information_schema 实测列：quantity / safety_stock / max_stock / status / location_id …），
+            // 每次调用都抛 BadSqlGrammarException → 被 catch 吞成常量 0 → 端点「看着正常但恒空」。
+            // 现按真实列计算，口径如下（不做单位换算，与 Inventory 实体一致）：
+            //   warningCount    = 数量 ≤ 安全库存（safety_stock 非空）
+            //   outOfStockCount = 数量 ≤ 0
+            //   overstockCount  = max_stock 非空 且 数量 > max_stock
+            QueryWrapper<Inventory> warningWrapper = new QueryWrapper<Inventory>()
+                    .isNotNull("safety_stock")
+                    .apply("quantity <= safety_stock");
+            storeScopeResolver.applyLocationId(warningWrapper);
+            Long warningCount = inventoryMapper.selectCount(warningWrapper);
 
-            result.put("warningCount", warningCount != null ? warningCount : 0);
-            result.put("outOfStockCount", 0); // TODO: 查询缺货数
-            result.put("overstockCount", 0); // TODO: 查询积压数
+            QueryWrapper<Inventory> outOfStockWrapper = new QueryWrapper<Inventory>()
+                    .apply("quantity <= 0");
+            storeScopeResolver.applyLocationId(outOfStockWrapper);
+            Long outOfStockCount = inventoryMapper.selectCount(outOfStockWrapper);
 
-            logger.info("获取库存预警信息成功");
+            QueryWrapper<Inventory> overstockWrapper = new QueryWrapper<Inventory>()
+                    .isNotNull("max_stock")
+                    .apply("quantity > max_stock");
+            storeScopeResolver.applyLocationId(overstockWrapper);
+            Long overstockCount = inventoryMapper.selectCount(overstockWrapper);
+
+            result.put("warningCount", warningCount != null ? warningCount : 0L);
+            result.put("outOfStockCount", outOfStockCount != null ? outOfStockCount : 0L);
+            result.put("overstockCount", overstockCount != null ? overstockCount : 0L);
+
+            logger.info("获取库存预警信息成功: warningCount={}, outOfStockCount={}, overstockCount={}",
+                    result.get("warningCount"), result.get("outOfStockCount"), result.get("overstockCount"));
         } catch (Exception e) {
             logger.error("获取库存预警信息失败", e);
-            result.put("warningCount", 0);
+            result.put("warningCount", 0L);
+            result.put("outOfStockCount", 0L);
+            result.put("overstockCount", 0L);
         }
 
         return result;
@@ -199,6 +239,9 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
         Map<String, Object> result = new HashMap<>();
 
         try {
+            // 门店作用域说明（P1-DASHBOARD-FILTER-001）：members 表当前无 store_id / location_id 列
+            // （information_schema 实测），会员维度**无法按门店过滤**，开关开启时本端点仍为全量口径。
+            // 该缺口已登记在 docs/STATUS.md，待会员侧引入门店归属后再补。
             // 查询会员总数（通过MemberMapper读取营销模块数据）
             Long totalMembers = memberMapper.selectCount(null);
             LocalDate startDate = LocalDate.now().minusDays(days);
@@ -231,6 +274,9 @@ public class DashboardServiceImpl extends ServiceImpl<DashboardConfigMapper, Das
     public Map<String, Object> getFinanceSummary() {
         Map<String, Object> result = new HashMap<>();
 
+        // 门店作用域说明（P1-DASHBOARD-FILTER-001）：本端点当前为纯占位实现（无任何数据源查询），
+        // 因此无 store_id 条件可注入；待财务模块聚合落地时，聚合查询必须复用
+        // DashboardStoreScopeResolver 的 applyStoreId/applyLocationId。
         // TODO: 从财务模块聚合数据
         result.put("monthlyRevenue", 0);
         result.put("monthlyExpense", 0);

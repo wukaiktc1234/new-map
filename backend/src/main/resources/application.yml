@@ -24,6 +24,14 @@ app:
     # 生成命令: openssl rand -base64 32
     # 注意: 默认值仅用于本地开发，AesEncryptionUtil 会校验弱密钥
     key: ${APP_ENCRYPTION_KEY:dev-only-not-for-production-use-32chars-min}
+  dashboard:
+    store-scope:
+      # 看板门店级数据过滤开关（P1-DASHBOARD-FILTER-001 / R8）
+      # false = 关闭（默认，行为与历史版本完全一致：5 个端点均为全量口径）
+      # true  = 开启后，解析到门店的普通用户只看到本店数据；admin 与解析不到门店的用户仍为全量
+      # 开启前必须确认 users.location_id / employees.location_id 数据齐全：
+      #   缺绑定会被判为「不限门店」（与现状一致），仍存在越权面。
+      enabled: ${APP_DASHBOARD_STORE_SCOPE_ENABLED:false}
 
 # 系统配置加密密钥（SystemConfigServiceImpl 使用，加密数据库中的敏感配置）
 config:

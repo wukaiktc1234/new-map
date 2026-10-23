@@ -6,12 +6,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -31,24 +29,6 @@ public class AESUtil {
     // 加密密钥，从配置文件中读取（无硬编码默认值，必须通过 application.yml/properties 或环境变量注入）
     @Value("${aes.secret.key:}")
     private String secretKey;
-    
-    /**
-     * 生成AES密钥
-     * @return 生成的密钥
-     */
-    private SecretKey getSecretKey() {
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance(ALGORITHM);
-            // 使用安全的随机数生成器，不设置固定种子
-            SecureRandom secureRandom = new SecureRandom();
-            keyGenerator.init(KEY_SIZE, secureRandom);
-            return keyGenerator.generateKey();
-        } catch (NoSuchAlgorithmException e) {
-            log.error("生成AES密钥失败: {}", e.getMessage(), e);
-            throw new RuntimeException("生成AES密钥失败", e);
-        }
-    }
-    
     /**
      * 生成固定的AES密钥（基于配置文件中的密钥）
      * @return 生成的密钥

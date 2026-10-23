@@ -4,7 +4,6 @@ import com.foodtraceability.dto.InvoiceVerifyRequestDTO;
 import com.foodtraceability.dto.InvoiceVerifyResultDTO;
 import com.foodtraceability.service.InvoiceVerifyService;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -51,7 +50,6 @@ public class RpaInvoiceVerifyServiceImpl implements InvoiceVerifyService {
     private volatile WebDriverWait wait;
     private volatile boolean driverInitialized = false;
     private final Object driverLock = new Object();
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @PostConstruct
     public void init() {

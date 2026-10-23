@@ -161,6 +161,18 @@ public class OrderNewServiceImpl implements OrderNewService {
         return getOrderDetail(order.getOrderId());
     }
 
+    /**
+     * POS 快速下单（对外由 {@code POST /v1/pos/orders/create} 暴露）。
+     *
+     * <p><b>调用面</b>：本入口当前无前端调用——POS 收银端走 PosOrderController 的
+     * {@code /v1/pos/orders/order}，scripts/ 下亦无调用，仅 API/联调可直达。</p>
+     *
+     * <p><b>取号</b>：已在收尾通过 {@code posCallNumberService.ensureCallNumber(orderId)}
+     * 幂等补齐（取号失败只记 WARN、不阻断下单），无需额外改造。</p>
+     *
+     * @param quickOrderDTO POS 快速下单请求
+     * @return 订单详情（取号成功时回填 callNumber）
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderVO createPosQuickOrder(PosQuickOrderDTO quickOrderDTO) {

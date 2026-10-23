@@ -122,22 +122,12 @@ public class TokenServiceImpl implements TokenService {
             }
 
             // 构建完整的角色列表
+            // P1-AUTH-CHAIN-001：鉴权唯一真相源 = user_roles → roles（role_code）；
+            // users.roles（JSON 列）已降级为历史展示字段，这里**不再**读取它。
             List<String> roles = new ArrayList<>();
             List<String> roleCodes = userMapper.getUserRoles(userId);
             if (roleCodes != null) {
                 roles.addAll(roleCodes);
-            }
-            if (dbUser.getRoles() != null && !dbUser.getRoles().isEmpty()) {
-                if (dbUser.getRoles().startsWith("[")) {
-                    String rolesStr = dbUser.getRoles().replace("[", "").replace("]", "").replace("\"", "");
-                    for (String r : rolesStr.split(",")) {
-                        if (!r.trim().isEmpty() && !roles.contains(r.trim())) {
-                            roles.add(r.trim());
-                        }
-                    }
-                } else if (!roles.contains(dbUser.getRoles())) {
-                    roles.add(dbUser.getRoles());
-                }
             }
             // P1-USER-LOCATION-001（design-002 §5.2）：refresh 路径不受"旧 refresh token 无 claim"影响，
             // 归属从 DB 实体补全（users.location_id）

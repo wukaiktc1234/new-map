@@ -155,24 +155,11 @@ public class SecurityUtils {
             }
             return false;
         }
-        // User 通过 roles JSON 判断
-        if (principal instanceof User) {
-            User user = (User) principal;
-            String rolesJson = user.getRoles();
-            if (rolesJson != null && !rolesJson.isEmpty()) {
-                try {
-                    ObjectMapper objectMapper = new ObjectMapper();
-                    java.util.List<String> roleIds = objectMapper.readValue(rolesJson, new TypeReference<java.util.List<String>>() {});
-                    for (String roleId : roleIds) {
-                        if ("admin".equals(roleId)) {
-                            return true;
-                        }
-                    }
-                } catch (Exception e) {
-                    return false;
-                }
-            }
-        }
+        // P1-AUTH-CHAIN-001：原实现在 principal 是 User 时解析 users.roles（JSON 里的数字角色ID），
+        // 属于「用历史展示字段做鉴权」的越权面，已删除。
+        // 当前链路里 principal 恒为 SecurityUser（JwtAuthenticationFilter 写入），其 roles 来自
+        // user_roles → roles；若出现 User 主干，一律按非管理员处理（fail-closed），
+        // 需要管理员判定请改用 AuthenticationServiceImpl/TokenServiceImpl 装配的 SecurityUser。
         return false;
     }
 

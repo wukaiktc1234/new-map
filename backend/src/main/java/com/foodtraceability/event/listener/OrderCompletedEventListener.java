@@ -6,7 +6,6 @@ import com.foodtraceability.dto.finance.FinanceRecordCreateDTO;
 import com.foodtraceability.entity.OrderNew;
 import com.foodtraceability.event.OrderCompletedEvent;
 import com.foodtraceability.mapper.OrderNewMapper;
-import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.FinanceRecordService;
 import com.foodtraceability.service.finance.ReceivableService;
 import org.slf4j.Logger;
@@ -30,8 +29,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *
  * <p>注意：订单成本（食材成本）已由 OrderNewServiceImpl.completeOrder 中的
  * persistOrderCost 方法同步持久化到 cost_record 表（DF-009 修复）。
- * 本监听器仅处理财务收入记录，以及当事件显式携带 materialCost/laborCost 时
- * 记录对应的成本明细（如后厨端 completeMake 流程）。</p>
+ * 本监听器只处理「财务收入记录」与「未付清订单的应收生成」，不再写任何成本明细。</p>
  */
 @Component
 public class OrderCompletedEventListener {
@@ -40,20 +38,16 @@ public class OrderCompletedEventListener {
 
     /**
      * 构造函数注入（禁止 @Autowired 字段注入）
-     * @param costRecordService 成本记录服务
      * @param financeRecordService 财务记录服务，可选依赖
      */
-    public OrderCompletedEventListener(CostRecordService costRecordService, @Nullable FinanceRecordService financeRecordService,
+    public OrderCompletedEventListener(@Nullable FinanceRecordService financeRecordService,
                                        OrderNewMapper orderNewMapper, @Nullable ReceivableService receivableService,
                                        com.foodtraceability.mapper.finance.FinanceRecordMapper financeRecordMapper) {
-        this.costRecordService = costRecordService;
         this.financeRecordService = financeRecordService;
         this.orderNewMapper = orderNewMapper;
         this.receivableService = receivableService;
         this.financeRecordMapper = financeRecordMapper;
     }
-
-    private final CostRecordService costRecordService;
 
     private final FinanceRecordService financeRecordService;
 
@@ -65,8 +59,8 @@ public class OrderCompletedEventListener {
 
     /**
      * 监听订单完成事件（主事务提交后异步处理）
-     * 1. 记录财务收入
-     * 2. 记录成本（仅当事件显式携带 materialCost/laborCost 时）
+     * 1. 记录财务收入（按 order_code 幂等，POS 支付已入账则跳过）
+     * 2. 未付清订单生成应收账款（POS 现结单与已付清订单跳过）
      *
      * <p>使用 AFTER_COMMIT 阶段：确保订单状态变更、库存扣减、成本持久化等
      * 主事务操作已提交后才触发，避免主事务回滚后产生脏数据。

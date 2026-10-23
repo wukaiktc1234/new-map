@@ -17,6 +17,7 @@ import com.foodtraceability.service.OrganizationChangeLogService;
 import com.foodtraceability.service.PositionService;
 import com.foodtraceability.utils.DepartmentCodeGenerator;
 import com.foodtraceability.utils.DepartmentConverter;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -246,17 +247,21 @@ public class DepartmentServiceImpl implements DepartmentService {
             existingDepartment.setDepartmentCode(originalDeptCode);
         }
         
-        if (department.getParentId() != null) {
-            if (department.getParentId() == 0L) {
-                existingDepartment.setLevel(1);
-            } else {
-                Department parent = departmentMapper.selectById(department.getParentId());
-                if (parent == null) {
-                    throw new RuntimeException("上级部门不存在");
-                }
-                Integer parentLevel = parent.getLevel();
-                existingDepartment.setLevel((parentLevel == null ? 1 : parentLevel) + 1);
+        // R6 修复：parentId==null 归一为 0（顶级），避免「建单写 0、改单写 NULL」双轨落库
+        if (existingDepartment.getParentId() == null) {
+            existingDepartment.setParentId(0L);
+        }
+        // 按最终的 parentId 重算 level（沿用 createDepartment 的既有算法）
+        Long effectiveParentId = existingDepartment.getParentId();
+        if (effectiveParentId == null || effectiveParentId == 0L) {
+            existingDepartment.setLevel(1);
+        } else {
+            Department parent = departmentMapper.selectById(effectiveParentId);
+            if (parent == null) {
+                throw new RuntimeException("上级部门不存在");
             }
+            Integer parentLevel = parent.getLevel();
+            existingDepartment.setLevel((parentLevel == null ? 1 : parentLevel) + 1);
         }
         
         log.info("复制属性后的部门数据: {}", existingDepartment);
@@ -542,11 +547,17 @@ public class DepartmentServiceImpl implements DepartmentService {
 
     @Override
     public List<DepartmentDTO> getChildrenDepartments(Long parentId) {
-        List<Department> children = departmentMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Department>()
-                .eq(Department::getParentId, parentId == null ? 0L : parentId)
-                .orderByAsc(Department::getDepartmentId)
-        );
+        Long targetParentId = parentId == null ? 0L : parentId;
+        LambdaQueryWrapper<Department> wrapper = new LambdaQueryWrapper<>();
+        if (targetParentId == 0L) {
+            // R6 修复：与 buildDepartmentTree 口径保持一致——「parent_id = 0」与「parent_id IS NULL」都算顶级。
+            // 用嵌套 and(...) 显式加括号，确保与逻辑删除条件（deleted=0）的 AND/OR 优先级正确。
+            wrapper.and(w -> w.eq(Department::getParentId, 0L).or().isNull(Department::getParentId));
+        } else {
+            wrapper.eq(Department::getParentId, targetParentId);
+        }
+        wrapper.orderByAsc(Department::getDepartmentId);
+        List<Department> children = departmentMapper.selectList(wrapper);
         return DepartmentConverter.toDTOList(children);
     }
 

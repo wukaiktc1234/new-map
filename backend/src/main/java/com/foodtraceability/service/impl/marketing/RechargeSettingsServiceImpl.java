@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * 储值系统设置服务实现
@@ -130,11 +129,5 @@ public class RechargeSettingsServiceImpl implements RechargeSettingsService {
         if (dto.getCustodyBank() == null) dto.setCustodyBank("");
         if (dto.getCustodyRate() == null) dto.setCustodyRate(0);
         if (dto.getCustodyAccount() == null) dto.setCustodyAccount("");
-    }
-
-    /** 显式引用 List 避免编译器未使用警告 */
-    @SuppressWarnings("unused")
-    private void unusedListReference() {
-        List<String> unused = Arrays.asList("placeholder");
     }
 }

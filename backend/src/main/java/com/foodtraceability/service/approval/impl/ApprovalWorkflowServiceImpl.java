@@ -557,19 +557,6 @@ public class ApprovalWorkflowServiceImpl implements ApprovalWorkflowService {
                 .last("LIMIT 1");
         return approvalAuditLogMapper.selectOne(wrapper);
     }
-
-    /**
-     * 从审批流程的 nodes 中提取第一个节点名称
-     */
-    private String extractFirstNodeName(ApprovalWorkflow workflow) {
-        List<Map<String, Object>> nodes = deserializeFromJson(workflow.getNodes());
-        if (nodes.isEmpty()) {
-            return "审批节点";
-        }
-        Object name = nodes.get(0).get("nodeName");
-        return name != null ? name.toString() : "审批节点";
-    }
-
     /**
      * 构建审批记录 Entity
      */

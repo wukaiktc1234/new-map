@@ -31,6 +31,29 @@ public interface UserMapper extends BaseMapper<User> {
     List<String> getUserRoles(@Param("userId") Long userId);
 
     /**
+     * 【授权权威源】按 user_id 查该用户的角色实体（user_roles → roles）。
+     *
+     * <p>P1-AUTH-CHAIN-001：users.roles（JSON 列）已降级为历史展示字段，
+     * <b>任何鉴权/授权判定都必须走本方法</b>，不得再解析 users.roles。
+     * 关联键是 user_roles.role_id = roles.role_id_str（ROLE_XXX 字符串）。</p>
+     */
+    @Select("SELECT r.* FROM ROLES r INNER JOIN USER_ROLES ur ON r.role_id_str = ur.ROLE_ID "
+            + "WHERE ur.USER_ID::bigint = #{userId} AND ur.DELETED = 0 AND r.DELETED = 0 "
+            + "AND r.STATUS IN ('1', 'active')")
+    List<com.foodtraceability.entity.Role> getRoleEntitiesByUserId(@Param("userId") Long userId);
+
+    /**
+     * 【授权权威源】按 user_id 查角色数字 ID（user_roles → roles.role_id）。
+     *
+     * <p>给 role_stores / role_departments 这类以数字 role_id 关联的表使用；
+     * 与 {@link #getUserRoles(Long)}（返回 role_code）区分，按需选用。</p>
+     */
+    @Select("SELECT r.role_id::text FROM ROLES r INNER JOIN USER_ROLES ur ON r.role_id_str = ur.ROLE_ID "
+            + "WHERE ur.USER_ID::bigint = #{userId} AND ur.DELETED = 0 AND r.DELETED = 0 "
+            + "AND r.STATUS IN ('1', 'active')")
+    List<String> getRoleNumericIdsByUserId(@Param("userId") Long userId);
+
+    /**
      * 根据用户ID查询用户权限
      */
     List<String> getUserPermissions(@Param("userId") Long userId);

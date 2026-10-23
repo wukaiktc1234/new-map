@@ -3,6 +3,7 @@ import com.foodtraceability.common.util.LocationIdBridge;
 
 import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.User;
+import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.security.model.UserPermissionInfo;
 import com.foodtraceability.security.service.UserPermissionCacheService;
 import com.foodtraceability.service.RoleService;
@@ -40,14 +41,19 @@ public class UserPermissionCacheServiceImpl implements UserPermissionCacheServic
 
     private final RoleService roleService;
 
+    /** 授权权威源查询（user_roles → roles）；users.roles 不再参与鉴权 */
+    private final UserMapper userMapper;
+
     private final ObjectMapper objectMapper;
 
     /** 内存缓存存储：userId -> TimedEntry<UserPermissionInfo> */
     private final ConcurrentMap<String, TimedEntry<UserPermissionInfo>> permissionCache = new ConcurrentHashMap<>();
 
-    public UserPermissionCacheServiceImpl(UserService userService, RoleService roleService, ObjectMapper objectMapper) {
+    public UserPermissionCacheServiceImpl(UserService userService, RoleService roleService,
+                                          UserMapper userMapper, ObjectMapper objectMapper) {
         this.userService = userService;
         this.roleService = roleService;
+        this.userMapper = userMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -144,21 +150,18 @@ public class UserPermissionCacheServiceImpl implements UserPermissionCacheServic
                     .build();
             }
 
-            List<String> roleIds = new ArrayList<>();
-            if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-                try {
-                    roleIds = objectMapper.readValue(user.getRoles(), new TypeReference<List<String>>() {});
-                } catch (Exception e) {
-                    logger.error("解析用户角色失败: userId={}, error={}", userId, e.getMessage());
-                }
-            }
+            // P1-AUTH-CHAIN-001：角色从授权权威源读取（user_roles → roles），
+            // 不再解析 users.roles（JSON 列，历史存数字角色ID，且可被伪造来提权）。
+            List<Role> roles = userMapper.getRoleEntitiesByUserId(Long.parseLong(userId));
 
             List<String> roleNames = new ArrayList<>();
             boolean isAdmin = false;
 
-            for (String roleId : roleIds) {
-                Role role = roleService.getRoleById(Long.valueOf(roleId));
-                if (role != null) {
+            if (roles != null) {
+                for (Role role : roles) {
+                    if (role == null) {
+                        continue;
+                    }
                     roleNames.add(role.getRoleName());
                     if ("admin".equalsIgnoreCase(role.getRoleCode())) {
                         isAdmin = true;

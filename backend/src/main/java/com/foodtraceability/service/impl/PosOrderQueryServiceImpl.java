@@ -737,18 +737,6 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
 
         return result;
     }
-
-    /**
-     * 新表（order_payment_records）支付方式编码 → 文案。
-     *
-     * <p>统一编码（2026-10-24 起单轨）：1现金 / 2微信 / 3支付宝 / 4银行卡 / 5余额。
-     * 空/未知给出占位文案，不再默认「现金」。</p>
-     */
-    private String convertNewPaymentMethodToString(Integer paymentMethod) {
-        String name = PosPaymentMethodResolver.fromCode(paymentMethod);
-        return name != null ? name : PosPaymentMethodResolver.UNRECORDED;
-    }
-
     /**
      * <b>【仅 orders_legacy 遗留分支使用】</b>旧编码（0微信/1支付宝/2现金/3银行卡/4余额）→ 文案。
      *

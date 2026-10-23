@@ -581,42 +581,6 @@ public class NotificationServiceImpl extends ServiceImpl<MsgTemplateMapper, MsgT
             msgSendRecordMapper.updateById(record);
         }
     }
-
-    /**
-     * Phase 1: 模拟发送（作为RabbitMQ不可用时的fallback方案）
-     */
-    private void simulateSend(MsgSendRecord record) {
-        try {
-            record.setSendStatus(1); // SENDING
-            msgSendRecordMapper.updateById(record);
-
-            // 模拟发送延迟
-            Thread.sleep(100);
-
-            // 模拟90%成功率
-            if (Math.random() < 0.9) {
-                record.setSendStatus(2); // SUCCESS
-            } else {
-                record.setSendStatus(3); // FAILED
-                record.setErrorMessage("模拟发送失败(测试用)");
-            }
-            record.setFinishTime(LocalDateTime.now());
-            msgSendRecordMapper.updateById(record);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            record.setSendStatus(3);
-            record.setErrorMessage("发送被中断");
-            record.setFinishTime(LocalDateTime.now());
-            msgSendRecordMapper.updateById(record);
-        } catch (Exception e) {
-            logger.error("模拟发送异常: recordId={}, error={}", record.getRecordId(), e.getMessage());
-            record.setSendStatus(3);
-            record.setErrorMessage(e.getMessage());
-            record.setFinishTime(LocalDateTime.now());
-            msgSendRecordMapper.updateById(record);
-        }
-    }
-
     /**
      * 统计总记录数
      */

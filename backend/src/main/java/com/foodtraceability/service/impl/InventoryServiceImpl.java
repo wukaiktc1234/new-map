@@ -287,18 +287,6 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
                 .le(Inventory::getExpiryDate, LocalDate.now().plusDays(days))
                 .list();
     }
-
-    /**
-     * 计算总成本（P0-A：legacy 全量重估公式的调用方 recordTransaction 已删除，
-     * 本方法暂留供后续口径对齐；当前无调用方）
-     */
-    private Long calculateTotalCost(Inventory inventory) {
-        if (inventory.getUnitCost() == null || inventory.getQuantity() == null) {
-            return 0L;
-        }
-        return inventory.getUnitCost() * inventory.getQuantity().longValue();
-    }
-
     /**
      * 更新库存状态
      */

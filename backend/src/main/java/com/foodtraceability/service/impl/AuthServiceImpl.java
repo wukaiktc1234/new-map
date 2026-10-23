@@ -327,8 +327,12 @@ public class AuthServiceImpl implements AuthService {
             response.setCreatedAt(user.getCreatedTime());
             response.setUpdatedAt(user.getUpdatedTime());
 
-            List<String> roles = userService.getUserRoleNames(user.getId());
-            response.setRoles(roles);
+            // P1-AUTH-CHAIN-001：接口返回角色编码（role_code），不再返回中文名，
+            // 也不再依赖 users.roles；中文名展示请用 getUserRoleDisplayNames（不参与鉴权）。
+            // admin 兜底：内置 admin 账号没有 user_roles 行（其管理员身份来自
+            // AuthenticationServiceImpl 的 username=='admin' 分支 / ROLE_ADMIN authority），
+            // 若不加兜底，/auth/me 会返回 roles=[]，前端域矩阵据此把 hr 等域判为不可见。
+            response.setRoles(resolveRoleCodesWithAdminFallback(user));
 
             List<String> permissions = getUserPermissions(user.getId());
 
@@ -364,6 +368,84 @@ public class AuthServiceImpl implements AuthService {
             logger.error("获取用户信息失败: userId={}", userId, e);
             throw new BusinessException("获取用户信息失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 解析用于接口返回的角色编码（/auth/me、/permissions 共用）。
+     *
+     * <p>口径：user_roles → roles 的 role_code（<b>不读 users.roles</b>）；
+     * 内置 admin 账号没有 user_roles 行，其管理员身份只存在于
+     * AuthenticationServiceImpl 的 username=='admin' 分支（token 里表现为 ROLE_ADMIN / * 权限），
+     * 因此当「当前 principal 的确是管理员」且「目标用户就是当前登录人」时，补一个 {@code admin} 到角色列表，
+     * 保证前端 isAdmin 判定与域矩阵不回退。</p>
+     *
+     * <p>可见性为 public 以便单元测试直接验证（AuthRoleSourceTest）；业务代码请走 /auth/me、/permissions。</p>
+     *
+     * @param user 目标用户（/me 时即当前用户）
+     */
+    public List<String> resolveRoleCodesWithAdminFallback(User user) {
+        List<String> roles = new ArrayList<>(userService.getUserRoleNames(user.getId()));
+        if (containsAdminCode(roles)) {
+            return roles;
+        }
+        if (isCurrentPrincipalAdmin() && isSamePrincipalUser(user)) {
+            roles.add("admin");
+            logger.debug("为管理员账号补齐 admin 角色（无 user_roles 行）: userId={}, username={}",
+                    user.getId(), user.getUsername());
+        }
+        return roles;
+    }
+
+    /** 角色列表里是否已有 admin / ROLE_ADMIN（大小写不敏感） */
+    private static boolean containsAdminCode(List<String> roles) {
+        if (roles == null) {
+            return false;
+        }
+        for (String role : roles) {
+            if (role != null && ("admin".equalsIgnoreCase(role) || "ROLE_ADMIN".equalsIgnoreCase(role))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 当前 principal 是否为管理员：authorities 含 {@code *} 或 {@code ROLE_ADMIN}，
+     * 或 principal 是 username=admin 的 SecurityUser（与 AuthenticationServiceImpl 的硬编码分支一致）。
+     */
+    private boolean isCurrentPrincipalAdmin() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication == null) {
+            return false;
+        }
+        for (var authority : authentication.getAuthorities()) {
+            String value = authority.getAuthority();
+            if ("*".equals(value) || "ROLE_ADMIN".equalsIgnoreCase(value)) {
+                return true;
+            }
+        }
+        Object principal = authentication.getPrincipal();
+        return principal instanceof SecurityUser securityUser
+                && "admin".equalsIgnoreCase(securityUser.getUsername());
+    }
+
+    /**
+     * 目标用户是否就是当前登录人（避免「管理员查别人 /permissions」时把 admin 补到别人身上）。
+     * 无 SecurityContext（内部调用）时返回 false，保持 fail-closed。
+     */
+    private boolean isSamePrincipalUser(User user) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        if (authentication == null) {
+            return false;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof SecurityUser securityUser) {
+            return securityUser.getUsername() != null
+                    && securityUser.getUsername().equalsIgnoreCase(user.getUsername());
+        }
+        return user.getUsername() != null && user.getUsername().equalsIgnoreCase(authentication.getName());
     }
 
     @Override
@@ -523,8 +605,13 @@ public class AuthServiceImpl implements AuthService {
 
         PermissionResponse response = new PermissionResponse();
 
-        List<String> roles = userService.getUserRoleNames(Long.parseLong(userId));
-        response.setRoles(roles);
+        // 角色编码（role_code）：鉴权与接口返回统一口径，来源 user_roles → roles；
+        // admin 账号（无 user_roles 行）同样走 admin 兜底，保证与 /auth/me 一致。
+        User targetUser = userService.getById(Long.parseLong(userId));
+        if (targetUser == null) {
+            throw new BusinessException("用户不存在");
+        }
+        response.setRoles(resolveRoleCodesWithAdminFallback(targetUser));
 
         List<String> permissions = getUserPermissions(Long.parseLong(userId));
         // 展开通配符 "*" 为完整权限码列表（前端需要完整列表用于菜单/按钮可见性）

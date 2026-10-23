@@ -402,79 +402,74 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         return result;
     }
 
+    /**
+     * 用户角色数字ID列表（roles.role_id，字符串形式）。
+     *
+     * <p>P1-AUTH-CHAIN-001：数据源从 users.roles（历史 JSON 展示字段）切换为
+     * user_roles → roles；返回值形态保持不变（数字ID字符串），避免影响既有调用方。</p>
+     */
     @Override
     public List<String> getUserRoles(Long userId) {
-        User user = getById(userId);
-        if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+        if (userId == null) {
             return List.of();
         }
-
-        String rolesStr = user.getRoles().trim();
-        try {
-            return objectMapper.readValue(rolesStr, new TypeReference<List<String>>() {});
-        } catch (Exception e) {
-            // 容错：roles 字段不是 JSON 数组格式时
-            // 仅当为纯数字字符串时按单个角色 ID 处理，避免 role_code 误当 role_id
-            if (rolesStr.startsWith("[")) {
-                logger.warn("角色JSON数组解析失败: userId={}, roles={}", userId, rolesStr, e);
-                return List.of();
-            }
-            logger.warn("roles 字段非 JSON 数组格式: userId={}, roles={}", userId, rolesStr);
-            if (rolesStr.matches("\\d+")) {
-                return List.of(rolesStr);
-            }
-            return List.of();
-        }
+        List<String> roleIds = baseMapper.getRoleNumericIdsByUserId(userId);
+        return roleIds != null ? roleIds : List.of();
     }
 
+    /**
+     * 用户角色编码列表（role_code）。
+     *
+     * <p>P1-AUTH-CHAIN-001：改为返回编码而非中文名（鉴权/接口返回统一用 code），
+     * 数据源 = user_roles → roles。中文名请用 {@link #getUserRoleDisplayNames(Long)}。</p>
+     */
     @Override
     public List<String> getUserRoleNames(Long userId) {
-        List<String> roleIds = getUserRoles(userId);
-        if (roleIds.isEmpty()) {
-            return List.of();
-        }
-
-        return roleIds.stream()
-                .map(roleId -> {
-                    Role role = roleService.getRoleById(Long.valueOf(roleId));
-                    return role != null ? role.getRoleName() : null;
-                })
-                .filter(roleName -> roleName != null)
+        List<Role> roles = loadRoleEntities(userId);
+        return roles.stream()
+                .map(Role::getRoleCode)
+                .filter(code -> code != null && !code.isBlank())
                 .collect(Collectors.toList());
     }
 
     @Override
-    public boolean hasRole(Long userId, String roleCode) {
-        List<String> roleIds = getUserRoles(userId);
-        if (roleIds.isEmpty()) {
-            return false;
-        }
+    public List<String> getUserRoleDisplayNames(Long userId) {
+        List<Role> roles = loadRoleEntities(userId);
+        return roles.stream()
+                .map(Role::getRoleName)
+                .filter(name -> name != null && !name.isBlank())
+                .collect(Collectors.toList());
+    }
 
-        // P1-AUTH-CHAIN-001-A（N30 止血）：归一后比较（原实现为 roleCode.equals(role.getRoleCode())，
-        // 大小写/ROLE_ 前缀任一不符即恒 false）；同时兜住角色 ID 非数字的历史脏值（如 'ROLE_ADMIN'），
-        // 避免 Long.valueOf 抛 NumberFormatException 打穿调用方。
-        return roleIds.stream()
-                .map(roleId -> {
-                    try {
-                        return roleService.getRoleById(Long.valueOf(roleId));
-                    } catch (NumberFormatException e) {
-                        return null;
-                    }
-                })
-                .filter((Role role) -> role != null)
+    /** 授权权威源：user_roles → roles（空值安全） */
+    private List<Role> loadRoleEntities(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        List<Role> roles = baseMapper.getRoleEntitiesByUserId(userId);
+        return roles != null ? roles : List.of();
+    }
+
+    @Override
+    public boolean hasRole(Long userId, String roleCode) {
+        // P1-AUTH-CHAIN-001：只按 user_roles → roles 判定；users.roles 不参与。
+        // 归一后比较，避免大小写 / ROLE_ 前缀差异导致恒 false。
+        return loadRoleEntities(userId).stream()
                 .anyMatch(role -> RoleCodeNormalizer.matches(role.getRoleCode(), roleCode));
     }
 
     @Override
     public boolean hasPermission(Long userId, String permissionCode) {
-        List<String> roleIds = getUserRoles(userId);
-        if (roleIds.isEmpty()) {
+        if (userId == null || permissionCode == null) {
             return false;
         }
-
-        return roleIds.stream()
-                .map(roleId -> roleService.getRolePermissions(Long.valueOf(roleId)))
-                .anyMatch(permissions -> permissions.contains(permissionCode));
+        // 角色权限：user_roles → role_permissions → permissions（权威链路）
+        List<String> rolePermissions = baseMapper.getUserRolePermissions(userId);
+        if (rolePermissions != null && rolePermissions.contains(permissionCode)) {
+            return true;
+        }
+        List<String> directPermissions = baseMapper.getUserPermissions(userId);
+        return directPermissions != null && directPermissions.contains(permissionCode);
     }
 
     // ============ Sprint 2 招聘链路事件接收人查询实现 ============

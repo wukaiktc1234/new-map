@@ -506,17 +506,10 @@ public class DataPermissionServiceImpl implements DataPermissionService {
                 return Collections.emptyList();
             }
 
-            String rolesJson = user.getRoles();
-            if (rolesJson == null || rolesJson.isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            List<String> roleIds = objectMapper.readValue(rolesJson, new TypeReference<List<String>>() {});
-
-            // ✅ 性能优化：批量查询替代循环查询（解决N+1问题）
-            // 原实现在循环中对每个角色ID执行一次数据库查询
-            // 新实现一次性查询所有角色的门店ID，减少数据库交互次数
-            if (roleIds.isEmpty()) {
+            // P1-AUTH-CHAIN-001：角色来源 = user_roles → roles（数字 role_id，用于关联 role_stores），
+            // 不再解析 users.roles（历史展示字段）。
+            List<String> roleIds = userMapper.getRoleNumericIdsByUserId(Long.parseLong(userId));
+            if (roleIds == null || roleIds.isEmpty()) {
                 return Collections.emptyList();
             }
 
@@ -543,15 +536,9 @@ public class DataPermissionServiceImpl implements DataPermissionService {
                 return Collections.emptyList();
             }
 
-            String rolesJson = user.getRoles();
-            if (rolesJson == null || rolesJson.isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            List<String> roleIds = objectMapper.readValue(rolesJson, new TypeReference<List<String>>() {});
-
-            // ✅ 性能优化：批量查询替代循环查询（解决N+1问题）
-            if (roleIds.isEmpty()) {
+            // P1-AUTH-CHAIN-001：同 getRoleAccessibleStoreIds，角色来源 = user_roles → roles
+            List<String> roleIds = userMapper.getRoleNumericIdsByUserId(Long.parseLong(userId));
+            if (roleIds == null || roleIds.isEmpty()) {
                 return Collections.emptyList();
             }
 

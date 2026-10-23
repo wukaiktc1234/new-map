@@ -14,6 +14,7 @@ import com.foodtraceability.mapper.OrderMapper;
 import com.foodtraceability.mapper.OrderNewMapper;
 import com.foodtraceability.mapper.StoreNewMapper;
 import com.foodtraceability.controller.websocket.OrderWebSocketController;
+import com.foodtraceability.service.PosCallNumberService;
 import com.foodtraceability.service.PosOrderNumberGenerator;
 import com.foodtraceability.service.SensitiveDataService;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +56,8 @@ class PosOrderEnsureLegacyRowTest {
                 mock(DishComboMapper.class), mock(DishComboNewMapper.class), null,
                 mock(OrderWebSocketController.class), mock(ApplicationEventPublisher.class),
                 mock(SensitiveDataService.class), mock(PosOrderNumberGenerator.class),
-                mock(StoreNewMapper.class), mock(OrderNewMapper.class), mock(OrderItemNewMapper.class));
+                mock(StoreNewMapper.class), mock(OrderNewMapper.class), mock(OrderItemNewMapper.class),
+                mock(PosCallNumberService.class));
         ensure = PosOrderCreateServiceImpl.class.getDeclaredMethod("ensureLegacyFoodRow", String.class);
         ensure.setAccessible(true);
     }

@@ -1,7 +1,11 @@
 package com.foodtraceability.service.impl;
 
 import com.foodtraceability.dto.store.operation.vo.DailySettlementVO;
+
+import java.util.List;
+import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.User;
+import com.foodtraceability.mapper.UserMapper;
 import com.foodtraceability.service.FieldPermissionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +19,13 @@ import org.springframework.stereotype.Service;
 public class FieldPermissionServiceImpl implements FieldPermissionService {
 
     private static final Logger log = LoggerFactory.getLogger(FieldPermissionServiceImpl.class);
+
+    /** 授权权威源查询（user_roles → roles）；users.roles 不参与鉴权 */
+    private final UserMapper userMapper;
+
+    public FieldPermissionServiceImpl(UserMapper userMapper) {
+        this.userMapper = userMapper;
+    }
 
     /** 权限级别常量 */
     public static final int LEVEL_STAFF = 1;            // 普通员工
@@ -86,24 +97,32 @@ public class FieldPermissionServiceImpl implements FieldPermissionService {
             return LEVEL_STAFF; // 默认最低权限
         }
 
-        String roles = user.getRoles();
-
-        if (roles == null) {
+        // P1-AUTH-CHAIN-001：角色来源 = user_roles → roles（role_code + role_id_str），
+        // 不再读 users.roles。原实现把 users.roles（数字ID的 JSON，如 ["9"]）当角色名做
+        // contains("store_manager") 匹配，永远不命中 → 所有人都被判成 LEVEL_STAFF。
+        if (user.getId() == null) {
             return LEVEL_STAFF;
         }
+        List<Role> roles = userMapper.getRoleEntitiesByUserId(user.getId());
+        if (roles == null || roles.isEmpty()) {
+            return LEVEL_STAFF;
+        }
+        String roleText = roles.stream()
+                .map(r -> (r.getRoleCode() != null ? r.getRoleCode() : "") + " "
+                        + (r.getRoleIdStr() != null ? r.getRoleIdStr() : ""))
+                .collect(java.util.stream.Collectors.joining(" "))
+                .toLowerCase();
 
-        // 根据角色字符串判断权限级别
-        String roleLower = roles.toLowerCase();
-        if (roleLower.contains("super_admin") || roleLower.contains("admin")) {
+        if (roleText.contains("super_admin") || roleText.contains("admin")) {
             return LEVEL_ADMIN;
         }
-        if (roleLower.contains("finance_director") || roleLower.contains("operations_director") || roleLower.contains("hr_director")) {
+        if (roleText.contains("finance_director") || roleText.contains("operations_director") || roleText.contains("hr_director")) {
             return LEVEL_OPERATIONS;
         }
-        if (roleLower.contains("regional_manager")) {
+        if (roleText.contains("regional_manager")) {
             return LEVEL_REGIONAL_MANAGER;
         }
-        if (roleLower.contains("store_manager")) {
+        if (roleText.contains("store_manager")) {
             return LEVEL_STORE_MANAGER;
         }
 

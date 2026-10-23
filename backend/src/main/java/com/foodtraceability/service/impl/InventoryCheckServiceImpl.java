@@ -8,6 +8,7 @@ import com.foodtraceability.entity.InventoryCheckItem;
 import com.foodtraceability.mapper.InventoryCheckItemMapper;
 import com.foodtraceability.mapper.InventoryCheckMapper;
 import com.foodtraceability.service.InventoryCheckService;
+import com.foodtraceability.utils.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,9 @@ public class InventoryCheckServiceImpl extends ServiceImpl<InventoryCheckMapper,
         check.setCheckDate(createDTO.getCheckDate());
         check.setCheckStatus(0); // 待盘点
         check.setRemark(createDTO.getRemark());
+        // R5：盘点单落创建人（inventory_checks.create_user_id 此前恒为 NULL）。
+        // 未登录/无请求上下文时 SecurityUtils 返回 null，列可空，不阻断建单。
+        check.setCreateUserId(SecurityUtils.getCurrentUserId());
         check.setCreateTime(LocalDateTime.now());
         check.setUpdateTime(LocalDateTime.now());
 

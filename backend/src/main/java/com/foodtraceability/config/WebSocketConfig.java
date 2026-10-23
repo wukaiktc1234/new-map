@@ -118,6 +118,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             return null;
         }
         SecurityUser user = userOpt.get();
+        // P1-AUTH-CHAIN-001：这里的 roles 来自 JWT claims，claims 由登录/刷新时的
+        // user_roles → roles 装配（AuthenticationServiceImpl / TokenServiceImpl），
+        // 不是 users.roles；因此本处无需再查库，也不会被 users.roles 伪造影响。
         List<String> roles = user.getRoles();
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         if (roles != null) {

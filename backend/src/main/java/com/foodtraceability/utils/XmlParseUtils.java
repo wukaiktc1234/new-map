@@ -1,7 +1,6 @@
 package com.foodtraceability.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import javax.xml.XMLConstants;
 import javax.xml.stream.XMLInputFactory;
@@ -20,7 +19,6 @@ public final class XmlParseUtils {
     private XmlParseUtils() {
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /**
      * 安全解析XML为JsonNode

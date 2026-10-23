@@ -90,6 +90,7 @@ class PosOrderCreateServiceFoodIdMapTest {
     @Mock private StoreNewMapper storeNewMapper;
     @Mock private OrderNewMapper orderNewMapper;
     @Mock private OrderItemNewMapper orderItemNewMapper;
+    @Mock private com.foodtraceability.service.PosCallNumberService posCallNumberService;
 
     private PosOrderCreateServiceImpl service;
     private OrderNew insertedOrder;
@@ -111,7 +112,8 @@ class PosOrderCreateServiceFoodIdMapTest {
                 kitchenOrderMapper, orderMapper, orderItemMapper, foodMapper, foodNewMapper,
                 dishComboMapper, dishComboNewMapper, comboIngredientNewMapper,
                 orderWebSocketController, eventPublisher, sensitiveDataService,
-                numberGenerator, storeNewMapper, orderNewMapper, orderItemNewMapper);
+                numberGenerator, storeNewMapper, orderNewMapper, orderItemNewMapper,
+                posCallNumberService);
 
         insertedOrder = null;
         insertedItems.clear();

@@ -538,25 +538,26 @@ public class PermissionVerifyServiceImpl implements PermissionVerifyService {
             return "self";
         }
 
-        String rolesJson = user.getRoles();
-        if (rolesJson == null || rolesJson.isEmpty()) {
+        // P1-AUTH-CHAIN-001：角色来源改为授权权威源 user_roles → roles，
+        // 不再解析 users.roles（历史展示字段，可被改写为任意角色ID）。
+        List<Role> roles = userMapper.getRoleEntitiesByUserId(Long.parseLong(userId));
+        if (roles == null || roles.isEmpty()) {
             return "self";
         }
 
-        List<String> roleIds = objectMapper.readValue(rolesJson, new TypeReference<List<String>>() {});
-        if (roleIds.isEmpty()) {
-            return "self";
-        }
-
-        // 获取最高权限范围
-        return getHighestDataScope(roleIds);
+        // 获取最高权限范围（直接按角色实体判定，避免再按数字ID回查）
+        return getHighestDataScopeByRoles(roles);
     }
 
     /**
      * 获取最高数据权限范围
      * 数据权限范围优先级：all > company > region > stores/departments > store > department > self
      */
-    private String getHighestDataScope(List<String> roleIds) {
+    /**
+     * 按角色实体计算最高数据权限范围（P1-AUTH-CHAIN-001：入参已是
+     * user_roles → roles 的角色实体，不再按 users.roles 里的数字ID回查）。
+     */
+    private String getHighestDataScopeByRoles(List<Role> roles) {
         // 数据权限范围优先级映射
         Map<String, Integer> scopePriority = new HashMap<>();
         scopePriority.put("all", 100);
@@ -571,27 +572,21 @@ public class PermissionVerifyServiceImpl implements PermissionVerifyService {
         String highestScope = "self";
         int highestPriority = 0;
 
-        for (String roleId : roleIds) {
-            Role role = roleMapper.selectById(Long.parseLong(roleId));
-            if (role == null) {
-                logger.warn("getHighestDataScope 角色不存在: roleId={}", roleId);
-                continue;
-            }
-            if (role.getDataScope() == null) {
-                logger.warn("getHighestDataScope 角色数据范围为空: roleId={}", roleId);
+        for (Role role : roles) {
+            if (role == null || role.getDataScope() == null) {
                 continue;
             }
             String scope = role.getDataScope();
             int priority = scopePriority.getOrDefault(scope, 0);
-            logger.debug("getHighestDataScope 角色权限: roleId={}, scope={}, priority={}", roleId, scope, priority);
             if (priority > highestPriority) {
                 highestPriority = priority;
                 highestScope = scope;
             }
         }
-
         return highestScope;
     }
+
+
 
     /**
      * 生成随机缓存过期时间偏移量（防缓存雪崩）

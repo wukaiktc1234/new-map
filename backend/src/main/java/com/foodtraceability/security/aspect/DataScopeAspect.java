@@ -4,6 +4,8 @@ import com.foodtraceability.common.util.LocationIdBridge;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.User;
+import com.foodtraceability.mapper.UserMapper;
+import com.foodtraceability.service.UserService;
 import com.foodtraceability.security.annotation.DataScope;
 import com.foodtraceability.security.model.SecurityUser;
 import com.foodtraceability.service.RoleService;
@@ -30,12 +32,15 @@ public class DataScopeAspect {
 
     private static final Logger logger = LoggerFactory.getLogger(DataScopeAspect.class);
 
-    private final UserService userService;
-    private final RoleService roleService;
+    /** 授权权威源查询（user_roles → roles）；users.roles 不再参与数据范围判定 */
+    private final UserMapper userMapper;
 
-    public DataScopeAspect(UserService userService, RoleService roleService) {
+    /** 仅用于取门店/部门归属（users.location_id / department_id），不参与角色判定 */
+    private final UserService userService;
+
+    public DataScopeAspect(UserMapper userMapper, UserService userService) {
+        this.userMapper = userMapper;
         this.userService = userService;
-        this.roleService = roleService;
     }
 
     @Before("@annotation(dataScope)")
@@ -125,32 +130,31 @@ public class DataScopeAspect {
         return false;
     }
 
+    /**
+     * 角色数据范围：<b>只从授权权威源</b> user_roles → roles 读取（P1-AUTH-CHAIN-001）。
+     *
+     * <p>原实现解析 users.roles（JSON 里的数字角色ID）再逐个查 roles，
+     * 属于「用历史展示字段决定数据可见范围」的越权面，已改为按 user_id 关联 user_roles。</p>
+     */
     private DataScope.DataScopeType determineDataScopeType(SecurityUser user) {
         try {
-            User dbUser = userService.getById(Long.parseLong(user.getUserId()));
-            if (dbUser == null || dbUser.getRoles() == null) {
+            Long userId = Long.parseLong(user.getUserId());
+            List<Role> roles = userMapper.getRoleEntitiesByUserId(userId);
+            if (roles == null || roles.isEmpty()) {
                 return DataScope.DataScopeType.SELF;
             }
 
-            String rolesJson = dbUser.getRoles();
-            if (rolesJson.startsWith("[")) {
-                String[] roleIds = rolesJson.replace("[", "").replace("]", "").replace("\"", "").split(",");
-                DataScope.DataScopeType mostPermissive = DataScope.DataScopeType.NONE;
-
-                for (String roleId : roleIds) {
-                    roleId = roleId.trim();
-                    if (roleId.isEmpty()) continue;
-
-                    Role role = roleService.getRoleById(Long.parseLong(roleId));
-                    if (role != null && role.getDataScope() != null) {
-                        DataScope.DataScopeType type = parseDataScope(role.getDataScope());
-                        if (isMorePermissive(type, mostPermissive)) {
-                            mostPermissive = type;
-                        }
-                    }
+            DataScope.DataScopeType mostPermissive = DataScope.DataScopeType.NONE;
+            for (Role role : roles) {
+                if (role == null || role.getDataScope() == null) {
+                    continue;
                 }
-                return mostPermissive;
+                DataScope.DataScopeType type = parseDataScope(role.getDataScope());
+                if (isMorePermissive(type, mostPermissive)) {
+                    mostPermissive = type;
+                }
             }
+            return mostPermissive;
         } catch (Exception e) {
             logger.error("确定数据范围类型失败: {}", e.getMessage());
         }

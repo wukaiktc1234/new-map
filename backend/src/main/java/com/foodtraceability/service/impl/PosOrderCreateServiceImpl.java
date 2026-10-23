@@ -717,116 +717,6 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         cmd.setQuantity(item.getQuantity());
         return cmd;
     }
-
-    // ==================== 私有方法 ====================
-
-    /**
-     * 验证订单项
-     */
-    private Result<Void> validateOrderItems(List<OrderItemDTO> items) {
-        if (items != null) {
-            for (OrderItemDTO item : items) {
-                if (item.getQuantity() == null || item.getQuantity() <= 0) {
-                    return Result.error("商品数量必须大于0");
-                }
-                if (item.getPrice() == null || item.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
-                    return Result.error("商品价格必须大于0");
-                }
-                if (item.getId() == null || item.getId().trim().isEmpty()) {
-                    return Result.error("菜品ID不能为空");
-                }
-                if (item.getName() == null || item.getName().trim().isEmpty()) {
-                    return Result.error("菜品名称不能为空");
-                }
-            }
-        }
-        return Result.success(null);
-    }
-
-    /**
-     * 创建订单项并扣减库存
-     */
-    private void createOrderItemsAndDeductStock(String orderId, List<OrderItemDTO> items, Map<String, Food> foodMap) {
-        for (OrderItemDTO itemDTO : items) {
-            Food dbFood = foodMap.get(itemDTO.getId());
-            BigDecimal actualPrice = itemDTO.getPrice();
-            if (dbFood != null && dbFood.getPrice() != null && dbFood.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-                actualPrice = dbFood.getPrice();
-                log.info("使用数据库价格覆盖: foodId={}, dbPrice={}, frontendPrice={}",
-                    itemDTO.getId(), dbFood.getPrice(), itemDTO.getPrice());
-                if (itemDTO.getPrice() != null && itemDTO.getPrice().compareTo(dbFood.getPrice()) != 0) {
-                    log.warn("价格差异检测: foodId={}, 前端价格={}, 数据库价格={}", itemDTO.getId(), itemDTO.getPrice(), dbFood.getPrice());
-                }
-            } else {
-                log.info("使用前端价格: foodId={}, frontendPrice={}, dbPrice={}",
-                    itemDTO.getId(), itemDTO.getPrice(),
-                    dbFood != null ? dbFood.getPrice() : "null");
-            }
-
-            // 防止actualPrice为null导致NPE
-            if (actualPrice == null) {
-                actualPrice = itemDTO.getPrice() != null ? itemDTO.getPrice() : BigDecimal.ZERO;
-                log.warn("菜品价格异常: foodId={}, 使用价格={}", itemDTO.getId(), actualPrice);
-            }
-
-            OrderItem orderItem = new OrderItem();
-            orderItem.setOrderId(orderId);
-            orderItem.setFoodId(itemDTO.getId());
-            orderItem.setFoodName(itemDTO.getName());
-            orderItem.setUnitPrice(actualPrice);
-            orderItem.setQuantity(itemDTO.getQuantity());
-            orderItem.setSubtotalAmount(actualPrice.multiply(new BigDecimal(itemDTO.getQuantity())));
-            orderItem.setCreateTime(LocalDateTime.now());
-            orderItem.setUpdateTime(LocalDateTime.now());
-            orderItem.setDeleted(0);
-            orderItemMapper.insert(orderItem);
-
-            // 扣减库存（food 表 + foods 表，保证两表一致）
-            int deductResult = foodMapper.deductStock(itemDTO.getId(), itemDTO.getQuantity());
-            if (deductResult == 0) {
-                // P1-NEW-FOOD-LEGACY-SYNC-001: 同上自愈
-                ensureLegacyFoodRow(itemDTO.getId());
-                deductResult = foodMapper.deductStock(itemDTO.getId(), itemDTO.getQuantity());
-            }
-            if (deductResult == 0) {
-                throw new BusinessException(400, "菜品【" + itemDTO.getName() + "】库存不足");
-            }
-            // 同步扣减 foods 表（菜品展示来源），保证两表库存一致
-            int deductNewResult = foodNewMapper.deductStock(itemDTO.getId(), itemDTO.getQuantity());
-            if (deductNewResult == 0) {
-                log.warn("foods表库存扣减失败: 菜品ID={}, 数量={}", itemDTO.getId(), itemDTO.getQuantity());
-                // food表已扣减成功，foods表扣减失败属于数据不一致，记录日志但不再回滚
-            }
-        }
-    }
-
-    /**
-     * 重新计算订单金额（基于已插入的订单项）
-     */
-    private BigDecimal recalculateOrderAmount(String orderId, BigDecimal serverTotalAmount) {
-        BigDecimal finalAmount = BigDecimal.ZERO;
-        List<OrderItem> insertedItems = orderItemMapper.selectList(
-            new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
-        log.info("重新计算订单金额: orderId={}, insertedItemCount={}", orderId, insertedItems.size());
-
-        for (OrderItem oi : insertedItems) {
-            if (oi.getUnitPrice() != null && oi.getQuantity() != null) {
-                BigDecimal itemTotal = oi.getUnitPrice().multiply(new BigDecimal(oi.getQuantity()));
-                finalAmount = finalAmount.add(itemTotal);
-            } else {
-                log.warn("订单项金额异常: foodId={}, unitPrice={}, quantity={}, 跳过该项",
-                    oi.getFoodId(), oi.getUnitPrice(), oi.getQuantity());
-            }
-        }
-
-        // 防御性处理：如果重新计算的金额为0，使用初始计算的金额
-        if (finalAmount.compareTo(BigDecimal.ZERO) == 0 && serverTotalAmount.compareTo(BigDecimal.ZERO) > 0) {
-            log.warn("订单金额重算为0，回退到初始金额: orderId={}, serverTotalAmount={}", orderId, serverTotalAmount);
-            finalAmount = serverTotalAmount;
-        }
-        return finalAmount;
-    }
-
     /**
      * W1-EC-01: 重新计算订单金额（基于 order_items 表，单位：分）
      * 从 orderItemNewMapper 读取已插入的订单明细，累加 unit_price × quantity（均为 Long 分）
@@ -919,46 +809,6 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 }
             });
     }
-
-    /**
-     * 构建创建订单返回结果
-     */
-    private Result<OrderResultDTO> buildCreateOrderResult(String orderId, String orderNumber,
-            String pickupNumber, String pickupCode, Integer orderType,
-            OrderRequestDTO request, BigDecimal finalAmount) {
-        OrderResultDTO result = new OrderResultDTO();
-        result.setOrderId(orderId);
-        result.setOrderNumber(orderNumber);
-        result.setPickupNumber(pickupNumber);
-        result.setPickupCode(pickupCode);
-        result.setStatus("pending");
-        result.setMessage("订单创建成功");
-        result.setOrderType(request.getOrderType());
-        result.setTableNumber(request.getTableNumber() != null ? request.getTableNumber().toString() : null);
-        result.setTotalAmount(finalAmount);
-        result.setOrderSource(4);
-        result.setCreateTime(LocalDateTime.now().toString());
-
-        // 验证返回结果的金额
-        if (result.getTotalAmount() == null || result.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            log.error("返回DTO金额异常: orderId={}, totalAmount={}", orderId, result.getTotalAmount());
-            throw new BusinessException(500, "订单返回金额异常");
-        }
-
-        log.info("构建订单返回结果: orderId={}, totalAmount={}", orderId, result.getTotalAmount());
-        List<OrderResultDTO.OrderItemInfo> itemInfos = request.getItems().stream().map(item -> {
-            OrderResultDTO.OrderItemInfo info = new OrderResultDTO.OrderItemInfo();
-            info.setId(item.getId());
-            info.setName(item.getName());
-            info.setPrice(item.getPrice());
-            info.setQuantity(item.getQuantity());
-            return info;
-        }).collect(Collectors.toList());
-        result.setOrderItems(itemInfos);
-
-        return Result.success(result);
-    }
-
     /**
      * 解析用户标识
      */
@@ -1092,34 +942,12 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         }
         return total;
     }
-
-    /**
-     * 计算桌台订单总金额
-     */
-    private BigDecimal calculateTableOrderAmount(List<TableOrderDTO.TableOrderItem> items) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (TableOrderDTO.TableOrderItem item : items) {
-            if (item.getPrice() != null && item.getQuantity() != null) {
-                total = total.add(item.getPrice().multiply(new BigDecimal(item.getQuantity())));
-            }
-        }
-        return total;
-    }
-
     /**
      * 计算菜品总数量
      */
     private Integer calculateTotalDishes(List<OrderItemDTO> items) {
         return items.stream().mapToInt(OrderItemDTO::getQuantity).sum();
     }
-
-    /**
-     * 计算桌台订单菜品总数量
-     */
-    private Integer calculateTableOrderDishes(List<TableOrderDTO.TableOrderItem> items) {
-        return items.stream().mapToInt(TableOrderDTO.TableOrderItem::getQuantity).sum();
-    }
-
     /**
      * 构建菜品项JSON
      * P1-COMBO-ORDER-001: combo 行写入 productType/comboId，供 KDS 拉单展开
@@ -1129,18 +957,6 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         for (OrderItemDTO item : items) {
             rows.add(canonicalDishItem(item.getId(), item.getName(), item.getQuantity(),
                     item.getPrice(), item.getDishType(), "combo".equals(item.getDishType())));
-        }
-        return writeDishItems(rows);
-    }
-
-    /**
-     * 构建桌台订单菜品项JSON
-     */
-    private String buildTableOrderDishItemsJson(List<TableOrderDTO.TableOrderItem> items) {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (TableOrderDTO.TableOrderItem item : items) {
-            rows.add(canonicalDishItem(item.getId(), item.getName(), item.getQuantity(),
-                    item.getPrice(), null, false));
         }
         return writeDishItems(rows);
     }

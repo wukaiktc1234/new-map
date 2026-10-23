@@ -186,11 +186,23 @@ public interface UserService extends IService<User> {
     List<String> getUserRoles(Long userId);
 
     /**
-     * 获取用户的角色名称列表
+     * 获取用户的角色编码列表（role_code，例如 admin / cashier / finance_director）。
+     *
+     * <p>P1-AUTH-CHAIN-001：鉴权/接口返回统一用编码（role_code），不再返回中文名，
+     * 也不再读 users.roles；数据来源 = user_roles → roles。</p>
+     *
      * @param userId 用户ID
-     * @return 角色名称列表
+     * @return 角色编码列表
      */
     List<String> getUserRoleNames(Long userId);
+
+    /**
+     * 获取用户的角色中文名列表（role_name），<b>仅用于展示</b>，禁止用于鉴权判断。
+     *
+     * @param userId 用户ID
+     * @return 角色中文名列表
+     */
+    List<String> getUserRoleDisplayNames(Long userId);
 
     /**
      * 检查用户是否拥有指定角色

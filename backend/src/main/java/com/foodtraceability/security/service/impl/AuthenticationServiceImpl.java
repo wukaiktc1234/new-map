@@ -93,7 +93,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             return LoginResponse.failure("用户名或密码错误");
         }
 
-        SecurityUser securityUser = createSecurityUser(user);
+        SecurityUser securityUser = buildSecurityUser(user);
 
         if (securityUser.isMfaEnabled()) {
             MfaToken mfaToken = mfaService.generateMfaToken(securityUser.getUserId());
@@ -104,7 +104,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         return LoginResponse.success(jwtToken, securityUser);
     }
 
-    private SecurityUser createSecurityUser(User user) {
+    /**
+     * 由数据库用户装配 SecurityUser（角色 + 权限）。
+     *
+     * <p>P1-AUTH-CHAIN-001：角色只来自授权权威源 user_roles → roles.role_code；
+     * users.roles（JSON 展示字段）不参与装配，因此把它改成 ["admin"] 不会提权。</p>
+     *
+     * <p>可见性 public 仅为单元测试直接验证（AuthRoleSourceTest）。</p>
+     */
+    public SecurityUser buildSecurityUser(User user) {
         SecurityUser securityUser = new SecurityUser();
         securityUser.setUserId(String.valueOf(user.getId()));
         securityUser.setUsername(user.getUsername());
@@ -119,23 +127,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
         Long userId = user.getId();
         
+        // P1-AUTH-CHAIN-001：角色只从授权权威源读取（user_roles → roles.role_code）。
+        // users.roles（JSON 列，历史存的是数字角色ID）已降级为展示字段，鉴权链路不再读取，
+        // 否则把 users.roles 改成 ["admin"] 就能凭空获得管理员角色。
         List<String> roles = new ArrayList<>();
         List<String> roleCodes = userMapper.getUserRoles(userId);
         if (roleCodes != null) {
             roles.addAll(roleCodes);
-        }
-        
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            if (user.getRoles().startsWith("[")) {
-                String rolesStr = user.getRoles().replace("[", "").replace("]", "").replace("\"", "");
-                for (String r : rolesStr.split(",")) {
-                    if (!r.trim().isEmpty() && !roles.contains(r.trim())) {
-                        roles.add(r.trim());
-                    }
-                }
-            } else if (!roles.contains(user.getRoles())) {
-                roles.add(user.getRoles());
-            }
         }
         securityUser.setRoles(roles);
 
@@ -177,7 +175,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             if (user == null) {
                 return Optional.empty();
             }
-            SecurityUser securityUser = createSecurityUser(user);
+            SecurityUser securityUser = buildSecurityUser(user);
             securityUser.setMfaVerified(true);
             JwtToken jwtToken = tokenService.generateToken(securityUser);
             return Optional.of(jwtToken);
@@ -204,7 +202,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         user.setStatus(1);
         userMapper.insert(user);
 
-        return createSecurityUser(user);
+        return buildSecurityUser(user);
     }
 
     @Override
@@ -217,7 +215,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         user.setEmail(profileUpdateRequest.getEmail());
         user.setPhone(profileUpdateRequest.getPhone());
         userMapper.updateById(user);
-        return createSecurityUser(user);
+        return buildSecurityUser(user);
     }
 
     @Override
@@ -272,7 +270,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (user == null) {
             return Optional.empty();
         }
-        return Optional.of(createSecurityUser(user));
+        return Optional.of(buildSecurityUser(user));
     }
 
     @Override
@@ -281,6 +279,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         if (user == null) {
             return Optional.empty();
         }
-        return Optional.of(createSecurityUser(user));
+        return Optional.of(buildSecurityUser(user));
     }
 }

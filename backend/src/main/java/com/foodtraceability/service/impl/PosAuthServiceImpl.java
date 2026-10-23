@@ -348,17 +348,13 @@ public class PosAuthServiceImpl implements PosAuthService {
         } catch (Exception e) {
             logger.warn("读取 user_roles 角色失败，回退 users.roles JSON: userId={}, error={}", user.getId(), e.getMessage());
         }
-        // 回退：user_roles 无行时才用 users.roles JSON（历史兼容，数字 ID 无法转 authority，仅作兜底记录）
-        if (roles.isEmpty()) {
-            try {
-                if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-                    roles = objectMapper.readValue(user.getRoles(), new TypeReference<List<String>>() {});
-                }
-            } catch (Exception e) {
-                logger.warn("解析用户角色JSON失败: userId={}, roles={}, error={}", user.getId(), user.getRoles(), e.getMessage());
-            }
-        }
-        // admin 用户默认拥有 admin 角色
+        // P1-AUTH-CHAIN-001：删除「user_roles 为空时回退 users.roles」的分支。
+        // users.roles 是历史展示字段（数字角色ID），既不能转成 authority，也会成为提权后门；
+        // user_roles 没授角色就是没角色（fail-closed）。
+        //
+        // 【全系统唯一的用户名特判】内置超级管理员账号 username=admin 保留硬编码 admin 角色：
+        // 它必须能在 user_roles 尚未初始化（如初始化脚本失败）时登录后台救场。
+        // 除本处外，任何地方都不得再按 username 授予角色。
         if ((roles.isEmpty() || roles.stream().noneMatch(r -> "admin".equalsIgnoreCase(r)))
                 && "admin".equalsIgnoreCase(user.getUsername())) {
             roles = new ArrayList<>(Collections.singletonList("admin"));
