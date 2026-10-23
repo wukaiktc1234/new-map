@@ -56,6 +56,10 @@ public class FundFlowVO implements Serializable {
     @Schema(description = "备注")
     private String remark;
 
+    /** 业务订单ID：供内部穿透/按单号搜索使用；前端列表不展示（避免外露内部ID） */
+    @Schema(description = "业务订单ID（内部用，前端不展示）")
+    private String orderId;
+
     @Schema(description = "创建人ID")
     private Long createUserId;
 
@@ -174,6 +178,14 @@ public class FundFlowVO implements Serializable {
     public PosOrderSummary getPosOrder() { return posOrder; }
 
     public void setPosOrder(PosOrderSummary posOrder) { this.posOrder = posOrder; }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
+    }
 
     public Long getFlowId() {
         return flowId;

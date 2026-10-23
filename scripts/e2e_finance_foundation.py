@@ -152,8 +152,8 @@ class Runner:
             "SELECT f.flow_no, f.account_id, f.amount, f.create_user_id, COALESCE(a.store_id, -1) "
             "FROM fund_flows f LEFT JOIN bank_accounts a ON a.account_id = f.account_id "
             "WHERE f.flow_direction = %d AND f.flow_category = %d AND f.deleted = 0 "
-            "AND f.remark LIKE '%%[orderId=%s]%%' ORDER BY f.flow_id" % (
-                FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, order_id))
+            "AND f.order_id = '%s' ORDER BY f.flow_id" % (
+                FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, order_id.replace("'", "''")))
         return rows
 
     def flow_count_total(self):

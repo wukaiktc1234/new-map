@@ -250,9 +250,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
                 financeRecord.setRecordDate(LocalDate.now());
                 financeRecord.setApprovalStatus(1); // 已审批（POS支付自动确认）
                 // 备注口径与 fund_flows 的 SALE 入账统一（同一单号口径，见 PosSaleFinanceRecorder.buildSaleRemark）：
-                // POS销售入账：<orderNumber>[orderId=<orderId>]
-                financeRecord.setRemark(PosSaleFinanceRecorder.buildSaleRemark(
-                        order.getOrderNumber(), order.getOrderId()));
+                // POS销售入账：<orderNumber>（2026-10-24 起备注不再带 [orderId=...] 技术串）
+                financeRecord.setRemark(PosSaleFinanceRecorder.buildSaleRemark(order.getOrderNumber()));
                 financeRecordMapper.insert(financeRecord);
                 log.info("已自动创建收支流水记录: recordNo=POS-{}, amount={}分", order.getOrderNumber(), order.getOrderAmount());
             } catch (Exception financeEx) {

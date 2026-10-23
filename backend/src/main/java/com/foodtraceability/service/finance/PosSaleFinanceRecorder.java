@@ -54,13 +54,6 @@ public class PosSaleFinanceRecorder {
     /** 资金流水分类：1=销售收款（SALE） */
     public static final int FLOW_CATEGORY_SALE = 1;
 
-    /**
-     * 幂等键片段：备注里带 orderId 的定界串。
-     * 刻意使用 ASCII 方括号（[orderId=xxx]）而非常见的中文全角括号：
-     * 运维/E2E 需要用 psql 等工具按该片段筛选流水，ASCII 定界符不会因客户端编码（GBK/UTF8）错位。
-     */
-    private static final String ORDER_ID_TOKEN_PREFIX = "[orderId=";
-    private static final String ORDER_ID_TOKEN_SUFFIX = "]";
 
     private final FundFlowService fundFlowService;
     private final BankAccountMapper bankAccountMapper;
@@ -161,7 +154,7 @@ public class PosSaleFinanceRecorder {
     private FundFlowWriteOutcome insertSaleFlow(String orderId, String orderNumber, long amountFen,
                                                 Integer paymentMethod, Long storeId,
                                                 String customerName, Long operatorId) {
-        FundFlow existing = findExistingSaleFlow(orderId);
+        FundFlow existing = findExistingSaleFlow(orderId, orderNumber);
         if (existing != null) {
             log.warn("[METRIC] pos_fund_flow_recorded result=duplicate orderId={} orderNumber={} flowNo={} amountFen={}",
                     orderId, orderNumber, existing.getFlowNo(), existing.getAmount());
@@ -182,7 +175,9 @@ public class PosSaleFinanceRecorder {
         dto.setAmount(amountFen);
         dto.setBusinessDate(LocalDate.now());
         dto.setCounterpartyName(customerName != null && !customerName.isBlank() ? customerName : "散客");
-        dto.setRemark(buildRemark(orderNumber, orderId));
+        // 备注只写人类可读口径（无技术串）；订单关联由 order_id 承载
+        dto.setRemark(buildSaleRemark(orderNumber));
+        dto.setOrderId(orderId);
         dto.setCreateUserId(operatorId != null ? operatorId : 0L);
 
         FundFlowVO vo = fundFlowService.create(dto);
@@ -192,30 +187,49 @@ public class PosSaleFinanceRecorder {
         return FundFlowWriteOutcome.recorded(vo != null ? vo.getFlowNo() : null, pick.accountId);
     }
 
-    /** 幂等查重：方向=收入、分类=销售、备注内含本订单的 orderId 定界串 */
-    private FundFlow findExistingSaleFlow(String orderId) {
-        LambdaQueryWrapper<FundFlow> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(FundFlow::getFlowDirection, FLOW_DIRECTION_INCOME)
-               .eq(FundFlow::getFlowCategory, FLOW_CATEGORY_SALE)
-               .like(FundFlow::getRemark, ORDER_ID_TOKEN_PREFIX + orderId + ORDER_ID_TOKEN_SUFFIX)
-               .last("LIMIT 1");
-        return fundFlowMapper.selectOne(wrapper);
+    /**
+     * 幂等查重（方向=收入、分类=销售）。
+     *
+     * <p>新口径：按 {@code fund_flows.order_id} 精确查——备注已清洗为人类可读文案，
+     * 不再承载技术串；订单ID是唯一可靠的关联键。</p>
+     *
+     * <p>老数据兼容：{@code order_id} 仍为 NULL 的历史行只在 remark 里留有单号，
+     * 这里用 remark like '%单号%' 兜底（仅在该列 IS NULL 范围内匹配，避免误伤新行）。</p>
+     */
+    private FundFlow findExistingSaleFlow(String orderId, String orderNumber) {
+        if (orderId != null && !orderId.isEmpty()) {
+            LambdaQueryWrapper<FundFlow> byOrderId = new LambdaQueryWrapper<>();
+            byOrderId.eq(FundFlow::getFlowDirection, FLOW_DIRECTION_INCOME)
+                     .eq(FundFlow::getFlowCategory, FLOW_CATEGORY_SALE)
+                     .eq(FundFlow::getOrderId, orderId)
+                     .last("LIMIT 1");
+            FundFlow hit = fundFlowMapper.selectOne(byOrderId);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        if (orderNumber != null && !orderNumber.isEmpty()) {
+            LambdaQueryWrapper<FundFlow> legacy = new LambdaQueryWrapper<>();
+            legacy.eq(FundFlow::getFlowDirection, FLOW_DIRECTION_INCOME)
+                  .eq(FundFlow::getFlowCategory, FLOW_CATEGORY_SALE)
+                  .isNull(FundFlow::getOrderId)
+                  .like(FundFlow::getRemark, orderNumber)
+                  .last("LIMIT 1");
+            return fundFlowMapper.selectOne(legacy);
+        }
+        return null;
     }
 
     /**
-     * 备注口径（对外共享）：{@code POS销售入账：<orderNumber>[orderId=<orderId>]}。
-     * 前半段是业务可读口径，后半段是该订单的幂等键。
+     * 备注口径（对外共享，所有 POS 入账入口必须复用）：
+     * {@code POS销售入账：<orderNumber>} —— 只保留人类可读信息。
      *
-     * <p>quick-pay 等其它支付入口必须复用本方法，保证 fund_flows 里同一条收入只有一种备注写法，
-     * 否则按 {@code [orderId=xxx]} 查重会失效。</p>
+     * <p>2026-10-24 起备注不再拼接 {@code [orderId=...]} 技术串：
+     * 订单关联改由 {@code fund_flows.order_id} 承载，幂等查重也改按该列精确匹配
+     * （历史行已由 scripts/db-fix/2026-10-24-fund-flow-order-id.sql 回填）。</p>
      */
-    public static String buildSaleRemark(String orderNumber, String orderId) {
-        return "POS销售入账：" + orderNumber + ORDER_ID_TOKEN_PREFIX + orderId + ORDER_ID_TOKEN_SUFFIX;
-    }
-
-    /** 实例侧薄封装：保持既有调用点不变 */
-    private String buildRemark(String orderNumber, String orderId) {
-        return buildSaleRemark(orderNumber, orderId);
+    public static String buildSaleRemark(String orderNumber) {
+        return "POS销售入账：" + orderNumber;
     }
 
     /**

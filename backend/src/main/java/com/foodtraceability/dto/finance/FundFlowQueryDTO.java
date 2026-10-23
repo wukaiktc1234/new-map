@@ -31,7 +31,7 @@ public class FundFlowQueryDTO implements Serializable {
     @Schema(description = "结束日期")
     private LocalDate endDate;
 
-    @Schema(description = "关键词搜索（对方名称/流水号）")
+    @Schema(description = "关键词搜索：流水号 / 对方名称 / 备注（含订单号）/ 业务订单ID；空值忽略")
     private String keyword;
 
     @Schema(description = "当前页码")

@@ -24,6 +24,7 @@
  */
 
 import { fenToYuan, yuanToFen, fenToYuanNumber, fenToWan } from '@/utils/money'
+import { stripOrderIdToken } from '@/utils/pos-order-remark'
 
 // ============================================================
 // 金额转换工具（统一委托给 utils/money，保留导出以兼容已有调用方）
@@ -764,6 +765,13 @@ export const FundFlowDataConverter = {
     })
     if (result.id !== undefined && result.id !== null) {
       result.id = String(result.id)
+    }
+
+    // 1.5) 摘要清洗：剔除内部幂等键 [orderId=xxx]，保证单元格与 tooltip 都不出现内部 ID。
+    //      原始 remark 保留不动（详情弹窗需要它解析关联 POS 订单）。
+    //      后端 FundFlowServiceImpl 也会清洗一道，这里做前端兜底。
+    if (typeof result.summary === 'string') {
+      result.summary = stripOrderIdToken(result.summary)
     }
 
     // 2) 金额分→元（仅转换后端直接返回的字段，此时 balance 还未由 balanceAfter 派生）

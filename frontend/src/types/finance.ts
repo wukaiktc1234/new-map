@@ -780,6 +780,12 @@ export interface FundFlowQueryForm extends FinancePageQuery {
   endDate?: string
   counterparty?: string
   status?: FundFlowStatus
+  /**
+   * 单号搜索关键词（对应后端 FundFlowQueryDTO.keyword）
+   * 后端按「流水号 / 对方名称 / 备注（含 POS 订单号）/ 业务订单ID」模糊匹配；
+   * 空串不下发（fund-flow.ts 的 compactParams 负责过滤）。
+   */
+  keyword?: string
 }
 
 /** 资金流水统计 */

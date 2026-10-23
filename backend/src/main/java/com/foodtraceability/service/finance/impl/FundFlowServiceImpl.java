@@ -167,9 +167,15 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         if (query.getEndDate() != null) {
             wrapper.le(FundFlow::getBusinessDate, query.getEndDate());
         }
-        if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
-            wrapper.and(w -> w.like(FundFlow::getFlowNo, query.getKeyword())
-                    .or().like(FundFlow::getCounterpartyName, query.getKeyword()));
+        // keyword：流水号 / 对方名称 / 备注 / 业务订单ID。
+        // 备注清洗后已含订单号（POS销售入账：T2026…），所以「按单号搜」命中 remark；
+        // 再 OR order_id 兼容直接传订单ID。空串/空白忽略，值 trim。
+        String keyword = query.getKeyword() != null ? query.getKeyword().trim() : null;
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like(FundFlow::getFlowNo, keyword)
+                    .or().like(FundFlow::getCounterpartyName, keyword)
+                    .or().like(FundFlow::getRemark, keyword)
+                    .or().like(FundFlow::getOrderId, keyword));
         }
         wrapper.orderByDesc(FundFlow::getBusinessDate)
                .orderByDesc(FundFlow::getFlowId);
@@ -302,7 +308,8 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
      * 从流水备注解析 POS 订单并组装摘要。
      *
      * <p>备注口径由 {@code PosSaleFinanceRecorder.buildSaleRemark} 统一生成：
-     * {@code POS销售入账：<orderNumber>[orderId=<orderId>]}。解析不到（非 POS 入账流水）返回 null，
+     * {@code POS销售入账：<orderNumber>}（历史行可能仍带 {@code [orderId=...]} 技术串）。
+     * 解析不到（非 POS 入账流水）返回 null，
      * 不影响既有详情接口的其它字段。</p>
      *
      * <p>返回体<b>不含 orderId</b>：前端要求隐藏内部ID，订单号即可满足展示与追溯。</p>

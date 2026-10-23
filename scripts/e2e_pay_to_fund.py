@@ -105,11 +105,11 @@ class Runner:
         return int(val)
 
     def sale_flow_count(self, order_id):
-        # 备注里的幂等定界符是 ASCII：[orderId=xxx]，避免 psql 客户端编码导致全角括号错位
-        like = "%%[orderId=%s]%%" % order_id
+        # 2026-10-24 起幂等键从 remark 技术串迁到 fund_flows.order_id（备注已清洗为人类可读文案）
         val = self.scalar(
             "SELECT COUNT(*) FROM fund_flows WHERE flow_direction = %d AND flow_category = %d "
-            "AND remark LIKE '%s' AND deleted = 0" % (FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, like), "0")
+            "AND order_id = '%s' AND deleted = 0" % (
+                FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, order_id.replace("'", "''")), "0")
         return int(val)
 
     # ---------- 1. 登录 ----------
@@ -161,10 +161,11 @@ class Runner:
 
     # ---------- 5. 资金流水断言 ----------
     def verify_fund_flow(self):
-        like = "%%[orderId=%s]%%" % self.order_id
+        # 按 order_id 精确定位本订单流水（备注已清洗，不再含 [orderId=...]）
         sql = ("SELECT flow_id, flow_no, account_id, flow_direction, flow_category, amount, balance_after, remark "
-               "FROM fund_flows WHERE flow_direction = %d AND flow_category = %d AND remark LIKE '%s' AND deleted = 0"
-               % (FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, like))
+               "FROM fund_flows WHERE flow_direction = %d AND flow_category = %d "
+               "AND order_id = '%s' AND deleted = 0"
+               % (FLOW_DIRECTION_INCOME, FLOW_CATEGORY_SALE, self.order_id.replace("'", "''")))
         try:
             rc, out, err = self.psql(sql)
         except Exception as e:

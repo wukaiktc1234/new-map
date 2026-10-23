@@ -64,6 +64,19 @@ public class FundFlowCreateDTO implements Serializable {
         this.createUserId = createUserId;
     }
 
+    /** 业务订单ID（POS 销售入账必填，用于幂等与按单号搜索；其它流水可空） */
+    @Schema(description = "业务订单ID（可空）")
+    @Size(max = 64, message = "订单ID长度不能超过64位")
+    private String orderId;
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
+    }
+
     /**
      * 流水状态：为空时服务层默认 2（已完成）。
      * 本系统资金流水都由「钱已经动了」的路径创建（POS 销售入账、付款单、人工确认入账），没有草稿态。

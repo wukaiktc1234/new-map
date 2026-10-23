@@ -4,7 +4,7 @@ import PageHeader from '@/components/core/PageHeader.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue'
 import StatusTag from '@/components/core/StatusTag.vue'
-import { InfoFilled } from '@element-plus/icons-vue'
+import { InfoFilled, Search } from '@element-plus/icons-vue'
 import { useStandardPage } from '@/composables/useStandardPage'
 import { bankAccountApi, fundFlowApi } from '@/api/finance'
 import { getPosOrderTrace, type PosOrderTrace } from '@/api/order/order'
@@ -15,10 +15,15 @@ import type { StatColorType } from '@/types/stat'
 
 const { pagination, resetPagination } = useStandardPage()
 const searchForm = ref({
+  /** 单号搜索：订单号 / 流水号（后端按 流水号/对方名称/备注/订单ID 模糊匹配） */
+  keyword: '',
   bankAccountId: '',
   flowType: '' as '' | 'income' | 'expense',
   dateRange: null as [string, string] | null,
 })
+
+/** 当前生效的单号搜索词（用于空态文案，避免用户忘记自己开着筛选） */
+const activeKeyword = ref('')
 const loading = ref(false)
 
 /** 银行账户列表（用于下拉选择和余额统计） */
@@ -82,6 +87,11 @@ function buildQueryParams() {
   const params: Record<string, unknown> = {
     page: pagination.current,
     size: pagination.size,
+  }
+  // 单号搜索：trim 后非空才下发（空串由 fund-flow.ts 的 compactParams 再兜底一次）
+  const keyword = searchForm.value.keyword.trim()
+  if (keyword) {
+    params.keyword = keyword
   }
   if (searchForm.value.bankAccountId) {
     params.bankAccountId = searchForm.value.bankAccountId
@@ -250,19 +260,30 @@ async function loadData(): Promise<void> {
   }
 }
 
-/** 查询 */
+/** 查询（点击「查询」或单号搜索框回车都会走这里） */
 function handleSearch(): void {
+  activeKeyword.value = searchForm.value.keyword.trim()
   resetPagination()
   loadData()
 }
 
+/** 列表空态文案：带上当前搜索词，明确告知「是筛选导致的空」 */
+const emptyText = computed<string>(() => {
+  if (activeKeyword.value) {
+    return `没有匹配「${activeKeyword.value}」的流水，请检查单号或点「重置」`
+  }
+  return '暂无资金流水数据'
+})
+
 /** 重置 */
 function handleReset(): void {
   searchForm.value = {
+    keyword: '',
     bankAccountId: '',
     flowType: '',
     dateRange: null,
   }
+  activeKeyword.value = ''
   resetPagination()
   loadData()
 }
@@ -495,6 +516,18 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
       <span v-if="statsLoading" class="stats-hint__loading">统计加载中...</span>
     </div>
     <div class="advanced-search-panel"><div class="toolbar-row"><div class="toolbar-left">
+      <el-input
+        v-model="searchForm.keyword"
+        placeholder="订单号 / 流水号，模糊搜索"
+        clearable
+        size="default"
+        style="width:230px"
+        class="keyword-input"
+        @keyup.enter="handleSearch"
+        @clear="handleSearch"
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
       <el-select v-model="searchForm.bankAccountId" placeholder="银行账户" clearable style="width:180px" size="default">
         <el-option v-for="acc in bankAccounts" :key="getAccountId(acc)" :label="`${acc.bankName}-${acc.accountName}`" :value="getAccountId(acc)" />
       </el-select>
@@ -508,7 +541,7 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
       <el-button size="default" @click="handleReset">重置</el-button>
     </div></div></div>
     <div class="table-section">
-      <DataTable :columns="columns" :data="records" :loading="loading" stripe>
+      <DataTable :columns="columns" :data="records" :loading="loading" :empty-text="emptyText" stripe>
         <template #flowType="{ row }"><StatusTag :status="getFlowTypeTag(row.flowType).type" :label="getFlowTypeTag(row.flowType).label" size="small" /></template>
         <template #income="{ row }">{{ getIncome(row) }}</template>
         <template #expense="{ row }">{{ getExpense(row) }}</template>
@@ -639,6 +672,15 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
 .stats-hint__loading {
   margin-left: 4px;
   opacity: 0.8;
+}
+
+/* 空态文案：默认 el-table__empty-text 宽度只有 50%，长文案会被折成两行 */
+:deep(.el-table__empty-text) {
+  width: 100% !important;
+  max-width: none;
+  line-height: 1.8;
+  padding: 0 24px;
+  white-space: normal;
 }
 
 /* ====== 详情弹窗：流水 + 关联订单 ====== */

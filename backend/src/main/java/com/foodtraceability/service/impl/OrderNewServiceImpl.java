@@ -298,12 +298,13 @@ public class OrderNewServiceImpl implements OrderNewService {
             dto.setAmount(amount);
             dto.setCounterpartyName(order.getCustomerName() != null ? order.getCustomerName() : "散客");
             dto.setBusinessDate(java.time.LocalDate.now());
-            // 备注口径与标准支付入口（PosOrderPaymentServiceImpl.payNewOrder → PosSaleFinanceRecorder）保持一致：
-            // POS销售入账：<orderNumber>[orderId=<orderId>]，后半段是该订单的幂等键，便于按 [orderId=xxx] 查重
+            // 备注口径与标准支付入口（PosOrderPaymentServiceImpl.payNewOrder → PosSaleFinanceRecorder）一致：
+            // 只写人类可读的「POS销售入账：<orderNumber>」，订单关联由 order_id 承载（2026-10-24 起）。
             String orderNumberForFinance = order.getOrderNumber() != null
                     ? order.getOrderNumber()
                     : (order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId());
-            dto.setRemark(PosSaleFinanceRecorder.buildSaleRemark(orderNumberForFinance, order.getOrderId()));
+            dto.setRemark(PosSaleFinanceRecorder.buildSaleRemark(orderNumberForFinance));
+            dto.setOrderId(order.getOrderId());
             fundFlowService.create(dto);
             log.info("F6 订单支付资金流水已创建：orderId={}, amount={}分", order.getOrderId(), amount);
         } catch (Exception e) {

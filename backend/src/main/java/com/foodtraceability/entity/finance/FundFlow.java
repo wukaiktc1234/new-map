@@ -1,6 +1,7 @@
 package com.foodtraceability.entity.finance;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -58,8 +59,17 @@ public class FundFlow extends BaseEntity implements Serializable {
     /** 关联凭证ID */
     private Long voucherId;
 
-    /** 备注 */
+    /** 备注（人类可读，例如 POS销售入账：T20261024016；不再包含 [orderId=...] 技术串） */
     private String remark;
+
+    /**
+     * 业务订单ID（fund_flows.order_id）
+     * <p>POS 销售入账写订单ID，幂等查重与列表搜索都走这一列；
+     * 非 POS 流水（付款单等）为 NULL。历史行由
+     * scripts/db-fix/2026-10-24-fund-flow-order-id.sql 从旧 remark 回填。</p>
+     */
+    @TableField("order_id")
+    private String orderId;
 
     /** 创建人ID */
     private Long createUserId;
@@ -162,6 +172,14 @@ public class FundFlow extends BaseEntity implements Serializable {
 
     public void setVoucherId(Long voucherId) {
         this.voucherId = voucherId;
+    }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
     }
 
     public String getRemark() {

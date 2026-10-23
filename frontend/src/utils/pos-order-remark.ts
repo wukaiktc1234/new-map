@@ -42,6 +42,24 @@ function normalizeId(value: string | null | undefined): string {
   return text
 }
 
+/** 备注里的内部幂等键片段（[orderId=xxx]），对外展示时必须剔除 */
+const ORDER_ID_TOKEN_STRIP_RE = /\s*\[\s*orderId\s*=\s*[^\]]*\]/gi
+
+/**
+ * 清洗备注/摘要文案：去掉内部幂等键 `[orderId=xxx]`，压缩多余空格。
+ * 后端已做一道清洗，前端再兜底一道，确保单元格与 tooltip 都不出现内部 ID。
+ *
+ * @example
+ * stripOrderIdToken('POS销售入账：T20261023079[orderId=O1792759260016]') // 'POS销售入账：T20261023079'
+ */
+export function stripOrderIdToken(text?: string | null): string {
+  if (!text) return ''
+  return String(text)
+    .replace(ORDER_ID_TOKEN_STRIP_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 /**
  * 从资金流水备注解析关联 POS 订单信息。
  *

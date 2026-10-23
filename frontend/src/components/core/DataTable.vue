@@ -38,6 +38,8 @@ interface Props {
   defaultExpandAll?: boolean
   /** 自定义行类名（与 Element Plus el-table row-class-name 一致） */
   rowClassName?: (data: { row: any; rowIndex: number }) => string
+  /** 空数据文案（不传则用 el-table 默认「暂无数据」） */
+  emptyText?: string
 }
 
 withDefaults(defineProps<Props>(), {
@@ -51,6 +53,7 @@ withDefaults(defineProps<Props>(), {
   treeProps: undefined,
   defaultExpandAll: false,
   rowClassName: undefined,
+  emptyText: undefined,
 })
 
 const emit = defineEmits<{
@@ -98,6 +101,7 @@ defineExpose({ tableRef })
       @selection-change="handleSelectionChange"
       @sort-change="handleSortChange"
       @row-click="handleRowClick"
+      :empty-text="emptyText"
       table-layout="fixed"
     >
       <el-table-column
