@@ -31,6 +31,17 @@ public class BankAccountUpdateDTO implements Serializable {
     @Size(max = 500, message = "备注长度不能超过500位")
     private String remark;
 
+    @Schema(description = "归属门店ID（空=全局账户）")
+    private Long storeId;
+
+    public Long getStoreId() {
+        return storeId;
+    }
+
+    public void setStoreId(Long storeId) {
+        this.storeId = storeId;
+    }
+
     public String getAccountName() {
         return accountName;
     }

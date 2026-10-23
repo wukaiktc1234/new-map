@@ -11,6 +11,9 @@ import com.foodtraceability.exception.BusinessException;
 import com.foodtraceability.mapper.finance.BankAccountMapper;
 import com.foodtraceability.mapper.finance.FundFlowMapper;
 import com.foodtraceability.service.finance.FundFlowService;
+import com.foodtraceability.utils.SecurityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +33,14 @@ import java.util.stream.Collectors;
 public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         implements FundFlowService {
 
-    private final BankAccountMapper bankAccountMapper;
+    private static final Logger log = LoggerFactory.getLogger(FundFlowServiceImpl.class);
 
-    public FundFlowServiceImpl(BankAccountMapper bankAccountMapper) {
+    private final BankAccountMapper bankAccountMapper;
+    private final FundFlowMapper fundFlowMapper;
+
+    public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper) {
         this.bankAccountMapper = bankAccountMapper;
+        this.fundFlowMapper = fundFlowMapper;
     }
 
     @Override
@@ -48,32 +55,57 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
             throw new BusinessException("银行账户已停用");
         }
 
+        if (dto.getAmount() == null || dto.getAmount() <= 0) {
+            throw new BusinessException("资金流水金额必须大于0");
+        }
+        if (dto.getFlowDirection() == null || (dto.getFlowDirection() != 1 && dto.getFlowDirection() != 2)) {
+            throw new BusinessException("资金流水方向非法（1=收入 2=支出）");
+        }
+
         // 创建流水
         FundFlow entity = new FundFlow();
         BeanUtils.copyProperties(dto, entity);
         entity.setFlowNo(generateFlowNo());
-        // 状态初值：1-待处理（口径见 docs/alignment/finance-system-state-machine.md 3.7）
-        entity.setStatus(1);
+        // 状态初值：默认 2=已完成。
+        // 本系统资金流水全部由「钱已经动了」的路径创建（POS 销售入账 / 付款单 / 人工确认入账），
+        // 不存在草稿态；历史数据已全量归一为 2（scripts/db-fix/2026-10-23-fund-flow-status-normalize.sql），
+        // 新流水再写 1 会立刻造成口径分裂。调用方可显式覆盖。
+        entity.setStatus(dto.getStatus() != null ? dto.getStatus() : 2);
 
-        // 计算交易后余额
-        Long currentBalance = account.getBalance() != null ? account.getBalance() : 0L;
-        Long newBalance;
-        if (dto.getFlowDirection() == 1) {
-            // 收入
-            newBalance = currentBalance + dto.getAmount();
-        } else {
-            // 支出
-            newBalance = currentBalance - dto.getAmount();
+        // 审计合规：操作人必须留痕。优先用调用方显式传入的（POS 支付路径传当前收银员），
+        // 其次取当前登录上下文；都取不到写 0 并 WARN —— 绝不写入 null。
+        Long operatorId = dto.getCreateUserId() != null ? dto.getCreateUserId() : SecurityUtils.getCurrentUserId();
+        if (operatorId == null) {
+            operatorId = 0L;
+            log.warn("[AUDIT] 资金流水缺少操作人上下文，create_user_id 兜底记 0: accountId={}, direction={}, amount={}分",
+                    dto.getAccountId(), dto.getFlowDirection(), dto.getAmount());
         }
-        entity.setBalanceAfter(newBalance);
+        entity.setCreateUserId(operatorId);
+
+        // 操作人姓名同时落 created_by（varchar 列；与 create_user_id 双轨：
+        // ID 便于关联查询，姓名便于人工核对，历史行也可读）。
+        // 取值优先级：当前登录用户名 → DTO.createUserId → 解析出的 operatorId → "system"
+        String createdBy = SecurityUtils.getCurrentUsername();
+        if (createdBy == null || createdBy.isBlank()) {
+            createdBy = dto.getCreateUserId() != null
+                    ? String.valueOf(dto.getCreateUserId())
+                    : (operatorId > 0 ? String.valueOf(operatorId) : "system");
+        }
+        entity.setCreatedBy(createdBy);
+
+        // 并发安全：数据库端原子增减余额。
+        // 原实现「select 出余额 → 计算 → updateById 回写」在并发下会丢更新（多终端同时支付时余额少记）。
+        long delta = dto.getFlowDirection() == 1 ? dto.getAmount() : -dto.getAmount();
+        int updated = bankAccountMapper.addBalance(account.getAccountId(), delta);
+        if (updated == 0) {
+            throw new BusinessException("银行账户不存在或已删除，无法记账");
+        }
+        // 回读余额作为 balance_after（同一事务内可见本事务的原子更新结果）
+        BankAccount afterAccount = bankAccountMapper.selectById(account.getAccountId());
+        entity.setBalanceAfter(afterAccount != null && afterAccount.getBalance() != null
+                ? afterAccount.getBalance() : delta);
 
         baseMapper.insert(entity);
-
-        // 更新银行账户余额
-        BankAccount updateAccount = new BankAccount();
-        updateAccount.setAccountId(account.getAccountId());
-        updateAccount.setBalance(newBalance);
-        bankAccountMapper.updateById(updateAccount);
 
         return getDetail(entity.getFlowId());
     }
@@ -182,24 +214,28 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     }
 
     /**
-     * 生成流水号：FF + yyyyMMdd + 4位序号
+     * 生成流水号：FF + yyyyMMdd + 4位序号。
+     *
+     * <p>并发安全：序号来自 order_sequence 号段表的原子自增（键 {@code FLOWyyyyMMdd}），
+     * 不再「查最后一条 +1」——高并发支付时原实现会拿到相同号并撞唯一键，导致流水写不进去。</p>
      */
     private String generateFlowNo() {
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        LambdaQueryWrapper<FundFlow> wrapper = new LambdaQueryWrapper<>();
-        wrapper.likeRight(FundFlow::getFlowNo, "FF" + datePart)
-               .orderByDesc(FundFlow::getFlowId)
-               .last("LIMIT 1");
-        FundFlow lastFlow = baseMapper.selectOne(wrapper);
-
-        int seq = 1;
-        if (lastFlow != null && lastFlow.getFlowNo() != null) {
-            String lastNo = lastFlow.getFlowNo();
-            String seqStr = lastNo.substring(lastNo.length() - 4);
-            seq = Integer.parseInt(seqStr) + 1;
+        String sequenceKey = "FLOW" + datePart;
+        String prefix = "FF" + datePart;
+        try {
+            // 首日/首次使用时，以当天已有最大流水号初始化号段（并发下只有一条 INSERT 生效）
+            Integer maxExisting = fundFlowMapper.maxFlowSequenceByPrefix(prefix);
+            fundFlowMapper.initFlowSequenceIfAbsent(sequenceKey, maxExisting != null ? maxExisting : 0);
+            Integer seq = fundFlowMapper.nextFlowSequence(sequenceKey);
+            if (seq != null && seq > 0) {
+                return String.format("%s%04d", prefix, seq);
+            }
+        } catch (Exception e) {
+            log.warn("流水号段分配失败，降级为时间戳流水号: {}", e.getMessage());
         }
-
-        return String.format("FF%s%04d", datePart, seq);
+        // 兜底：号段表异常时用时间戳保证唯一（仍满足 FF 前缀，仅序号段不再是 4 位顺序号）
+        return prefix + String.format("%04d", System.currentTimeMillis() % 10000);
     }
 
     /**

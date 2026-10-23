@@ -67,6 +67,14 @@ public class BankAccount extends BaseEntity implements Serializable {
     /** 备注 */
     private String remark;
 
+    /**
+     * 归属门店ID（bank_accounts.store_id）
+     * <p>NULL = 历史/全局账户（不参与门店级 POS 入账选账户）；
+     * POS 支付入账必须按订单门店精确匹配，见 PosSaleFinanceRecorder。</p>
+     */
+    @TableField("store_id")
+    private Long storeId;
+
     /** 乐观锁版本号 */
     @Version
     private Integer version;
@@ -153,6 +161,14 @@ public class BankAccount extends BaseEntity implements Serializable {
 
     public void setOpenDate(LocalDate openDate) {
         this.openDate = openDate;
+    }
+
+    public Long getStoreId() {
+        return storeId;
+    }
+
+    public void setStoreId(Long storeId) {
+        this.storeId = storeId;
     }
 
     public String getRemark() {

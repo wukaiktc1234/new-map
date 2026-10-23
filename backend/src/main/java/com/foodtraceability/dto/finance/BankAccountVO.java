@@ -46,9 +46,20 @@ public class BankAccountVO implements Serializable {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "归属门店ID（NULL=全局账户）")
+    private Long storeId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    public Long getStoreId() {
+        return storeId;
+    }
+
+    public void setStoreId(Long storeId) {
+        this.storeId = storeId;
+    }
 
     public Long getAccountId() {
         return accountId;

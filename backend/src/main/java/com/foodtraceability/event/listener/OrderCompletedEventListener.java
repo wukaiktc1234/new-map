@@ -128,6 +128,16 @@ public class OrderCompletedEventListener {
             if (order == null) {
                 return;
             }
+            // 现结防线（2026-10-23 Owner 反馈 ART… 应收脏号）：
+            // POS 收银（order_source=4）都是当场收款的现结单，钱只走「资金流水 + 总账」，不存在挂账。
+            // 真实链路里「后厨先制作完成、收银后付款」很常见：完成事件触发时 payment_status 还不是 2，
+            // 旧逻辑会按未付清生成 "AR"+orderNo 应收，随后被 POS 支付核销，留下 ART… 记录污染应收列表。
+            // 因此这里对 POS 现结单一律不生成应收（与支付状态无关），从入口堵死。
+            if (order.getOrderSource() != null && order.getOrderSource() == 4) {
+                log.info("POS 现结订单不生成应收（跳过）: orderId={}, orderNumber={}, paymentStatus={}",
+                        event.getOrderId(), event.getOrderNumber(), order.getPaymentStatus());
+                return;
+            }
             // 已付清（paymentStatus=2）无需应收
             if (order.getPaymentStatus() != null && order.getPaymentStatus() == 2) {
                 return;

@@ -71,6 +71,9 @@ public class BankAccountServiceImpl extends ServiceImpl<BankAccountMapper, BankA
         if (dto.getRemark() != null) {
             updateEntity.setRemark(dto.getRemark());
         }
+        if (dto.getStoreId() != null) {
+            updateEntity.setStoreId(dto.getStoreId());
+        }
 
         return baseMapper.updateById(updateEntity) > 0;
     }

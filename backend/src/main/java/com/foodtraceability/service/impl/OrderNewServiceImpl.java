@@ -21,6 +21,7 @@ import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.MaterialConsumptionAuditService;
 import com.foodtraceability.service.OrderNewService;
 import com.foodtraceability.service.finance.CostRecordService;
+import com.foodtraceability.service.finance.PosSaleFinanceRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -297,7 +298,12 @@ public class OrderNewServiceImpl implements OrderNewService {
             dto.setAmount(amount);
             dto.setCounterpartyName(order.getCustomerName() != null ? order.getCustomerName() : "散客");
             dto.setBusinessDate(java.time.LocalDate.now());
-            dto.setRemark("订单支付 - " + (order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId()));
+            // 备注口径与标准支付入口（PosOrderPaymentServiceImpl.payNewOrder → PosSaleFinanceRecorder）保持一致：
+            // POS销售入账：<orderNumber>[orderId=<orderId>]，后半段是该订单的幂等键，便于按 [orderId=xxx] 查重
+            String orderNumberForFinance = order.getOrderNumber() != null
+                    ? order.getOrderNumber()
+                    : (order.getOrderCode() != null ? order.getOrderCode() : order.getOrderId());
+            dto.setRemark(PosSaleFinanceRecorder.buildSaleRemark(orderNumberForFinance, order.getOrderId()));
             fundFlowService.create(dto);
             log.info("F6 订单支付资金流水已创建：orderId={}, amount={}分", order.getOrderId(), amount);
         } catch (Exception e) {

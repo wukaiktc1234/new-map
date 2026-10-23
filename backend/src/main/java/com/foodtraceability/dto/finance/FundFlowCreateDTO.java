@@ -52,6 +52,33 @@ public class FundFlowCreateDTO implements Serializable {
     @Size(max = 500, message = "备注长度不能超过500位")
     private String remark;
 
+    /** 操作人ID（审计留痕）：为空时服务层取当前登录用户，仍取不到则记 0 并 WARN，绝不留 null。 */
+    @Schema(description = "操作人用户ID（审计）")
+    private Long createUserId;
+
+    public Long getCreateUserId() {
+        return createUserId;
+    }
+
+    public void setCreateUserId(Long createUserId) {
+        this.createUserId = createUserId;
+    }
+
+    /**
+     * 流水状态：为空时服务层默认 2（已完成）。
+     * 本系统资金流水都由「钱已经动了」的路径创建（POS 销售入账、付款单、人工确认入账），没有草稿态。
+     */
+    @Schema(description = "流水状态（1=待处理 2=已完成，默认 2）")
+    private Integer status;
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
+    }
+
     public Long getAccountId() {
         return accountId;
     }

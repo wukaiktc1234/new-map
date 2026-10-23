@@ -8,6 +8,7 @@ import com.foodtraceability.entity.finance.FundFlow;
 import com.foodtraceability.entity.finance.Receivable;
 import com.foodtraceability.mapper.finance.BankAccountMapper;
 import com.foodtraceability.mapper.finance.FundFlowMapper;
+import com.foodtraceability.utils.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,8 +36,13 @@ import java.util.List;
  * 写入前先按 {@code direction=1 & category=1 & remark like '%[orderId=xxx]%'} 查重；
  * 已存在则跳过并 WARN，重复支付/重复回调不会产生第二条收入。</p>
  *
- * <p><b>账户映射：</b>现金/余额→现金类账户（account_type=2），微信/支付宝→名称含「微信」「支付宝」的账户，
- * 银行卡→银行账户（account_type=1）；找不到匹配账户时回退到第一个启用账户并 WARN，绝不因缺账户让支付失败。</p>
+ * <p><b>账户映射（门店隔离）：</b>候选集<b>只取订单门店</b>（orders.store_id → bank_accounts.store_id）且启用的账户，
+ * 再按支付方式匹配：现金/余额→名称含「现金」或 account_type=2，微信→名称含「微信」，支付宝→名称含「支付宝」，
+ * 银行卡→account_type=1。<b>不做任何跨店/全局回退</b>：本店没有匹配账户时跳过入账，
+ * 记 ERROR（含 storeId / paymentMethod / 候选账户列表）并返回 no_account，支付本身仍成功。</p>
+ *
+ * <p><b>审计：</b>fund_flows.create_user_id 写当前登录用户（POS 支付=当前收银员），
+ * 取不到时写 0 并 WARN，绝不留 null。</p>
  */
 @Service
 public class PosSaleFinanceRecorder {
@@ -102,18 +108,29 @@ public class PosSaleFinanceRecorder {
             return PosSaleFinanceOutcome.skipped("金额非正数");
         }
 
+        // 审计：操作人（POS 支付路径=当前收银员）。取不到就记 0，绝不留 null。
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId == null) {
+            currentUserId = 0L;
+            log.warn("[AUDIT] POS 入账缺少登录上下文，create_user_id 兜底记 0: orderId={}, orderNumber={}",
+                    orderId, orderNumber);
+        }
+        final Long operatorId = currentUserId;
+
         // ===== 1. 资金流水（独立事务：失败只回滚自己，不影响支付） =====
         FundFlowWriteOutcome flow;
         try {
             FundFlowWriteOutcome first = requiresNewTx.execute(
-                    status -> insertSaleFlow(orderId, orderNumber, amountFen, paymentMethod, customerName));
+                    status -> insertSaleFlow(orderId, orderNumber, amountFen, paymentMethod,
+                            storeId, customerName, operatorId));
             flow = first != null ? first : FundFlowWriteOutcome.failed("事务未返回结果");
         } catch (DataIntegrityViolationException e) {
             // 流水号 FFyyyyMMddNNNN 由「查最后一条 + 1」生成，并发下有极小概率撞唯一键：重试一次
             log.warn("POS 资金流水写入冲突，重试一次: orderId={}, error={}", orderId, e.getMessage());
             try {
                 FundFlowWriteOutcome retry = requiresNewTx.execute(
-                        status -> insertSaleFlow(orderId, orderNumber, amountFen, paymentMethod, customerName));
+                        status -> insertSaleFlow(orderId, orderNumber, amountFen, paymentMethod,
+                                storeId, customerName, operatorId));
                 flow = retry != null ? retry : FundFlowWriteOutcome.failed("重试未返回结果");
             } catch (Exception e2) {
                 flow = FundFlowWriteOutcome.failed(e2.getMessage());
@@ -142,7 +159,8 @@ public class PosSaleFinanceRecorder {
 
     /** 在独立事务内执行：幂等查重 → 账户映射 → 调 FundFlowService.create（不写裸 SQL） */
     private FundFlowWriteOutcome insertSaleFlow(String orderId, String orderNumber, long amountFen,
-                                                Integer paymentMethod, String customerName) {
+                                                Integer paymentMethod, Long storeId,
+                                                String customerName, Long operatorId) {
         FundFlow existing = findExistingSaleFlow(orderId);
         if (existing != null) {
             log.warn("[METRIC] pos_fund_flow_recorded result=duplicate orderId={} orderNumber={} flowNo={} amountFen={}",
@@ -150,15 +168,11 @@ public class PosSaleFinanceRecorder {
             return FundFlowWriteOutcome.duplicate(existing.getFlowNo(), existing.getAccountId());
         }
 
-        AccountPick pick = resolveAccount(paymentMethod);
+        AccountPick pick = resolveAccount(storeId, paymentMethod, orderId);
         if (pick == null) {
-            log.error("[METRIC] pos_fund_flow_recorded result=no_account orderId={} orderNumber={} paymentMethod={}",
-                    orderId, orderNumber, paymentMethod);
+            // 门店隔离：找不到本店匹配账户时**不入账**（不再回退到全局第一个启用账户），
+            // 支付本身已成功，这里只返回 no_account 让上层记 ERROR + 人工补配账户。
             return FundFlowWriteOutcome.noAccount();
-        }
-        if (!pick.matchedByKeyword) {
-            log.warn("POS 入账账户按默认规则回退: orderId={}, paymentMethod={}, accountId={}, accountName={}, reason={}",
-                    orderId, paymentMethod, pick.accountId, pick.accountName, pick.reason);
         }
 
         FundFlowCreateDTO dto = new FundFlowCreateDTO();
@@ -169,11 +183,12 @@ public class PosSaleFinanceRecorder {
         dto.setBusinessDate(LocalDate.now());
         dto.setCounterpartyName(customerName != null && !customerName.isBlank() ? customerName : "散客");
         dto.setRemark(buildRemark(orderNumber, orderId));
+        dto.setCreateUserId(operatorId != null ? operatorId : 0L);
 
         FundFlowVO vo = fundFlowService.create(dto);
-        log.info("[METRIC] pos_fund_flow_recorded result=success orderId={} orderNumber={} amountFen={} flowNo={} accountId={} matchedBy={}",
+        log.info("[METRIC] pos_fund_flow_recorded result=success orderId={} orderNumber={} amountFen={} flowNo={} accountId={} storeId={} operatorId={} matchedBy={}",
                 orderId, orderNumber, amountFen,
-                vo != null ? vo.getFlowNo() : null, pick.accountId, pick.reason);
+                vo != null ? vo.getFlowNo() : null, pick.accountId, storeId, operatorId, pick.reason);
         return FundFlowWriteOutcome.recorded(vo != null ? vo.getFlowNo() : null, pick.accountId);
     }
 
@@ -187,26 +202,54 @@ public class PosSaleFinanceRecorder {
         return fundFlowMapper.selectOne(wrapper);
     }
 
-    /** 备注：POS销售入账：<orderNumber> [orderId=<orderId>]——前半段是业务可读口径，后半段是幂等键 */
-    private String buildRemark(String orderNumber, String orderId) {
+    /**
+     * 备注口径（对外共享）：{@code POS销售入账：<orderNumber>[orderId=<orderId>]}。
+     * 前半段是业务可读口径，后半段是该订单的幂等键。
+     *
+     * <p>quick-pay 等其它支付入口必须复用本方法，保证 fund_flows 里同一条收入只有一种备注写法，
+     * 否则按 {@code [orderId=xxx]} 查重会失效。</p>
+     */
+    public static String buildSaleRemark(String orderNumber, String orderId) {
         return "POS销售入账：" + orderNumber + ORDER_ID_TOKEN_PREFIX + orderId + ORDER_ID_TOKEN_SUFFIX;
     }
 
+    /** 实例侧薄封装：保持既有调用点不变 */
+    private String buildRemark(String orderNumber, String orderId) {
+        return buildSaleRemark(orderNumber, orderId);
+    }
+
     /**
-     * 支付方式 → 资金账户：
-     * 现金/余额取现金类账户；微信/支付宝取名称含对应关键字的商户账户；银行卡取银行账户；
-     * 都不命中则回退到第一个启用账户（WARN）。
+     * 支付方式 → 资金账户（<b>门店隔离，禁止全局回退</b>）：
+     * <ol>
+     *   <li>候选集：只取 {@code status=1 且 store_id = 订单门店} 的账户（bank_accounts.store_id 精确匹配，不用 NULL 全局账户）；</li>
+     *   <li>现金/余额 → 名称含「现金」或 account_type=2；微信 → 名称含「微信」；支付宝 → 名称含「支付宝」；
+     *       银行卡 → account_type=1；</li>
+     *   <li>候选集里没有匹配项 → 返回 null（上层跳过入账并记 ERROR，不跨店/不跨账户借用）。</li>
+     * </ol>
      */
-    private AccountPick resolveAccount(Integer paymentMethod) {
-        List<BankAccount> accounts = bankAccountMapper.selectList(
-                new LambdaQueryWrapper<BankAccount>()
-                        .eq(BankAccount::getStatus, 1)
-                        .orderByAsc(BankAccount::getAccountId));
-        if (accounts == null || accounts.isEmpty()) {
+    private AccountPick resolveAccount(Long storeId, Integer paymentMethod, String orderId) {
+        int method = paymentMethod != null ? paymentMethod : 1;
+
+        if (storeId == null) {
+            log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=order_store_missing "
+                            + "orderId={} paymentMethod={} storeId=null candidates=[]",
+                    orderId, method);
             return null;
         }
 
-        int method = paymentMethod != null ? paymentMethod : 1;
+        List<BankAccount> candidates = bankAccountMapper.selectList(
+                new LambdaQueryWrapper<BankAccount>()
+                        .eq(BankAccount::getStatus, 1)
+                        .eq(BankAccount::getStoreId, storeId)
+                        .orderByAsc(BankAccount::getAccountId));
+        if (candidates == null || candidates.isEmpty()) {
+            log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_store_account "
+                            + "orderId={} storeId={} paymentMethod={} candidates=[] "
+                            + "hint=执行 scripts/db-fix/2026-10-23-seed-store-cash-accounts.sql 补建门店现金账户",
+                    orderId, storeId, method);
+            return null;
+        }
+
         String keyword = switch (method) {
             case 2 -> "微信";
             case 3 -> "支付宝";
@@ -214,9 +257,9 @@ public class PosSaleFinanceRecorder {
             default -> null;
         };
 
-        // 1) 关键字命中（微信/支付宝/现金 商户账户）
+        // 1) 关键字命中（本店的微信/支付宝/现金 商户账户）
         if (keyword != null) {
-            for (BankAccount account : accounts) {
+            for (BankAccount account : candidates) {
                 if (containsKeyword(account, keyword)) {
                     return new AccountPick(account.getAccountId(), account.getAccountName(), true, "keyword:" + keyword);
                 }
@@ -225,16 +268,32 @@ public class PosSaleFinanceRecorder {
 
         // 2) 账户类型命中：现金/余额 → 现金账户(2)；微信/支付宝/银行卡 → 银行账户(1)
         int preferType = (method == 1 || method == 5) ? 2 : 1;
-        for (BankAccount account : accounts) {
+        for (BankAccount account : candidates) {
             if (account.getAccountType() != null && account.getAccountType() == preferType) {
                 return new AccountPick(account.getAccountId(), account.getAccountName(), false,
                         "accountType:" + preferType);
             }
         }
 
-        // 3) 兜底：第一个启用账户
-        BankAccount fallback = accounts.get(0);
-        return new AccountPick(fallback.getAccountId(), fallback.getAccountName(), false, "fallback:firstActive");
+        // 3) 本店有账户但没有匹配本支付方式的账户 → 跳过入账（不回退）
+        log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_matching_account_in_store "
+                        + "orderId={} storeId={} paymentMethod={} candidates={}",
+                orderId, storeId, method, describeCandidates(candidates));
+        return null;
+    }
+
+    /** 候选账户快照（日志用）：accountId:name:type, ... */
+    private String describeCandidates(List<BankAccount> candidates) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < candidates.size(); i++) {
+            BankAccount a = candidates.get(i);
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(a.getAccountId()).append(':').append(a.getAccountName())
+              .append(":type=").append(a.getAccountType());
+        }
+        return sb.append(']').toString();
     }
 
     private boolean containsKeyword(BankAccount account, String keyword) {
