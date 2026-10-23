@@ -10,12 +10,13 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Upload, Download, Search, Refresh,
-  User, Message, Wallet, TrendingUp,
+  User, Message, Wallet,
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules, UploadFile, UploadRawFile } from 'element-plus'
 
 import PageHeader from '@/components/core/PageHeader.vue'
 import DataTable from '@/components/core/DataTable.vue'
+import type { DataTableColumn } from '@/components/core/DataTable.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import StatusTag from '@/components/core/StatusTag.vue'
 import { useLayoutStore } from '@/stores/layout'
@@ -26,22 +27,15 @@ import type {
   MemberConsumeRecord, MemberRechargeRecord, MemberStatsOverview,
 } from '@/types/member'
 import type { MemberLevelInfo } from '@/types/member-level'
+import type { RechargePaymentMethod, RechargePlanInfo } from '@/types/member-recharge'
 import { MemberStatusOptions, MemberGenderOptions } from '@/types/member'
 
 const layoutStore = useLayoutStore()
 
 // ==================== 类型定义 ====================
 
-interface ColumnDef {
-  prop: string
-  label: string
-  width?: number | string
-  minWidth?: number | string
-  fixed?: 'left' | 'right'
-  slot?: string
-  ellipsis?: boolean
-  align?: string
-}
+// 复用 DataTable 导出的列类型：本地 align?: string 与 DataTableColumn 的联合类型不兼容（TS2322）
+type ColumnDef = DataTableColumn
 
 // ==================== 响应式数据 ====================
 
@@ -86,6 +80,23 @@ const pointRecords = ref<Array<{ id: string; type: string; points: number; reaso
 
 // 等级选项
 const levelOptions = ref<MemberLevelInfo[]>([])
+// 充值方案列表：充值接口是「方案制」（recharge 需要 planId），
+// 提交前先按金额匹配方案；此前 loadRechargePlans/rechargePlanList 被引用但从未定义（TS2304）
+const rechargePlanList = ref<RechargePlanInfo[]>([])
+const rechargePlansLoading = ref(false)
+
+async function loadRechargePlans(): Promise<void> {
+  if (rechargePlansLoading.value) return
+  rechargePlansLoading.value = true
+  try {
+    rechargePlanList.value = (await rechargePlanApi.getList()) ?? []
+  } catch {
+    // 方案拉取失败不阻塞弹窗，提交时会提示「未找到匹配的充值方案」
+    rechargePlanList.value = []
+  } finally {
+    rechargePlansLoading.value = false
+  }
+}
 
 // 查询表单
 const queryForm = ref({
@@ -939,7 +950,7 @@ onMounted(() => {
               <el-descriptions-item label="会员姓名">{{ currentMember.nickname }}</el-descriptions-item>
               <el-descriptions-item label="手机号">{{ currentMember.phone }}</el-descriptions-item>
               <el-descriptions-item label="性别">
-                {{ MemberGenderOptions.find(g => g.value === currentMember.gender)?.label || '未知' }}
+                {{ MemberGenderOptions.find(g => g.value === currentMember?.gender)?.label || '未知' }}
               </el-descriptions-item>
               <el-descriptions-item label="生日">{{ currentMember.birthday || '-' }}</el-descriptions-item>
               <el-descriptions-item label="邮箱">{{ currentMember.email || '-' }}</el-descriptions-item>
