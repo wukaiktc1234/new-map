@@ -2,7 +2,7 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 三类断言，**每类期望 rows=0**：
+-- 六类断言（A1~A5 参与 PASS/FAIL 判定，**期望 rows=0**；A6 为信息性输出，不影响 TOTAL）：
 --   A1  已支付但资金流水缺失：orders.payment_status=2 的订单，没有对应的 SALE 资金流水
 --       匹配口径：fund_flows.order_id = orders.order_id
 --                 AND flow_direction=1 AND flow_category=1 AND deleted=0
@@ -13,6 +13,15 @@
 --   A3  库存为负：inventory.quantity < 0，或 food.stock < 0，或 foods.stock < 0
 --   A4  （附加）同一订单存在多条 SALE 流水 = 重复入账风险
 --       口径：fund_flows(order_id 命中订单, 方向=1, 分类=1, deleted=0) 按订单分组 count>1
+--   A5  0 元「订单收入」财务流水残留：finance_records
+--       amount=0 AND deleted=0 AND record_type=1（收入）AND record_category=101（订单收入）
+--       口径来源：DATA-006 清理（scripts/db-fix/2026-10-24-cleanup-zero-amount-finance-records.sql）
+--   A6  （信息性，不参与 TOTAL）users.roles 与 user_roles 的角色集合不一致的用户数
+--       口径：users.roles 里形如 '["1"]' / '[7]' / '["ROLE_ADMIN"]' 的 token 归一成 role_id
+--             （数字直接取，编码走 roles.role_id_str 映射），与 user_roles(deleted=0) 的
+--             role_id 集合作对比（数字或 ROLE_ 编码都做同样归一）。
+--       为什么不参与判定：授权权威源是 user_roles（鉴权只读它），users.roles 只是冗余镜像；
+--       是否影响鉴权在明细里标注（受影响 = users.roles 有角色但 user_roles 无行 → 登录后无权限）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -70,6 +79,43 @@ WITH a1 AS (
     SELECT 'foods:stock', food_id::text FROM foods WHERE deleted = 0 AND stock < 0
 ), a3 AS (
     SELECT count(*) AS n FROM a3_raw
+), a5 AS (
+    SELECT count(*) AS n
+      FROM finance_records
+     WHERE amount = 0 AND deleted = 0 AND record_type = 1 AND record_category = 101
+), a6 AS (
+    -- 信息性：角色集合不一致的用户数（不计入 TOTAL FAIL）
+    SELECT count(*) AS n
+      FROM (
+          WITH ur AS (
+              SELECT ur.user_id::bigint AS uid,
+                     CASE WHEN ur.role_id ~ '^[0-9]+$' THEN ur.role_id::bigint ELSE r.role_id END AS rid
+                FROM user_roles ur
+                LEFT JOIN roles r ON r.role_id_str = ur.role_id
+               WHERE COALESCE(ur.deleted, 0) = 0
+          ), ur_sets AS (
+              SELECT uid, COALESCE(array_agg(DISTINCT rid) FILTER (WHERE rid IS NOT NULL), ARRAY[]::bigint[]) AS rids
+                FROM ur GROUP BY uid
+          ), u_tok AS (
+              SELECT u.user_id AS uid, u.username, u.roles,
+                     NULLIF(regexp_replace(btrim(t), '^[^0-9A-Za-z_]+|[^0-9A-Za-z_]+$', '', 'g'), '') AS tok
+                FROM users u, LATERAL regexp_split_to_table(COALESCE(u.roles, ''), ',') t
+               WHERE COALESCE(u.deleted, 0) = 0
+          ), u_res AS (
+              SELECT ut.uid, ut.username, ut.roles,
+                     CASE WHEN ut.tok ~ '^[0-9]+$' THEN ut.tok::bigint ELSE r2.role_id END AS rid
+                FROM u_tok ut
+                LEFT JOIN roles r2 ON r2.role_id_str = ut.tok
+          ), u_sets AS (
+              SELECT uid, username, roles,
+                     COALESCE(array_agg(DISTINCT rid) FILTER (WHERE rid IS NOT NULL), ARRAY[]::bigint[]) AS rids
+                FROM u_res GROUP BY uid, username, roles
+          )
+          SELECT us.uid
+            FROM u_sets us
+            LEFT JOIN ur_sets ON ur_sets.uid = us.uid
+           WHERE us.rids IS DISTINCT FROM COALESCE(ur_sets.rids, ARRAY[]::bigint[])
+      ) t
 ), a4 AS (
     -- 附加断言：同一订单出现多条 SALE 流水 = 重复入账风险
     SELECT count(*) AS n
@@ -105,11 +151,22 @@ SELECT line
       FROM a4
     UNION ALL
     SELECT 5,
+           CASE WHEN n = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+           || 'A5 0 元订单收入财务流水残留 rows=' || n
+      FROM a5
+    UNION ALL
+    -- A6 信息性：前缀固定 [INFO]，不进入 TOTAL FAIL（授权权威源是 user_roles）
+    SELECT 6,
+           '[INFO] A6 users.roles 与 user_roles 角色集合不一致 users=' || n
+      FROM a6
+    UNION ALL
+    SELECT 7,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a3) > 0 THEN 1 ELSE 0 END
-             + CASE WHEN (SELECT n FROM a4) > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN (SELECT n FROM a4) > 0 THEN 1 ELSE 0 END
+             + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -200,6 +257,66 @@ SELECT f.order_id,
  GROUP BY f.order_id, o.order_number, o.paid_amount
 HAVING count(*) > 1
  ORDER BY count(*) DESC, f.order_id
+ LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A5 明细（前 20 行）：0 元「订单收入」财务流水残留
+-- 期望为空（DATA-006 清理后必须为 0）；若再现，说明订单收入落账链路又写入了 0 元
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A5 明细（前 20）--'
+SELECT record_id, record_no, amount, record_type, record_category,
+       approval_status, voucher_id, order_code, deleted, remark, create_time
+  FROM finance_records
+ WHERE amount = 0 AND deleted = 0 AND record_type = 1 AND record_category = 101
+ ORDER BY create_time
+ LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A6 明细（前 20 行）：users.roles 与 user_roles 角色集合不一致（信息性）
+-- 鉴权影响判定：
+--   user_roles 无行 + users.roles 有角色 → '受影响：实际无授权（鉴权只读 user_roles）'
+--   两边都有但集合不同            → '仅表示法差异/镜像过期，不影响鉴权'
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A6 明细（前 20）--'
+WITH ur AS (
+    SELECT ur.user_id::bigint AS uid,
+           CASE WHEN ur.role_id ~ '^[0-9]+$' THEN ur.role_id::bigint ELSE r.role_id END AS rid
+      FROM user_roles ur
+      LEFT JOIN roles r ON r.role_id_str = ur.role_id
+     WHERE COALESCE(ur.deleted, 0) = 0
+), ur_sets AS (
+    SELECT uid, COALESCE(array_agg(DISTINCT rid) FILTER (WHERE rid IS NOT NULL), ARRAY[]::bigint[]) AS rids
+      FROM ur GROUP BY uid
+), u_tok AS (
+    SELECT u.user_id AS uid, u.username, u.roles,
+           NULLIF(regexp_replace(btrim(t), '^[^0-9A-Za-z_]+|[^0-9A-Za-z_]+$', '', 'g'), '') AS tok
+      FROM users u, LATERAL regexp_split_to_table(COALESCE(u.roles, ''), ',') t
+     WHERE COALESCE(u.deleted, 0) = 0
+), u_res AS (
+    SELECT ut.uid, ut.username, ut.roles,
+           CASE WHEN ut.tok ~ '^[0-9]+$' THEN ut.tok::bigint ELSE r2.role_id END AS rid
+      FROM u_tok ut
+      LEFT JOIN roles r2 ON r2.role_id_str = ut.tok
+), u_sets AS (
+    SELECT uid, username, roles,
+           COALESCE(array_agg(DISTINCT rid) FILTER (WHERE rid IS NOT NULL), ARRAY[]::bigint[]) AS rids
+      FROM u_res GROUP BY uid, username, roles
+)
+SELECT us.uid,
+       us.username,
+       us.roles                       AS users_roles_raw,
+       us.rids                        AS users_roles_ids,
+       COALESCE(urs.rids, ARRAY[]::bigint[]) AS user_roles_ids,
+       CASE WHEN COALESCE(urs.rids, ARRAY[]::bigint[]) = ARRAY[]::bigint[]
+             AND us.rids <> ARRAY[]::bigint[]
+            THEN '受影响：实际无授权（鉴权只读 user_roles）'
+            ELSE '仅表示法差异/镜像过期，不影响鉴权' END AS auth_impact
+  FROM u_sets us
+  LEFT JOIN ur_sets urs ON urs.uid = us.uid
+ WHERE us.rids IS DISTINCT FROM COALESCE(urs.rids, ARRAY[]::bigint[])
+ ORDER BY us.uid
  LIMIT 20;
 
 COMMIT;

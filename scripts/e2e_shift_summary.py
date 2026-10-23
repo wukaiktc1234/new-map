@@ -151,19 +151,27 @@ class Runner:
         return rows, ""
 
     def shift_rows(self):
-        sql = ("SELECT COUNT(*), "
-               "COALESCE(MAX(total_orders) FILTER (WHERE status='completed'), -1), "
-               "COALESCE(MAX(total_amount) FILTER (WHERE status='completed'), -1), "
-               "COALESCE(MAX(status), '') "
-               "FROM pos_shifts WHERE terminal_id = '%s'" % self.a.terminal_id.replace("'", "''"))
+        """该终端「最新班次行」快照（单条查询）。
+
+        修复（2026-10-24）：原实现用 MAX(total_orders) FILTER (status='completed')
+        跨**全部历史班次行**取最大值，跨天后必然命中前一天那条更大的记录，
+        与本次 endShift 的金额必然不等（脚本 bug，非业务 bug）。
+        现改为按 shift_id DESC 取最新一行，且用 count(*) OVER () 一次带出行数，
+        保证「本次 endShift 之后落的那一行」优先。
+        """
+        sql = ("SELECT count(*) OVER () AS total_shift_rows, "
+               "shift_id, total_orders, total_amount, status "
+               "FROM pos_shifts WHERE terminal_id = '%s' "
+               "ORDER BY shift_id DESC LIMIT 1" % self.a.terminal_id.replace("'", "''"))
         rc, out, err = self.psql(sql)
         if rc != 0 or not out:
             return None, "psql rc=%s %s" % (rc, (err or out)[:160])
         parts = out.split("|")
         return {"count": int(parts[0] or 0),
-                "completed_orders": int(parts[1] or -1),
-                "completed_amount": dec(parts[2] if len(parts) > 2 else "-1"),
-                "any_status": parts[3] if len(parts) > 3 else ""}, ""
+                "shift_id": int(parts[1] or 0),
+                "last_orders": int(parts[2] or -1),
+                "last_amount": dec(parts[3] if len(parts) > 3 else "-1"),
+                "last_status": parts[4].strip() if len(parts) > 4 else ""}, ""
 
     # ---------- 1. summary 与库内日汇总一致 ----------
     def check_summary(self):
@@ -254,11 +262,12 @@ class Runner:
             return self.step("pos_shifts 留痕（补建/更新生效）", False, "无法读 pos_shifts: %s" % err)
         grew = after["count"] > before["count"]
         ok_row = (after["count"] >= 1
-                  and after["completed_orders"] == int(api_orders if api_orders is not None else -1)
-                  and abs(after["completed_amount"] - api_total) <= TOL)
-        detail = ("rows %d→%d completed(orders=%s amount=%s) api(orders=%s amount=%s)" % (
-            before["count"], after["count"], after["completed_orders"], after["completed_amount"],
-            api_orders, api_total))
+                  and after["last_status"] == "completed"
+                  and after["last_orders"] == int(api_orders if api_orders is not None else -1)
+                  and abs(after["last_amount"] - api_total) <= TOL)
+        detail = ("rows %d→%d 最新行 shift_id=%s status=%s(orders=%s amount=%s) api(orders=%s amount=%s)" % (
+            before["count"], after["count"], after["shift_id"], after["last_status"],
+            after["last_orders"], after["last_amount"], api_orders, api_total))
         return self.step("pos_shifts 留痕（补建/更新生效）", ok_row and (grew or before["count"] >= 1), detail)
 
     # ---------- 4. 交班后 summary 口径不回退 ----------
