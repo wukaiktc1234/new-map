@@ -1,6 +1,8 @@
 package com.foodtraceability.security.config;
 
+import com.foodtraceability.security.filter.DeviceWhitelistFilter;
 import com.foodtraceability.security.filter.JwtAuthenticationFilter;
+import com.foodtraceability.security.filter.KdsTokenFilter;
 import com.foodtraceability.security.filter.MfaAuthenticationFilter;
 import com.foodtraceability.security.filter.RateLimitFilter;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,10 +35,12 @@ public class SecurityConfig {
     @Value("${app.security.enabled:true}")
     private boolean securityEnabled;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, MfaAuthenticationFilter mfaAuthenticationFilter, RateLimitFilter rateLimitFilter, UserDetailsService userDetailsService, LogoutHandler logoutHandler) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, MfaAuthenticationFilter mfaAuthenticationFilter, RateLimitFilter rateLimitFilter, DeviceWhitelistFilter deviceWhitelistFilter, KdsTokenFilter kdsTokenFilter, UserDetailsService userDetailsService, LogoutHandler logoutHandler) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.mfaAuthenticationFilter = mfaAuthenticationFilter;
         this.rateLimitFilter = rateLimitFilter;
+        this.deviceWhitelistFilter = deviceWhitelistFilter;
+        this.kdsTokenFilter = kdsTokenFilter;
         this.userDetailsService = userDetailsService;
         this.logoutHandler = logoutHandler;
     }
@@ -49,6 +53,10 @@ public class SecurityConfig {
     private final MfaAuthenticationFilter mfaAuthenticationFilter;
 
     private final RateLimitFilter rateLimitFilter;
+
+    private final DeviceWhitelistFilter deviceWhitelistFilter;
+
+    private final KdsTokenFilter kdsTokenFilter;
 
     private final UserDetailsService userDetailsService;
 
@@ -153,11 +161,18 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         // 静态资源
                         .requestMatchers("/", "/index.html", "/static/**", "/favicon.ico").permitAll()
+                        // APK 设备激活流程接口 - 免登录（激活码即凭证）
+                        .requestMatchers("/v1/device-registrations/status").permitAll()
+                        .requestMatchers("/v1/device-registrations/activate").permitAll()
+                        // 防伪码查验 - 免登录（扫码后 App 内直接查验；RateLimit 防暴力遍历）
+                        .requestMatchers("/v1/receipt-confirmations/verify/**").permitAll()
                         // 所有其他请求需要认证
                         .anyRequest().authenticated();
                 }
             })
+            .addFilterBefore(deviceWhitelistFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(kdsTokenFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(mfaAuthenticationFilter, JwtAuthenticationFilter.class)
             .authenticationProvider(authenticationProvider())

@@ -62,6 +62,7 @@ spring:
     placeholder-replacement: false
     out-of-order: true
     validate-on-migrate: true
+    repair-on-migrate: true
 
 server:
   port: 8081

@@ -131,10 +131,16 @@ public class PositionRoleMappingInitConfig {
 
     private Long getPositionId(String positionCode) {
         try {
-            return jdbcTemplate.queryForObject(
-                "SELECT id FROM positions WHERE position_code = ? AND deleted = 0", 
-                Long.class, 
+            List<Long> ids = jdbcTemplate.queryForList(
+                "SELECT position_id FROM positions WHERE position_code = ? AND deleted = 0",
+                Long.class,
                 positionCode);
+            if (ids.isEmpty()) {
+                // 职位编码在活库中不存在属数据口径漂移，不是异常：跳过该映射即可
+                log.warn("职位编码不存在，跳过职位-角色映射: positionCode={}", positionCode);
+                return null;
+            }
+            return ids.get(0);
         } catch (Exception e) {
             // 原来只 warn 且不带异常，职位-角色映射会静默缺失；补全异常与后果说明。
             log.error("获取职位ID失败，该职位-角色映射将被跳过（权限自动分配可能失效）: positionCode={}, error={}",

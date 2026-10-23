@@ -9,6 +9,16 @@
 app:
   security:
     enabled: true
+  device-whitelist:
+    # APK 设备白名单开关：开启后，携带 X-Device-Id 头的请求必须为已激活设备
+    enabled: true
+  kds:
+    # KDS 托盘绑定认证：启用后，POST /v1/tray/** 写操作需携带 KDS token
+    # 格式：Authorization: Bearer kds_{storeId}_{secret}
+    enabled: true
+    tokens:
+      # 示例：门店 1 的 KDS 设备密钥（生产环境通过环境变量覆盖）
+      "1": ${KDS_TOKEN_1:kds-store1-dev-secret}
   encryption:
     # AES加密密钥（至少16字符，生产环境必须通过 APP_ENCRYPTION_KEY 环境变量注入强随机密钥）
     # 生成命令: openssl rand -base64 32
