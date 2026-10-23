@@ -253,3 +253,36 @@
 | `MemberList.vue` 充值方案缺失 | 补 `rechargePlanList = ref<RechargePlanInfo[]>([])` + `loadRechargePlans()`（调 `rechargePlanApi.getList()`，失败降级为空并保持弹窗可用）；补 `RechargePaymentMethod` 类型导入；列类型改用 `DataTableColumn`；模板 `currentMember?.gender`；移除未用图标 `TrendingUp` | `vue-tsc` 175 → **168**，MemberList 7 条清零 |
 
 提交：`86806c7`（后端树）、`d2ed674`（前端充值方案），均已推送。
+
+---
+
+## 10. POS 主读路径迁移：orders_legacy → orders（2026-10-23 11:5x，Owner 批准）
+
+### 10.1 改动范围
+
+`PosOrderQueryServiceImpl`（5 个方法）全部改为**新表优先、旧表兜底**：
+
+| 方法 | 新表 | 兜底 |
+|---|---|---|
+| `getOrderDetail` | `orders` 按 orderNumber / order_code / order_id 任一命中 + `order_items` + `order_payment_records` | 命中不到 → `orders_legacy` + `order_items_legacy`，打 WARN |
+| `getOrders` | `orders` 按时间/关键字（orderNumber、orderCode、customerName）+ 新旧一致「默认最近 7 天、最多 200 条」 | 新表结果为空 → 旧表 |
+| `getOrdersByTable` | 先由 `kitchen_order` 取单号，再查 `orders` | 新表无在途单 → 旧表 |
+| `getOrdersByOpenid` | **不迁移**（见 10.3） | 始终旧表 |
+| `reprintReceipt` | `orders` 按 order_id，要求 `payment_status=2` | 查不到 → 旧表（要求 `order_status=1`） |
+
+金额口径：新表存**分**（Long），DTO 对外是**元**（BigDecimal），统一走 `centsToYuan()`（`movePointLeft(2)`）；旧表本身就是元，保持原样。
+
+状态口径：新表 `order_status` 0待确认/1已确认/2已完成/3已取消/4部分退款/5全额退款，映射为 `pending/confirmed/completed/cancelled/partial_refunded/refunded`；旧表 0-7 的映射保持不变（两套语义并存，已加注释）。
+
+### 10.2 验证
+
+- `PosOrderQueryServiceImplTest` **11/11**：新表命中（分→元、支付方式取 `order_payment_records`、明细）、旧表兜底、双查不到报「订单不存在」、列表新表优先且旧表零查询、新表空→旧表、桌台无后厨单不查单、重打未支付拒绝/已支付走打印/不存在报错。
+- POS 相关回归 **50 例全绿**（含 `OrderNewServiceImplDeductTest` 28、`PosOrderCreateServiceFoodIdMapTest` 5、`PosOrderEnsureLegacyRowTest` 3）。
+- 端到端 `scripts/e2e_core_chain.py`：**12 PASS / 0 FAIL / 1 SKIP**（托盘无空闲，非核心）。新增断言「POS 详情可查 orders 新表订单」→ `HTTP 200 code=0 orderNumber=T20261023027 totalAmount=18.0 status=confirmed`。
+
+### 10.3 明确的不兼容 / 风险提示
+
+1. **openid 反查不可用**：`getOrdersByOpenid` 依赖 `orders_legacy.user_id`（由 openid 派生），`orders` 无 openid 列。该方法保持只读旧表，**新表订单按 openid 查不到**；小程序侧如需按用户查新单，必须改用会员 ID / 手机号维度（需产品确认）。
+2. **列表混合期只显示新表**：`getOrders` 在「新表有数据」时不会合并旧表记录，历史单只能靠 `getOrderDetail` 精确单号查询或直接查旧表接口。若需要新旧混排，需要在应用层做双查合并 + 去重 + 统一分页（工作量另计）。
+3. **支付写入路径未动**：`PosOrderPaymentServiceImpl`（`POST /v1/pos/orders/order/pay`）仍固定读 `orders_legacy`，本次只迁移**查询**。POS 新单支付请走 `POST /v1/pos/orders/{orderId}/quick-pay`；若要统一旧支付入口，需 Owner 另行批准。
+4. **金额单位不可混用**：新表 `total_amount/final_amount/paid_amount/refund_amount/unit_price/amount` 均为「分」，旧表为「元」。任何新的对账/导出逻辑必须显式选择一侧口径，禁止直接相加。
