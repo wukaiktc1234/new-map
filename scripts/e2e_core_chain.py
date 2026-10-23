@@ -127,6 +127,18 @@ class Runner:
         except Exception as e:
             return -1, "", str(e)
 
+    def verify_pos_detail(self):
+        """POS 详情接口必须能查到 orders 新表订单（改造前固定读 orders_legacy，必然"订单不存在"）"""
+        key = self.order_number or self.order_id
+        st, body = call("GET", "/v1/pos/orders/order/%s" % key, token=self.token)
+        d = body.get("data") if isinstance(body, dict) else None
+        ok = st == 200 and ok_code(body) and isinstance(d, dict) and bool(d.get("orderNumber"))
+        self.step("POS 详情可查 orders 新表订单", ok,
+                  "HTTP %s code=%s orderNumber=%s totalAmount=%s status=%s" % (
+                      st, (body or {}).get("code"), (d or {}).get("orderNumber"),
+                      (d or {}).get("totalAmount"), (d or {}).get("status")))
+        return ok
+
     def verify_order_status(self):
         rc, out, err = self._psql(
             "select order_status || ',' || payment_status from orders where order_id = '%s'" % self.order_id)
@@ -268,7 +280,7 @@ class Runner:
         print("核心链路 E2E：点单 -> 支付 -> 出餐 -> 扣料   base=%s" % BASE)
         print("=" * 78)
         critical = (self.login, self.create_order, self.pay_order, self.verify_order_status,
-                    self.acquire_kitchen_order, self.kitchen_flow,
+                    self.verify_pos_detail, self.acquire_kitchen_order, self.kitchen_flow,
                     self.verify_consistency, self.verify_movement)
         for i, fn in enumerate(critical, 1):
             if i == 6:  # 托盘插在后厨单之后
