@@ -16,15 +16,23 @@ POS 体验巡检（基于 API 的自动化体验扫描）
 退出码：0 全通过 / 1 有 FAIL
 """
 import argparse
+import base64
+import hashlib
+import hmac
 import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 DEFAULT_BASE = "http://127.0.0.1:8081/api"
+DEFAULT_JWT_SECRET = (
+    "dev-only-not-for-production-use-this-key-must-be-at-least-64-bytes-long-for-hs512-algorithm-security"
+)
+DEFAULT_ISSUER = "food-traceability-system"
 BASE = DEFAULT_BASE
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BT = chr(96)  # 反引号（模板字符串定界符）
@@ -56,6 +64,25 @@ def call(method, path, token=None, body=None, timeout=30, raw=False):
             return e.code, {"_raw": text[:300]}
     except Exception as e:
         return -1, {"error": str(e)}
+
+
+def b64u(b):
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+
+def mint_jwt(username, roles, permissions, user_id="2080170081205395463"):
+    now = int(time.time())
+    header = {"alg": "HS512", "typ": "JWT"}
+    payload = {
+        "userId": user_id, "username": username, "roles": roles, "permissions": permissions,
+        "mfaEnabled": False, "mfaVerified": True, "tokenId": "sweep-" + str(now),
+        "sub": username, "iss": DEFAULT_ISSUER, "iat": now, "exp": now + 3600,
+        "jti": "sweep-" + str(now),
+    }
+    si = b64u(json.dumps(header, separators=(",", ":")).encode()) + "." + \
+         b64u(json.dumps(payload, separators=(",", ":")).encode())
+    sig = hmac.new(DEFAULT_JWT_SECRET.encode(), si.encode(), hashlib.sha512).digest()
+    return si + "." + b64u(sig)
 
 
 def ok_code(body):
@@ -252,6 +279,151 @@ class Sweep:
             self.step("结算-支付方式回显为微信", str(pm) in ("2", "wechat", "WECHAT", "微信支付"),
                       "详情 paymentMethod=%s" % pm)
 
+    # ---------- E. 叫号历史闭环（下单 → 历史可见 → 呼叫 → 取餐） ----------
+    def sweep_call_history(self):
+        st, body = call("GET", "/v1/pos/api/dishes", token=self.token)
+        dishes = payload(body) or []
+        if not isinstance(dishes, list) or not dishes:
+            self.step("叫号-下单生成叫号", False, "无菜品可用", skip=True)
+            return
+        dish = dishes[0]
+        unit = float(dish.get("price") or 0)
+        st, body = call("POST", "/v1/pos/orders/order", token=self.token, body={
+            "orderType": 1, "storeId": 1,
+            "items": [{"productType": 1, "productId": dish.get("dishId"), "quantity": 1,
+                       "price": unit, "productName": dish.get("dishName")}],
+        })
+        data = payload(body) or {}
+        order_id = data.get("orderId")
+        call_no = data.get("callNumber")
+        self.step("叫号-下单即生成叫号号", st == 200 and ok_code(body) and bool(call_no),
+                  "orderId=%s callNumber=%s" % (order_id, call_no))
+        if not order_id:
+            return
+
+        st, body = call("GET", "/v1/call-number/history", token=self.token)
+        hist = payload(body) or []
+        found = [h for h in (hist if isinstance(hist, list) else []) if h.get("orderId") == order_id]
+        self.step("叫号-历史能查到刚下的单", bool(found),
+                  "history 共 %d 条，命中 %d 条（callNumber=%s）" % (
+                      len(hist) if isinstance(hist, list) else -1, len(found),
+                      found[0].get("callNumber") if found else call_no))
+
+        st, body = call("POST", "/v1/call-number/call", token=self.token, body={"orderId": order_id})
+        rec = payload(body) or {}
+        self.step("叫号-点击呼叫：状态/首次叫号时间/次数",
+                  st == 200 and rec.get("status") == "called"
+                  and rec.get("callCount") == 1 and bool(rec.get("firstCallTime")),
+                  "status=%s callCount=%s firstCallTime=%s" % (
+                      rec.get("status"), rec.get("callCount"), rec.get("firstCallTime")))
+
+        st, body = call("POST", "/v1/call-number/recall", token=self.token, body={"orderId": order_id})
+        rec = payload(body) or {}
+        self.step("叫号-重叫：次数累加到 2", st == 200 and rec.get("callCount") == 2,
+                  "callCount=%s lastCallTime=%s" % (rec.get("callCount"), rec.get("lastCallTime")))
+
+        st, body = call("POST", "/v1/call-number/pickup", token=self.token, body={"orderId": order_id})
+        rec = payload(body) or {}
+        self.step("叫号-取餐：pick_time 与等待秒数落库",
+                  st == 200 and rec.get("status") == "picked" and bool(rec.get("pickTime")),
+                  "status=%s pickTime=%s waitSeconds=%s" % (
+                      rec.get("status"), rec.get("pickTime"), rec.get("waitSeconds")))
+
+        st, body = call("GET", "/v1/call-number/stats", token=self.token)
+        stats = payload(body) or {}
+        self.step("叫号-统计数字随动作变化（picked≥1）", isinstance(stats, dict) and int(stats.get("picked") or 0) >= 1,
+                  "pending=%s called=%s picked=%s" % (
+                      stats.get("pending"), stats.get("called"), stats.get("picked")))
+
+        # 历史里该单需体现 picked 状态（写后即查，验证状态流转落到历史）
+        st, body = call("GET", "/v1/call-number/history", token=self.token)
+        hist = payload(body) or []
+        after = [h for h in (hist if isinstance(hist, list) else []) if h.get("orderId") == order_id]
+        self.step("叫号-历史状态流转为 picked", bool(after) and after[0].get("status") == "picked",
+                  "status=%s" % (after[0].get("status") if after else None))
+
+    # ---------- F. 订单历史闭环 ----------
+    def sweep_order_history(self):
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        st, body = call("GET", "/v1/pos/orders?startDate=%s&endDate=%s" % (today, today), token=self.token)
+        rows = payload(body) or []
+        if not isinstance(rows, list) or not rows:
+            self.step("订单历史-今日列表非空", False, "今日无订单", skip=True)
+            return
+        self.step("订单历史-今日列表非空", True, "共 %d 条" % len(rows))
+        first = rows[0]
+        # 列表字段完整性（历史页要展示的字段不能是 null）
+        missing = [k for k in ("orderNumber", "createTime", "status", "totalAmount") if first.get(k) in (None, "")]
+        self.step("订单历史-列表关键字段齐全", not missing,
+                  "缺失字段：%s（样本 %s）" % (missing or "无", first.get("orderNumber")))
+        st, body = call("GET", "/v1/pos/orders/order/%s" % urllib.parse.quote(str(first.get("orderNumber"))),
+                        token=self.token)
+        d = payload(body) or {}
+        self.step("订单历史-详情可回查（与列表一致）",
+                  st == 200 and d.get("orderNumber") == first.get("orderNumber"),
+                  "detail.orderNumber=%s status=%s" % (d.get("orderNumber"), d.get("status")))
+
+    # ---------- G. 库存变动流水闭环 ----------
+    def sweep_inventory_logs(self):
+        admin = mint_jwt("sweep-admin", ["admin"], ["*", "inventory:query"])
+        st, body = call("GET", "/v1/inventory/logs/page?current=1&size=10", token=admin)
+        page = payload(body) or {}
+        records = page.get("records") if isinstance(page, dict) else None
+        ok = st == 200 and ok_code(body) and isinstance(records, list) and len(records) > 0
+        self.step("库存流水-分页查询有数据", ok,
+                  "HTTP %s 返回 %s 条" % (st, len(records) if isinstance(records, list) else 0))
+        if not ok:
+            return
+        blank = [r for r in records[:5]
+                 if not (r.get("createTime") and r.get("operationType") and r.get("changeAmount") is not None)]
+        self.step("库存流水-关键字段（时间/类型/变动量）非空", len(blank) == 0,
+                  "前 5 条中空字段 %d 条；样本 %s/%s" % (
+                      len(blank), records[0].get("operationType"), records[0].get("changeAmount")))
+        # 业务单号不在独立列，落在 remark（如「KDS完成制作扣料 - 订单:T2026...」），据此核对可追溯性
+        biz = [r for r in records[:10] if "订单" in str(r.get("remark") or "")]
+        self.step("库存流水-扣料流水可追溯到订单号", bool(biz),
+                  "前 10 条中带订单号 %d 条；样本：%s" % (
+                      len(biz), (biz[0].get("remark") or "")[:48] if biz else "无"))
+
+    # ---------- H. 日结对账历史闭环 ----------
+    def sweep_daily_settlement(self):
+        admin = mint_jwt("sweep-admin", ["admin"], ["*"])
+        st, body = call("GET", "/v1/store-management/settlements?page=1&size=5", token=admin)
+        page = payload(body) or {}
+        records = page.get("records") if isinstance(page, dict) else None
+        ok = st == 200 and ok_code(body) and isinstance(records, list)
+        self.step("日结-列表可查询", ok, "HTTP %s 返回 %s 条" % (
+            st, len(records) if isinstance(records, list) else 0))
+        if not ok:
+            self.step("日结-创建今日结账并可回查", False, "列表接口不可用，后续跳过", skip=True)
+            return
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        todays = [r for r in records if str(r.get("settlementDate") or r.get("settleDate") or "")[:10] == today]
+        if todays:
+            row = todays[0]
+            self.step("日结-今日记录字段完整", bool(row.get("totalAmount") is not None or row.get("totalRevenue") is not None),
+                      "settlementDate=%s total=%s status=%s" % (
+                          row.get("settlementDate"), row.get("totalAmount") or row.get("totalRevenue"),
+                          row.get("status")))
+        else:
+            # 主动造数据：先按今日生成日结，再回查（验证「生成 → 历史可见」闭环）
+            st2, b2 = call("POST", "/v1/store-management/settlements", token=admin,
+                           body={"storeId": "1", "settlementDate": today})
+            ok2 = st2 == 200 and ok_code(b2)
+            self.step("日结-生成今日日结", ok2, "HTTP %s %s" % (
+                st2, "" if ok2 else json.dumps(b2, ensure_ascii=False)[:160]))
+            if not ok2:
+                return
+            st3, b3 = call("GET", "/v1/store-management/settlements?page=1&size=5", token=admin)
+            rows3 = (payload(b3) or {}).get("records") or []
+            made = [r for r in rows3 if str(r.get("settlementDate") or "")[:10] == today]
+            self.step("日结-生成的记录能回查到（含营收数字）", bool(made),
+                      "settlementDate=%s totalRevenue=%s status=%s" % (
+                          made[0].get("settlementDate"), made[0].get("totalRevenue"),
+                          made[0].get("status")) if made else "回查为空")
+
     def scan_source(self):
         pos_src = os.path.join(REPO, "frontend-pos", "src")
         bad_calls, raw_iso, raw_img = [], [], []
@@ -296,6 +468,16 @@ class Sweep:
             self.sweep_menu()
             print("\n[C] 结算页")
             self.sweep_checkout()
+        print("\n[E] 叫号历史闭环")
+        if self.token:
+            self.sweep_call_history()
+        print("\n[F] 订单历史闭环")
+        if self.token:
+            self.sweep_order_history()
+        print("\n[G] 库存变动流水闭环")
+        self.sweep_inventory_logs()
+        print("\n[H] 日结对账历史闭环")
+        self.sweep_daily_settlement()
         print("\n[D] 静默失败静态扫描")
         self.scan_source()
 

@@ -71,6 +71,8 @@ public class PosCallNumberServiceImpl implements PosCallNumberService {
         // 1) 幂等：已取号直接返回，绝不二次取号
         String existing = posCallNumberMapper.selectOrderCallNumber(orderId);
         if (isValidCallNumber(existing)) {
+            // 老单补历史：已取号但没有 call_record 行的顺手补上（幂等）
+            ensureCallRecordRow(orderId, existing);
             return existing;
         }
 
@@ -103,6 +105,8 @@ public class PosCallNumberServiceImpl implements PosCallNumberService {
             if (bound > 0) {
                 log.info("POS 叫号号分配: orderId={}, callNumber={}, sequenceKey={}, sequence={}",
                         orderId, candidate, sequenceKey, sequence);
+                // 取号即入历史（此前缺这一步，导致「下单有号、历史查不到」）
+                ensureCallRecordRow(orderId, candidate);
                 return candidate;
             }
 
@@ -117,7 +121,11 @@ public class PosCallNumberServiceImpl implements PosCallNumberService {
         }
 
         String lastChance = posCallNumberMapper.selectOrderCallNumber(orderId);
-        return isValidCallNumber(lastChance) ? lastChance : null;
+        if (isValidCallNumber(lastChance)) {
+            ensureCallRecordRow(orderId, lastChance);
+            return lastChance;
+        }
+        return null;
     }
 
     @Override
@@ -141,6 +149,25 @@ public class PosCallNumberServiceImpl implements PosCallNumberService {
         java.time.LocalDateTime createTime = posCallNumberMapper.selectOrderCreateTime(orderId);
         LocalDate businessDate = createTime != null ? createTime.toLocalDate() : LocalDate.now();
         return ensureCallNumber(orderId, storeId, orderType, businessDate);
+    }
+
+    /**
+     * 取号成功后立即补建 {@code call_record} 历史行（幂等）。
+     *
+     * <p>此前只有叫号屏 sync / 后端同步任务才建历史行，导致「下单拿到号但历史查不到」；
+     * 现在取号即入历史，配合 /call、/pickup 的时间戳与次数更新形成闭环。</p>
+     */
+    private void ensureCallRecordRow(String orderId, String callNumber) {
+        if (!isValidCallNumber(callNumber)) {
+            return;
+        }
+        try {
+            posCallNumberMapper.insertCallRecordIfAbsent(orderId, callNumber);
+        } catch (Exception e) {
+            // 历史行补建失败不影响下单/取号主流程
+            log.warn("补建叫号历史行失败（不影响取号）: orderId={}, callNumber={}, error={}",
+                    orderId, callNumber, e.getMessage());
+        }
     }
 
     @Override

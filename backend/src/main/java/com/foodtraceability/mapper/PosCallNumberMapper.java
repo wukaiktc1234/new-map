@@ -28,6 +28,23 @@ public interface PosCallNumberMapper {
             + "RETURNING sequence_value")
     Integer nextSequenceValue(@Param("sequenceKey") String sequenceKey);
 
+    /**
+     * 补建叫号历史行（幂等）：仅在 {@code call_record} 尚无该订单时插入一条 pending 记录。
+     *
+     * <p>历史缺陷：{@code ensureCallNumber} 只写 {@code orders.call_number}，不建
+     * {@code call_record}，而叫号屏「历史」读的是 call_record —— 表现为「下单拿到 B001，
+     * 历史里却查不到」。此方法把两条链路接通，取号即入历史。</p>
+     */
+    @Select("INSERT INTO call_record (order_id, order_number, table_number, order_type, item_count, "
+            + "status, call_count, create_time, update_time, call_number) "
+            + "SELECT o.order_id, COALESCE(o.order_number, o.order_code), o.table_name, o.order_type::text, "
+            + "1, 'pending', 0, NOW(), NOW(), #{callNumber} "
+            + "FROM orders o "
+            + "WHERE o.order_id = #{orderId} "
+            + "  AND NOT EXISTS (SELECT 1 FROM call_record c WHERE c.order_id = o.order_id) "
+            + "RETURNING id")
+    Long insertCallRecordIfAbsent(@Param("orderId") String orderId, @Param("callNumber") String callNumber);
+
     /** 读取订单已落库的叫号号（用于幂等判定：已取号直接返回，不重复取号） */
     @Select("SELECT call_number FROM orders WHERE order_id = #{orderId} LIMIT 1")
     String selectOrderCallNumber(@Param("orderId") String orderId);
