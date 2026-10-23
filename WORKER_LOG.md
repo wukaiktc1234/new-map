@@ -383,3 +383,65 @@ E2E `e2e_core_chain.py` 已改回标准 `order/pay`：**PASS=12 FAIL=0 SKIP=1**�
 1. `types/asset.ts` `InventoryCreateDTO` 缺 `creatorId?: string` —— 盘点负责人目前只在表单态存在，不随 create 提交。
 2. `types/hr.ts` `Department.parentId?: string` 与后端实收 number（0=顶级）不符，已在视图内本地断言收口。
 3. `types/purchase-archive.ts` `MaterialArchiveFormData` 五个字段前端只能填 `''`（后端允许空），建议改可选。
+
+---
+
+## 13. 体验缺陷修复轮 + 全量归档（2026-10-23 12:55–13:30）
+
+### 13.1 Owner 裁决的 3 条共享类型尾巴（已收口）
+
+| # | 类型 | 处理 |
+|---|---|---|
+| 1 | `types/asset.ts` `InventoryCreateDTO` | 增 `creatorId?: string`；`AssetInventory.vue` 提交体补 `creatorId: formData.creatorId`，盘点负责人**首次真正落库** |
+| 2 | `types/hr.ts` `Department.parentId` | `string` → `number`（0=顶级，对齐 `/v1/departments` 实收）；`DepartmentBasicInfo`/`DepartmentDTO`/查询表单保留 string 不做连带破坏 |
+| 3 | `types/purchase-archive.ts` `MaterialArchiveFormData` | `barcode/origin/shelfLife/storageCondition/departmentId` 改可选，未填不传（不再用 `''` 占位） |
+
+验证：`vue-tsc --noEmit` 仍 **0 error**。
+
+### 13.2 五项实测体验缺陷（全部修完）
+
+**① POS 商品图片挂掉**（根因实测，非猜测）
+
+- `frontend-pos` 目录**没有任何 .env**，`VITE_API_BASE_URL` 为 undefined → 旧代码拼出裸 `/uploads/x.png`；
+- 后端 `context-path=/api`，资源真实地址是 `{origin}/api/uploads/**`：`:8081/uploads/…` → 404；`:3001/uploads/…` → **200 text/html**（vite SPA 回退 index.html，就是浏览器看到的破图）；`:3001/api/uploads/…` → 200 image/png；
+- 统一入口 `frontend-pos/src/utils/image.ts#getFullImageUrl`：相对路径补 `/api` 前缀（走已有 vite 代理）、http(s) 原样并统一 `127.0.0.1↔localhost`、`data:/blob:` 原样、空值返回 ''；调用点收敛到 MenuSection / CustomerOrder / YoloCheckoutDialog。
+
+**② 时间格式** 新增 `frontend-pos/src/utils/format.ts`（`formatDateTime` 等 5 个方法，微秒截断、本地解析、可配 fallback）。裸 ISO 真源头是 `OrderQueryDialog.vue:28` 的 prop 直出，另有 13 处各自本地实现统一替换，含 CSV 导出与日期区间参数（顺带修掉 UTC 跨时区少一天）。
+
+**③ 叫号号段**（与订单号解耦）
+
+- 格式 `^[A-Z][0-9]{3,4}$`，堂食 A / 外卖 B / 自提 C；键 `CALL-{storeId}-{yyyyMMdd}-{前缀}` 存 `order_sequence`，跨天自动重置、按门店隔离；
+- 原子取号 `INSERT … ON CONFLICT DO UPDATE … RETURNING`（PG 行锁串行化，无 MAX+1 竞态）；幂等靠「先读后取 + `UPDATE … WHERE call_number IS NULL` CAS 绑定」，抢号失败读回对方号，宁可跳号绝不重号；
+- 落库 `orders.call_number`（权威）+ `call_record.call_number`（叫号屏），DDL `scripts/db-fix/2026-10-23-pos-call-number.sql`（全 `IF NOT EXISTS`，连跑两次可复放）；
+- 生成入口四处旁路（POS 下单收尾 / 支付成功 / 叫号屏同步 / KDS 出餐），**状态机零改动**；
+- 展示：小票居中大字「叫号 A001」（订单号降为对账行）、POS 查询/详情、叫号屏、大屏、支付成功页、顾客端全改叫号号；
+- 实测：堂食 A051 / 外卖 B003 / 自提 C002；重复支付同号 A052；12 路并发 A038–A049 **零重号**；DB 分组重号 0 行。
+
+**④ 退款前置放宽**：`PosOrderPaymentServiceImpl.refundOrder` 新表优先——只要 `payment_status=2` 且 `paid_amount > refund_amount` 即可退（**不再要求「已完成」**），按剩余可退金额一次退完，写 `order_refund_records`、回写 `orders.refund_amount` 与 `order_status=5`；旧表流程原样兜底。前端 POS 两个对话框改为 `canRefund()`：排除「未支付/已取消/已退款」即放行。
+
+**⑤ 手动流转理由非必填**：`TrayServiceImpl.manualTransition` 未填理由时落默认「收银员手动流转」，仍写 `tray_scan_record` 审计，不再挡住高峰期操作。
+
+### 13.3 本轮验证（可复跑）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 后端编译 | `mvn -o -B compile`（JDK21） | BUILD SUCCESS |
+| 管理端类型 | `frontend: npx vue-tsc --noEmit` | **0 error** |
+| POS 类型 | `frontend-pos: npx vue-tsc --noEmit` | **0 error** |
+| 核心链路 E2E | `python scripts/e2e_core_chain.py --password 123456 --tray auto` | **PASS=12 FAIL=0 SKIP=1**（托盘无空闲） |
+| 页面自检 | `python scripts/e2e_wip_pages.py` | **PASS=11 FAIL=0**（签名存证/防伪码双态/银行账户 CRUD/未完成订单退款） |
+
+### 13.4 全量遗留风险（挂起项，按优先级）
+
+| # | 风险 | 级别 | 现状与建议 |
+|---|---|---|---|
+| R1 | `OrderNewServiceImpl.createPosQuickOrder`（禁改类）建单不立即取号 | 低 | POS 前端未调用该接口（已 grep 确认），无实际缺口；若要「下单即出号」需 Owner 授权后在收尾插 `posCallNumberService.ensureCallNumber(orderId)` |
+| R2 | POS 支付写入仍是「新表优先 + 旧表兜底」双轨 | 中 | 新表链路已闭环（含退款），但旧表分支仍在；建议下一轮把 `orders_legacy` 支付写入彻底下线 |
+| R3 | `orders` 无 openid 列 | 中 | `getOrdersByOpenid` 只能走旧表，顾客端「我的订单」在新表订单上不可用 |
+| R4 | 混合期列表只显示新表（新表非空时） | 低 | 历史单在 POS 列表不可见，需按需回查旧表 |
+| R5 | `InventoryCreateDTO` 已补 `creatorId`，但后端是否有对应列需复核 | 低 | 本次只做前端类型与提交链路；若后端未落列，负责人仍不持久化（下轮核对 `inventory_check` 表结构） |
+| R6 | `Department.parentId` 前端已改 number | 低 | 其他调用点若仍传字符串会被 TS 拦下，属预期；后端 0=顶级语义需与产品确认 |
+| R7 | P1-AUTH-CHAIN-001 C 卡（废弃 `users.roles` 鉴权）未启动 | 高 | 见 `docs/STATUS.md` §2 |
+| R8 | P1-DASHBOARD-FILTER-001 看板无门店级数据过滤 | 高（越权） | 见 `docs/STATUS.md` §2，需 Owner 放行后实施 |
+| R9 | 托盘绑定 E2E 恒 SKIP | 低 | 门店 1 无空闲托盘，非核心链路；如需覆盖，跑前先 `release` 一张托盘 |
+| R10 | 收编页面（Receiving/BankAccount/叫号展示）未做浏览器级联调 | 中 | 本轮已用接口级自检（11 项）覆盖业务闭环，签名画板/扫码桥/离线暂存重传仍需真机过一遍 |

@@ -123,3 +123,46 @@
 
 > **更正声明（只增不改）**：`d1c1f9d` 提交说明中「监听器均为 @Async+AFTER_COMMIT+REQUIRES_NEW 不影响主事务」**不成立**，以本节为准。实测：只有 `OrderCompletedEventListener:75-77` 三件套齐全；`OrderCreatedEventListener` 为 `@Async + @EventListener`（但其外层 `:35-40` catch 捕获后不重抛，故无异步未捕获异常回归）；`PurchaseStockInEventListener` 缺 `REQUIRES_NEW`。
 
+
+## 7. 2026-10-23 白天值守轮（12:00–13:30）· 只增不改追加段
+
+### 7.1 本轮最高成就（一句话）
+
+**POS 主链路彻底闭环且体验对标真实门店**：支付入口统一（消灭 quick-pay 后门）、叫号号与订单号解耦（A001/B023 式）、退款不再要求「已完成」、POS 图片与时间显示修复、两个前端类型检查双双归零。
+
+### 7.2 已完成的验证（全部可复跑，数字为实测）
+
+| 类别 | 命令 | 结果 |
+|---|---|---|
+| 单元测试 | `mvn -o -B test -Dtest=<8 个新增 Mockito 类>` | **57 例，0 失败** |
+| 核心链路 E2E | `python scripts/e2e_core_chain.py --password 123456 --tray auto` | **PASS=12 / FAIL=0 / SKIP=1** |
+| 页面自检 | `python scripts/e2e_wip_pages.py` | **PASS=11 / FAIL=0** |
+| 管理端类型 | `frontend: npx vue-tsc --noEmit` | **0 error** |
+| POS 类型 | `frontend-pos: npx vue-tsc --noEmit` | **0 error** |
+| 后端编译 | `mvn -o -B compile`（JDK21） | BUILD SUCCESS |
+
+### 7.3 本轮交付（提交见 `git log`）
+
+1. **统一 POS 支付入口**：`order/pay` 新表优先（分口径金额校验、写 `order_payment_records`、回写 `payment_status=2`），旧表兜底；`quick-pay` 标 `@Deprecated`。
+2. **退款前置放宽**：`payment_status=2 且 paid>refund` 即可退（不再要求已完成），写 `order_refund_records` + 回写 `order_status=5`；POS 前端 `canRefund()` 同步放宽。
+3. **叫号号段**：`orders.call_number` / `call_record.call_number`，格式 `A001`，堂食 A / 外卖 B / 自提 C，按门店+自然日重置，原子取号 + CAS 幂等，小票/叫号屏/大屏/顾客端全改叫号号。
+4. **POS 图片与时间**：`utils/image.ts#getFullImageUrl`（补 `/api` 上下文前缀、回环 host 统一）、`utils/format.ts`（YYYY-MM-DD HH:mm:ss，去 T 与微秒），13 处本地实现收敛。
+5. **手动流转理由非必填**：未填落默认「收银员手动流转」，审计仍写。
+6. **类型收尾**：`InventoryCreateDTO.creatorId`、`Department.parentId→number`、`MaterialArchiveFormData` 五字段可选；管理端 `vue-tsc` 49→0。
+
+### 7.4 遗留风险全量清单（挂起，不做静默处理）
+
+| # | 风险 | 级别 | 建议动作 |
+|---|---|---|---|
+| R1 | `OrderNewServiceImpl.createPosQuickOrder` 建单不即取号（禁改类） | 低 | POS 前端未调用；需 Owner 授权后在收尾插 `ensureCallNumber` |
+| R2 | POS 支付仍「新表优先 + 旧表兜底」双轨 | 中 | 下轮下线 `orders_legacy` 支付写入 |
+| R3 | `orders` 无 openid 列 | 中 | 顾客端「我的订单」对新表订单不可用，需加列或建映射 |
+| R4 | 混合期 POS 列表只显示新表 | 低 | 历史单需回查旧表，按业务需要补开关 |
+| R5 | `InventoryCreateDTO.creatorId` 前端已传，后端列待复核 | 低 | 核对 `inventory_check` 表是否有 creator_id |
+| R6 | `Department.parentId` 语义（0=顶级）待产品确认 | 低 | 与 HR 模块确认后再统一其他调用点 |
+| R7 | P1-AUTH-CHAIN-001 C 卡未启动 | 高 | 见 §2 |
+| R8 | P1-DASHBOARD-FILTER-001 看板无门店级过滤（越权） | 高 | 见 §2，需 Owner 放行 |
+| R9 | 托盘绑定 E2E 恒 SKIP | 低 | 跑前先释放一张托盘 |
+| R10 | 收编页面未做浏览器级联调（签名画板/扫码桥/离线重传） | 中 | 真机过一遍；接口闭环已由 11 项自检覆盖 |
+
+> 详细改动与证据见 `WORKER_LOG.md` §11（WIP 收编）、§12（主链路闭环）、§13（体验缺陷修复轮 + 归档）。
