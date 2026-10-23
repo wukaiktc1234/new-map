@@ -5,6 +5,7 @@ import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.*;
 import com.foodtraceability.entity.*;
 import com.foodtraceability.mapper.*;
+import com.foodtraceability.service.PosCallNumberService;
 import com.foodtraceability.service.PosOrderQueryService;
 import com.foodtraceability.service.SensitiveDataService;
 import com.foodtraceability.service.ReceiptPrinterService;
@@ -46,6 +47,8 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
     private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
     private final SensitiveDataService sensitiveDataService;
     private final ReceiptPrinterService receiptPrinterService;
+    /** POS 叫号号服务：详情/小票展示 callNumber（缺失则补取号，保证老单也有号可叫） */
+    private final PosCallNumberService posCallNumberService;
 
     public PosOrderQueryServiceImpl(
             KitchenOrderMapper kitchenOrderMapper,
@@ -55,7 +58,8 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
             OrderItemNewMapper orderItemNewMapper,
             OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
             SensitiveDataService sensitiveDataService,
-            ReceiptPrinterService receiptPrinterService) {
+            ReceiptPrinterService receiptPrinterService,
+            PosCallNumberService posCallNumberService) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -64,6 +68,7 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
         this.sensitiveDataService = sensitiveDataService;
         this.receiptPrinterService = receiptPrinterService;
+        this.posCallNumberService = posCallNumberService;
     }
 
     /**
@@ -414,6 +419,21 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
             dto.setPickupCode(kitchenOrder.getPickupCode());
         }
 
+        // POS 叫号号：详情页/小票以 callNumber 展示（订单号仅作对账口径）。
+        // 老单（改造前创建、call_number 为空）在此补取号，保证叫号屏/小票也能显示 A001 式号码。
+        String callNumber = order.getCallNumber();
+        if (callNumber == null || callNumber.isEmpty()) {
+            try {
+                callNumber = posCallNumberService.ensureCallNumber(order.getOrderId());
+            } catch (Exception e) {
+                log.warn("订单详情补取叫号号失败（不影响查询）: orderId={}, error={}", order.getOrderId(), e.getMessage());
+            }
+        }
+        dto.setCallNumber(callNumber);
+        if (callNumber != null && !callNumber.isEmpty()) {
+            dto.setPickupNumber(callNumber);
+        }
+
         List<OrderItemNew> items = orderItemNewMapper.selectList(
                 new LambdaQueryWrapper<OrderItemNew>().eq(OrderItemNew::getOrderId, order.getOrderId()));
         dto.setItems(items.stream().map(item -> {
@@ -455,6 +475,8 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         OrderQueryDTO dto = new OrderQueryDTO();
         dto.setOrderId(order.getOrderId());
         dto.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
+        dto.setCallNumber(order.getCallNumber());
+        dto.setPickupNumber(order.getCallNumber());
         Long amount = order.getFinalAmount() != null ? order.getFinalAmount() : order.getPaidAmount();
         dto.setTotalAmount(centsToYuan(amount));
         dto.setStatus(convertNewOrderStatusToString(order.getOrderStatus()));
@@ -502,7 +524,19 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         result.setOrderSource(order.getOrderSource());
         result.setOrderType(order.getOrderType() != null ? String.valueOf(order.getOrderType()) : "0");
         result.setCreateTime(order.getCreateTime() != null ? order.getCreateTime().toString() : "");
-        result.setPickupNumber(kitchenOrder != null ? kitchenOrder.getPickupNumber() : "");
+        // 小票显示叫号号（callNumber）：老单无号时补取，避免小票打印出订单号 T2026…
+        String receiptCallNumber = order.getCallNumber();
+        if (receiptCallNumber == null || receiptCallNumber.isEmpty()) {
+            try {
+                receiptCallNumber = posCallNumberService.ensureCallNumber(order.getOrderId());
+            } catch (Exception e) {
+                log.warn("小票补取叫号号失败（不影响重打）: orderId={}, error={}", order.getOrderId(), e.getMessage());
+            }
+        }
+        result.setCallNumber(receiptCallNumber);
+        result.setPickupNumber(receiptCallNumber != null && !receiptCallNumber.isEmpty()
+                ? receiptCallNumber
+                : (kitchenOrder != null ? kitchenOrder.getPickupNumber() : ""));
         result.setPickupCode(kitchenOrder != null ? kitchenOrder.getPickupCode() : "");
         result.setTableNumber(kitchenOrder != null ? kitchenOrder.getTableNumber() : order.getTableName());
 

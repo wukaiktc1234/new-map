@@ -9,6 +9,8 @@ public class CallRecord {
     private Long id;
     private String orderId;
     private String orderNumber;
+    /** POS 叫号号（A001/B023），叫号屏优先展示此字段而非订单号 */
+    private String callNumber;
     private String tableNumber;
     private String orderType;
     private Integer itemCount;
@@ -36,6 +38,10 @@ public class CallRecord {
 
     public String getOrderNumber() {
         return this.orderNumber;
+    }
+
+    public String getCallNumber() {
+        return this.callNumber;
     }
 
     public String getTableNumber() {
@@ -92,6 +98,10 @@ public class CallRecord {
 
     public void setOrderNumber(final String orderNumber) {
         this.orderNumber = orderNumber;
+    }
+
+    public void setCallNumber(final String callNumber) {
+        this.callNumber = callNumber;
     }
 
     public void setTableNumber(final String tableNumber) {

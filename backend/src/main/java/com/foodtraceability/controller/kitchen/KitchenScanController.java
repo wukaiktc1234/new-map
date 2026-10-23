@@ -45,6 +45,8 @@ public class KitchenScanController {
     private final ApplicationEventPublisher eventPublisher;
     private final FoodTraceCodeMapper foodTraceCodeMapper;
     private final CallRecordMapper callRecordMapper;
+    /** POS 叫号号服务：出餐叫号记录必须带 A001 式叫号号，叫号屏才不用播订单号 */
+    private final com.foodtraceability.service.PosCallNumberService posCallNumberService;
 
     @PostMapping("")
     @Operation(summary = "扫描追溯码")
@@ -126,6 +128,8 @@ public class KitchenScanController {
             CallRecord record = new CallRecord();
             record.setOrderId(order.getOrderId());
             record.setOrderNumber(order.getOrderNumber());
+            // 叫号号（A001/B023）：订单若尚未取号，此处补号（幂等）
+            record.setCallNumber(posCallNumberService.ensureCallNumber(order.getOrderId()));
             record.setTableNumber(order.getTableNumber());
             record.setOrderType(getOrderTypeName(order.getOrderType()));
             record.setItemCount(order.getTotalDishes() != null ? order.getTotalDishes() : 0);
@@ -260,7 +264,7 @@ public class KitchenScanController {
         return Result.success(order);
     }
 
-    public KitchenScanController(final KitchenScanService kitchenScanService, final OrderMaterialRequirementService requirementService, final KitchenOrderMapper kitchenOrderMapper, final MaterialTraceCodeMapper traceCodeMapper, final MaterialUsageRecordMapper usageRecordMapper, final OrderMaterialRequirementMapper requirementMapper, final @Lazy KitchenOrderService kitchenOrderService, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher, final FoodTraceCodeMapper foodTraceCodeMapper, final CallRecordMapper callRecordMapper) {
+    public KitchenScanController(final KitchenScanService kitchenScanService, final OrderMaterialRequirementService requirementService, final KitchenOrderMapper kitchenOrderMapper, final MaterialTraceCodeMapper traceCodeMapper, final MaterialUsageRecordMapper usageRecordMapper, final OrderMaterialRequirementMapper requirementMapper, final @Lazy KitchenOrderService kitchenOrderService, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher, final FoodTraceCodeMapper foodTraceCodeMapper, final CallRecordMapper callRecordMapper, final com.foodtraceability.service.PosCallNumberService posCallNumberService) {
         this.kitchenScanService = kitchenScanService;
         this.requirementService = requirementService;
         this.kitchenOrderMapper = kitchenOrderMapper;
@@ -272,5 +276,6 @@ public class KitchenScanController {
         this.eventPublisher = eventPublisher;
         this.foodTraceCodeMapper = foodTraceCodeMapper;
         this.callRecordMapper = callRecordMapper;
+        this.posCallNumberService = posCallNumberService;
     }
 }

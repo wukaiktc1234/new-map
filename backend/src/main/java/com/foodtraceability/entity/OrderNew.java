@@ -33,6 +33,15 @@ public class OrderNew {
     @Schema(description = "订单号", example = "T20260909001")
     private String orderNumber;
 
+    /**
+     * POS 叫号号（顾客侧编号，KFC 式）
+     * 格式 ^[A-Z][0-9]{3,4}$：堂食 A001、外卖 B001、自提 C001；按门店每天从 1 自增，跨天重置。
+     * 与 order_number（财务/对账口径）是两套编号，互不替代。
+     */
+    @TableField("call_number")
+    @Schema(description = "POS叫号号", example = "A001")
+    private String callNumber;
+
     /** 订单类型：1堂食 2外卖 3自提 4打包 */
     @TableField("order_type")
     @Schema(description = "订单类型: 1堂食 2外卖 3自提 4打包", example = "1")
@@ -209,6 +218,7 @@ public class OrderNew {
     public String getOrderId() { return orderId; }
     public String getOrderCode() { return orderCode; }
     public String getOrderNumber() { return orderNumber; }
+    public String getCallNumber() { return callNumber; }
     public Integer getOrderType() { return orderType; }
     public Integer getOrderSource() { return orderSource; }
     public Long getStoreId() { return storeId; }
@@ -246,6 +256,7 @@ public class OrderNew {
     public void setOrderId(String orderId) { this.orderId = orderId; }
     public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
     public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+    public void setCallNumber(String callNumber) { this.callNumber = callNumber; }
     public void setOrderType(Integer orderType) { this.orderType = orderType; }
     public void setOrderSource(Integer orderSource) { this.orderSource = orderSource; }
     public void setStoreId(Long storeId) { this.storeId = storeId; }

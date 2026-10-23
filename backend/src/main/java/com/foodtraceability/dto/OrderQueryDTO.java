@@ -12,7 +12,9 @@ public class OrderQueryDTO {
     private String orderId;
     @Schema(description = "订单编号")
     private String orderNumber;
-    @Schema(description = "取餐号")
+    @Schema(description = "POS叫号号（A001/B023，顾客侧叫号口径）", example = "A001")
+    private String callNumber;
+    @Schema(description = "取餐号（兼容旧字段，值同 callNumber）")
     private String pickupNumber;
     @Schema(description = "取餐码（外卖使用）")
     private String pickupCode;
@@ -38,6 +40,10 @@ public class OrderQueryDTO {
 
     public String getOrderNumber() {
         return this.orderNumber;
+    }
+
+    public String getCallNumber() {
+        return this.callNumber;
     }
 
     public String getPickupNumber() {
@@ -78,6 +84,10 @@ public class OrderQueryDTO {
 
     public void setOrderNumber(final String orderNumber) {
         this.orderNumber = orderNumber;
+    }
+
+    public void setCallNumber(final String callNumber) {
+        this.callNumber = callNumber;
     }
 
     public void setPickupNumber(final String pickupNumber) {

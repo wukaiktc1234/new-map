@@ -222,19 +222,25 @@ public class ReceiptPrinterService {
         // ====== 2. 分隔线 ======
         sb.append(getSeparatorLine()).append("\n\n");
 
-        // ====== 3. 小票编号和时间 ======
+        // ====== 3. POS 叫号号（顾客侧口径，KFC 式 A001/B023）+ 小票编号 ======
+        // 小票对外展示叫号号；订单号只保留一行作对账追溯，不再作为主要编号展示。
+        String callNumber = (orderResult.getCallNumber() != null && !orderResult.getCallNumber().isEmpty())
+                ? orderResult.getCallNumber()
+                : orderResult.getPickupNumber();
+        if (callNumber != null && !callNumber.isEmpty()) {
+            sb.append(bytesToString(ALIGN_CENTER));          // 居中对齐
+            sb.append(bytesToString(DOUBLE_HEIGHT_WIDTH));   // 双倍高宽字体
+            sb.append("叫号 ").append(callNumber).append("\n");
+            sb.append(bytesToString(NORMAL_FONT));
+        }
+
         sb.append(bytesToString(ALIGN_LEFT));            // 左对齐
-        sb.append("小票编号: ").append(orderResult.getOrderNumber()).append("\n");
+        sb.append("订单号: ").append(orderResult.getOrderNumber()).append("\n");
         sb.append("打印时间: ").append(LocalDateTime.now().format(dateFormatter)).append("\n");
 
         // 桌号信息
         if (orderResult.getTableNumber() != null && !orderResult.getTableNumber().isEmpty()) {
             sb.append("桌    号: ").append(orderResult.getTableNumber()).append("号桌\n");
-        }
-
-        // 取餐号
-        if (orderResult.getPickupNumber() != null && !orderResult.getPickupNumber().isEmpty()) {
-            sb.append("取 餐 号: ").append(orderResult.getPickupNumber()).append("\n");
         }
         sb.append("\n");
 

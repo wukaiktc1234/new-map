@@ -11,6 +11,7 @@ import com.foodtraceability.entity.*;
 import com.foodtraceability.event.OrderCreatedEvent;
 import com.foodtraceability.mapper.*;
 import com.foodtraceability.controller.websocket.OrderWebSocketController;
+import com.foodtraceability.service.PosCallNumberService;
 import com.foodtraceability.service.PosOrderCreateService;
 import com.foodtraceability.service.PosOrderNumberGenerator;
 import com.foodtraceability.service.SensitiveDataService;
@@ -55,6 +56,8 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
     private final ApplicationEventPublisher eventPublisher;
     private final SensitiveDataService sensitiveDataService;
     private final PosOrderNumberGenerator numberGenerator;
+    /** POS 叫号号服务：独立号段（A001/B023），按门店每天自增，与订单号解耦 */
+    private final PosCallNumberService posCallNumberService;
     /** 门店 Mapper（增强版），用于查询门店名称（POS端订单关联门店）
      *  使用 stores_new 表，与 StoreNewController 一致 */
     private final StoreNewMapper storeNewMapper;
@@ -78,7 +81,8 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             PosOrderNumberGenerator numberGenerator,
             StoreNewMapper storeNewMapper,
             OrderNewMapper orderNewMapper,
-            OrderItemNewMapper orderItemNewMapper) {
+            OrderItemNewMapper orderItemNewMapper,
+            PosCallNumberService posCallNumberService) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -94,6 +98,7 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         this.storeNewMapper = storeNewMapper;
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
+        this.posCallNumberService = posCallNumberService;
     }
 
     /**
@@ -123,12 +128,20 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         // 委托统一合同方法
         Result<OrderResultDTO> result = createCanonicalOrder(command);
 
-        // 入口特有：补充取餐号/取餐码
+        // 入口特有：补充叫号号/取餐码
+        // 注意：叫号号已在 createCanonicalOrder 内取号并落库，这里只做兜底读回，绝不覆盖已分配的号
         if (result.getCode() == 0 && result.getData() != null) {
             OrderResultDTO data = result.getData();
             Integer orderType = command.getOrderType();
-            data.setPickupNumber(numberGenerator.generatePickupNumberByType(orderType));
-            if (orderType != null && orderType == 1) {
+            String callNumber = data.getCallNumber();
+            if (callNumber == null || callNumber.isEmpty()) {
+                callNumber = posCallNumberService.ensureCallNumber(data.getOrderId());
+                data.setCallNumber(callNumber);
+            }
+            if (callNumber != null && !callNumber.isEmpty()) {
+                data.setPickupNumber(callNumber);
+            }
+            if (orderType != null && orderType == 1 && data.getPickupCode() == null) {
                 data.setPickupCode(numberGenerator.generatePickupCode());
             }
             data.setOrderType(request.getOrderType());
@@ -362,6 +375,13 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             orderNew.setDeleted(0);
             orderNewMapper.insert(orderNew);
 
+            // 10.5 生成 POS 叫号号（独立号段：门店 + 自然日 + 类型前缀，每天从 1 自增，跨天重置）
+            //      入口刻意放在状态机之外：本服务是 POS 下单收尾方法，只追加叫号号字段，不改订单状态。
+            //      幂等：同一 orderId 重复调用只会读回已落库的号，不会二次取号。
+            String callNumber = posCallNumberService.ensureCallNumber(orderId, storeIdLong, orderType);
+            orderNew.setCallNumber(callNumber);
+            log.info("POS 叫号号确定: orderId={}, callNumber={}", orderId, callNumber);
+
             // 11. W1-EC-01: 创建订单项 → order_items 表（canonical）+ 扣减库存
             createCanonicalOrderItemsAndDeductStockNew(orderId, command.getItems(), foodNewMap, foodCodeToIdMap);
 
@@ -379,10 +399,11 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             orderNewMapper.updateById(orderNew);
 
             // 13. 创建后厨订单
-            String pickupNumber = numberGenerator.generatePickupNumberByType(orderType);
+            //     取餐号 = 叫号号（callNumber）。旧实现用「今日后厨单计数 + 1」，跨门店不隔离且并发会重号，
+            //     现已统一走 posCallNumberService 的原子号段；pickupCode 仅外卖使用，保持原逻辑。
             String pickupCode = (orderType == 1) ? numberGenerator.generatePickupCode() : null;
             KitchenOrder kitchenOrder = createKitchenOrder(kitchenOrderId, orderId, orderNumber,
-                pickupNumber, pickupCode, orderType, command);
+                callNumber, pickupCode, orderType, command);
 
             // 14. WebSocket 推送
             try {
@@ -401,7 +422,7 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 orderId, orderNumber, finalAmountFen, finalAmountYuan);
 
             // 16. 构建返回结果
-            return buildCanonicalOrderResult(orderId, orderNumber, pickupNumber, pickupCode,
+            return buildCanonicalOrderResult(orderId, orderNumber, callNumber, pickupCode,
                 orderType, command, finalAmountYuan);
         } catch (Exception e) {
             log.error("统一订单创建失败: {}", e.getMessage(), e);
@@ -610,12 +631,14 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * 构建 Canonical 订单创建返回结果
      */
     private Result<OrderResultDTO> buildCanonicalOrderResult(String orderId, String orderNumber,
-            String pickupNumber, String pickupCode, Integer orderType,
+            String callNumber, String pickupCode, Integer orderType,
             CanonicalOrderCommand command, BigDecimal finalAmount) {
         OrderResultDTO result = new OrderResultDTO();
         result.setOrderId(orderId);
         result.setOrderNumber(orderNumber);
-        result.setPickupNumber(pickupNumber);
+        // callNumber 是顾客侧口径（A001）；pickupNumber 为兼容旧字段，值保持一致
+        result.setCallNumber(callNumber);
+        result.setPickupNumber(callNumber);
         result.setPickupCode(pickupCode);
         result.setStatus("pending");
         result.setMessage("订单创建成功");

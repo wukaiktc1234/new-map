@@ -11,6 +11,7 @@ import com.foodtraceability.mapper.*;
 import com.foodtraceability.mapper.finance.FinanceRecordMapper;
 import com.foodtraceability.controller.websocket.OrderWebSocketController;
 import com.foodtraceability.service.MemberService;
+import com.foodtraceability.service.PosCallNumberService;
 import com.foodtraceability.service.PosOrderPaymentService;
 import com.foodtraceability.service.SensitiveDataService;
 import com.foodtraceability.service.ReceiptPrinterService;
@@ -57,6 +58,10 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     private final OrderNewMapper orderNewMapper;
     private final OrderItemNewMapper orderItemNewMapper;
     private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
+    private final OrderRefundRecordNewMapper orderRefundRecordNewMapper;
+
+    /** POS 叫号号服务：支付成功旁路补号（下单时已取号则以读回为主，幂等） */
+    private final PosCallNumberService posCallNumberService;
 
     public PosOrderPaymentServiceImpl(
             KitchenOrderMapper kitchenOrderMapper,
@@ -73,7 +78,9 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             FinanceRecordMapper financeRecordMapper,
             OrderNewMapper orderNewMapper,
             OrderItemNewMapper orderItemNewMapper,
-            OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
+            OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
+            OrderRefundRecordNewMapper orderRefundRecordNewMapper,
+            PosCallNumberService posCallNumberService) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -89,6 +96,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
+        this.orderRefundRecordNewMapper = orderRefundRecordNewMapper;
+        this.posCallNumberService = posCallNumberService;
     }
 
     /**
@@ -272,7 +281,16 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     public Result<Boolean> refundOrder(String orderNumber, String refundReason, HttpServletRequest request) {
         log.info("处理退款请求: orderNumber={}, reason={}", orderNumber, refundReason);
 
-        // 查询订单
+        // ===== 新表（orders）优先：只要已支付且未全额退款即可退（不再要求「已完成」） =====
+        OrderNew newOrder = orderNewMapper.selectOne(new LambdaQueryWrapper<OrderNew>()
+                .and(w -> w.eq(OrderNew::getOrderNumber, orderNumber).or().eq(OrderNew::getOrderId, orderNumber))
+                .last("LIMIT 1"));
+        if (newOrder != null) {
+            return refundNewOrder(newOrder, refundReason);
+        }
+        log.warn("退款入口未在 orders 命中，回落 orders_legacy: orderNumber={}", orderNumber);
+
+        // 查询订单（遗留表兜底）
         Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNumber, orderNumber));
         if (order == null) {
             return Result.error("订单不存在");
@@ -539,6 +557,56 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     }
 
     /**
+     * 新表（orders）退款：前置条件放宽为「payment_status=2 且未全额退款」。
+     *
+     * <p>真实餐饮场景中顾客刚下单/正在制作就要退单是常态，因此不再要求订单「已完成」。
+     * 退款按剩余可退金额（paid - refunded）一次性退完，写 order_refund_records，
+     * 并把 orders.refund_amount / order_status(5=全额退款) 回写。</p>
+     */
+    private Result<Boolean> refundNewOrder(OrderNew order, String refundReason) {
+        if (order.getPaymentStatus() == null || order.getPaymentStatus() != 2) {
+            return Result.error("只能退款已支付的订单");
+        }
+        long paid = order.getPaidAmount() != null ? order.getPaidAmount() : 0L;
+        long refunded = order.getRefundAmount() != null ? order.getRefundAmount() : 0L;
+        long remaining = paid - refunded;
+        if (paid <= 0) {
+            return Result.error("订单退款金额异常，请联系管理员核查");
+        }
+        if (remaining <= 0) {
+            return Result.error("订单已全额退款");
+        }
+
+        String operatorName = SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "unknown";
+        String reason = (refundReason == null || refundReason.isBlank()) ? "用户申请退款" : refundReason;
+
+        OrderRefundRecordNew record = new OrderRefundRecordNew();
+        record.setOrderId(order.getOrderId());
+        record.setRefundType(1);            // 1=全额退（本次按剩余可退金额一次退完）
+        record.setRefundAmount(remaining);
+        record.setRefundReason(reason);
+        record.setRefundMethod(1);          // 原路退回
+        record.setRefundStatus(2);          // 2=已完成
+        record.setApproveUserId(SecurityUtils.getCurrentUserId());
+        record.setCreateTime(LocalDateTime.now());
+        record.setCompleteTime(LocalDateTime.now());
+        record.setUpdateTime(LocalDateTime.now());
+        record.setDeleted(0);
+        orderRefundRecordNewMapper.insert(record);
+
+        OrderNew update = new OrderNew();
+        update.setOrderId(order.getOrderId());
+        update.setRefundAmount(paid);
+        update.setOrderStatus(5);           // 5=全额退款
+        update.setUpdateTime(LocalDateTime.now());
+        orderNewMapper.updateById(update);
+
+        log.info("新表订单退款完成: orderId={}, 退款 {} 分（已退 {} + 本次 {}）, 操作人={}",
+                order.getOrderId(), paid, refunded, remaining, operatorName);
+        return Result.success(true);
+    }
+
+    /**
      * 新表（orders）支付：金额以「分」为准，写入 order_payment_records 并回写 payment_status=2。
      *
      * <p>与遗留表口径差异：orders 的 payment_status 才是资金口径（2=已支付），
@@ -598,9 +666,19 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         log.info("新表订单支付完成: orderId={}, orderNumber={}, amount={}分, method={}, operator={}",
                 order.getOrderId(), order.getOrderNumber(), dueCents, paymentMethodInt, operatorName);
 
+        // 支付成功旁路：确认叫号号（下单时已取号 → 读回同一个号，幂等；历史单 → 此时补号）
+        String callNumber = null;
+        try {
+            callNumber = posCallNumberService.ensureCallNumber(order.getOrderId());
+        } catch (Exception e) {
+            log.warn("支付成功补取叫号号失败（不影响支付）: orderId={}, error={}", order.getOrderId(), e.getMessage());
+        }
+
         OrderResultDTO result = new OrderResultDTO();
         result.setOrderId(order.getOrderId());
         result.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
+        result.setCallNumber(callNumber);
+        result.setPickupNumber(callNumber);
         result.setStatus(order.getOrderStatus() != null ? String.valueOf(order.getOrderStatus()) : "0");
         result.setTotalAmount(BigDecimal.valueOf(dueCents).movePointLeft(2));
         result.setOrderSource(order.getOrderSource());
@@ -617,6 +695,14 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             info.setQuantity(item.getQuantity());
             return info;
         }).collect(java.util.stream.Collectors.toList()));
+
+        // 支付成功后自动打印小票（小票编号区展示叫号号；打印异常已内部隔离，不影响支付结果）
+        try {
+            receiptPrinterService.printReceipt(result);
+        } catch (Exception printEx) {
+            log.warn("小票打印失败（不影响支付）: orderNumber={}, error={}",
+                    order.getOrderNumber(), printEx.getMessage());
+        }
 
         return Result.success(result);
     }

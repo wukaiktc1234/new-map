@@ -16,6 +16,7 @@ public class OrderDetailDTO {
     private String kitchenStatus;
     private String transactionId;
     private List<OrderItemDetail> items;
+    private String callNumber;
     private String pickupNumber;
     private String pickupCode;
     private Integer orderType;
@@ -168,6 +169,10 @@ public class OrderDetailDTO {
         return this.items;
     }
 
+    public String getCallNumber() {
+        return this.callNumber;
+    }
+
     public String getPickupNumber() {
         return this.pickupNumber;
     }
@@ -262,6 +267,10 @@ public class OrderDetailDTO {
 
     public void setItems(final List<OrderItemDetail> items) {
         this.items = items;
+    }
+
+    public void setCallNumber(final String callNumber) {
+        this.callNumber = callNumber;
     }
 
     public void setPickupNumber(final String pickupNumber) {

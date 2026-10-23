@@ -203,7 +203,8 @@ public class TrayServiceImpl implements TrayService {
             return Result.error("托盘码不能为空");
         }
         if (reason == null || reason.isBlank()) {
-            return Result.error("手动操作必须填写理由（将写入审计记录）");
+            // 高峰期不阻塞收银员：未填理由时给默认说明，仍写入 tray_scan_record 审计
+            reason = "收银员手动流转";
         }
         if (targetStatus == null || !MANUAL_ALLOWED_TARGETS.contains(targetStatus)) {
             return Result.error("不支持的目标状态: " + targetStatus
