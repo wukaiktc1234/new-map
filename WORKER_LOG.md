@@ -445,3 +445,56 @@ E2E `e2e_core_chain.py` 已改回标准 `order/pay`：**PASS=12 FAIL=0 SKIP=1**�
 | R8 | P1-DASHBOARD-FILTER-001 看板无门店级数据过滤 | 高（越权） | 见 `docs/STATUS.md` §2，需 Owner 放行后实施 |
 | R9 | 托盘绑定 E2E 恒 SKIP | 低 | 门店 1 无空闲托盘，非核心链路；如需覆盖，跑前先 `release` 一张托盘 |
 | R10 | 收编页面（Receiving/BankAccount/叫号展示）未做浏览器级联调 | 中 | 本轮已用接口级自检（11 项）覆盖业务闭环，签名画板/扫码桥/离线暂存重传仍需真机过一遍 |
+
+---
+
+## 14. POS 订单查询无反应定位 + 体验巡检（2026-10-23 13:28–13:50）
+
+### 14.1 根因：查询参数根本没发出去
+
+`OrderQueryDialog.vue` 两处调用写成了 `request.get('/v1/pos/orders', params)`。
+axios 的第二个参数是 **config**，只有 `config.params` 才会拼到 query string；`{keyword, startDate, endDate}` 被当成未知 config 字段**静默丢弃**。
+→ 后端每次都收到「无条件」请求，返回最近 200 条；用户输入单号后列表当然「没变化」，表现为点了查询没反应。
+
+修复：统一走 `posApi.getOrders(params)`（内部 `{ params }`），并补交互反馈：空结果 `ElMessage.info('没有匹配的订单')`、失败 `ElMessage.error(...)`（原来只 `console.error`，属典型静默失败）。
+
+### 14.2 巡检脚本 `scripts/e2e_pos_experience.py`（新增）
+
+API 级体验巡检，15 项断言 + 1 项数据缺口提示：
+
+| 区块 | 覆盖 |
+|---|---|
+| A 订单查询 | 空条件 / 存在单号 / 不存在单号 / 日期范围 / 叫号号 / 非法日期 |
+| B 商品菜单 | 分类列表 / 菜品列表 / **每张图片真实可下载（HTTP 200 + image\*）** / 分类筛选覆盖率 |
+| C 结算 | 下单（改数量）→ 金额=单价×数量 → 详情数量联动 → 微信支付 → 支付方式回显 |
+| D 静态扫描 | `request.get(url, payload)` 漏 `{params}` / 模板直出裸 ISO / 页面手拼图片 base |
+
+### 14.3 巡检顺带发现的 3 个真实缺陷（全部已修）
+
+| # | 现象 | 根因 | 修复 |
+|---|---|---|---|
+| B1 | 日期范围查询 500 | `applyDateRange` 把 `"2026-10-23 00:00:00"` 字符串直接比较 timestamp 列，PG 报「操作符不存在: timestamp >= character varying」 | 新增宽松解析（`yyyy-MM-dd` / 带时间 / ISO），解析失败按未指定处理，不再 500 |
+| B2 | 菜单页分类 Tab 全空 | POS 读的是遗留表 `food_category`（实测 0 行），管理端读的是 `food_categories` | `getCategories` 改走 canonical `FoodCategoryNew`；菜品分组键统一为 `foods.category_id`（按 foodCode 映射），无值回退文本分类 |
+| B3 | 微信支付显示成「现金」 | `buildNewOrderDetail` 用**旧表编码**翻译新表 `order_payment_records.payment_method`（新表 2=微信，旧表 2=现金） | 新增 `convertNewPaymentMethodToString`（1现金/2微信/3支付宝/4银行卡/5余额），新表链路专用 |
+
+### 14.4 R1 授权收口
+
+`OrderNewServiceImpl.createPosQuickOrder` 收尾已插入 `posCallNumberService.ensureCallNumber(orderId)`（字段注入 `required=false` + try/catch，取号失败绝不阻断下单），`OrderVO` 增 `callNumber` 并回填；关键字查询同时支持叫号号。实测该入口下单直接返回 `callNumber=A054/A055`。
+
+### 14.5 本轮验证
+
+| 项 | 结果 |
+|---|---|
+| `scripts/e2e_pos_experience.py` | **PASS=15 FAIL=0 SKIP=1**（5 个 QA 测试菜无图，数据缺口） |
+| `scripts/e2e_core_chain.py` | 核心链路全绿（PASS=12 FAIL=0 SKIP=1） |
+| `scripts/e2e_wip_pages.py` | PASS=11 FAIL=0 |
+| `frontend` vue-tsc | 0 error |
+| `frontend-pos` vue-tsc | 0 error |
+| `mvn -o -B compile` | BUILD SUCCESS |
+
+### 14.6 仍未处理（记录，不静默）
+
+- **5 个 QA 测试菜品无图**（`QA-红烧土豆`/`QA-F6-即时下单验证菜`/`QA-链路复验菜`/`QA-QA1-独立验收菜`/`测试菜品销售A`）：遗留 `food` 表 `food_image` 为空，属测试数据缺口，POS 已走占位图；真实菜品（生菜串等）图片正常。
+- **POS 菜品数据源仍是遗留 `food` 表**：分类归属要靠 `foods` 映射，长期应统一到 `foods`（foods 有 category_id/售价分口径）。
+- **下单接口要求前端传 price/productName**：服务端会再校验，但契约上仍允许前端先算价，建议后续改为只传 productId+quantity。
+- 浏览器级 E2E（真点击）未接：Playwright 1.63 可用但未安装浏览器内核，当前巡检为 API+静态扫描；需要时再补 `npx playwright install chromium`。
