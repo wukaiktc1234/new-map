@@ -20,6 +20,10 @@ public class OrderVO {
     @Schema(description = "订单编号")
     private String orderCode;
 
+    /** 叫号号（A001/B023，顾客侧口径） */
+    @Schema(description = "叫号号")
+    private String callNumber;
+
     /** 订单类型 */
     @Schema(description = "订单类型: 1堂食 2外卖 3自提 4打包")
     private Integer orderType;
@@ -341,6 +345,10 @@ public class OrderVO {
     public void setOrderId(String orderId) { this.orderId = orderId; }
     public String getOrderCode() { return orderCode; }
     public void setOrderCode(String orderCode) { this.orderCode = orderCode; }
+
+    public String getCallNumber() { return callNumber; }
+
+    public void setCallNumber(String callNumber) { this.callNumber = callNumber; }
     public Integer getOrderType() { return orderType; }
     public void setOrderType(Integer orderType) { this.orderType = orderType; }
     public String getOrderTypeName() { return orderTypeName; }

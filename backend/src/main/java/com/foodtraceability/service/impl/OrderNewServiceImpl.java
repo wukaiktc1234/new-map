@@ -48,6 +48,14 @@ import java.util.stream.Collectors;
 public class OrderNewServiceImpl implements OrderNewService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderNewServiceImpl.class);
+
+    /**
+     * 叫号号服务（R1，经 Owner 授权）：`createPosQuickOrder` 入口此前不立即取号，
+     * 只能靠详情/支付/叫号屏旁路补号。用字段注入而非构造函数参数，避免扰动 30+ 依赖的巨型构造函数；
+     * required=false + 空判保证任何装配顺序下都不会让下单失败。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.foodtraceability.service.PosCallNumberService posCallNumberService;
     private static final DateTimeFormatter ORDER_CODE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     private final OrderNewMapper orderNewMapper;
@@ -182,7 +190,22 @@ public class OrderNewServiceImpl implements OrderNewService {
         createDTO.setItems(items);
         createDTO.setRemark(quickOrderDTO.getRemark());
 
-        return createOrder(createDTO);
+        OrderVO orderVO = createOrder(createDTO);
+
+        // R1：下单即取号（与 PosOrderCreateServiceImpl / 支付 / 叫号屏共用同一 service，天然幂等）
+        if (posCallNumberService != null && orderVO != null && orderVO.getOrderId() != null) {
+            try {
+                String callNumber = posCallNumberService.ensureCallNumber(orderVO.getOrderId());
+                if (callNumber != null) {
+                    orderVO.setCallNumber(callNumber);
+                }
+            } catch (Exception e) {
+                // 取号失败不阻断下单（奶茶店不能因为号段异常而收不了钱）
+                log.warn("POS快速下单取号失败，降级为后续旁路补号: orderId={}", orderVO.getOrderId(), e);
+            }
+        }
+
+        return orderVO;
     }
 
     // ==================== 支付处理 ====================

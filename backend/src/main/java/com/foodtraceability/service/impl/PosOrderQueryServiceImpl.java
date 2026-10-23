@@ -151,7 +151,9 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
             if (keyword != null && !keyword.isEmpty()) {
                 newWrapper.and(w -> w.like(OrderNew::getOrderNumber, keyword)
                         .or().like(OrderNew::getOrderCode, keyword)
-                        .or().like(OrderNew::getCustomerName, keyword));
+                        .or().like(OrderNew::getCustomerName, keyword)
+                        // 叫号号是顾客侧口径，收银员常拿它反查订单
+                        .or().like(OrderNew::getCallNumber, keyword));
             }
             newWrapper.orderByDesc(OrderNew::getCreateTime).last("LIMIT 200");
 
@@ -353,11 +355,59 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
             wrapper.ge(OrderNew::getCreateTime, java.time.LocalDateTime.now().minusDays(7));
             return;
         }
-        if (startDate != null && !startDate.isEmpty()) {
-            wrapper.ge(OrderNew::getCreateTime, startDate + " 00:00:00");
+        // 修复：此前把字符串直接塞给 timestamp 列比较，PG 报「操作符不存在: timestamp >= character varying」→ 查询 500
+        java.time.LocalDateTime start = parseDayStart(startDate);
+        java.time.LocalDateTime end = parseDayEnd(endDate);
+        if (start != null) {
+            wrapper.ge(OrderNew::getCreateTime, start);
         }
-        if (endDate != null && !endDate.isEmpty()) {
-            wrapper.le(OrderNew::getCreateTime, endDate + " 23:59:59");
+        if (end != null) {
+            wrapper.le(OrderNew::getCreateTime, end);
+        }
+    }
+
+    /** 宽松解析起始时间：yyyy-MM-dd / yyyy-MM-dd HH:mm:ss / ISO；解析失败按「未指定」处理（不 500） */
+    private static java.time.LocalDateTime parseDayStart(String s) {
+        java.time.LocalDateTime dt = parseDateTime(s);
+        if (dt != null) {
+            return dt;
+        }
+        java.time.LocalDate d = parseDate(s);
+        return d != null ? d.atStartOfDay() : null;
+    }
+
+    /** 宽松解析结束时间：纯日期按当天 23:59:59 收口 */
+    private static java.time.LocalDateTime parseDayEnd(String s) {
+        java.time.LocalDateTime dt = parseDateTime(s);
+        if (dt != null) {
+            return dt;
+        }
+        java.time.LocalDate d = parseDate(s);
+        return d != null ? d.atTime(23, 59, 59) : null;
+    }
+
+    private static java.time.LocalDate parseDate(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        String v = s.trim();
+        try {
+            return java.time.LocalDate.parse(v.length() > 10 ? v.substring(0, 10) : v);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static java.time.LocalDateTime parseDateTime(String s) {
+        if (s == null || s.isBlank() || s.trim().length() <= 10) {
+            return null;
+        }
+        String v = s.trim().replace('T', ' ');
+        try {
+            return java.time.LocalDateTime.parse(v.length() > 19 ? v.substring(0, 19) : v,
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -406,7 +456,7 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         List<OrderPaymentRecordNew> payments = orderPaymentRecordNewMapper.selectByOrderId(order.getOrderId());
         if (payments != null && !payments.isEmpty()) {
             OrderPaymentRecordNew last = payments.get(payments.size() - 1);
-            dto.setPaymentMethod(convertPaymentMethodToString(last.getPaymentMethod()));
+            dto.setPaymentMethod(convertNewPaymentMethodToString(last.getPaymentMethod()));
             dto.setTransactionId(last.getTransactionNo());
         } else if (order.getPaymentStatus() != null && order.getPaymentStatus() == 2) {
             dto.setPaymentMethod("已支付");
@@ -612,6 +662,24 @@ public class PosOrderQueryServiceImpl implements PosOrderQueryService {
         result.setOrderItems(itemResults);
 
         return result;
+    }
+
+    /**
+     * 新表（order_payment_records）支付方式编码 → 文案。
+     *
+     * <p>新表口径：1现金 / 2微信 / 3支付宝 / 4银行卡 / 5积分或余额；
+     * 与遗留表（0微信/1支付宝/2现金/3银行卡/4余额）**完全不同**，混用会把微信支付显示成现金。</p>
+     */
+    private String convertNewPaymentMethodToString(Integer paymentMethod) {
+        if (paymentMethod == null) return "现金";
+        return switch (paymentMethod) {
+            case 1 -> "现金";
+            case 2 -> "微信支付";
+            case 3 -> "支付宝";
+            case 4 -> "银行卡";
+            case 5 -> "余额支付";
+            default -> "现金";
+        };
     }
 
     private String convertPaymentMethodToString(Integer paymentMethod) {

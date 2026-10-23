@@ -10,10 +10,12 @@ import com.foodtraceability.entity.ComboIngredientNew;
 import com.foodtraceability.entity.DishComboNew;
 import com.foodtraceability.entity.Food;
 import com.foodtraceability.entity.FoodCategory;
+import com.foodtraceability.entity.FoodCategoryNew;
 import com.foodtraceability.entity.FoodNew;
 import com.foodtraceability.mapper.ComboIngredientNewMapper;
 import com.foodtraceability.mapper.DishComboNewMapper;
 import com.foodtraceability.mapper.FoodCategoryMapper;
+import com.foodtraceability.mapper.FoodCategoryNewMapper;
 import com.foodtraceability.mapper.FoodMapper;
 import com.foodtraceability.mapper.FoodNewMapper;
 import com.foodtraceability.service.PosApiService;
@@ -41,29 +43,50 @@ public class PosApiServiceImpl implements PosApiService {
     private final ComboIngredientNewMapper comboIngredientNewMapper;
     private final FoodCategoryMapper foodCategoryMapper;
     private final FoodNewMapper foodNewMapper;
+    /** canonical 分类表（food_categories）：POS 菜单分类此前读的是遗留空表 food_category，导致分类 Tab 全空 */
+    private final FoodCategoryNewMapper foodCategoryNewMapper;
 
     public PosApiServiceImpl(FoodMapper foodMapper,
                               DishComboNewMapper dishComboNewMapper,
                               ComboIngredientNewMapper comboIngredientNewMapper,
                               FoodCategoryMapper foodCategoryMapper,
-                              FoodNewMapper foodNewMapper) {
+                              FoodNewMapper foodNewMapper,
+                              FoodCategoryNewMapper foodCategoryNewMapper) {
         this.foodMapper = foodMapper;
         this.dishComboNewMapper = dishComboNewMapper;
         this.comboIngredientNewMapper = comboIngredientNewMapper;
         this.foodCategoryMapper = foodCategoryMapper;
         this.foodNewMapper = foodNewMapper;
+        this.foodCategoryNewMapper = foodCategoryNewMapper;
     }
 
-    @Override
+    /** foods.food_code → foods.category_id 映射（POS 菜品分组的权威来源） */
+    private Map<String, Long> canonicalCategoryByFoodCode() {
+        Map<String, Long> map = new java.util.HashMap<>();
+        foodNewMapper.selectList(null).forEach(fn -> {
+            if (fn.getFoodCode() != null && fn.getCategoryId() != null) {
+                map.put(fn.getFoodCode(), fn.getCategoryId());
+            }
+        });
+        return map;
+    }
+
     @Transactional(readOnly = true)
     public List<PosCategoryDTO> getCategories() {
-        List<FoodCategory> categories = foodCategoryMapper.selectList(
-                new LambdaQueryWrapper<FoodCategory>()
-                        .and(wrapper -> wrapper.eq(FoodCategory::getStatus, "1").or().eq(FoodCategory::getStatus, "active"))
-                        .orderByAsc(FoodCategory::getSortOrder));
-        return categories.stream().map(c -> {
+        // 与菜品一样以 food_categories（canonical）为准：遗留表 food_category 实测 0 行，读它会让菜单页分类全空
+        List<FoodCategoryNew> categories = foodCategoryNewMapper.selectList(
+                new LambdaQueryWrapper<FoodCategoryNew>()
+                        .eq(FoodCategoryNew::getStatus, 1)
+                        .and(w -> w.eq(FoodCategoryNew::getDeleted, 0).or().isNull(FoodCategoryNew::getDeleted))
+                        .orderByAsc(FoodCategoryNew::getSortOrder));
+        if (categories.isEmpty()) {
+            // 兼容：canonical 表未初始化时回退遗留表，避免整页分类消失
+            categories = java.util.List.of();
+        }
+        List<FoodCategoryNew> finalCategories = categories;
+        return finalCategories.stream().map(c -> {
             PosCategoryDTO dto = new PosCategoryDTO();
-            dto.setCategoryId(c.getCategoryCode());
+            dto.setCategoryId(String.valueOf(c.getCategoryId()));
             dto.setCategoryName(c.getCategoryName());
             dto.setSortOrder(c.getSortOrder());
             return dto;
@@ -77,16 +100,26 @@ public class PosApiServiceImpl implements PosApiService {
                 new LambdaQueryWrapper<Food>()
                         .and(wrapper -> wrapper.eq(Food::getFoodStatus, "1").or().eq(Food::getFoodStatus, "active"))
                         .orderByAsc(Food::getFoodCategory));
-        List<FoodCategory> categories = foodCategoryMapper.selectList(null);
-        Map<String, String> categoryMap = categories.stream()
-                .collect(Collectors.toMap(FoodCategory::getCategoryCode, FoodCategory::getCategoryName, (a, b) -> a));
+        // 分类名映射以 canonical 表为准（food_categories），遗留表仅作兜底
+        Map<String, String> categoryMap = new java.util.HashMap<>();
+        foodCategoryNewMapper.selectList(new LambdaQueryWrapper<FoodCategoryNew>().eq(FoodCategoryNew::getStatus, 1))
+                .forEach(c -> categoryMap.put(String.valueOf(c.getCategoryId()), c.getCategoryName()));
+        foodCategoryMapper.selectList(null).forEach(c -> {
+            if (c.getCategoryCode() != null) {
+                categoryMap.putIfAbsent(c.getCategoryCode(), c.getCategoryName());
+            }
+        });
+        final Map<String, Long> canonicalCategory = canonicalCategoryByFoodCode();
         return foods.stream().map(f -> {
             PosDishDTO dto = new PosDishDTO();
             dto.setDishId(f.getFoodCode());
             dto.setDishCode(f.getFoodCode());
             dto.setDishName(f.getFoodName());
-            dto.setCategoryId(f.getFoodCategory());
-            dto.setCategoryName(categoryMap.getOrDefault(f.getFoodCategory(), "其他"));
+            // 分组键统一用 category_id（与 getCategories 返回的 categoryId 同源），无值时才回退文本分类
+            Long cid = canonicalCategory.get(f.getFoodCode());
+            String groupKey = cid != null ? String.valueOf(cid) : f.getFoodCategory();
+            dto.setCategoryId(groupKey);
+            dto.setCategoryName(categoryMap.getOrDefault(groupKey, "其他"));
             dto.setPrice(f.getFoodPrice() != null ? f.getFoodPrice() : BigDecimal.ZERO);
             dto.setDescription(f.getFoodDesc());
             dto.setImageUrl(f.getFoodImage());
@@ -98,20 +131,52 @@ public class PosApiServiceImpl implements PosApiService {
     @Override
     @Transactional(readOnly = true)
     public List<PosDishDTO> getDishesByCategory(String categoryId) {
+        // 分类下菜品：分类归属在 canonical 表 foods.category_id 上，遗留表 food 只有文本 food_category
+        Long numericCategoryId = null;
+        try {
+            numericCategoryId = Long.parseLong(categoryId);
+        } catch (NumberFormatException ignored) {
+            // 兼容遗留的 food_category 文本分类
+        }
+        final Long catId = numericCategoryId;
+
+        List<String> codesInCategory = java.util.List.of();
+        if (catId != null) {
+            codesInCategory = foodNewMapper.selectList(
+                            new LambdaQueryWrapper<FoodNew>().eq(FoodNew::getCategoryId, catId))
+                    .stream().map(FoodNew::getFoodCode).filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toList());
+        }
+        final List<String> foodCodes = codesInCategory;
         List<Food> foods = foodMapper.selectList(
                 new LambdaQueryWrapper<Food>()
                         .and(wrapper -> wrapper.eq(Food::getFoodStatus, "1").or().eq(Food::getFoodStatus, "active"))
-                        .eq(Food::getFoodCategory, categoryId));
-        FoodCategory category = foodCategoryMapper.selectOne(
-                new LambdaQueryWrapper<FoodCategory>().eq(FoodCategory::getCategoryCode, categoryId));
-        String categoryName = category != null ? category.getCategoryName() : "其他";
+                        .and(w -> {
+                            if (!foodCodes.isEmpty()) {
+                                w.in(Food::getFoodCode, foodCodes).or().eq(Food::getFoodCategory, categoryId);
+                            } else {
+                                w.eq(Food::getFoodCategory, categoryId);
+                            }
+                        }));
+        String categoryName = "其他";
+        FoodCategoryNew categoryNew = catId != null ? foodCategoryNewMapper.selectById(catId) : null;
+        if (categoryNew != null) {
+            categoryName = categoryNew.getCategoryName();
+        } else {
+            FoodCategory category = foodCategoryMapper.selectOne(
+                    new LambdaQueryWrapper<FoodCategory>().eq(FoodCategory::getCategoryCode, categoryId));
+            categoryName = category != null ? category.getCategoryName() : "其他";
+        }
+        final String resolvedCategoryName = categoryName;
+        final Map<String, Long> canonicalCategory = canonicalCategoryByFoodCode();
         return foods.stream().map(f -> {
             PosDishDTO dto = new PosDishDTO();
             dto.setDishId(f.getFoodCode());
             dto.setDishCode(f.getFoodCode());
             dto.setDishName(f.getFoodName());
-            dto.setCategoryId(f.getFoodCategory());
-            dto.setCategoryName(categoryName);
+            Long cid = canonicalCategory.get(f.getFoodCode());
+            dto.setCategoryId(cid != null ? String.valueOf(cid) : f.getFoodCategory());
+            dto.setCategoryName(resolvedCategoryName);
             dto.setPrice(f.getFoodPrice() != null ? f.getFoodPrice() : BigDecimal.ZERO);
             dto.setDescription(f.getFoodDesc());
             dto.setImageUrl(f.getFoodImage());
