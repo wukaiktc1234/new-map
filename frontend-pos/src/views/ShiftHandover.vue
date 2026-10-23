@@ -105,7 +105,7 @@
               :key="idx"
               class="sh-order-item"
             >
-              <span class="sh-o-time">{{ formatOrderTime(order.createTime) }}</span>
+              <span class="sh-o-time">{{ formatTime(order.createTime, '--:--') }}</span>
               <span class="sh-o-no">#{{ order.orderNumber?.slice(-6) }}</span>
               <span class="sh-o-amount">¥{{ (order.totalAmount || 0).toFixed(2) }}</span>
               <span class="sh-o-method" :class="'m-' + order.paymentMethod">{{ getPaymentMethodName(order.paymentMethod) }}</span>
@@ -154,6 +154,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
+import { formatDate, formatDateTime, formatTime } from '@/utils/format'
 
 interface OrderItem {
   orderNumber: string
@@ -201,10 +202,7 @@ const updateTime = (): void => {
   currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
 }
 
-const currentDate = computed(() => {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-})
+const currentDate = computed(() => formatDate(new Date()))
 
 const paymentMethods = [
   { value: 'cash', label: '现金' },
@@ -256,15 +254,10 @@ const getStatusText = (status: string): string => {
   return map[status] || status
 }
 
-const formatOrderTime = (time: string): string => {
-  if (!time) return '--:--'
-  return time.split(' ')[1]?.slice(0, 5) || time.slice(11, 16) || '--:--'
-}
-
 const loadTodayOrders = async () => {
   loading.value = true
   try {
-    const today = new Date().toISOString().split('T')[0]
+    const today = formatDate(new Date())
     const result = await request.get('/v1/pos/orders', {
       params: { page: 1, size: 100, startDate: today, endDate: today }
     }) as { records: OrderItem[] }
@@ -281,7 +274,7 @@ const exportReport = async () => {
   try {
     const headers = ['时间', '订单号', '金额', '支付方式', '状态']
     const rows = orders.value.map(o => [
-      o.createTime, o.orderNumber, (o.totalAmount || 0).toFixed(2),
+      formatDateTime(o.createTime, ''), o.orderNumber, (o.totalAmount || 0).toFixed(2),
       getPaymentMethodName(o.paymentMethod), getStatusText(o.status)
     ])
     const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n')

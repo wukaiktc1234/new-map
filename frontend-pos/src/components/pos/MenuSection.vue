@@ -97,6 +97,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { getFullImageUrl } from '@/utils/image'
 import {
   Food,
   Bowl,
@@ -180,12 +181,6 @@ const getStockClass = (stock: number): string => {
   if (stock === 0) return 'out-of-stock'
   if (stock < 10) return 'low-stock'
   return ''
-}
-
-const getFullImageUrl = (url: string): string => {
-  if (!url) return ''
-  if (url.startsWith('http')) return url
-  return `${import.meta.env.VITE_API_BASE_URL || ''}${url}`
 }
 
 // 食物图标组件映射：根据菜品名称关键字匹配对应图标，未匹配则使用 Food 默认图标

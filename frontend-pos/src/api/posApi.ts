@@ -304,6 +304,9 @@ export interface OrderResultItem {
 export interface OrderResult {
   orderId: string;
   orderNumber: string;
+  /** POS 叫号号（A001/B023）：顾客侧展示与叫号屏/小票口径 */
+  callNumber?: string;
+  /** 取餐号（兼容旧字段，后端已与 callNumber 同值返回） */
   pickupNumber: string;
   pickupCode: string;
   status: string;
@@ -325,6 +328,8 @@ export interface OrderResult {
 export interface OrderQuery {
   orderId: string;
   orderNumber: string;
+  /** POS 叫号号（A001/B023） */
+  callNumber?: string;
   createTime: string;
   itemCount: number;
   totalAmount?: number;

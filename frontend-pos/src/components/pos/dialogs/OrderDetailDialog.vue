@@ -9,11 +9,17 @@
   >
     <div v-if="order" class="order-detail-content">
       <el-descriptions :column="2" border size="small">
+        <el-descriptions-item label="叫号号">
+          <span class="call-number-text">{{ order.callNumber || order.pickupNumber || '-' }}</span>
+        </el-descriptions-item>
         <el-descriptions-item label="订单号">
           {{ order.orderNumber }}
         </el-descriptions-item>
+        <el-descriptions-item label="桌号" v-if="order.tableNumber">
+          {{ order.tableNumber }}
+        </el-descriptions-item>
         <el-descriptions-item label="下单时间">
-          {{ order.createTime }}
+          {{ formatDateTime(order.createTime, '-') }}
         </el-descriptions-item>
         <el-descriptions-item label="支付方式">
           {{ getPaymentMethodText(order.paymentMethod) }}
@@ -90,7 +96,7 @@
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">关闭</el-button>
       <el-button
-        v-if="order && (order.status === 'completed' || order.status === 'paid')"
+        v-if="order && canRefund(order)"
         type="danger"
         @click="emit('refund', order)"
       >申请退款</el-button>
@@ -99,6 +105,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/format'
+
 interface Props {
   modelValue: boolean
   order: any | null
@@ -110,6 +118,16 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'refund', order: any): void
 }>()
+
+/**
+ * 退款可用判定（放宽口径）：未支付 / 已取消 / 已退款之外都可发起退款，
+ * 不再要求订单「已完成」——顾客刚下单或制作中退单是常态。
+ */
+function canRefund(order: any): boolean {
+  if (!order) return false
+  const status = String(order.status || '')
+  return !['pending', 'unpaid', 'cancelled', 'refunded', 'partial_refunded'].includes(status)
+}
 
 const getPaymentMethodText = (method: string) => {
   const map: Record<string, string> = {

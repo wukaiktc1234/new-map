@@ -31,7 +31,7 @@
         <div class="current-calling-section">
           <div class="section-title">当前叫号</div>
           <div class="current-number-display" v-if="currentOrder">
-            <div class="big-number">{{ currentOrder.orderNumber }}</div>
+            <div class="big-number">{{ displayNo(currentOrder) }}</div>
             <div class="order-tags">
               <span class="tag" :class="getOrderTypeClass(currentOrder.orderType)">{{ currentOrder.orderType || '堂食' }}</span>
               <span class="tag table" v-if="currentOrder.tableNumber">{{ currentOrder.tableNumber }}</span>
@@ -81,7 +81,7 @@
       <!-- 展示模式：全屏显示当前叫号信息 -->
       <div class="display-mode-content" v-if="isDisplayMode">
         <div class="display-current-number" v-if="currentOrder">
-          <div class="display-big-number">{{ currentOrder.orderNumber }}</div>
+          <div class="display-big-number">{{ displayNo(currentOrder) }}</div>
           <div class="display-order-info">
             <span class="display-tag" :class="getOrderTypeClass(currentOrder.orderType)">{{ currentOrder.orderType || '堂食' }}</span>
             <span class="display-tag table" v-if="currentOrder.tableNumber">{{ currentOrder.tableNumber }}桌</span>
@@ -114,7 +114,7 @@
               @click="selectOrder(order)"
             >
               <div class="queue-index">{{ index + 1 }}</div>
-              <div class="queue-number">{{ order.orderNumber }}</div>
+              <div class="queue-number">{{ displayNo(order) }}</div>
               <div class="queue-meta">
                 <span class="type-tag" :class="getOrderTypeClass(order.orderType)">{{ order.orderType?.charAt(0) || '堂' }}</span>
                 <span class="table-tag" v-if="order.tableNumber">{{ order.tableNumber }}</span>
@@ -143,7 +143,10 @@
 
     <el-dialog v-model="showHistoryDialog" title="叫号历史" width="700px" :lock-scroll="false">
       <el-table :data="historyList" size="small" max-height="400" v-loading="loadingHistory">
-        <el-table-column prop="orderNumber" label="订单号" width="100" />
+        <el-table-column prop="callNumber" label="叫号" width="90">
+          <template #default="{ row }">{{ row.callNumber || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="orderNumber" label="订单号" width="150" />
         <el-table-column prop="orderType" label="类型" width="80" />
         <el-table-column prop="tableNumber" label="桌号" width="80" />
         <el-table-column prop="callCount" label="叫号次数" width="80" />
@@ -216,6 +219,7 @@ import { Sunny, Moon, Bell, RefreshRight, CircleCheck, Clock, Setting, Refresh }
 import SockJS from 'sockjs-client'
 import { Client, IMessage } from '@stomp/stompjs'
 import { ttsService } from '@/services/tts'
+import { formatTime } from '@/utils/format'
 import request from '@/api/request'
 import { callNumberHardwareApi, type HardwareVoiceResponse } from '@/api/callNumberApi'
 
@@ -223,6 +227,8 @@ interface CallRecord {
   id: number
   orderId: string
   orderNumber: string
+  /** POS 叫号号（A001/B023）：叫号屏/语音对外展示此字段，订单号仅内部对账 */
+  callNumber?: string
   tableNumber?: string
   orderType?: string
   itemCount: number
@@ -299,6 +305,12 @@ const scheduleWsReconnect = () => {
 }
 let pollingInterval: number | null = null
 
+/**
+ * 叫号屏展示号码：优先 POS 叫号号（A001），历史记录没有号时回落订单号
+ */
+const displayNo = (order?: CallRecord | null): string =>
+  (order && (order.callNumber || order.orderNumber)) || ''
+
 const filteredOrders = computed(() => {
   if (filterStatus.value === 'all') {
     return pendingOrders.value.filter(o => o.status !== 'picked')
@@ -323,6 +335,7 @@ const toggleTheme = () => {
  */
 const broadcastCallEvent = (action: string, data: {
   orderNumber: string
+  callNumber?: string
   orderId: string
   tableNumber?: string
   orderType?: string
@@ -348,12 +361,6 @@ const broadcastCallEvent = (action: string, data: {
   } catch (e) {
     console.warn('[广播] localStorage 写入失败:', e)
   }
-}
-
-const formatTime = (timeStr: string) => {
-  if (!timeStr) return '-'
-  const date = new Date(timeStr)
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 const formatWaitTime = (seconds: number) => {
@@ -548,28 +555,29 @@ const callOrder = async (order: CallRecord, autoCall = false) => {
     if (voiceSettings.value.enabled) {
       // 使用硬件优先策略：先尝试硬件语音播报，不可用时回退到浏览器TTS
       await speakWithHardwareFallback({
-        orderNumber: order.orderNumber,
+        orderNumber: displayNo(order),
         tableNumber: order.tableNumber || '',
         orderType: order.orderType || '堂食',
         itemCount: order.itemCount
       })
     }
 
-    // 同时向LED显示屏发送叫号信息（非阻塞）
+    // 同时向LED显示屏发送叫号信息（非阻塞）—— 屏上显示叫号号而非订单号
     await sendToDisplay({
-      orderNumber: order.orderNumber,
+      orderNumber: displayNo(order),
       tableNumber: order.tableNumber || '',
       orderType: order.orderType || '堂食'
     })
 
     if (!autoCall) {
-      ElMessage.success(`正在叫号：${order.orderNumber}`)
+      ElMessage.success(`正在叫号：${displayNo(order)}`)
     }
     await loadStats()
 
     // 广播叫号事件到其他窗口（副屏、顾客屏）
     broadcastCallEvent('call', {
       orderNumber: order.orderNumber,
+      callNumber: order.callNumber,
       orderId: order.orderId,
       tableNumber: order.tableNumber,
       orderType: order.orderType,
@@ -598,26 +606,27 @@ const callAgain = async () => {
     if (voiceSettings.value.enabled) {
       // 重叫也使用硬件优先策略
       await speakWithHardwareFallback({
-        orderNumber: currentOrder.value.orderNumber,
+        orderNumber: displayNo(currentOrder.value),
         tableNumber: currentOrder.value.tableNumber || '',
         orderType: currentOrder.value.orderType || '堂食',
         itemCount: currentOrder.value.itemCount
       })
     }
 
-    // 重叫时也更新显示屏
+    // 重叫时也更新显示屏（叫号号）
     await sendToDisplay({
-      orderNumber: currentOrder.value.orderNumber,
+      orderNumber: displayNo(currentOrder.value),
       tableNumber: currentOrder.value.tableNumber || '',
       orderType: currentOrder.value.orderType || '堂食'
     })
 
-    ElMessage.success(`重叫：${currentOrder.value.orderNumber}`)
+    ElMessage.success(`重叫：${displayNo(currentOrder.value)}`)
     await loadStats()
 
     // 广播重叫事件到其他窗口
     broadcastCallEvent('recall', {
       orderNumber: currentOrder.value.orderNumber,
+      callNumber: currentOrder.value.callNumber,
       orderId: currentOrder.value.orderId,
       tableNumber: currentOrder.value.tableNumber,
       orderType: currentOrder.value.orderType,
@@ -652,7 +661,7 @@ const markOrderPicked = async (order: CallRecord) => {
       currentOrder.value = nextPending || null
     }
     
-    ElMessage.success(`${order.orderNumber} 已取餐`)
+    ElMessage.success(`${displayNo(order)} 已取餐`)
     await loadStats()
   } catch (e) {
     console.error('标记取餐失败:', e)
@@ -677,15 +686,15 @@ const handleNewCallRecord = async (message: IMessage) => {
 
       // 自动叫号模式：只要开启自动叫号就执行叫号（不再依赖语音开关）
       if (autoCallEnabled.value) {
-        ElMessage.success(`新订单 ${data.orderNumber}，自动叫号中...`)
+        ElMessage.success(`新订单 ${data.callNumber || data.orderNumber}，自动叫号中...`)
         try {
           await callOrder(data, true)
         } catch (e) {
           console.error('自动叫号失败:', e)
-          ElMessage.warning(`订单 ${data.orderNumber} 自动叫号失败，请手动处理`)
+          ElMessage.warning(`订单 ${data.callNumber || data.orderNumber} 自动叫号失败，请手动处理`)
         }
       } else {
-        ElMessage.success(`新订单 ${data.orderNumber} 待取餐`)
+        ElMessage.success(`新订单 ${data.callNumber || data.orderNumber} 待取餐`)
       }
 
       // 刷新统计数据
@@ -925,6 +934,7 @@ const handleCallingBroadcast = (event: Event): void => {
         ...currentOrder.value,
         orderId: orderData.orderId,
         orderNumber: orderData.orderNumber,
+        callNumber: orderData.callNumber,
         tableNumber: orderData.tableNumber,
         orderType: orderData.orderType,
         itemCount: orderData.itemCount,

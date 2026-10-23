@@ -37,7 +37,7 @@
           ></video>
           <img
             v-else-if="capturedImage"
-            :src="capturedImage"
+            :src="getFullImageUrl(capturedImage)"
             class="captured-image"
             alt="拍摄预览"
           />
@@ -164,6 +164,7 @@ import { ref, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Camera, VideoCamera, Upload } from '@element-plus/icons-vue'
 import { posApi, type YoloRecognitionResult, type YoloRecognizedProduct } from '@/api/posApi'
+import { getFullImageUrl } from '@/utils/image'
 
 interface CartItem {
   id: string

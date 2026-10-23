@@ -83,7 +83,7 @@
             </div>
             <div v-if="table.seatedAt" class="detail-row">
               <span class="label">入座时间:</span>
-              <span class="value">{{ formatTime(table.seatedAt) }}</span>
+              <span class="value">{{ formatDateTimeMinute(table.seatedAt, '') }}</span>
             </div>
           </div>
           
@@ -271,6 +271,7 @@ import {
 } from '@element-plus/icons-vue'
 import QrcodeVue from 'qrcode.vue'
 import request from '../api/request'
+import { formatDateTimeMinute } from '@/utils/format'
 
 interface DiningTable {
   id: number
@@ -365,17 +366,6 @@ const getStatusType = (status: string) => {
     reserved: 'warning'
   }
   return map[status] || 'info'
-}
-
-const formatTime = (time: string) => {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN', { 
-    year: 'numeric', 
-    month: '2-digit', 
-    day: '2-digit',
-    hour: '2-digit', 
-    minute: '2-digit' 
-  })
 }
 
 const getQrUrl = (table: DiningTable) => {

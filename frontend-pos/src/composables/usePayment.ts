@@ -116,7 +116,9 @@ export function usePayment(
 
       if (payResult?.orderId) {
         const orderNum = payResult?.orderNumber || createResult?.orderNumber || orderId
-        const pickupNum = payResult?.pickupNumber || orderNum
+        // 顾客侧展示叫号号（A001）；旧接口只回 pickupNumber 时兼容
+        const pickupNum = payResult?.callNumber || payResult?.pickupNumber
+          || (createResult as any)?.callNumber || orderNum
         const pickupCd = payResult?.pickupCode
 
         lastOrderNumber.value = orderNum

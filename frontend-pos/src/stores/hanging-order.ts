@@ -7,6 +7,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { formatDateTime } from '@/utils/format'
 
 /** 购物车商品项 */
 export interface CartItem {
@@ -122,7 +123,7 @@ export const useHangingOrderStore = defineStore('hangingOrder', () => {
         id: generateUniqueId(),
         items: JSON.parse(JSON.stringify(items)),
         totalAmount,
-        holdTime: new Date().toLocaleString('zh-CN'),
+        holdTime: formatDateTime(new Date()),
         remark
       }
 

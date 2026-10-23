@@ -60,6 +60,7 @@
     <PaymentSuccessDialog
       v-model="showPaymentSuccess"
       :order-number="lastOrderNumber"
+      :call-number="lastPickupNumber"
       :pickup-number="lastPickupNumber"
       @complete="showPaymentSuccess = false"
     />
@@ -148,6 +149,7 @@ import { useMenu } from '@/composables/useMenu'
 import { useHangingOrder } from '@/composables/useHangingOrder'
 import { useCustomerDisplayStore } from '@/stores/customer-display'
 import { useTheme } from '@/composables/useTheme'
+import { formatDate } from '@/utils/format'
 
 const router = useRouter()
 
@@ -291,8 +293,8 @@ const queryOrdersSilent = async () => {
       params.keyword = queryKeyword.value
     }
     if (queryDateRange.value && queryDateRange.value.length === 2) {
-      params.startDate = queryDateRange.value[0].toISOString().split('T')[0]
-      params.endDate = queryDateRange.value[1].toISOString().split('T')[0]
+      params.startDate = formatDate(queryDateRange.value[0])
+      params.endDate = formatDate(queryDateRange.value[1])
     }
     
     const result = await request.get('/v1/pos/orders', { params }) as any
@@ -320,8 +322,8 @@ const queryOrders = async () => {
       params.keyword = queryKeyword.value
     }
     if (queryDateRange.value && queryDateRange.value.length === 2) {
-      params.startDate = queryDateRange.value[0].toISOString().split('T')[0]
-      params.endDate = queryDateRange.value[1].toISOString().split('T')[0]
+      params.startDate = formatDate(queryDateRange.value[0])
+      params.endDate = formatDate(queryDateRange.value[1])
     }
 
     const result = await request.get('/v1/pos/orders', { params }) as any

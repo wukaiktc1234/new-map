@@ -62,8 +62,16 @@ import request from '@/api/request'
 interface CallRecord {
   orderId: string
   orderNumber: string
+  /** POS 叫号号（A001）：大屏最终展示口径，缺失时回落订单号 */
+  callNumber?: string
   status: 'pending' | 'called' | 'picked'
 }
+
+/**
+ * 大屏展示号码：优先叫号号（A001），无号时回落订单号
+ */
+const displayNo = (record?: { callNumber?: string; orderNumber?: string } | null): string =>
+  (record && (record.callNumber || record.orderNumber)) || ''
 
 // ==================== 响应式数据 ====================
 
@@ -120,8 +128,8 @@ let pollingTimer: number | null = null
 const displayPendingNumbers = computed(() => {
   // 过滤出待叫号和已叫号的订单，排除当前正在呼叫的号码
   const numbers = pendingOrders.value
-    .filter(order => order.status !== 'picked' && order.orderNumber !== currentNumber.value)
-    .map(order => order.orderNumber)
+    .filter(order => order.status !== 'picked' && displayNo(order) !== currentNumber.value)
+    .map(order => displayNo(order))
     .slice(0, 10)
   
   return numbers
@@ -168,7 +176,7 @@ const loadPendingOrders = async () => {
       if (!currentNumber.value) {
         const calledOrder = res.find(order => order.status === 'called')
         if (calledOrder) {
-          currentNumber.value = calledOrder.orderNumber
+          currentNumber.value = displayNo(calledOrder)
         }
       }
     } else {
@@ -187,9 +195,9 @@ const handleCalledEvent = (message: IMessage) => {
   try {
     const data = JSON.parse(message.body)
 
-    if (data?.orderNumber) {
-      // 触发叫号动画
-      triggerCallAnimation(data.orderNumber)
+    if (data?.orderNumber || data?.callNumber) {
+      // 触发叫号动画（叫号号优先）
+      triggerCallAnimation(displayNo(data))
       
       // 更新待取餐列表中的状态
       const existingOrder = pendingOrders.value.find(
@@ -203,6 +211,7 @@ const handleCalledEvent = (message: IMessage) => {
         pendingOrders.value.unshift({
           orderId: data.orderId,
           orderNumber: data.orderNumber,
+          callNumber: data.callNumber,
           status: data.status || 'called'
         })
       }
@@ -227,12 +236,12 @@ const handlePickedEvent = (message: IMessage) => {
       )
 
       // 如果当前正在显示的号码被取餐，清除当前号码或切换到下一个
-      if (currentNumber.value === data.orderNumber) {
+      if (currentNumber.value === displayNo(data) || currentNumber.value === data.orderNumber) {
         // 查找下一个已叫号的订单
         const nextCalled = pendingOrders.value.find(order => order.status === 'called')
         
         if (nextCalled) {
-          triggerCallAnimation(nextCalled.orderNumber)
+          triggerCallAnimation(displayNo(nextCalled))
         } else {
           currentNumber.value = ''
         }
@@ -262,6 +271,7 @@ const handleNewOrderEvent = (message: IMessage) => {
         pendingOrders.value.unshift({
           orderId: data.orderId,
           orderNumber: data.orderNumber,
+          callNumber: data.callNumber,
           status: data.status || 'pending'
         })
       }

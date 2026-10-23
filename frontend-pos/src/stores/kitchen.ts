@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { kitchenApi } from '@/api/kitchen';
+import { formatDateTime } from '@/utils/format';
 import type {
   KitchenOrderFullDTO,
   KitchenOrderStatus,
@@ -108,7 +109,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
       const data = await kitchenApi.getActiveOrdersFull();
       if (Array.isArray(data)) {
         orders.value = data;
-        lastUpdateTime.value = new Date().toLocaleString('zh-CN');
+        lastUpdateTime.value = formatDateTime(new Date());
       }
     } catch (error) {
       console.error('加载活跃订单失败:', error);
@@ -231,7 +232,7 @@ export const useKitchenStore = defineStore('kitchen', () => {
     );
     if (index !== -1) {
       orders.value[index].status = status;
-      lastUpdateTime.value = new Date().toLocaleString('zh-CN');
+      lastUpdateTime.value = formatDateTime(new Date());
     }
   }
 

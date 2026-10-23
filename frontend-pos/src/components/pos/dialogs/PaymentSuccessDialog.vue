@@ -25,13 +25,13 @@
 
       <div class="pickup-cards-wrapper">
         <div class="pickup-card main-card">
-          <div class="pickup-label">取餐号</div>
-          <div class="pickup-number">{{ pickupNumber }}</div>
+          <div class="pickup-label">叫号号</div>
+          <div class="pickup-number">{{ callNumber || pickupNumber }}</div>
         </div>
       </div>
 
       <div class="success-tip">
-        请凭取餐号到取餐区取餐
+        请凭叫号号 {{ callNumber || pickupNumber }} 到取餐区取餐
       </div>
     </div>
     <template #footer>
@@ -50,6 +50,8 @@ import { CircleCheckFilled } from '@element-plus/icons-vue'
 interface Props {
   modelValue: boolean
   orderNumber: string
+  /** POS 叫号号（A001/B023）——顾客侧展示口径 */
+  callNumber?: string
   pickupNumber: string
 }
 

@@ -19,13 +19,22 @@
           readonly
           :teleported="false"
         />
-        <el-input v-model="queryKeyword" placeholder="输入订单号或手机号搜索" style="width: 250px" clearable />
+        <el-input v-model="queryKeyword" placeholder="输入订单号/叫号号/手机号搜索" style="width: 250px" clearable />
         <el-button type="primary" @click="queryOrders">查询</el-button>
       </div>
       <div class="order-list">
         <el-table :data="orderList" style="width: 100%">
+          <el-table-column prop="callNumber" label="叫号" width="90" align="center">
+            <template #default="{ row }">
+              <span class="call-number-cell">{{ row.callNumber || '-' }}</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="orderNumber" label="订单号" min-width="140" />
-          <el-table-column prop="createTime" label="下单时间" min-width="160" />
+          <el-table-column prop="createTime" label="下单时间" min-width="160">
+            <template #default="{ row }">
+              {{ formatDateTime(row.createTime, '-') }}
+            </template>
+          </el-table-column>
           <el-table-column prop="itemCount" label="数量" width="60" align="center" />
           <el-table-column prop="totalAmount" label="金额" width="90">
             <template #default="{ row }">
@@ -42,7 +51,7 @@
             <template #default="{ row }">
               <el-button type="primary" link size="small" @click="emit('viewDetail', row)">详情</el-button>
               <el-button
-                v-if="row.status === 'completed' || row.status === 'paid'"
+                v-if="canRefund(row)"
                 type="danger"
                 link
                 size="small"
@@ -59,6 +68,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 import request from '@/api/request'
+import { formatDate, formatDateTime } from '@/utils/format'
 
 interface Props {
   modelValue: boolean
@@ -71,6 +81,17 @@ const emit = defineEmits<{
   (e: 'viewDetail', order: any): void
   (e: 'refund', order: any): void
 }>()
+
+/**
+ * 退款可用判定（放宽口径）：只要不是「未支付 / 已取消 / 已退款」即可发起退款。
+ * 真实场景里顾客刚下单或制作中就要退单是常态，不再要求「已完成」。
+ */
+function canRefund(order: any): boolean {
+  if (!order) return false
+  const status = String(order.status || '')
+  return !['pending', 'unpaid', 'cancelled', 'refunded', 'partial_refunded'].includes(status)
+}
+
 
 const queryDateRange = ref<any[]>([])
 const queryKeyword = ref<string>('')
@@ -110,8 +131,8 @@ const queryOrders = async () => {
       params.keyword = queryKeyword.value
     }
     if (queryDateRange.value && queryDateRange.value.length === 2) {
-      params.startDate = queryDateRange.value[0].toISOString().split('T')[0]
-      params.endDate = queryDateRange.value[1].toISOString().split('T')[0]
+      params.startDate = formatDate(queryDateRange.value[0])
+      params.endDate = formatDate(queryDateRange.value[1])
     }
 
     const result = await request.get('/v1/pos/orders', params) as any
@@ -134,8 +155,8 @@ const queryOrdersSilent = async () => {
       params.keyword = queryKeyword.value
     }
     if (queryDateRange.value && queryDateRange.value.length === 2) {
-      params.startDate = queryDateRange.value[0].toISOString().split('T')[0]
-      params.endDate = queryDateRange.value[1].toISOString().split('T')[0]
+      params.startDate = formatDate(queryDateRange.value[0])
+      params.endDate = formatDate(queryDateRange.value[1])
     }
 
     const result = await request.get('/v1/pos/orders', params) as any

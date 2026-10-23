@@ -43,7 +43,7 @@
           <div class="dish-list">
             <div v-for="item in cat.dishes" :key="item.id" class="dish-item">
               <div class="dish-image">
-                <img v-if="item.image" :src="getImageUrl(item.image)" :alt="item.name" @error="handleImageError" />
+                <img v-if="item.image" :src="getFullImageUrl(item.image)" :alt="item.name" @error="handleImageError" />
                 <div v-else class="no-image">
                   <el-icon :size="32"><Picture /></el-icon>
                 </div>
@@ -160,7 +160,7 @@
           <el-icon :size="48" color="#07c160"><CircleCheckFilled /></el-icon>
         </div>
         <div class="success-title">下单成功</div>
-        <div class="success-order">订单号: {{ orderNumber }}</div>
+        <div class="success-order">叫号号: {{ callNumber || orderNumber }}</div>
         <div class="success-tip">请等待服务员送餐</div>
       </div>
       <template #footer>
@@ -175,7 +175,7 @@
         <div class="orders-list" v-if="myOrders.length > 0">
           <div v-for="order in myOrders" :key="order.orderId" class="order-card">
             <div class="order-header">
-              <span class="order-number">{{ order.orderNumber }}</span>
+              <span class="order-number">{{ order.callNumber || order.orderNumber }}</span>
               <div class="order-status-group">
                 <span class="order-status" :class="getStatusClass(order.status)">
                   {{ getKitchenStatusText(order.status) }}
@@ -193,7 +193,7 @@
               </div>
             </div>
             <div class="order-footer">
-              <span class="order-time">{{ formatTime(order.createTime) }}</span>
+              <span class="order-time">{{ formatMonthDayTime(order.createTime, '') }}</span>
               <span class="order-total">合计: ¥{{ order.totalAmount }}</span>
             </div>
           </div>
@@ -220,6 +220,8 @@ import { ElMessage } from 'element-plus'
 import { ShoppingCart, Minus, Plus, CircleCheckFilled, Loading, Goods, Picture, Delete, FullScreen, Close, List, Document, Refresh } from '@element-plus/icons-vue'
 import request from '../api/request'
 import { usePosMenu } from '@/composables/usePosMenu'
+import { getFullImageUrl } from '@/utils/image'
+import { formatMonthDayTime } from '@/utils/format'
 
 interface Category {
   categoryId: string
@@ -291,6 +293,8 @@ const dishes = computed<Dish[]>(() => menuDishes.value.map(d => ({
 const showCart = ref(false)
 const showSuccess = ref(false)
 const orderNumber = ref('')
+/** POS 叫号号（A001）：顾客端下单成功页展示口径 */
+const callNumber = ref('')
 const categoryRefs = ref<Record<string, any>>({})
 // 菜品内容区域引用（滚动定位使用）
 const dishContentRef = ref<HTMLElement | null>(null)
@@ -316,15 +320,6 @@ const cartTotalCount = computed(() => {
 const cartTotalAmount = computed(() => {
   return cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
 })
-
-const getImageUrl = (url: string) => {
-  if (!url) return ''
-  if (url.startsWith('http')) return url
-  if (url.startsWith('/uploads')) {
-    return `/api${url}`
-  }
-  return url.startsWith('/') ? url : `/${url}`
-}
 
 const handleImageError = (e: Event) => {
   const target = e.target as HTMLImageElement
@@ -436,6 +431,7 @@ const submitOrder = async () => {
     
     const res = await request.post('/v1/pos/orders/order/table', orderData) as any
     orderNumber.value = res?.orderNumber || Date.now().toString().slice(-6)
+    callNumber.value = res?.callNumber || res?.pickupNumber || ''
     showSuccess.value = true
     showCart.value = false
     cart.value = []
@@ -516,12 +512,6 @@ const getStatusText = (status: string, orderStatus?: number) => {
     'cancelled': '已取消'
   }
   return statusMap[status] || '待处理'
-}
-
-const formatTime = (time: string) => {
-  if (!time) return ''
-  const date = new Date(time)
-  return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
 onMounted(() => {

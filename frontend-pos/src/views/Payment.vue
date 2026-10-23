@@ -269,6 +269,10 @@
         <!-- 订单信息卡片 -->
         <div class="order-info-card">
           <div class="info-row">
+            <span class="info-label">叫号号</span>
+            <span class="info-value success-call-number">{{ callNumber || '-' }}</span>
+          </div>
+          <div class="info-row">
             <span class="info-label">订单号</span>
             <span class="info-value">{{ orderNumber }}</span>
           </div>
@@ -389,8 +393,8 @@
 
         <!-- 订单信息 -->
         <div class="qr-order-info" v-if="currentOrderId">
-          <span class="label">订单号：</span>
-          <span class="value">{{ currentOrderId }}</span>
+          <span class="label">叫号号：</span>
+          <span class="value">{{ callNumber || '-' }}</span>
         </div>
 
         <!-- 操作提示 -->
@@ -428,6 +432,7 @@ import {
 } from '@element-plus/icons-vue'
 import QrcodeVue from 'qrcode.vue'
 import { posApi, type OrderResult, type MemberBalance } from '@/api/posApi'
+import { formatDateTime } from '@/utils/format'
 
 interface CartItem {
   id: string;
@@ -448,6 +453,8 @@ const selectedMethod = ref('wechat')
 const paying = ref(false)
 const showSuccess = ref(false)
 const orderNumber = ref('')
+/** POS 叫号号（A001/B023）：支付成功页对外展示口径 */
+const callNumber = ref('')
 const currentTime = ref('')
 const countdown = ref(5)
 const currentStep = ref(1)
@@ -505,7 +512,7 @@ let timeTimer: number | null = null
 let countdownTimer: number | null = null
 
 const updateTime = () => {
-  currentTime.value = new Date().toLocaleString('zh-CN')
+  currentTime.value = formatDateTime(new Date())
 }
 
 const getPaymentMethodName = (method: string) => {
@@ -708,6 +715,9 @@ const confirmPayment = async () => {
 
     if (payResult?.orderId) {
       orderNumber.value = payResult.orderNumber || createResult.orderNumber
+      // 顾客侧编号：叫号号（A001），无号时回落取餐号/订单号
+      callNumber.value = payResult.callNumber || payResult.pickupNumber
+        || createResult.callNumber || createResult.pickupNumber || ''
       currentOrderId.value = payResult.orderId || createResult.orderId
       showSuccess.value = true
       currentStep.value = 2
