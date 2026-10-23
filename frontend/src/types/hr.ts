@@ -94,7 +94,8 @@ export interface Department {
   departmentId?: string;
   departmentName: string;
   departmentCode?: string;
-  parentId?: string;
+  /** 上级部门ID：后端 /v1/departments 实收 number，0 表示顶级（原 string 与真实载荷不符） */
+  parentId?: number;
   level?: number;
   status?: string;
   managerId?: string;

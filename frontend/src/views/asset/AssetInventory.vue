@@ -260,6 +260,8 @@ async function handleSubmit() {
       plannedStartTime: formData.plannedStartTime!,
       plannedEndTime: formData.plannedEndTime!,
       scopeDescription: formData.scopeDescription,
+      // 盘点负责人：此前类型缺字段导致选了也传不上去（后端 DTO 早已支持）
+      creatorId: formData.creatorId,
     }
 
     if (isEdit.value && formData.id) {

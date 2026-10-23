@@ -86,15 +86,15 @@ export interface MaterialArchiveFormData {
   /** 参考价（元） */
   referencePrice: number;
   /** 条码 */
-  barcode: string;
+  barcode?: string;
   /** 产地 */
-  origin: string;
+  origin?: string;
   /** 保质期 */
-  shelfLife: string;
+  shelfLife?: string;
   /** 存储条件 */
-  storageCondition: string;
+  storageCondition?: string;
   /** 使用部门ID */
-  departmentId: string;
+  departmentId?: string;
   /** 供应商ID */
   supplierId: string;
   /** 备注 */

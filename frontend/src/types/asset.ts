@@ -603,6 +603,8 @@ export interface InventoryCreateDTO {
   plannedEndTime: string
   scopeDescription?: string
   assetIds?: string[]
+  /** 盘点负责人ID（后端 InventoryCreateDTO 已支持，此前前端缺失导致负责人无法提交） */
+  creatorId?: string
 }
 
 /** 创建维修记录DTO */
