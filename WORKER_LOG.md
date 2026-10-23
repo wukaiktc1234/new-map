@@ -327,3 +327,59 @@
 1. **`BankAccountManage` 的语义收窄**：主干没有 scope/组织/门店归属列，页面不再提供该维度筛选与展示；如产品确定要「账户归属」，需先加 `bank_accounts.scope/organization_id/store_id` 列与 DTO 字段。
 2. **收编的两个页面未做浏览器级联调**：本轮只做类型与编译收口 + 接口打通，交互细节（签名画板、扫码桥、离线暂存重传）仍建议明天真机过一遍。
 3. 全仓仍有 **49 条** TS 报错（`PurchaseOrder` 4 / `OrderStatistics` 4 / `PurchaseArchive` 4 / `PurchaseReport` 3 / `SealManagement` 3 / `SupplierArchive` 3 …），均为既有页面，下一轮继续清。
+
+---
+
+## 12. 业务主链路闭环行动（2026-10-23 12:1x）
+
+### 12.1 优先级 1：统一 POS 支付入口（消灭后门）
+
+`POST /v1/pos/orders/order/pay`（`PosOrderPaymentServiceImpl.payOrder`）改为**新表优先、旧表兜底**：
+
+- 先按 `orderId` 查 `orders`；命中则走新链路：金额校验（`PayRequestDTO.amount` 元 → 分，与 `final_amount - paid_amount` 严格比对）、写 `order_payment_records`、回写 `orders.payment_status=2 / paid_amount`，并返回 `OrderResultDTO`（金额、明细按分转元）；
+- 未命中 → 打 WARN 回落原有 `orders_legacy` 全流程（CAS 锁、二维码、余额支付等一条未动）；
+- 新表支付方式编码独立：1现金/2微信/3支付宝/4银行卡/5积分（与旧表 0/1/2/3/4 不同，已加注释禁止混用）；
+- `POST /v1/pos/orders/{orderId}/quick-pay` 已标 `@Deprecated` 并在 Javadoc 写明替代入口。
+
+E2E `e2e_core_chain.py` 已改回标准 `order/pay`：**PASS=12 FAIL=0 SKIP=1**（托盘无空闲）。
+
+### 12.2 优先级 2：收编页面自动联调自查
+
+新增 `scripts/e2e_wip_pages.py`（自签 admin JWT + 直连活库断言），**9/9 全通过**：
+
+| 场景 | 证据 |
+|---|---|
+| 收货签名存证（base64 PNG） | `POST /{id}/signatures` 200；`receipt_confirmation_signatures` 记录数 0→1；`GET /{id}/signatures` 返回 1 条 |
+| 防伪码-无效码 | `GET /verify/ZZZZ…` → 200 `valid=false`（限流 10/60s） |
+| 防伪码-有效码 | `GET /verify/ZPLWA4MYLQ9AQULC` → `valid=true`，`confirmationCode=RC202607310001` |
+| 银行账户新建 | `POST /v1/finance/bank-accounts` 200，accountId=7 |
+| 银行账户启停 | `PUT /{id}`（`BankAccountUpdateDTO.status=3`）200，活库 `status=3` |
+| 清理 | `DELETE /{id}` 200 |
+
+顺带修正一处真实契约错位：前端 `accountNo` ↔ 后端 `accountNumber`，此前新建账户**账号写不进去**；已在 `BankAccountDataConverter` 双向映射。
+
+### 12.3 优先级 3：前端 TS 报错清零（49 → 0）
+
+由 3 个并行子代理分域收口（文件域互不重叠），lead 收最后 3 条：
+
+| 域 | 起始 | 结束 | 关键修法 |
+|---|---|---|---|
+| purchase（11 文件） | 23 | 0 | 本地 ColumnDef → DataTableColumn；查询体对齐 API 真实字段（applicantName→createByName、orderNo→orderCode）；PurchaseArchive 补齐漏传的必填字段 |
+| hr + asset（5 文件） | 7 | 0 | reduce 泛型、withDefaults 默认值类型、createTime 空值收窄、Department 载荷本地类型 |
+| order/seal/store-ops/operations（9 文件） | 17 | 0 | 图标改名（BankCard→CreditCard、Refund→RefreshLeft、Transfer→Sort）；ChartData.storeRank 字段纠正（原写法永远显示 0）；状态标签索引收口；`size="default"`→`small` |
+| lead 收尾（3 文件） | 3 | 0 | 移除不存在的 `Copy` 图标；MaterialTraceCode 列类型同源；TraceabilityQuality 本地表单类型补 `materialName` |
+
+**`npx vue-tsc --noEmit` → 0 error**。
+
+### 12.4 顺带修掉的真实契约缺陷
+
+- 前端 `accountNo` ↔ 后端 `accountNumber`：新建银行账户时账号从未写库；已在 `BankAccountDataConverter` 双向映射。
+- `PurchaseArchive` 提交体漏传 `barcode/origin/shelfLife/storageCondition/departmentId`（后端必填为空）。
+- `PurchaseOrder` 到货查询用 `orderNo`（API 不消费，等于未过滤取首条）→ 改 `orderCode`。
+- `ReportCenter` TOP 榜用 `storeRanking`（实际字段 `storeRank`）→ 永远显示 0。
+
+### 12.5 三条留给 Owner 决策的共享类型建议（未改，避免影响面扩散）
+
+1. `types/asset.ts` `InventoryCreateDTO` 缺 `creatorId?: string` —— 盘点负责人目前只在表单态存在，不随 create 提交。
+2. `types/hr.ts` `Department.parentId?: string` 与后端实收 number（0=顶级）不符，已在视图内本地断言收口。
+3. `types/purchase-archive.ts` `MaterialArchiveFormData` 五个字段前端只能填 `''`（后端允许空），建议改可选。
