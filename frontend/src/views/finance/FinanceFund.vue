@@ -320,10 +320,25 @@ const orderLoading = ref(false)
 /** 订单查询失败时的降级文案（无权限 / 不存在 / 暂不可用） */
 const orderErrorText = ref('')
 
-/** 备注原文（remark 优先，其次 Converter 映射出的 summary） */
+/**
+ * 备注展示文案：正文优先（remark → summary），并去掉给机器用的关联 token `[orderId=xxx]`。
+ * 内部 ID 对业务人员无意义（与「订单ID 不展示」同一口径），原始值仍保留在 detailData 里供解析使用。
+ */
 const detailRemarkText = computed<string>(() => {
   const remark = (detailData.value.remark as string) || (detailData.value.summary as string) || ''
-  return remark || '-'
+  const cleaned = remark.replace(/\[orderId=[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim()
+  return cleaned || '-'
+})
+
+/** 操作人展示：优先姓名/用户名，其次审计列 createdBy/create_by，避免出现 '-' */
+const detailOperatorText = computed<string>(() => {
+  const d = detailData.value
+  const text =
+    (d.createUserName as string) ||
+    (d.createBy as string) ||
+    (d.createdBy as string) ||
+    ''
+  return String(text).trim() || '-'
 })
 
 /** 关联订单菜品小计合计（元） */
@@ -331,6 +346,46 @@ const orderItemsTotal = computed<number>(() => {
   const items = orderTrace.value?.items ?? []
   const total = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
   return Math.round(total * 100) / 100
+})
+
+/** 订单状态 → StatusTag 颜色（与系统其它页面同源组件，避免裸文本） */
+const orderStatusMeta = computed<{ tag: string; label: string }>(() => {
+  const raw = String(orderTrace.value?.status ?? '').trim()
+  const normalized = raw.toLowerCase()
+  const map: Record<string, { tag: string; label: string }> = {
+    pending: { tag: 'warning', label: '待确认' },
+    confirmed: { tag: 'primary', label: '已确认' },
+    paid: { tag: 'success', label: '已支付' },
+    making: { tag: 'warning', label: '制作中' },
+    completed: { tag: 'success', label: '已完成' },
+    cancelled: { tag: 'info', label: '已取消' },
+    partial_refunded: { tag: 'danger', label: '部分退款' },
+    refunded: { tag: 'danger', label: '全额退款' },
+  }
+  if (map[normalized]) return map[normalized]
+  // 后端已给中文（如「已完成」）时直接展示，颜色按关键字推断
+  if (raw) {
+    if (/完成|已支付|已确认/.test(raw)) return { tag: 'success', label: raw }
+    if (/退/.test(raw)) return { tag: 'danger', label: raw }
+    if (/取消/.test(raw)) return { tag: 'info', label: raw }
+    return { tag: 'warning', label: raw }
+  }
+  return { tag: 'info', label: '-' }
+})
+
+/** 支付方式展示：优先后端中文名，其次代码映射，空值统一「未记录」而不是 '-' */
+const paymentMethodText = computed<string>(() => {
+  const trace = orderTrace.value as (PosOrderTrace & { paymentMethodName?: string }) | null
+  const name = String(trace?.paymentMethodName ?? '').trim()
+  if (name && name !== '-') return name
+  const code = String(trace?.paymentMethod ?? '').trim()
+  const codeMap: Record<string, string> = {
+    '1': '现金', '2': '微信支付', '3': '支付宝', '4': '银行卡', '5': '余额支付', '0': '未记录',
+    cash: '现金', wechat: '微信支付', alipay: '支付宝', card: '银行卡', balance: '余额支付',
+  }
+  if (codeMap[code]) return codeMap[code]
+  if (code && code !== '-') return code
+  return '未记录'
 })
 
 /** 后端 LocalDateTime.toString() 形如 2026-10-23T22:30:42.064207 → 统一 YYYY-MM-DD HH:mm:ss */
@@ -397,6 +452,31 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
     }
   }
 
+  // 后端已把订单摘要塞进流水详情（posOrder）时直接用，避免再打 3 个端点、也避免权限降级噪音；
+  // 字段：orderNumber/orderTime/paymentMethodName/orderStatusName/orderStatusCode/orderAmount/items
+  const backendOrder = detailData.value.posOrder as Record<string, unknown> | undefined | null
+  if (backendOrder && typeof backendOrder === 'object') {
+    const rawItems = (backendOrder.items as Array<Record<string, unknown>> | undefined) ?? []
+    orderTrace.value = {
+      orderNumber: String(backendOrder.orderNumber ?? posOrderRef.value?.orderNumber ?? ''),
+      orderId: '',
+      createTime: String(backendOrder.orderTime ?? ''),
+      paymentMethod: String(backendOrder.paymentMethodName ?? ''),
+      paymentMethodName: String(backendOrder.paymentMethodName ?? ''),
+      status: String(backendOrder.orderStatusName ?? backendOrder.orderStatusCode ?? ''),
+      totalAmount: Number(backendOrder.orderAmount ?? 0),
+      items: rawItems.map((it) => ({
+        name: String(it.name ?? ''),
+        price: Number(it.price ?? 0),
+        quantity: Number(it.quantity ?? 0),
+        amount: Number(it.amount ?? 0),
+      })),
+    } as unknown as PosOrderTrace
+    orderErrorText.value = ''
+    orderLoading.value = false
+    return
+  }
+
   if (posOrderRef.value) {
     await loadPosOrderTrace(posOrderRef.value)
   }
@@ -459,7 +539,7 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
           <el-descriptions-item label="银行账户">{{ (detailData.bankAccountName as string) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="对方单位">{{ (detailData.counterparty as string) || '-' }}</el-descriptions-item>
           <el-descriptions-item label="凭证号">{{ (detailData.voucherNo as string) || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="操作人">{{ (detailData.createUserName as string) || (detailData.createBy as string) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="操作人">{{ detailOperatorText }}</el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">
             <span class="fund-detail__remark">{{ detailRemarkText }}</span>
           </el-descriptions-item>
@@ -469,19 +549,30 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
           <div class="order-section__title">关联 POS 订单</div>
 
           <template v-if="posOrderRef">
-            <el-descriptions :column="2" border label-class-name="detail-label">
-              <el-descriptions-item label="订单号">{{ posOrderRef.orderNumber || '-' }}</el-descriptions-item>
-              <el-descriptions-item label="订单ID">{{ posOrderRef.orderId || '-' }}</el-descriptions-item>
-            </el-descriptions>
-
             <div v-if="orderLoading" class="order-loading">正在查询订单明细...</div>
 
             <template v-else-if="orderTrace">
-              <el-descriptions :column="2" border label-class-name="detail-label" class="order-meta">
+              <!-- 统一网格：2 列、带边框、标签列固定宽度，保证「订单号/下单时间/支付方式/订单状态/订单金额」严格对齐。
+                   内部订单ID 属系统内部标识，对业务人员无意义，界面上不展示。 -->
+              <el-descriptions
+                :column="2"
+                border
+                size="default"
+                class="order-meta"
+                label-class-name="detail-label"
+                content-class-name="detail-content"
+              >
+                <el-descriptions-item label="订单号">
+                  <span class="mono">{{ posOrderRef.orderNumber || '-' }}</span>
+                </el-descriptions-item>
                 <el-descriptions-item label="下单时间">{{ formatOrderTime(orderTrace.createTime) }}</el-descriptions-item>
-                <el-descriptions-item label="支付方式">{{ orderTrace.paymentMethod || '-' }}</el-descriptions-item>
-                <el-descriptions-item label="订单状态">{{ orderTrace.status || '-' }}</el-descriptions-item>
-                <el-descriptions-item label="订单金额(元)">{{ formatYuan(orderTrace.totalAmount) }}</el-descriptions-item>
+                <el-descriptions-item label="支付方式">{{ paymentMethodText }}</el-descriptions-item>
+                <el-descriptions-item label="订单状态">
+                  <StatusTag :status="orderStatusMeta.tag" :label="orderStatusMeta.label" size="small" />
+                </el-descriptions-item>
+                <el-descriptions-item label="订单金额(元)" :span="2">
+                  <span class="amount-strong">{{ formatYuan(orderTrace.totalAmount) }}</span>
+                </el-descriptions-item>
               </el-descriptions>
 
               <table v-if="orderTrace.items.length" class="order-items-table">
@@ -576,6 +667,39 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
   margin-top: 10px;
 }
 
+/* 统一网格：标签列固定宽度（12em），内容列等分，保证上下两个 descriptions 与明细表左边界对齐 */
+.order-meta :deep(.detail-label) {
+  width: 12em;
+  min-width: 12em;
+  color: var(--el-text-color-regular, #606266);
+  background: var(--el-fill-color-light, #f5f7fa);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.order-meta :deep(.detail-content) {
+  color: var(--el-text-color-primary, #303133);
+}
+
+.order-meta :deep(.el-descriptions__table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.order-meta :deep(.el-descriptions__cell) {
+  padding: 8px 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
+.amount-strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .order-loading {
   padding: 12px 0;
   font-size: 13px;
@@ -590,9 +714,11 @@ async function handleViewDetail(row: Record<string, unknown>): Promise<void> {
 
 .order-items-table {
   width: 100%;
-  margin-top: 10px;
+  /* 与上方 descriptions 同一边界与间距 */
+  margin: 12px 0 0;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
 }
 
 .order-items-table th,

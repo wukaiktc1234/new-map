@@ -5,9 +5,15 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.dto.finance.*;
+import com.foodtraceability.entity.OrderItemNew;
+import com.foodtraceability.entity.OrderNew;
+import com.foodtraceability.entity.OrderPaymentRecordNew;
 import com.foodtraceability.entity.finance.BankAccount;
 import com.foodtraceability.entity.finance.FundFlow;
 import com.foodtraceability.exception.BusinessException;
+import com.foodtraceability.mapper.OrderItemNewMapper;
+import com.foodtraceability.mapper.OrderNewMapper;
+import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.mapper.finance.BankAccountMapper;
 import com.foodtraceability.mapper.finance.FundFlowMapper;
 import com.foodtraceability.service.finance.FundFlowService;
@@ -18,11 +24,16 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -35,12 +46,27 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
 
     private static final Logger log = LoggerFactory.getLogger(FundFlowServiceImpl.class);
 
+    /** POS 销售入账备注解析：POS销售入账：<orderNumber>[orderId=<orderId>] */
+    private static final Pattern POS_SALE_REMARK_PATTERN =
+            Pattern.compile("POS销售入账[:：]\\s*([^\\[\\]]+?)\\s*\\[orderId=([^\\]]+)\\]");
+    private static final DateTimeFormatter ORDER_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private final BankAccountMapper bankAccountMapper;
     private final FundFlowMapper fundFlowMapper;
+    /** 详情接口透出 POS 订单摘要所需的订单侧 mapper（列表接口不查，避免 N+1） */
+    private final OrderNewMapper orderNewMapper;
+    private final OrderItemNewMapper orderItemNewMapper;
+    private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
 
-    public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper) {
+    public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper,
+                               OrderNewMapper orderNewMapper, OrderItemNewMapper orderItemNewMapper,
+                               OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
+        this.orderNewMapper = orderNewMapper;
+        this.orderItemNewMapper = orderItemNewMapper;
+        this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
     }
 
     @Override
@@ -116,7 +142,9 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         if (entity == null) {
             return null;
         }
-        return convertToVO(entity);
+        // 详情接口额外透出 POS 订单摘要（支付方式中文/状态中文/明细），
+        // 前端详情弹窗无需再打订单/支付方式接口，也避免订单接口 403 降级后显示 "-"。
+        return convertToVO(entity, true);
     }
 
     @Override
@@ -239,9 +267,18 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     }
 
     /**
-     * 实体转VO
+     * 实体转VO（不含 POS 订单摘要，列表接口用）
      */
     private FundFlowVO convertToVO(FundFlow entity) {
+        return convertToVO(entity, false);
+    }
+
+    /**
+     * 实体转VO
+     *
+     * @param withPosOrder 是否附带 POS 订单摘要（仅详情接口传 true；列表接口不查，避免 N+1）
+     */
+    private FundFlowVO convertToVO(FundFlow entity, boolean withPosOrder) {
         FundFlowVO vo = new FundFlowVO();
         BeanUtils.copyProperties(entity, vo);
         // 状态兜底：历史行可能是 0/NULL（无对应状态），统一按「待处理」呈现，避免前端显示「未知」
@@ -249,7 +286,149 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
             vo.setStatus(1);
         }
         vo.setStatusName(getStatusName(vo.getStatus()));
+        // 操作人展示名：BeanUtils 已复制同名字段，这里再兜底一次（历史行 created_by 为空时前端显示 '-'）
+        if (vo.getCreatedBy() == null && entity.getCreatedBy() != null) {
+            vo.setCreatedBy(entity.getCreatedBy());
+        }
+        if (withPosOrder) {
+            vo.setPosOrder(buildPosOrderSummary(entity.getRemark()));
+        }
         return vo;
+    }
+
+    // ==================== POS 订单摘要（详情接口） ====================
+
+    /**
+     * 从流水备注解析 POS 订单并组装摘要。
+     *
+     * <p>备注口径由 {@code PosSaleFinanceRecorder.buildSaleRemark} 统一生成：
+     * {@code POS销售入账：<orderNumber>[orderId=<orderId>]}。解析不到（非 POS 入账流水）返回 null，
+     * 不影响既有详情接口的其它字段。</p>
+     *
+     * <p>返回体<b>不含 orderId</b>：前端要求隐藏内部ID，订单号即可满足展示与追溯。</p>
+     */
+    private FundFlowVO.PosOrderSummary buildPosOrderSummary(String remark) {
+        try {
+            String orderNumber = null;
+            String orderId = null;
+            if (remark != null) {
+                Matcher matcher = POS_SALE_REMARK_PATTERN.matcher(remark);
+                if (matcher.find()) {
+                    orderNumber = matcher.group(1) != null ? matcher.group(1).trim() : null;
+                    orderId = matcher.group(2) != null ? matcher.group(2).trim() : null;
+                }
+            }
+            if ((orderNumber == null || orderNumber.isEmpty()) && (orderId == null || orderId.isEmpty())) {
+                return null;
+            }
+
+            OrderNew order = findOrder(orderId, orderNumber);
+            if (order == null) {
+                return null;
+            }
+
+            FundFlowVO.PosOrderSummary summary = new FundFlowVO.PosOrderSummary();
+            summary.setOrderNumber(order.getOrderNumber() != null ? order.getOrderNumber() : order.getOrderCode());
+            summary.setOrderTime(order.getCreateTime() != null
+                    ? order.getCreateTime().format(ORDER_TIME_FORMATTER) : null);
+            summary.setOrderStatusCode(order.getOrderStatus());
+            summary.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
+            summary.setPaymentMethodName(resolvePaymentMethodName(order.getOrderId()));
+            summary.setOrderAmount(centsToYuan(order.getFinalAmount() != null
+                    ? order.getFinalAmount() : order.getTotalAmount()));
+            summary.setItems(loadOrderItems(order.getOrderId()));
+            return summary;
+        } catch (Exception e) {
+            // 摘要只是详情增强：任何异常都不能让详情接口失败
+            log.warn("组装 POS 订单摘要失败（详情接口降级返回空摘要）: remark={}, error={}", remark, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 先按 orderId 精确查，查不到再按 orderNumber 兜底（历史备注可能只有订单号） */
+    private OrderNew findOrder(String orderId, String orderNumber) {
+        if (orderId != null && !orderId.isEmpty()) {
+            OrderNew byId = orderNewMapper.selectById(orderId);
+            if (byId != null) {
+                return byId;
+            }
+        }
+        if (orderNumber != null && !orderNumber.isEmpty()) {
+            return orderNewMapper.selectOne(new LambdaQueryWrapper<OrderNew>()
+                    .and(w -> w.eq(OrderNew::getOrderNumber, orderNumber)
+                            .or().eq(OrderNew::getOrderCode, orderNumber))
+                    .last("LIMIT 1"));
+        }
+        return null;
+    }
+
+    /** 支付方式中文：取 order_payment_records 最近一条；没有记录返回「未记录」（不返回 "-"） */
+    private String resolvePaymentMethodName(String orderId) {
+        if (orderId == null || orderId.isEmpty()) {
+            return "未记录";
+        }
+        List<OrderPaymentRecordNew> records = orderPaymentRecordNewMapper.selectByOrderId(orderId);
+        if (records == null || records.isEmpty()) {
+            return "未记录";
+        }
+        // mapper 按 payment_time ASC，取最后一条（最近一次支付）
+        Integer method = records.get(records.size() - 1).getPaymentMethod();
+        return switch (method != null ? method : -1) {
+            case 1 -> "现金";
+            case 2 -> "微信支付";
+            case 3 -> "支付宝";
+            case 4 -> "银行卡";
+            case 5 -> "余额支付";
+            default -> "未记录";
+        };
+    }
+
+    /** 订单状态中文（canonical orders.order_status：0待确认 1已确认 2已完成 3已取消 4部分退款 5全额退款） */
+    private String getOrderStatusName(Integer orderStatus) {
+        if (orderStatus == null) {
+            return "待确认";
+        }
+        return switch (orderStatus) {
+            case 1 -> "已确认";
+            case 2 -> "已完成";
+            case 3 -> "已取消";
+            case 4 -> "部分退款";
+            case 5 -> "全额退款";
+            default -> "待确认";
+        };
+    }
+
+    /** 订单明细（元）：单价/小计由「分」转「元」 */
+    private List<FundFlowVO.PosOrderItem> loadOrderItems(String orderId) {
+        if (orderId == null || orderId.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<OrderItemNew> items = orderItemNewMapper.selectList(
+                new LambdaQueryWrapper<OrderItemNew>().eq(OrderItemNew::getOrderId, orderId));
+        List<FundFlowVO.PosOrderItem> result = new ArrayList<>();
+        if (items == null) {
+            return result;
+        }
+        for (OrderItemNew item : items) {
+            FundFlowVO.PosOrderItem row = new FundFlowVO.PosOrderItem();
+            row.setName(item.getProductName());
+            row.setQuantity(item.getQuantity());
+            row.setPrice(centsToYuan(item.getUnitPrice()));
+            row.setAmount(item.getAmount() != null
+                    ? centsToYuan(item.getAmount())
+                    : centsToYuan(item.getUnitPrice() != null && item.getQuantity() != null
+                            ? item.getUnitPrice() * item.getQuantity() : null));
+            result.add(row);
+        }
+        return result;
+    }
+
+    /** 分 → 元（保留 2 位） */
+    private BigDecimal centsToYuan(Long cents) {
+        if (cents == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(cents).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
     }
 
     /**

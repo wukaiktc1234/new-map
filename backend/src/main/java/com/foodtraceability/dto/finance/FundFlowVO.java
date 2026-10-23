@@ -4,8 +4,10 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 资金流水VO
@@ -57,6 +59,9 @@ public class FundFlowVO implements Serializable {
     @Schema(description = "创建人ID")
     private Long createUserId;
 
+    /** 操作人展示名（fund_flows.created_by，如 vcashier01），供前端「操作人」列/详情展示 */
+    private String createdBy;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
@@ -66,6 +71,109 @@ public class FundFlowVO implements Serializable {
 
     @Schema(description = "流水状态名称：待处理/已完成/已取消")
     private String statusName;
+
+    /**
+     * POS 订单摘要（可选字段，仅详情接口返回；非 POS 销售入账流水为 null）。
+     *
+     * <p>刻意<b>不</b>透出 orderId：前端详情弹窗只展示人类可读信息，内部订单ID对使用者无意义。</p>
+     */
+    @Schema(description = "POS 订单摘要（仅详情接口，非 POS 入账流水为 null）")
+    private PosOrderSummary posOrder;
+
+    /** POS 订单摘要 */
+    @Schema(description = "POS 订单摘要")
+    public static class PosOrderSummary implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        @Schema(description = "订单号", example = "T202610230150")
+        private String orderNumber;
+
+        @Schema(description = "下单时间", example = "2026-10-23 22:56:20")
+        private String orderTime;
+
+        @Schema(description = "支付方式中文", example = "现金")
+        private String paymentMethodName;
+
+        @Schema(description = "订单状态中文", example = "已完成")
+        private String orderStatusName;
+
+        @Schema(description = "订单状态原始码（供前端选色）", example = "2")
+        private Integer orderStatusCode;
+
+        @Schema(description = "订单金额（元）", example = "18.00")
+        private BigDecimal orderAmount;
+
+        @Schema(description = "订单明细")
+        private List<PosOrderItem> items;
+
+        public String getOrderNumber() { return orderNumber; }
+
+        public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+
+        public String getOrderTime() { return orderTime; }
+
+        public void setOrderTime(String orderTime) { this.orderTime = orderTime; }
+
+        public String getPaymentMethodName() { return paymentMethodName; }
+
+        public void setPaymentMethodName(String paymentMethodName) { this.paymentMethodName = paymentMethodName; }
+
+        public String getOrderStatusName() { return orderStatusName; }
+
+        public void setOrderStatusName(String orderStatusName) { this.orderStatusName = orderStatusName; }
+
+        public Integer getOrderStatusCode() { return orderStatusCode; }
+
+        public void setOrderStatusCode(Integer orderStatusCode) { this.orderStatusCode = orderStatusCode; }
+
+        public BigDecimal getOrderAmount() { return orderAmount; }
+
+        public void setOrderAmount(BigDecimal orderAmount) { this.orderAmount = orderAmount; }
+
+        public List<PosOrderItem> getItems() { return items; }
+
+        public void setItems(List<PosOrderItem> items) { this.items = items; }
+    }
+
+    /** POS 订单明细行（金额单位：元） */
+    @Schema(description = "POS 订单明细行")
+    public static class PosOrderItem implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        @Schema(description = "菜品名称")
+        private String name;
+
+        @Schema(description = "单价（元）")
+        private BigDecimal price;
+
+        @Schema(description = "数量")
+        private Integer quantity;
+
+        @Schema(description = "小计（元）")
+        private BigDecimal amount;
+
+        public String getName() { return name; }
+
+        public void setName(String name) { this.name = name; }
+
+        public BigDecimal getPrice() { return price; }
+
+        public void setPrice(BigDecimal price) { this.price = price; }
+
+        public Integer getQuantity() { return quantity; }
+
+        public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+        public BigDecimal getAmount() { return amount; }
+
+        public void setAmount(BigDecimal amount) { this.amount = amount; }
+    }
+
+    public PosOrderSummary getPosOrder() { return posOrder; }
+
+    public void setPosOrder(PosOrderSummary posOrder) { this.posOrder = posOrder; }
 
     public Long getFlowId() {
         return flowId;
@@ -169,6 +277,14 @@ public class FundFlowVO implements Serializable {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
     }
 
     public Long getCreateUserId() {
