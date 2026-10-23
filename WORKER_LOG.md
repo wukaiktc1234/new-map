@@ -286,3 +286,44 @@
 2. **列表混合期只显示新表**：`getOrders` 在「新表有数据」时不会合并旧表记录，历史单只能靠 `getOrderDetail` 精确单号查询或直接查旧表接口。若需要新旧混排，需要在应用层做双查合并 + 去重 + 统一分页（工作量另计）。
 3. **支付写入路径未动**：`PosOrderPaymentServiceImpl`（`POST /v1/pos/orders/order/pay`）仍固定读 `orders_legacy`，本次只迁移**查询**。POS 新单支付请走 `POST /v1/pos/orders/{orderId}/quick-pay`；若要统一旧支付入口，需 Owner 另行批准。
 4. **金额单位不可混用**：新表 `total_amount/final_amount/paid_amount/refund_amount/unit_price/amount` 均为「分」，旧表为「元」。任何新的对账/导出逻辑必须显式选择一侧口径，禁止直接相加。
+
+---
+
+## 11. WIP 页面收编：ReceivingMobile.vue / BankAccountManage.vue（2026-10-23 12:0x）
+
+### 11.1 事实澄清
+
+这两个文件在 `wip/night-merge-handover-20261023` 快照里**并不存在**——当时 `git add -u` 只快照已跟踪文件，它们是工作区里的未跟踪文件；后续 `git add -A frontend/src` 已把它们随 `41d7cc8` 一并提交进 master。所以本轮不是「从分支 checkout」，而是**在主干上补齐这两个半成品**。
+
+### 11.2 后端缺口（已补）
+
+`ReceiptConfirmationController` 缺 4 个接口（Service 实现、实体、Mapper、DTO 主干早已具备）：
+
+| 接口 | 说明 |
+|---|---|
+| `POST /v1/receipt-confirmations/{id}/signatures` | 收货方/供应商双签存证 |
+| `GET /v1/receipt-confirmations/{id}/signatures` | 签名列表 |
+| `POST /v1/receipt-confirmations/{id}/print-records` | 打印登记（服务端计数，防打印泛滥） |
+| `GET /v1/receipt-confirmations/verify/{verifyCode}` | 防伪码查验（免登录 + `@RateLimit` 10 次/60s） |
+
+冒烟：`verify/0000...` → `HTTP 200 {"code":0,...,"valid":false,"message":"防伪码不存在..."}`；`GET /1/signatures` 无 token → 401（鉴权生效）。
+
+### 11.3 前端补齐
+
+- `types/purchase-arrival.ts`：新增 `ReceiptEvidenceForm`（含离线暂存字段）、`ReceiptSignatureInfo`、`ReceiptVerifyResult`；明细补 `quantity/accept/evidence/manualMatched/qualityCheckResult/supplierName`，`confirmedQuantity/rejectedQuantity` 改可选（由 converter 按 `quantity` 兜底映射）。
+- `api/receipt-confirmation.ts`：新增 `addSignature/getSignatures/recordPrint/verifyByCode`；`toCreateDTO` 现在把逐条 `qualityCheckResult` 与 `evidence[]` 一并上送（后端 `saveEvidence` 落 `receipt_evidence`）。
+- `types/purchase-archive.ts`：`MaterialArchiveQueryForm` 补 `barcode`（扫码收货按码匹配商品）。
+- `BankAccountManage.vue`：**按主干真实模型重写**——原 WIP 假设 `scope/organizationId/storeId/derivedBalance/reconciliationStatus/accountType='bank'` 等字段，但后端 `bank_accounts` 表与 DTO 全都没有，属「UI 展示不存在的列」。现改为 `basic/general/payroll/reserve/other` 五种类型 + `active/frozen/closed` 状态，账号字段 `accountNo`，启停走 update（`BankAccountUpdateDTO` 支持 status）。
+- 顺带：`PurchasePlan` 表单 `items` 改必填（消 8 条 TS18048）、`RoleManagementTab` 断言与 `assignRoles(String)` 修正（6 条）。
+
+### 11.4 验证
+
+- `vue-tsc --noEmit`：**168 → 49**；`ReceivingMobile.vue` 85 条、`BankAccountManage.vue` 18 条 **全部清零**，新增的 `VerifyCodePage.vue` 也已 0 报错。
+- `mvn -o compile` BUILD SUCCESS；后端重启 `ERROR=0`。
+- E2E `scripts/e2e_core_chain.py`：核心链路仍全绿（EXIT=0；托盘 SKIP 为无空闲托盘）。
+
+### 11.5 剩余风险 / 未做
+
+1. **`BankAccountManage` 的语义收窄**：主干没有 scope/组织/门店归属列，页面不再提供该维度筛选与展示；如产品确定要「账户归属」，需先加 `bank_accounts.scope/organization_id/store_id` 列与 DTO 字段。
+2. **收编的两个页面未做浏览器级联调**：本轮只做类型与编译收口 + 接口打通，交互细节（签名画板、扫码桥、离线暂存重传）仍建议明天真机过一遍。
+3. 全仓仍有 **49 条** TS 报错（`PurchaseOrder` 4 / `OrderStatistics` 4 / `PurchaseArchive` 4 / `PurchaseReport` 3 / `SealManagement` 3 / `SupplierArchive` 3 …），均为既有页面，下一轮继续清。
