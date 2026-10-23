@@ -244,3 +244,12 @@
 
 - `FinanceAccountServiceImpl.buildAccountTree`：递归算出 children 却从不挂回 account，返回的树只有顶层节点（已用测试固化现状，改它属业务语义变更）。
 - `MemberList.vue`：`loadRechargePlans` / `rechargePlanList` / `RechargePaymentMethod` 被引用但未定义（疑似删代码残留），属功能缺口，未擅自补实现。
+
+### 9.5 Owner 批准的缺陷修复（已完成）
+
+| 缺陷 | 处置 | 验证 |
+|---|---|---|
+| `FinanceAccountServiceImpl.buildAccountTree` 树扁平化 | 递归结果 `account.setChildren(children)` 挂回；`FinanceAccount` 新增 `@TableField(exist = false) List<FinanceAccount> children`（不标 exist=false 会被 MyBatis-Plus 当成真实列） | `FinanceAccountServiceImplTest` 7/7（含三级树、叶子 children 空列表、孤儿节点不误挂） |
+| `MemberList.vue` 充值方案缺失 | 补 `rechargePlanList = ref<RechargePlanInfo[]>([])` + `loadRechargePlans()`（调 `rechargePlanApi.getList()`，失败降级为空并保持弹窗可用）；补 `RechargePaymentMethod` 类型导入；列类型改用 `DataTableColumn`；模板 `currentMember?.gender`；移除未用图标 `TrendingUp` | `vue-tsc` 175 → **168**，MemberList 7 条清零 |
+
+提交：`86806c7`（后端树）、`d2ed674`（前端充值方案），均已推送。
