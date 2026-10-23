@@ -287,10 +287,9 @@ class PricingServiceImplTest {
         assertTrue(values.contains(LocalDate.of(2026, 10, 1)));
         assertTrue(values.contains(LocalDate.of(2026, 10, 31)));
         assertTrue(values.contains("%张三%"));
-        // 特征化：sortOrder 默认 "desc" → 生成 ORDER BY create_time ASC。
-        // 根因：orderBy(condition, isAsc, column) 的第二个参数是 isAsc，实现传的是 isDesc，方向被反转。
-        assertTrue(sql.toLowerCase().contains("asc"),
-                "当前实现把 desc 映射成 ASC（方向反转，已登记待修），实际: " + sql);
+        // P0-1 已修：sortOrder 默认 "desc" → 应生成 ORDER BY create_time DESC
+        assertTrue(sql.toLowerCase().contains("desc"),
+                "sortOrder=desc 应生成 ORDER BY ... DESC，实际: " + sql);
     }
 
     @Test
@@ -311,8 +310,8 @@ class PricingServiceImplTest {
         LambdaQueryWrapper<ProductPricingHistory> wrapper = (LambdaQueryWrapper<ProductPricingHistory>) captor.getValue();
         String sql = wrapper.getCustomSqlSegment().toLowerCase();
         assertTrue(wrapper.getParamNameValuePairs().isEmpty(), "ALL 与空条件不应产生参数");
-        // 特征化：sortOrder="asc" → 生成 DESC（同上的方向反转）
-        assertTrue(sql.contains("desc"), "当前实现把 asc 映射成 DESC（方向反转，已登记待修），实际: " + sql);
+        // P0-1 已修：sortOrder="asc" → 应生成 ASC
+        assertTrue(sql.contains("asc"), "sortOrder=asc 应生成 ORDER BY ... ASC，实际: " + sql);
     }
 
     @Test

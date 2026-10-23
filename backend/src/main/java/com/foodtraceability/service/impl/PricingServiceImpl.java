@@ -135,8 +135,9 @@ public class PricingServiceImpl implements PricingService {
         }
 
         // 按时间倒序排列
+        // P0-1：orderBy(condition, isAsc, column) 第二参是 isAsc，此前误传 isDesc 导致方向反转
         boolean isDesc = "desc".equalsIgnoreCase(queryDto.getSortOrder());
-        wrapper.orderBy(true, isDesc, ProductPricingHistory::getCreateTime);
+        wrapper.orderBy(true, !isDesc, ProductPricingHistory::getCreateTime);
 
         Page<ProductPricingHistory> resultPage = pricingMapper.selectPage(page, wrapper);
 
