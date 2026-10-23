@@ -600,25 +600,43 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 20. 财务流水备注清洗 + 单号搜索（2026-10-24 00:33–00:55）
 
-### 20.1 技术串彻底落库清除（不是只在前端遮）
-- 新增 `scripts/db-fix/2026-10-24-fund-flow-order-id.sql`（可复放）：给 `fund_flows` 加 `order_id`，从旧备注正则回填 **309 行**，再清洗备注 **309 行**；
-- 结果：`SELECT count(*) FROM fund_flows WHERE remark LIKE '%[orderId=%'` = **0**；SALE 流水 `order_id` 覆盖率 **310/310 = 100%**；索引 `idx_fund_flows_order`、`idx_fund_flows_account_order`（`WHERE deleted=0`）；
-- 写入源头同步改干净：`PosSaleFinanceRecorder.buildSaleRemark` 只输出 `POS销售入账：<单号>`，关联改存 `order_id`；幂等改为按 `order_id` 精确查，仅对历史 `order_id IS NULL` 的行回退 remark 兜底；quick-pay 与 legacy finance_record 分支同步（仅动备注与 orderId 两行，未触碰状态流转）。
+---
 
-### 20.2 列表单号搜索
-- 后端 `GET /v1/finance/fund-flows` 增 `keyword`：命中 `flowNo / counterpartyName / remark / order_id` 四路 LIKE，trim + 空忽略，与账户/方向/分类/日期/分页组合生效；
-- 前端筛选栏最左新增「订单号 / 流水号，模糊搜索」输入框（回车即查、清空即查、重置清空并回第 1 页），空值不下发（`compactParams`）；
-- 列表 `summary` 在 Converter 层再做一道 `stripOrderIdToken()` 兜底，单元格与 tooltip 同源，**任何位置都不再出现内部 ID**。
+## 21. 支付口径三处不一致根治（2026-10-24 00:45–01:05）
 
-### 20.3 验证
+### 21.1 真因：两套支付编码 + 财务摘要解析失效
+以 W20261023084（order_id=O1792768215705）为例，实测三条事实：
+1. `order_payment_records` **有**记录（payment_method=1 现金 / 1800 分）——数据是好的；
+2. `orders.payment_method` = **2**（旧编码 2=现金），POS 详情按旧编码翻译 → 显示「现金」；
+3. POS **列表** DTO 的 `paymentMethod`/`itemCount` 从未赋值 → 恒 null（图1 缺列/空值的直接原因）；
+4. 财务流水详情 `posOrder` = **null** —— `buildPosOrderSummary` 仍解析 remark 里的 `[orderId=…]`，而备注已按 §20 清洗掉该 token → 解析失败 → 前端降级显示「未记录」。
+
+结论：**不是支付没写记录，而是三处各读各的源**（新编码 / 旧编码 / 解析备注），且清洗备注时漏了财务摘要的取值来源。
+
+### 21.2 修复
+- 新增统一解析器 `common/util/PosPaymentMethodResolver`：新编码（records：1现金/2微信/3支付宝/4银行卡/5余额）→ 旧编码（orders.payment_method：0微信/1支付宝/2现金/3银行卡/4余额）→ `（系统未记录流水，请查单）`；类注释写明两套编码禁止混用（1 在新编码是现金、旧编码是支付宝）；
+- `OrderNew` 实体补 `paymentMethod` 映射（此前读不到兜底值）；
+- 财务 `buildPosOrderSummary` 改按 `fund_flows.order_id` 查订单，仅历史行回退解析备注；支付方式走统一解析器；
+- POS `PosOrderQueryServiceImpl`：详情与**列表**统一走同一解析器；列表批量补 `paymentMethod` 与 `itemCount`（一次 IN 查询，无 N+1；itemCount=quantity 之和，0 时退化为明细行数）；
+- DDL `scripts/db-fix/2026-10-24-backfill-order-payment-method.sql`（可复放）：新编码→旧编码回填 `orders.payment_method`（本次 UPDATE 0，活库已无空值）。
+
+### 21.3 POS 列表补列
+`OrderQueryDialog` 列顺序改为「叫号 | 订单号 | 下单时间 | **数量** | **支付方式** | 金额 | 状态 | 操作」；支付方式不前端翻译，直接用后端中文（与详情/财务同源）；弹窗 900→980px 避免状态列被固定操作列裁切。详情弹窗统一读 `paymentMethodName || paymentMethod`。
+
+### 21.4 验证
 | 项 | 结果 |
 |---|---|
 | `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
-| `frontend` vue-tsc | 0 error |
-| keyword=T20261024015 / orderId / 带 flowDirection | total=1 / 1 / 1；空白 keyword 不过滤 |
-| 浏览器实测（qa_admin 真实登录） | 搜 `T20261024049` → 请求 `?keyword=…&current=1&size=20`，列表仅 1 条；页面 `[orderId=` 出现 0 次；tooltip = `POS销售入账：T20261024049` |
+| `frontend` / `frontend-pos` vue-tsc | 0 error / 0 error |
+| `e2e_payment_consistency.py`（新增） | **PASS=14 FAIL=0**，现金/微信各一轮；修复前同一脚本 **FAIL=4**（POS 列表 '' / 财务详情 '' / posOrder=null / itemCount=None），先红后绿 |
 | `e2e_pay_to_fund` / `e2e_finance_foundation` / `check_finance_invariants` | PASS=8 / PASS=8 / 4 PASS |
+| `e2e_core_chain` | 全绿（托盘无空闲 SKIP） |
+| 浏览器实测（POS 订单查询） | 表头含「数量/支付方式」；行内 数量=1，支付方式=现金/支付宝/微信支付 |
+| 三处一致（W20261023084） | POS 列表 `现金` == POS 详情 `现金` == 财务详情 `posOrder.paymentMethodName = 现金` |
 
-说明：两个回归脚本里原先写死 `[orderId=xxx]` 的查询条件已改为 `order_id = 'xxx'`（断言口径不变），否则清洗后必然误报。
+### 21.5 新增 E2E 断言（脚本 `scripts/e2e_payment_consistency.py`）
+A. 现金支付后 `order_payment_records` 恰 1 条、金额=应付、method=1（微信用例 method=2）；
+B. POS 列表 / POS 详情 / 财务详情三处支付方式字符串**严格相等**，且不为空、不为占位文案，posOrder 不得为 null；
+C. POS 列表该行 `itemCount > 0`；
+D. 三处文本必须含本用例语义（防三处一起串成另一种方式）。
