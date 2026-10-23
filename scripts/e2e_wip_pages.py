@@ -21,6 +21,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE = "http://127.0.0.1:8081/api"
@@ -204,6 +205,43 @@ class Checker:
         self.step("DELETE 清理自查账户", st == 200 and ok_code(body),
                   "HTTP %s accountId=%s" % (st, account_id))
 
+    # ---------- 4. 退款前置放宽（已支付未全退即可退，不要求「已完成」） ----------
+    def check_refund(self):
+        rc, row, err = self.psql(
+            "select order_id || '|' || order_number from orders "
+            "where payment_status = 2 and coalesce(refund_amount,0) < coalesce(paid_amount,0) "
+            "and order_status not in (5) and deleted = 0 "
+            "order by (order_status in (0,1)) desc, create_time desc limit 1")
+        if rc != 0 or not row.strip():
+            self.step("退款前置放宽（已支付未全退可退）", False, "无可用已支付订单样本，跳过", skip=True)
+            return
+        order_id, order_number = row.strip().split("|")
+
+        rc, before, _ = self.psql(
+            "select coalesce(paid_amount,0)::text || '|' || coalesce(refund_amount,0)::text || '|' || order_status "
+            "from orders where order_id = '%s'" % order_id)
+        paid, refunded, status = (before.strip().split("|") + ["", "", ""])[:3]
+
+        reason = urllib.parse.quote("自检-未完成订单退款")
+        st, body = call("POST", "/v1/pos/orders/order/%s/refund?refundReason=%s"
+                        % (order_number, reason), token=self.token)
+        ok = st == 200 and ok_code(body)
+        self.step("未完成订单直接退款（order_status=%s）" % status, ok,
+                  "HTTP %s orderNumber=%s paid=%s refunded=%s %s"
+                  % (st, order_number, paid, refunded, "" if ok else json.dumps(body, ensure_ascii=False)[:140]))
+
+        # 数值比较交给 SQL（refund_amount 是 numeric，与 paid 的整型字符串不能直接比）
+        rc, after, err = self.psql(
+            "select case when coalesce(refund_amount,0) = coalesce(paid_amount,0) then 'EQ' else 'NE' end "
+            "|| '|' || order_status || '|' || "
+            "(select count(*) from order_refund_records r where r.order_id = '%s' and r.deleted = 0) "
+            "|| '|' || coalesce(refund_amount,0)::text "
+            "from orders where order_id = '%s'" % (order_id, order_id))
+        parts = (after.strip().split("|") + ["", "", "", ""])[:4]
+        self.step("退款落库（refund_amount=paid、order_status=5、退款单 1 条）",
+                  rc == 0 and parts[0] == "EQ" and parts[1] == "5" and parts[2] != "0",
+                  "refund_amount=%s(=paid) order_status=%s refund_records=%s" % (parts[3], parts[1], parts[2]))
+
     def run(self):
         print("=" * 78)
         print("收编页面自动联调自查   base=%s" % BASE)
@@ -211,6 +249,7 @@ class Checker:
         self.check_signature()
         self.check_verify()
         self.check_bank_account()
+        self.check_refund()
         fails = [r for r in self.results if r[1] == "FAIL"]
         print("\n" + "=" * 78)
         print("结果: %s   PASS=%d FAIL=%d SKIP=%d" % (
