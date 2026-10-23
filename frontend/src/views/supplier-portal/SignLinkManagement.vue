@@ -8,7 +8,7 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Refresh, Download, Link, Copy, Clock, CircleCheck, CircleClose, Warning, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, Refresh, Download, Link, Clock, CircleCheck, CircleClose, Warning, Delete } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 import PageHeader from '@/components/core/PageHeader.vue'

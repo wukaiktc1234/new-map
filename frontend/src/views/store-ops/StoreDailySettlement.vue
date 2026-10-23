@@ -299,6 +299,18 @@ function formatAmount(amount: number): string {
   return `¥${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/** 支付方式中文标签（模板 row 为 any，在此统一收口） */
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: '现金',
+  wechat: '微信支付',
+  alipay: '支付宝',
+  memberBalance: '会员卡',
+}
+
+function getPaymentMethodLabel(method: string): string {
+  return PAYMENT_METHOD_LABELS[method] || method
+}
+
 function formatTime(iso: string): string {
   if (!iso) return '-'
   const d = new Date(iso)
@@ -518,7 +530,7 @@ function formatTime(iso: string): string {
               <StatusTag :status="getStatusColor(currentDetailRow.status)" :label="getStatusLabel(currentDetailRow.status)" size="small" />
             </el-descriptions-item>
             <el-descriptions-item label="收银员">{{ currentDetailRow.auditorName || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="日结时间">{{ formatTime(currentDetailRow.confirmTime) }}</el-descriptions-item>
+            <el-descriptions-item label="日结时间">{{ formatTime(currentDetailRow.confirmTime ?? '') }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(currentDetailRow.createTime) }}</el-descriptions-item>
           </el-descriptions>
         </div>
@@ -560,7 +572,7 @@ function formatTime(iso: string): string {
           <el-table :data="currentDetailRow.paymentBreakdown ? Object.entries(currentDetailRow.paymentBreakdown).map(([key, val]) => ({ method: key, ...val })) : []" size="small" border>
             <el-table-column label="支付方式" prop="method">
               <template #default="{ row }">
-                {{ { cash: '现金', wechat: '微信支付', alipay: '支付宝', memberBalance: '会员卡' }[row.method] || row.method }}
+                {{ getPaymentMethodLabel(row.method) }}
               </template>
             </el-table-column>
             <el-table-column label="金额(元)" align="right">

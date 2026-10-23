@@ -21,10 +21,10 @@ import {
   Refresh,
   Download,
   Document,
-  BankCard,
+  CreditCard,
   DataLine,
   TrendCharts,
-  Refund,
+  RefreshLeft,
   Wallet,
   Money,
 } from '@element-plus/icons-vue'
@@ -34,7 +34,7 @@ import StatCard from '@/components/core/StatCard.vue'
 import DataTable from '@/components/core/DataTable.vue'
 import StatusTag from '@/components/core/StatusTag.vue'
 import { orderStatisticsApi, orderRefundApi } from '@/api/order'
-import type { DailyStats, TopSellingFood, HourlyDistribution } from '@/types/order'
+import type { DailyStats, OrderTrendData, TopSellingFood, HourlyDistribution } from '@/types/order'
 import { useLayoutStore } from '@/stores/layout'
 import { useECharts } from '@/composables/useECharts'
 
@@ -54,6 +54,13 @@ interface StatisticsRow {
   cost: number
   profit: number
   profitRate: string
+}
+
+/** 趋势图数据点（StatisticsRow 与 DailyStats 均可满足该结构） */
+interface TrendChartPoint {
+  date: string
+  orderCount: number
+  revenue: string | number
 }
 
 // 时间范围快捷选项
@@ -226,10 +233,10 @@ function computeDateRange(type: TimeRangeType): [string, string] {
 // ==================== 图表配置 ====================
 
 /** 订单趋势图配置（双Y轴：订单数 + 金额） */
-function getTrendChartOption(data: DailyStats[]): Record<string, any> {
+function getTrendChartOption(data: TrendChartPoint[]): Record<string, any> {
   const dates = data.map(d => d.date)
   const orderCounts = data.map(d => d.orderCount)
-  const revenues = data.map(d => parseFloat(d.revenue) || 0)
+  const revenues = data.map(d => parseFloat(String(d.revenue)) || 0)
 
   const primaryColor = getCssVar('--fts-primary')
   const successColor = getCssVar('--fts-success')
@@ -600,7 +607,7 @@ function computeStatistics(data: StatisticsRow[], refundStats: { pendingCount: n
  *
  * 任意 API 失败时对应图表显示空数据，不影响其他图表。
  */
-async function updateCharts(data: DailyStats[], startDate?: string, endDate?: string) {
+async function updateCharts(data: TrendChartPoint[], startDate?: string, endDate?: string) {
   try {
     showTrendLoading()
     showSourceLoading()
@@ -614,17 +621,17 @@ async function updateCharts(data: DailyStats[], startDate?: string, endDate?: st
       orderStatisticsApi.getTrend({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-      }).catch(() => ({})),
+      }).catch(() => ({} as OrderTrendData)),
       orderStatisticsApi.getProductStats({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         limit: 10,
       }).catch(() => []),
-      orderStatisticsApi.getHourStats(endDate || undefined).catch(() => ({})),
+      orderStatisticsApi.getHourStats(endDate || undefined).catch(() => ({} as HourlyDistribution)),
     ])
 
     // 存储到响应式变量（供未来扩展或调试使用）
-    sourceDistribution.value = (trendRes?.orderTypeDistribution as Record<string, number>) ?? {}
+    sourceDistribution.value = trendRes?.orderTypeDistribution ?? {}
     productList.value = productRes ?? []
     hourlyData.value = hourRes ?? {}
 
@@ -752,7 +759,7 @@ watch(activeTab, () => {
         variant="bordered"
       />
       <StatCard
-        icon="BankCard"
+        icon="CreditCard"
         label="订单总金额"
         :value="`¥${statistics.totalAmount}`"
         color-type="success"
@@ -766,7 +773,7 @@ watch(activeTab, () => {
         variant="bordered"
       />
       <StatCard
-        icon="Refund"
+        icon="RefreshLeft"
         label="退款订单数"
         :value="String(statistics.refundOrders)"
         color-type="warning"

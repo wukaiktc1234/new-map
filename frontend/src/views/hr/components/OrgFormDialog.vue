@@ -9,6 +9,28 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { departmentApi } from '@/api/hr/department'
 import type { OrgNode, OrgType, OrgFormData } from './org-types'
+import type { Department } from '@/types/hr'
+
+/**
+ * 后端 /v1/departments 的载荷形状：parentId 是 number（0 表示顶级组织），
+ * 而共享类型 Department.parentId 声明为 string。
+ * 两者差异属于共享类型范畴，按约定在视图内本地收口，不影响运行时字段。
+ */
+interface DeptUpdatePayload {
+  name: string
+  type: OrgType
+  parentId: number
+  manager?: string
+  remark?: string
+}
+
+interface DeptCreatePayload {
+  departmentName: string
+  type: OrgType
+  managerName?: string
+  description?: string
+  parentId: number
+}
 
 interface Props {
   modelValue: boolean
@@ -166,24 +188,24 @@ async function handleSubmit() {
     const parentIdValue = selectedParentId ? Number(selectedParentId) : 0
 
     if (props.mode === 'edit' && props.editingNodeId) {
-      const dto = {
+      const dto: DeptUpdatePayload = {
         name: orgForm.value.name.trim(),
         type: orgForm.value.type,
         parentId: parentIdValue,
         manager: orgForm.value.manager.trim() || undefined,
         remark: orgForm.value.description.trim() || undefined,
       }
-      await departmentApi.updateDepartment(props.editingNodeId, dto)
+      await departmentApi.updateDepartment(props.editingNodeId, dto as unknown as Partial<Department>)
       ElMessage.success('更新成功')
     } else {
-      const payload = {
+      const payload: DeptCreatePayload = {
         departmentName: orgForm.value.name.trim(),
         type: orgForm.value.type,
         managerName: orgForm.value.manager.trim() || undefined,
         description: orgForm.value.description.trim() || undefined,
         parentId: parentIdValue,
       }
-      await departmentApi.addDepartment(payload)
+      await departmentApi.addDepartment(payload as unknown as Department)
       ElMessage.success('新增成功')
     }
 

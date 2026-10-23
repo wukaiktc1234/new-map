@@ -699,6 +699,10 @@ export const BankAccountDataConverter = {
     })
     result.status = BankAccountStatusMap.toFrontend[result.status as number] ?? result.status
     result.accountType = BankAccountTypeMap.toFrontend[result.accountType as number] ?? result.accountType
+    // 后端字段名是 accountNumber，前端统一用 accountNo
+    if (result.accountNo === undefined && result.accountNumber !== undefined) {
+      result.accountNo = result.accountNumber
+    }
     return result
   },
 
@@ -712,6 +716,11 @@ export const BankAccountDataConverter = {
     })
     result.status = BankAccountStatusMap.toBackend[result.status as string] ?? result.status
     result.accountType = BankAccountTypeMap.toBackend[result.accountType as string] ?? result.accountType
+    // 后端 BankAccountCreateDTO/UpdateDTO 字段名是 accountNumber，前端用 accountNo
+    if (result.accountNo !== undefined) {
+      result.accountNumber = result.accountNo
+      delete result.accountNo
+    }
     return result
   },
 

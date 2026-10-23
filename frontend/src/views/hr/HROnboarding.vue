@@ -529,12 +529,12 @@ function handleDetail(row: OnboardingRecord) {
     } else if (row.status === 'REGISTERED') {
       status = 'finish'
       operator = 'HR管理员'
-      time = row.createTime
+      time = row.createTime ?? ''
     } else if (['PENDING_HR', 'PENDING_SUBSTANTIVE', 'APPROVED', 'CONTRACT_PENDING', 'CONTRACT_SIGNED'].includes(row.status || '')) {
       if (idx < row.currentStep) {
         status = 'finish'
         operator = 'HR管理员'
-        time = row.createTime
+        time = row.createTime ?? ''
       } else if (idx === row.currentStep) {
         status = 'process'
       }

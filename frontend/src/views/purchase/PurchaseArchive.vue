@@ -54,7 +54,7 @@ const formRef = ref<FormInstance>()
 // 查询表单
 const queryForm = ref({
   keyword: '',
-  categoryId: '' as number | string,
+  categoryId: '' as string,
   status: '' as '' | MaterialArchiveStatus,
 })
 
@@ -84,6 +84,8 @@ const {
 
 // 表单数据
 type ArchiveFormState = Partial<MaterialArchiveFormData> & {
+  /** 商品ID（编辑回填时来自详情 */
+  materialId?: string
   materialCode: string
   status: MaterialArchiveStatus
   barcode: string
@@ -255,6 +257,11 @@ async function handleSubmit() {
       unit: formData.unit!,
       spec: formData.spec!,
       referencePrice: formData.referencePrice!,
+      barcode: formData.barcode ?? '',
+      origin: formData.origin ?? '',
+      shelfLife: formData.shelfLife ?? '',
+      storageCondition: formData.storageCondition ?? '',
+      departmentId: formData.departmentId ?? '',
       supplierId: formData.supplierId!,
       remark: formData.remark!,
     }

@@ -327,8 +327,13 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     const submitData = {
-      ...formData,
       orderId: formData.orderIds[0] || '',
+      supplierId: formData.supplierId,
+      supplierName: formData.supplierName,
+      totalAmount: formData.totalAmount ?? 0,
+      dueDate: formData.dueDate ?? '',
+      paymentMethod: formData.paymentMethod,
+      remark: formData.remark,
     }
 
     if (isEdit.value && detailData.value) {

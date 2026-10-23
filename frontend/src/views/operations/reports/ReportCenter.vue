@@ -412,7 +412,7 @@ onMounted(() => {
         <div class="chart-card">
           <div class="chart-card__header">
             <h4 class="chart-card__title">门店经营排名</h4>
-            <span class="chart-card__subtitle">TOP {{ chartData?.storeRanking?.length || 0 }}</span>
+            <span class="chart-card__subtitle">TOP {{ chartData?.storeRank?.length || 0 }}</span>
           </div>
           <div class="chart-card__body">
             <ReportDataTable

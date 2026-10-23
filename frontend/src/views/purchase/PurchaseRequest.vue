@@ -83,7 +83,7 @@ const {
         size: params.size,
         requestNo: params.requestNo || undefined,
         departmentName: params.departmentName || undefined,
-        applicantName: params.createByName || undefined,
+        createByName: params.createByName || undefined,
         status: params.status || undefined,
         startDate: params.startDate || undefined,
         endDate: params.endDate || undefined,

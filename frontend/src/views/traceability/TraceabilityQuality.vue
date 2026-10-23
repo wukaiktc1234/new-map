@@ -120,7 +120,10 @@ const {
 const formData = reactive<Partial<QualityRecordFormData> & {
   qualityType: QualityType
   relatedOrderNo: string
-  productName: string
+  /** 表单实际绑定的名称字段（后端返回/提交都用 materialName） */
+  materialName: string
+  /** 规范字段：提交映射后的产品名（可选，避免表单态必须同时维护两份） */
+  productName?: string
   batchNo: string
   sampleQuantity: number
   qualityResult: QualityResult

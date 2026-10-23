@@ -123,27 +123,17 @@ const {
 } = useCrudTable<PurchaseOrderInfo, typeof queryForm.value>({
   api: {
     getList: async (params: typeof queryForm.value & { page: number; size: number }) => {
+      // 空字符串统一转成 undefined/null，避免传给后端
       const convertedParams: PurchaseOrderQueryForm & { page?: number; size?: number; mineOnly?: boolean } = {
-        ...params,
-      }
-      // 空字符串转为 undefined，避免传给后端
-      if (convertedParams.orderNo === '') {
-        delete convertedParams.orderNo
-      }
-      if (convertedParams.requestNo === '') {
-        delete convertedParams.requestNo
-      }
-      if (convertedParams.status === '') {
-        convertedParams.status = null
-      }
-      if (convertedParams.paymentStatus === '') {
-        convertedParams.paymentStatus = null
-      }
-      if (convertedParams.startDate === '') {
-        delete convertedParams.startDate
-      }
-      if (convertedParams.endDate === '') {
-        delete convertedParams.endDate
+        orderNo: params.orderNo || undefined,
+        requestNo: params.requestNo || undefined,
+        status: params.status === '' ? null : params.status,
+        paymentStatus: params.paymentStatus === '' ? null : params.paymentStatus,
+        startDate: params.startDate || undefined,
+        endDate: params.endDate || undefined,
+        mineOnly: params.mineOnly,
+        page: params.page,
+        size: params.size,
       }
       // 我的单据：按当前登录用户ID过滤
       if (convertedParams.mineOnly && currentUserId.value) {
@@ -685,7 +675,7 @@ async function handleStepClick(step: ProcessStep) {
     // 到货登记节点：复用「到货登记页」的到货单详情对话框组件
     if (!currentDetail.value?.orderNo) return
     try {
-      const list = await purchaseArrivalApi.getList({ orderNo: currentDetail.value.orderNo, page: 1, size: 1 })
+      const list = await purchaseArrivalApi.getList({ orderCode: currentDetail.value.orderNo, page: 1, size: 1 })
       const first = list.records?.[0]
       if (first) {
         const res = await purchaseArrivalApi.getById(first.arrivalId)

@@ -101,7 +101,7 @@ const {
   pagination,
 } = useCrudTable<ElectronicContractInfo, typeof queryForm.value>({
   api: {
-    getList: async (params) => {
+    getList: async (params: typeof queryForm.value & { page: number; size: number }) => {
       const res = await electronicContractApi.getList({
         eContractNo: params.eContractNo || undefined,
         keyword: params.keyword || undefined,

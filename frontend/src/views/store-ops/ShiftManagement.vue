@@ -392,7 +392,7 @@ async function handleSubmit() {
           startTime: formData.startTime,
           endTime: formData.endTime,
           employeeIds: formData.employeeIds,
-          employeeNames: employees.map(e => e.employeeName),
+          employeeNames: employees.map(e => e.employeeName ?? ''),
           remark: formData.remark,
         }
       }
@@ -412,7 +412,7 @@ async function handleSubmit() {
         startTime: formData.startTime,
         endTime: formData.endTime,
         employeeIds: formData.employeeIds,
-        employeeNames: employees.map(e => e.employeeName),
+        employeeNames: employees.map(e => e.employeeName ?? ''),
         status: 'pending',
         handoverStatus: 'not_started',
         remark: formData.remark,

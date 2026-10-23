@@ -100,6 +100,8 @@ const {
 
 // 表单数据
 type SupplierFormState = Partial<SupplierFormData> & {
+  /** 供应商ID（编辑回填时来自详情） */
+  supplierId?: string
   status: SupplierStatus
 }
 
@@ -840,7 +842,7 @@ function formatAmount(val: number): string {
           <el-descriptions-item label="开户银行">{{ currentDetail.bankName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="银行账号">{{ currentDetail.bankAccount || '-' }}</el-descriptions-item>
           <el-descriptions-item label="结算方式">
-            {{ SettlementMethodOptions.find(o => o.value === currentDetail.settlementMethod)?.label || '-' }}
+            {{ SettlementMethodOptions.find(o => o.value === currentDetail?.settlementMethod)?.label || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="账期(天)">{{ currentDetail.paymentTerms }}天</el-descriptions-item>
         </el-descriptions>

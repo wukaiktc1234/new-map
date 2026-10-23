@@ -98,8 +98,9 @@ const stats = ref<StoreArchiveStats>({
   licenseExpiringSoon: 0,
 })
 
-// 表单数据
-const formData = reactive<Partial<StoreArchiveCreateForm>>({
+// 表单数据（storeId 仅编辑态由接口详情回填，创建表单结构中不含该字段）
+type StoreArchiveFormData = Partial<StoreArchiveCreateForm> & { storeId?: number }
+const formData = reactive<StoreArchiveFormData>({
   storeCode: '',
   storeName: '',
   storeType: 'direct',

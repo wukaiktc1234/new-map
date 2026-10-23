@@ -505,7 +505,7 @@ onMounted(async () => {
               <StatusTag
                 :status="callNumberQueueDataConverter.toStatusTagStatus(detailData.status)"
                 :label="callNumberQueueDataConverter.toStatusLabel(detailData.status)"
-                size="default"
+                size="small"
                 variant="light"
               />
             </el-descriptions-item>

@@ -16,7 +16,7 @@ import {
   View,
   Goods,
   Warning,
-  Transfer,
+  Sort,
   Document,
   Money,
   ShoppingCart,
@@ -510,7 +510,7 @@ onMounted(() => {
       <StatCard icon="Goods" label="商品种类" :value="String(statistics.totalTypes)" color-type="primary" variant="bordered" />
       <StatCard icon="Money" label="库存总金额" :value="'¥' + statistics.totalAmount" color-type="success" variant="bordered" />
       <StatCard icon="Warning" label="预警商品数" :value="String(statistics.warningCount)" color-type="warning" variant="bordered" />
-      <StatCard icon="Transfer" label="待调拨数" :value="String(statistics.pendingTransfer)" color-type="info" variant="bordered" />
+      <StatCard icon="Sort" label="待调拨数" :value="String(statistics.pendingTransfer)" color-type="info" variant="bordered" />
     </section>
 
     <!-- 筛选栏 -->

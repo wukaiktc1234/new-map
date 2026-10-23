@@ -17,7 +17,7 @@ import { Plus, Upload, Download, Search, Refresh, FolderOpened, Delete } from '@
 import type { FormInstance, FormRules, TreeNode } from 'element-plus'
 
 import PageHeader from '@/components/core/PageHeader.vue'
-import DataTable from '@/components/core/DataTable.vue'
+import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import StatusTag from '@/components/core/StatusTag.vue'
 import { useLayoutStore } from '@/stores/layout'
@@ -34,16 +34,8 @@ const layoutStore = useLayoutStore()
 
 // ==================== 类型定义 ====================
 
-interface ColumnDef {
-  prop: string
-  label: string
-  width?: number | string
-  minWidth?: number | string
-  fixed?: 'left' | 'right'
-  slot?: string
-  ellipsis?: boolean
-  align?: string
-}
+/** 表格列定义：统一使用 DataTable 导出的列类型 */
+type ColumnDef = DataTableColumn
 
 /** 树形节点数据 */
 interface CategoryTreeNode {
@@ -530,7 +522,7 @@ onMounted(() => {
           <el-tree
             ref="treeRef"
             :data="categoryTreeData"
-            :props="{ label: 'categoryName', children: 'children', id: 'categoryId' }"
+            :props="{ label: 'categoryName', children: 'children' }"
             node-key="categoryId"
             default-expand-all
             highlight-current

@@ -24,8 +24,10 @@ interface Props {
   employee: Employee | null
 }
 
+// 注意：employee 为对象类型联合 null，withDefaults 的默认值需写成 null 字面量
+// （写成 () => null 会与 InferDefaults 推导出的工厂类型不兼容）
 const props = withDefaults(defineProps<Props>(), {
-  employee: () => null,
+  employee: null,
 })
 
 const emit = defineEmits<{

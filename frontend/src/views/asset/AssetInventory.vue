@@ -105,7 +105,7 @@ const {
   autoLoad: true,
 })
 
-const formData = reactive<Partial<InventoryCreateDTO> & { id?: string; remark?: string }>({
+const formData = reactive<Partial<InventoryCreateDTO> & { id?: string; remark?: string; creatorId?: string }>({
   title: '',
   checkType: 'full',
   plannedStartTime: '',

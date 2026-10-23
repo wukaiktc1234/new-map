@@ -487,7 +487,7 @@ onMounted(() => {
     <section class="stats-section">
       <StatCard icon="Clock" label="待审批" :value="String(statistics.pending)" color-type="warning" variant="bordered" />
       <StatCard icon="Check" label="已通过" :value="String(statistics.approved)" color-type="success" variant="bordered" />
-      <StatCard icon="Close" label="已驳回" :value="String(statistics.rejected)" color-type="danger" variant="bordered" />
+      <StatCard icon="Close" label="已驳回" :value="String(statistics.rejected)" color-type="error" variant="bordered" />
       <StatCard icon="Document" label="退货总额" :value="formatAmount(statistics.totalAmount)" color-type="info" variant="bordered" />
     </section>
 

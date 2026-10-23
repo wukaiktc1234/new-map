@@ -121,7 +121,7 @@ async function loadData() {
 }
 
 function filterTree(nodes: AssetCategory[], keyword: string): AssetCategory[] {
-  return nodes.reduce((acc, node) => {
+  return nodes.reduce<AssetCategory[]>((acc, node) => {
     const children = node.children ? filterTree(node.children, keyword) : []
     if (node.name.includes(keyword) || node.code.includes(keyword) || children.length > 0) {
       acc.push({ ...node, children: children.length > 0 ? children : node.children })

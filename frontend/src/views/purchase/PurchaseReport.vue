@@ -15,7 +15,7 @@
  */
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, Download, DatePicker } from '@element-plus/icons-vue'
+import { Search, Refresh, Download } from '@element-plus/icons-vue'
 import PageHeader from '@/components/core/PageHeader.vue'
 import StatCard from '@/components/core/StatCard.vue'
 import DataTable, { type DataTableColumn } from '@/components/core/DataTable.vue'
@@ -120,7 +120,7 @@ function initTrendChart(): void {
         type: 'value',
         name: '金额(元)',
         axisLabel: {
-          ...(base.yAxis as Record<string, unknown>).axisLabel,
+          ...((base.yAxis as Record<string, unknown>).axisLabel as Record<string, unknown> | undefined),
           formatter: (v: number) => formatWan(v, '元'),
         },
       },
@@ -230,7 +230,7 @@ function initCategoryBarChart(): void {
       type: 'value',
       name: '采购金额(元)',
       axisLabel: {
-        ...(base.yAxis as Record<string, unknown>).axisLabel,
+        ...((base.yAxis as Record<string, unknown>).axisLabel as Record<string, unknown> | undefined),
         formatter: (v: number) => formatWan(v),
       },
     },

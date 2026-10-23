@@ -602,6 +602,16 @@ function getSealStatusColor(status: SealStatus): string {
   return map[status] || 'info'
 }
 
+/** 印章类型中文标签（模板中 row 为 any，统一在此收口） */
+function getSealTypeLabel(sealType: SealType): string {
+  return SealTypeLabelMap[sealType] ?? ''
+}
+
+/** 印章状态中文标签（模板中 row 为 any，统一在此收口） */
+function getSealStatusLabel(status: SealStatus): string {
+  return SealStatusLabelMap[status] ?? ''
+}
+
 function getSealDetail(row: SealInfo): SealDetail {
   return sealDetailMap[row.sealId] || {
     ...row,
@@ -764,7 +774,7 @@ function formatDate(dateStr: string): string {
 
         <!-- 印章类型列 -->
         <template #sealType="{ row }">
-          <StatusTag :status="getSealTypeStatus(row.sealType)" :label="SealTypeLabelMap[row.sealType]" size="small" variant="light" />
+          <StatusTag :status="getSealTypeStatus(row.sealType)" :label="getSealTypeLabel(row.sealType)" size="small" variant="light" />
         </template>
 
         <!-- 保管部门列 -->
@@ -774,7 +784,7 @@ function formatDate(dateStr: string): string {
 
         <!-- 状态列 -->
         <template #status="{ row }">
-          <StatusTag :status="getSealStatusColor(row.status)" :label="SealStatusLabelMap[row.status]" size="small" variant="light" />
+          <StatusTag :status="getSealStatusColor(row.status)" :label="getSealStatusLabel(row.status)" size="small" variant="light" />
         </template>
 
         <!-- 最后使用时间列 -->
@@ -977,7 +987,7 @@ function formatDate(dateStr: string): string {
             :auto-upload="false"
             :show-file-list="true"
             multiple
-            :on-change="(file) => { usageFormData.documentName = file.name }"
+            :on-change="(file: UploadFile) => { usageFormData.documentName = file.name }"
           >
             <el-button size="default">
               <el-icon><Upload /></el-icon>上传文件

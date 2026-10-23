@@ -62,6 +62,7 @@ const estimatedDateRange = ref<[string, string] | null>(null)
 interface PurchaseArrivalQueryParams {
   arrivalCode?: string
   orderCode?: string
+  supplierId?: string
   status?: PurchaseArrivalStatus | ''
   receiverType?: ReceiverType | ''
   overdueOnly?: boolean
