@@ -730,3 +730,44 @@ SQL：`select flow_no, order_id, amount, remark from fund_flows where remark lik
 
 ### 33.7 A16（INFO，不计入 TOTAL）
 首次输出：`[INFO] A16 近24h POS 入账失败后补记 rows=6（存在 POS 入账失败后补记，需排查 pos_fund_flow_recorded=failed）`；明细含 `A1 缺账修复：POS 号段撞号` 与 `P2 补记实测` 两类来源；与 A8/A9 并列，**不进 TOTAL FAIL**（求和止于 `a15_n`，已核对）。
+---
+
+## 34. P3 前置：三项 P2 遗留修复 + BL-1/BL-3（2026-10-25 01:50–02:15）
+
+### 34.1 修复 1：SL10 并发安全（追问 2 标红项已闭合）
+- `DepositSlipServiceImpl#reverse`：单据改**条件更新** `WHERE slip_id=? AND status IN ('DEPOSITED','VERIFIED','CLOSED')`（L548–556），**影响行数≠1 → ConflictException(409)**；原流水改**条件更新** `WHERE flow_id=? AND status=2`（L568–576），影响行数≠1 → 抛错回滚。
+- 新增迁移 `V20261025_001__fund_flows_recon_reverse_unique.sql`：`uk_fund_flows_recon_reverse ON fund_flows(remark) WHERE deleted=0 AND remark LIKE '%[reconReverseOf=%'`；`DuplicateKeyException` 转业务 400（L588–591）。选型理由（单键 vs 表达式索引）写在迁移注释。
+- **并发实测**：两线程同调同一 slip → 一个 `code=0 status=REVERSED`、一个 `code=409「缴款单已被并发冲正或状态已变更…」`；角色互换重跑结论一致；`[reconReverseOf=]` 该单仅 **2 条**（1 对）、原流水 status=3 共 2 条、余额只回滚一次。
+- **串行行为未变**：AC-28 PASS；再次串行 SL10 → 400「该缴款单已冲正」，反向流水仍 2 条。
+
+### 34.2 修复 2：短款符号（追问 4 标红项已闭合）
+- 写入改为 `difference = received − expected`（L307→L314），生成初值 L194 同步 `0 − expected`；业务分支 `differenceLabel()`（L787–793）：`>0 长款·待查溢余` / `<0 短款·待查损溢` / `=0 平账`。**设计稿 §3.5/§5.7/AC-21 未改**，代码向设计对齐。
+- 三分支实测（expected 恒 34,200）：平账 actual=34,200 → **0**；长款 actual=34,700 → **+500**；短款 actual=33,700 → **−500**。
+- 回填测试数据：`DS202610250022` difference_amount **500 → −500**（expected=230,680 / actual=230,180）；复核 `DS202610250028` = **0**（平账）。
+
+### 34.3 修复 3：2 条孤儿补记流水（追问 3 标红项，走 (b) 路径）
+- **A1 原始判据**：`orders.deleted=0 AND orders.payment_status=2 AND NOT EXISTS (SALE fund_flows)`。
+- 对应订单 `P2BF010413401` / `P2BF010607008` 的 **`orders.deleted=1`**（4 个 P2BF* 夹具单全部软删）→ **不在 A1 命中集内**，A1 处置前后均为 **0**。故走 **(b)**：`UPDATE fund_flows SET status=3, remark=remark||' [testFixture:…]'`（脚本 `scripts/db-fix/2026-10-25-orphan-backfill-flows-fix.sql`），**保留行与审计、不删、不改金额**。
+- 后果披露：这 2 条（各 100 分）此前已计入现金户余额（合计 +200 分），作废后余额不回退（未做反向流水）。A7（账户余额 vs 最新非豁免 balance_after）仍 PASS，因为两边都含这 200 分。若 Owner 要求抹平这 200 分，需另起反向流水（会动余额），本轮未做。
+
+### 34.4 BL-3：业务冲突类异常改 400/409（前端可见原文）
+- `BusinessException` 新增可空 `httpStatus`（:26/:67/:77/:87）+ 新增 `ConflictException`（409 子类）；`GlobalExceptionHandler:121/125/145` 返回 `ResponseEntity`，`resolveHttpStatus` **只认显式 httpStatus 或 code==409**，其余保持「HTTP 200 + 业务 code」，不一刀切。
+- `AtomicBalanceUpdater:76` 乐观锁冲突 → `ConflictException`（文案原样「余额更新乐观锁冲突，重试 3 次仍失败：accountId=…」）；`DepositSlipServiceImpl:621/555` 状态机/并发冲正 → `ConflictException`；`:445` 四眼 V8 → 400。
+- 实测：`POST /deposit-slips/4/verify`（RECEIVED 调 verify）→ **HTTP 409** + `当前状态不允许复核：slipNo=… status=RECEIVED（要求 DEPOSITED）`（改前是 200+code=400）；对照 `slipId=999999` → HTTP 200 + code=404（未误判 409）；未知异常仍 500 + traceId。
+- **乐观锁分支未在线实测**：只在存行成功路径触发（会写 fund_flows/改余额，属 P2 范围），本轮仅代码级落地；触发条件与预期 body 已记录，待放行一次演练补实测。
+
+### 34.5 BL-1：/pay 在 SALE 流水写入失败时返回非 200
+- `PosSaleFinanceRecorder:451` 新增 `isFatalFinanceFailure()`（`failed`/`no_account` 致命，`duplicate`/`recorded` 不算）；`PosOrderPaymentServiceImpl:705` 致命时抛 `BusinessException(500, "支付入账失败，请重试（SALE 资金流水未写入，订单支付已回滚）…")`；`:278` 兜底 catch **拆出 `catch (BusinessException be) { throw be; }`——这是 P2 那 4 笔「已支付无流水」的真正成因**（异常被吞在 `@Transactional` 内 → 不回滚）；`PosOrderController:129/132` `/pay` 改 `ResponseEntity`，code ≥500 → **HTTP 500**。
+- 故障注入实测（占号 + 钉号段制造唯一键冲突）：`POST /pay` → **HTTP 500** 文案含原因；`payment_status=0`、`paid_amount=0`、支付记录 0、SALE 流水 0、`fund_flows` 691→691 → **无半边写入**。占位行已清理、号段复位。
+- 号段一致性确认：`FundFlowServiceImpl:257-274` 走 `order_sequence`（键 `FLOWyyyyMMdd`），当天 090→094 连续无洞。
+
+### 34.6 回归（本轮修复后全跑）
+| 项 | 结果 |
+|---|---|
+| AC-21 三分支 | PASS（0 / +500 / −500，与 §3.5 一致） |
+| AC-28 正常冲正 | PASS（原流水 status=3、反向成对、余额回滚） |
+| 重复调用 SL10 | 400「该缴款单已冲正」，反向流水仍 2 条 |
+| A1 | **0**（处置前后均 0） |
+| consistency_check 12 项 | **12 PASS / 0 FAIL**（A7=0、A14=0、A15=0；A6/A8/A9/**A16=6** 为 INFO） |
+| ui_e2e_payment | **7/7 PASS** |
+| compile | BUILD SUCCESS |
