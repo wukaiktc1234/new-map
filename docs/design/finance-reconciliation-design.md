@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 文档名 | `docs/design/finance-reconciliation-design.md` |
-| 版本 | **v1.2-draft**（v1.1：§5 与 §4 调节表对齐 / TD-22 提升为 PC-7 / 新增 AC-42、AC-43、PC-8；**v1.2：修正调节表公式方向（A/B↔C/D 曾写反）、§4.3 示例数字与符号、V5–V7 口径统一、`bank_balance` 取值字段名；补 TD-12 退化键 NEEDS_REVIEW、TD-23 单向修复**） |
+| 版本 | **v1.3-draft**（v1.3：调节表**不调账**升级为硬规则一、审核四眼由「可配」改为**硬门禁 V8 并排除出纳**、新增 AC-44/AC-45；v1.1：§5 与 §4 调节表对齐 / TD-22 提升为 PC-7 / 新增 AC-42、AC-43、PC-8；**v1.2：修正调节表公式方向（A/B↔C/D 曾写反）、§4.3 示例数字与符号、V5–V7 口径统一、`bank_balance` 取值字段名；补 TD-12 退化键 NEEDS_REVIEW、TD-23 单向修复**） |
 | 日期 | 2026-10-24（时区 Asia/Shanghai） |
 | 作者 | 数据/财务轨（fund-500）+ ts-hr-asset（A 部分），由架构总控合并 |
 | 合并自 | `docs/design/draft-finance-recon-a.md`（CSV 导入 / 日记账 / 调节表）+ `docs/design/draft-finance-recon-b.md`（自动勾稽 / 交款单） |
@@ -555,6 +555,16 @@ expected_amount（分）
 | V5 | 调节后两侧余额必须相等；不等 → 只能存 `DRAFT`，**禁止 `SUBMIT` 与 `APPROVED`**（`is_balanced=false` 时的硬门禁） |
 | V6 | 每条未达账项必须有「挂账人 + 原因 + 期间」，且按 `category` 的金额合计与主表四列 `uncleared_*` 一致（落地为 AC-43） |
 | V7 | 同一笔（`flow_id` / `transaction_id`）在同一期间只出现一次，不得跨期重复挂账 |
+| **V8** | **审核人硬约束（四眼，不可配置关闭）**：`approved_by ≠ submitted_by`，且 `approved_by` 对应用户**不得持有 `ROLE_TELLER`（出纳）**；违反 → 拒绝 `APPROVED`（业务错误，不是前端提示） |
+
+> **硬规则一：调节表不调账（与「冲正只增不删」同级，不得违反）**
+> 调节表的**生成 / 重算 / 提交 / 审核**动作 **不产生、也不修改任何 `fund_flows` 流水**，不改 `bank_accounts.balance`。
+> 未达账项只在 `reconciliation_items` 中**挂账披露**（A/B 类引用已有 `flow_id`、C/D 类引用已有 `bank_transactions.transaction_id`，仅做两侧事实核对，**不创造新的账面事实**）。
+> 调节表**不是原始凭证**，不得作为调整账面记录的记账依据；未达账项待实际结算凭证到达后，按正常入账流程另行发起（走 §2 的差异核销 / 冲正通道，且冲正仍只增反向流水）。
+
+> **硬规则二：出纳编表必须由他人复核（规范例外口径）**
+> 《会计基础工作规范》未把「编制银行存款余额调节表」列入出纳的禁止性列举，但审计/内控口径要求：出纳**一般不得**同时从事对账单获取与调节表编制；**确需出纳办理的，必须由其他人员定期审核监督**。
+> 因此系统**保留**出纳的 `finance:bank:recon`（允许编制草稿与提交），但 `APPROVED` 必须由**非本人、且非出纳角色**的人员完成（= V8 硬门禁）。
 
 ### 4.4 接口草案（日记账 / 调节表）
 
@@ -796,7 +806,7 @@ expected_amount（分）
 
 ### 5.10 调节表相关表（待 TD-24 裁决后定稿）
 
-> **结论：本节是 §4 调节表功能的落地载体草案（二表），归属 P1，不在 P0 的 7 张表内。若 TD-24 裁决为其他载体（如复用 `fund_flows.remark` / 仅用 `bank_transactions.match_status`），则**整节删除**，并同步改写 §4 的 S3–S9 接口与 V5–V7 校验点。**
+> **结论：本节是 §4 调节表功能的落地载体草案（二表），归属 P1，不在 P0 的 7 张表内；两表只承载「核对与披露」，**不承载任何调账动作**（见 §4.3 硬规则一）。若 TD-24 裁决为其他载体（如复用 `fund_flows.remark` / 仅用 `bank_transactions.match_status`），则**整节删除**，并同步改写 §4 的 S3–S9 接口与 V5–V7 校验点。**
 
 #### 5.10.1 `reconciliation_statements`（银行存款余额调节表主表）
 
@@ -818,7 +828,7 @@ expected_amount（分）
 | `is_balanced` | BOOLEAN | 生成时计算：`adjusted_book_balance = adjusted_bank_balance`；**false 时只允许保存 DRAFT，禁止 SUBMIT 与 APPROVED**（§4.3 **V5** 硬门禁） |
 | `status` | VARCHAR(16) | `DRAFT` / `SUBMITTED` / `APPROVED`（审核通过后锁定，改动需重开新表） |
 | `submitted_by` / `submitted_at` | BIGINT / TIMESTAMP | 提交人（出纳）/ 时间 |
-| `approved_by` / `approved_at` | BIGINT / TIMESTAMP | 审核人（财务主管）/ 时间；**四眼原则：提交人 ≠ 审核人**（可配 `app.finance.recon.require-four-eyes`，默认 true） |
+| `approved_by` / `approved_at` | BIGINT / TIMESTAMP | 审核人（财务主管）/ 时间。**硬门禁（§4.3 V8，不可配置关闭）**：`approved_by ≠ submitted_by`，且 `approved_by` 不得持有 `ROLE_TELLER`（出纳）；违反直接拒绝 `APPROVED` 并返回业务错误 |
 | `remark` | VARCHAR(500) | 说明（`is_balanced=false` 时必填差异原因） |
 | `create_user_id` / `created_by` / `create_time` / `update_time` / `version` / `deleted` | — | 项目通用列 |
 
@@ -853,7 +863,7 @@ expected_amount（分）
 | 关联点 | 说明 |
 |---|---|
 | §4 S3–S9 接口 | 均以本节两表为落库载体（S3 生成草稿 = INSERT statements + items；S8 审核 = status → APPROVED）；若 TD-24 改口径，这些接口同步改写 |
-| §4 V5–V7 校验 | 以 §4.3 定义为唯一口径：**V5** = 调节后两侧相等（`is_balanced=false` 时不得 SUBMIT/APPROVED）；**V6** = 未达项必须有挂账人+原因+期间，且四类合计与 items 求和一致（AC-43）；**V7** = 同一笔（`flow_id`/`transaction_id`）同期间唯一 |
+| §4 V5–V8 校验 | 以 §4.3 定义为唯一口径（V8 = 审核人硬约束：≠提交人 且 ≠出纳）：**V5** = 调节后两侧相等（`is_balanced=false` 时不得 SUBMIT/APPROVED）；**V6** = 未达项必须有挂账人+原因+期间，且四类合计与 items 求和一致（AC-43）；**V7** = 同一笔（`flow_id`/`transaction_id`）同期间唯一 |
 | §10.1 分期 | 本两表属 **P1**，P0 不建；P0 的 7 张表保持 §5.1–§5.7 不变 |
 | 表数量口径 | 全案共 **9 张新表**：P0 建 7 张（§5.1–§5.7）+ P1 建 2 张（§5.10） |
 
@@ -959,7 +969,7 @@ expected_amount（分）
 
 **总部账户归属见 TD-40。数据可见范围（与权限正交）**：`bank_accounts.scope=STORE` 的账户仅本店可见可操作；`scope=GLOBAL` 仅财务主管/审计可见；**任何情况下禁止「无归属 → 默认门店」回退**。
 
-**四眼原则**：调节表提交人与审核人、缴款单收妥人与复核人**不得同一人**（TD-38 讨论收银员=出纳的例外）。
+**四眼原则（硬门禁，不可配置关闭）**：调节表 `submitted_by ≠ approved_by`，且**审核人不得为出纳（`ROLE_TELLER`）**——出纳可编制/提交（`finance:bank:recon` 保留），但审核必须由他人完成（§4.3 V8）；缴款单收妥人与复核人同样不得同一人（TD-38）。
 
 ---
 
@@ -1012,7 +1022,8 @@ expected_amount（分）
 | AC-40 | （建议新增 A9）存行流水成对：每张 `DEPOSITED` 缴款单对应恰好 2 条 `[depositSlip=…]` 内部转账 | 挂 `consistency_check.py` | §8 |
 | AC-41 | （建议新增 A10）现金户余额非负：`count(bank_accounts WHERE account_type=2 AND balance<0)` = 0 | 挂 `consistency_check.py` | §8 |
 | AC-42 | （建议新增 A11，**INFO 非阻断**）`MATCHED` 超期未处理：`count(recon_items WHERE subject_status='MATCHED' AND matched_since < now() - interval 'N days')`，N 默认 3、可配置 `app.finance.recon.matched-stale-days`；输出行数供巡检看板展示，**不计入 TOTAL FAIL** | 挂 `consistency_check.py`（INFO 段） | §2.3、§5.5 |
-| AC-43 | （建议新增 A12）调节表汇总自洽：每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
+| AC-44 | （P1 新增）**审核人硬门禁 V8**：以出纳身份提交的调节表，用同一账号 approve → 必须被拒（业务错误码非 0）；用另一出纳账号 approve → 也必须被拒；用非出纳的其他审核人 approve → 通过。三条用例全部断言 | 接口 + SQL | §4.3 V8、§5.10.1 |
+| AC-45 | （P1 新增）**调节表不调账**：`POST /statements`（生成）→ `submit` → `approve` 全链路前后，`fund_flows` 行数与 `bank_accounts.balance` 合计**零变化**；`reconciliation_items` 只引用既有 `flow_id`/`transaction_id`，不存在指向不存在记录的悬空引用 | SQL | §4.3 硬规则一 |每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
 
 ### 8.1 与现有 QA 脚本的挂载关系
 
@@ -1075,7 +1086,7 @@ expected_amount（分）
 | TD-35 | 内部转账是否生成会计凭证 | 由 AutoVoucher 规则决定，本期手工 | §3.4 |
 | TD-36 | 跨天班次的 `business_date` 归属 | 取交班日 | §3.8 E3-1 |
 | TD-37 | `closing_cash` 为空是否允许生成缴款单 | 生成但禁止 `submit` | §3.8 E3-5 |
-| TD-38 | 收银员=出纳时是否强制二次复核 | 强制（内控） | §7 四眼原则 |
+| TD-38 | 收银员=出纳时是否强制二次复核 | **强制且不可配置关闭**（与 V8 同口径：审核人 ≠ 提交人 且 ≠ 出纳角色） | §4.3 V8、§7 四眼原则 |
 | TD-39 | 已结账期间是否硬拦截 `deposit` / `verify` | 硬拦截 | §3.8 E3-11 |
 | TD-40 | `scope=GLOBAL`（总部账户）导入/勾稽/调节权限归属；缴款单关联是否本期做 | 仅财务主管可操作总部账户；缴款单关联下期 | §7、§3 |
 
