@@ -615,38 +615,44 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 26. 库存预测软匹配根治 + R8 覆盖率只读排查（2026-10-24 13:55–14:15）
 
-### 26.1 StockForecastMapper 软匹配 → location_id
-| 方法 | 原（错） | 现 |
-|---|---|---|
-| `getActualConsumed` | `l.location_code = #{storeId}` | `l.location_id = #{locationId, BIGINT}` |
-| `getAvailableStock` | 同上 | 同上 |
-| `getSafetyStock` | 同上 | 同上 |
-- 参数类型 `String storeId → Long locationId`；
-- `StockForecastServiceImpl.resolveLocationId`：① `users.location_id` → ② `stores_new.store_id` 经 `LocationIdBridge` 正查 → ③ 都无则 `null`（全量口径）；**声明了门店却无映射 → WARN + 空结果，不查全量**；
-- `orders.store_id` 仍用 store 空间，库存/locations 一律 location_id，两个空间不再混用。
+---
 
-**before/after 实证（证明原来确实错匹配）**：
-| 口径 | inventory 命中 | inventory_movement 命中 |
-|---|---|---|
-| 旧 `location_code = '1'` | **0 行** | **0 行**（真实 code 是 `STORE_A`，永不相等） |
-| 新 `location_id = 1` | **4 行**（101.7） | **109 行**（近 7 天 OUT 28.1） |
+## 27. P0 落地：财务对账地基（七表 + CSV 导入 + 只读查询，2026-10-24 18:50–19:40）
 
-单测：`StockForecast*` **16/16**（新增 `StockForecastLocationScopeTest` 6 例，含源码断言：去注释后不含 `location_code = #{storeId}`、`location_id = #{locationId}` 命中 ≥3）。
+### 27.1 范围（严格锁死，未越界）
+- **建表**：§5.1–§5.7 七张表（`import_batches` 21 列 / `import_rows` 12 / `bank_transactions` 28 / `recon_runs` 19 / `recon_items` 17 / `recon_differences` 19 / `deposit_slips` 29），Flyway `20261024.003 success=t`；
+- **未建** §5.10 两表（校验脚本里有一条「P0 范围锁」断言守着）；
+- **未做任何写账动作**：`recon` 包对 `fund_flows`/`bank_accounts.balance` 只有注释、零 mapper 调用（TD-14 已裁决「否」）。
 
-### 26.2 R8 / P1-DASHBOARD-FILTER-001 覆盖率只读排查（未改任何开关）
-脚本：`scripts/qa/r8_location_coverage.sql` + `r8_location_coverage.py`（只读，`--json` 机读）。
-
-| 指标 | 数值 |
+### 27.2 CSV 导入（I1–I6）
+| 项 | 实现 |
 |---|---|
-| users 总数 / 有 location / 空 | 22 / 5 / 17 |
-| **启用用户 location 覆盖率** | **23.81%**（21 启用，5 有值） |
-| employees 总数 / 有 location / 空 | 14 / 3 / 11 |
-| **在职员工 location 覆盖率** | **21.43%** |
-| 交叉兜底（空 location 用户可由 employees 补齐） | **0**（不可兜底 17） |
-| 悬空 / 引用已删除库位 | users 0 / employees 0 / purchase_stockins 0 |
-| 近 30 天订单可经 stores_new→location 限定 | **617/617 = 100%**（门店1 570、门店2 47） |
+| 编码 | BOM → UTF-8 严格 → GB18030 回退；全失败 → `PARSED_FAILED` |
+| 元→分 | **唯一实现** `MoneyYuanToFen`（BigDecimal + setScale(0)，禁 double/float）；千分位/3 位小数/全角各有独立 error_code |
+| 方向 | 微信/支付宝无收支列默认收入（负数→支出）；**银行不猜**，无借贷标志/正负号或借贷同时有值 → `DIRECTION_UNKNOWN` |
+| 幂等 | 行级 `dedupe_basis`：精确键命中=DUPLICATE 跳过；退化键命中=NEEDS_REVIEW 落库并置 `needs_review=1`（**文件级 sha 不早退**，否则 AC-3 永不成立） |
+| 两段式 | import（预检不落事实表）→ commit；整批失败不留垃圾；行级错误 → PARSED_OK + error_rows，commit 后 PARTIAL |
+| 审计 | `import_batches.create_user_id` + 每条 `bank_transactions.create_user_id` 全写入 |
+| 权限 | import/commit/cancel → `finance:bank:import`；查询 → `finance:bank:view`；10 个新码已入库（33491–33500），其中 3 个授给 `ROLE_FINANCE_DIRECTOR`，7 个 `deposit-slip:*` **未绑**（等 Owner 定出纳映射） |
 
-**结论：暂不开启 `app.dashboard.store-scope.enabled`**（本次未修改该配置）。理由：开关按「登录用户 location」过滤，启用用户里 16/21 无 location（含 qa_admin、emp-* 全套、finqa_*），打开等于对 76% 账号关店；员工侧同样 11/14 为空；兜底路径实测为 0。
-补数路径（全部 ID 关联）：users ← 同 user 的 employees.location_id → 再按 user_roles + 门店归属人工确认；employees ← warehouse_id/门店 → `location_id_map`；达标阈值建议 ≥90% 且悬空 0。
+### 27.3 验收（AC-1～AC-6 + AC-37，qa_admin 真实 token，PASS=21 / FAIL=0）
+| 断言 | 实测 |
+|---|---|
+| AC-1 | WECHAT(UTF-8+BOM) 5/5、ALIPAY(UTF-8) 5/5、BANK(GB18030) 5/5，提交均 COMMITTED |
+| AC-2 | 命中 15 行 / 不符 **0**（DB `amount` == CSV 元×100） |
+| AC-3 | 同文件再导：dup=5、`bank_transactions` 增量 **0** |
+| AC-4 | error_rows=**5**，码：THOUSANDS_SEP / DECIMAL_INVALID / FUTURE_TIME / AMOUNT_EMPTY / DIRECTION_UNKNOWN |
+| AC-5 | 缺必需列 → `PARSED_FAILED`、total=0、增量 0 |
+| AC-6 | 总行 45 / 孤儿 **0**；抽样 `transaction_id=60 | batch_id=66 | create_user_id=2110437068670001200 | amount=10 分 | ext=BANK:B20261024005192414` |
+| AC-37 | consistency_check 5 PASS ｜ ui_e2e_payment 7/7 ｜ schema_guard 5/5 |
+| 无写账 | 窗口内 `fund_flows` 579→579、`bank_accounts.balance` 合计 1,081,960→1,081,960 分（差 0） |
+
+### 27.4 过程中修掉的两个问题
+1. **403 权限不足**：权限码写进 `permissions` 但没绑角色，而 C 卡之后权限实时查库（token claims 不生效）→ 把 `finance:bank:view/import/recon` 授予 `ROLE_FINANCE_DIRECTOR`，qa_admin 实时解析 97 个权限后全绿。
+   ⚠️ 口径提醒：`role_permissions.permission_id` 存的是 `permissions.permission_id_str`（varchar），关联必须用 `p.permission_id_str = rp.permission_id`。
+2. **AC-2 的 SQL 恒 0 命中**：原断言用 `external_txn_id LIKE 'WX:%' AND external_txn_id IN (原号)` 两谓词互斥 → 改 `split_part(external_txn_id,':',2) IN (...)`，15/15 通过。
+
+### 27.5 PC-7 / PC-8
+- **PC-7 已执行**：11 个账户 / 10 有真实流水 / **漂移 0** / 1 个全补账账户判 N/A；补账行 59 条 `balance_after` 全为 0（按设计）。脚本 `scripts/qa/pc7_balance_baseline.sql`；由此补上文档 V3 例外规则（`FFH%` / `[历史补账` 行不得参与 V3 比较）。
+- **PC-8 部分完成**：服务 `postgresql-x64-18` 仍是 Manual，`Set-Service` 被拒（需管理员）；已交付 `scripts/qa/start-postgres.ps1`（Start-Service → pg_ctl 兜底，支持 `-Check`，处理了 PS5.1 的 BOM/编码坑），夜间巡航/E2E 前置执行即可。**改成自动启动仍需 Owner 在管理员会话执行一次**。
