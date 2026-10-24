@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ConflictException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
 import com.foodtraceability.dto.finance.deposit.DepositSlipQueryDTO;
@@ -34,6 +35,7 @@ import com.foodtraceability.service.finance.deposit.DepositSlipService;
 import com.foodtraceability.utils.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -187,7 +189,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // TD-03：应交额以 order_payment_records 现金支付重算为权威；closing_cash 只展示，不参与计算
         slip.setExpectedAmount(expected);
         slip.setActualAmount(0L);
-        slip.setDifferenceAmount(expected);
+        // AC-21 口径：difference_amount = actual_amount − expected_amount；
+        // DRAFT 阶段 actual=0，故为 −expected（未收款即全额未交，符号与后续收款一致）
+        slip.setDifferenceAmount(0L - expected);
         slip.setStatus(ST_DRAFT);
         Long operatorId = currentOperatorId();
         slip.setCreateUserId(operatorId == null ? 0L : operatorId);
@@ -298,7 +302,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         }
         Long operatorId = requireOperatorId("收款");
         long expected = slip.getExpectedAmount() == null ? 0L : slip.getExpectedAmount();
-        long difference = expected - received; // 正=短款，负=长款
+        // AC-21（design §5.7 / 第 1005 行）：difference_amount = actual − expected
+        //   > 0 → 长款（待查溢余）；< 0 → 短款（待查损溢）；= 0 → 平账
+        long difference = received - expected;
 
         LocalDateTime now = LocalDateTime.now();
         depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
@@ -314,7 +320,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // 红线 1/5：本步绝不生成 fund_flows；短款只落在单据 difference_amount，不改 pos_shifts.closing_cash
         audit(slip, "DEPOSIT_SLIP_RECEIVE",
                 "缴款单收款：slipNo=" + slip.getSlipNo() + " 应交=" + expected + "分 实收=" + received
-                        + "分 短款=" + difference + "分 SUBMITTED→RECEIVED（不生成流水）",
+                        + "分 差额=" + difference + "分（" + differenceLabel(difference)
+                        + "）SUBMITTED→RECEIVED（不生成流水）",
                 "{\"slipNo\":\"" + slip.getSlipNo() + "\",\"statusBefore\":\"SUBMITTED\",\"statusAfter\":\"RECEIVED\""
                         + ",\"expectedAmount\":" + expected + ",\"actualAmount\":" + received
                         + ",\"differenceAmount\":" + difference + "}");
@@ -433,8 +440,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "缴款单缺少收款人，无法做四眼校验：slipNo=" + slip.getSlipNo());
         }
         if (slip.getCollectorUserId().equals(verifier)) {
+            // BL-3：四眼（V8）硬门禁属业务违规 → HTTP 400 + 原文
             throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "四眼校验失败：复核人不能与收款人相同（userId=" + verifier + "）");
+                    "四眼校验失败：复核人不能与收款人相同（userId=" + verifier + "）", 400);
         }
         LocalDateTime now = LocalDateTime.now();
         depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
@@ -534,35 +542,54 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             }
         }
 
+        // (a) 单据状态：条件更新（并发仲裁点）——第二个并发请求会在此阻塞，等前一个提交后
+        //     匹配 0 行（status 已变 REVERSED），从而拿到 409，而不是「先 SELECT 后无条件 UPDATE」。
+        LocalDateTime now = LocalDateTime.now();
+        int guarded = depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
+                .eq(DepositSlip::getSlipId, slipId)
+                .in(DepositSlip::getStatus, ST_DEPOSITED, ST_VERIFIED, ST_CLOSED)
+                .set(DepositSlip::getStatus, ST_REVERSED)
+                .set(DepositSlip::getRemark, mergeRemark(slip.getRemark(), "[reverse] " + dto.getReason().trim()))
+                .set(DepositSlip::getUpdateTime, now));
+        if (guarded != 1) {
+            throw new ConflictException(
+                    "缴款单已被并发冲正或状态已变更，本次冲正未执行：slipNo=" + slip.getSlipNo()
+                            + "（要求当前状态 ∈ DEPOSITED/VERIFIED/CLOSED）");
+        }
+
         LocalDate businessDate = LocalDate.now(ZONE);
         Long operatorId = currentOperatorId();
         String operatorName = currentOperatorName();
         List<String> reversedFlowNos = new ArrayList<>();
         List<String> originalFlowNos = new ArrayList<>();
-        for (FundFlow original : originals) {
-            long amount = original.getAmount() == null ? 0L : original.getAmount();
-            int reverseDirection = original.getFlowDirection() != null && original.getFlowDirection() == DIRECTION_IN
-                    ? DIRECTION_OUT : DIRECTION_IN;
-            long delta = reverseDirection == DIRECTION_IN ? amount : -amount;
-            AtomicBalanceUpdater.BalanceSnapshot snap = atomicBalanceUpdater.addBalance(original.getAccountId(), delta);
-            String remark = "缴款单冲正：" + slip.getSlipNo() + " 原流水 " + original.getFlowNo()
-                    + " [reconReverseOf=" + original.getFlowNo() + "]";
-            reversedFlowNos.add(insertFlow(original.getAccountId(), reverseDirection, amount, snap.getBalanceAfter(),
-                    businessDate, remark, operatorId, operatorName));
-            originalFlowNos.add(original.getFlowNo());
-            // 红线 3：原流水只置 status=3，不删除、不改金额
-            fundFlowMapper.update(null, new LambdaUpdateWrapper<FundFlow>()
-                    .eq(FundFlow::getFlowId, original.getFlowId())
-                    .set(FundFlow::getStatus, FLOW_STATUS_CANCELLED)
-                    .set(FundFlow::getUpdateTime, LocalDateTime.now()));
+        try {
+            for (FundFlow original : originals) {
+                // (b) 原流水：条件更新 status 2→3，影响行数 ≠ 1 说明已被并发改过 → 抛错整体回滚
+                int flowGuarded = fundFlowMapper.update(null, new LambdaUpdateWrapper<FundFlow>()
+                        .eq(FundFlow::getFlowId, original.getFlowId())
+                        .eq(FundFlow::getStatus, FLOW_STATUS_DONE)
+                        .set(FundFlow::getStatus, FLOW_STATUS_CANCELLED)
+                        .set(FundFlow::getUpdateTime, LocalDateTime.now()));
+                if (flowGuarded != 1) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR,
+                            "原流水状态已被并发修改，冲正终止：flowNo=" + original.getFlowNo());
+                }
+                long amount = original.getAmount() == null ? 0L : original.getAmount();
+                int reverseDirection = original.getFlowDirection() != null && original.getFlowDirection() == DIRECTION_IN
+                        ? DIRECTION_OUT : DIRECTION_IN;
+                long delta = reverseDirection == DIRECTION_IN ? amount : -amount;
+                AtomicBalanceUpdater.BalanceSnapshot snap = atomicBalanceUpdater.addBalance(original.getAccountId(), delta);
+                String remark = "缴款单冲正：" + slip.getSlipNo() + " 原流水 " + original.getFlowNo()
+                        + " [reconReverseOf=" + original.getFlowNo() + "]";
+                reversedFlowNos.add(insertFlow(original.getAccountId(), reverseDirection, amount, snap.getBalanceAfter(),
+                        businessDate, remark, operatorId, operatorName));
+                originalFlowNos.add(original.getFlowNo());
+            }
+        } catch (DuplicateKeyException e) {
+            // (c) 兜底：uk_fund_flows_recon_reverse 唯一索引拦下重复冲正 → 业务 400，不是 500
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "冲正重复被唯一索引拦截（[reconReverseOf=] 已存在）：slipNo=" + slip.getSlipNo());
         }
-
-        LocalDateTime now = LocalDateTime.now();
-        depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
-                .eq(DepositSlip::getSlipId, slipId)
-                .set(DepositSlip::getStatus, ST_REVERSED)
-                .set(DepositSlip::getRemark, mergeRemark(slip.getRemark(), "[reverse] " + dto.getReason().trim()))
-                .set(DepositSlip::getUpdateTime, now));
         audit(slip, "DEPOSIT_SLIP_REVERSE",
                 "缴款单冲正：slipNo=" + slip.getSlipNo() + " 原因=" + dto.getReason().trim()
                         + " 原流水=" + originalFlowNos + "（置 status=3） 反向流水=" + reversedFlowNos
@@ -590,7 +617,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
 
     private void requireStatus(DepositSlip slip, String action, String expected) {
         if (!expected.equals(slip.getStatus())) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
+            // BL-3：状态机冲突属业务冲突 → HTTP 409 + 原文
+            throw new ConflictException(
                     "当前状态不允许" + action + "：slipNo=" + slip.getSlipNo()
                             + " status=" + slip.getStatus() + "（要求 " + expected + "）");
         }
@@ -750,6 +778,20 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         flow.setUpdateTime(LocalDateTime.now());
         fundFlowMapper.insert(flow);
         return flow.getFlowNo();
+    }
+
+    /**
+     * 差额方向标签（AC-21）：difference = actual − expected。
+     * 长款（>0）= 实收多于应交，挂「待查溢余」；短款（<0）= 实收少于应交，挂「待查损溢」；0=平账。
+     */
+    private String differenceLabel(long difference) {
+        if (difference > 0) {
+            return "长款·待查溢余";
+        }
+        if (difference < 0) {
+            return "短款·待查损溢";
+        }
+        return "平账";
     }
 
     /** AC-29：写财务审计（与业务同事务，写不进去就整体回滚，绝不静默吞掉） */
