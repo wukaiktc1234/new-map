@@ -771,3 +771,37 @@ SQL：`select flow_no, order_id, amount, remark from fund_flows where remark lik
 | consistency_check 12 项 | **12 PASS / 0 FAIL**（A7=0、A14=0、A15=0；A6/A8/A9/**A16=6** 为 INFO） |
 | ui_e2e_payment | **7/7 PASS** |
 | compile | BUILD SUCCESS |
+
+---
+
+## 35. P3 前置：幽灵余额抹平 / 乐观锁 409 实测 / 三路径号段（2026-10-25 02:20–02:40）
+
+### 35.1 幽灵余额抹平（Owner 已放行动 fund_flows + bank_accounts.balance）
+- 新增运维端点 `POST /v1/finance/ops/fixture-reverse`（`FinanceOpsController:37`，`@PreAuthorize('finance:bank:reconcile')`，类注释写明「仅用于测试夹具余额抹平，业务上不存在此场景」）；服务 `FinanceOpsServiceImpl`：`:58` 单事务、`:107` 幂等判重、**`:115` 余额只走 `AtomicBalanceUpdater#addBalance`、`balance_after` 取 `getBalanceAfter()`（零裸 SET）**、`:127/:132` 反向流水、`:183` 审计 `FIXTURE_FLOW_REVERSED`（log_id=120）。
+- 校验链：不存在 / `status≠3` / `remark` 不含 `[testFixture` / 跨账户 / 已抹平 → 全部 400。
+- 结果：账户 20 净 **−200 分**（version 459→460），反向流水 `FF202610250144`（100 分，ba=−440,330）、`FF202610250145`（100 分，ba=−440,430），remark `[testFixtureReverse=<原flow_no>]`。
+- **V3 真对齐（本轮关键结论）**：`status=2` 且非豁免的累计，含抹平行 **9,175,280** vs 不含 **9,175,480** → 差恰好 **−200**，证明钱真被拿走了；即时快照 `balance=695,470` == 最新非豁免 `balance_after=695,470`（一致）。
+  **此前为何是假 PASS**：那 200 分来自已作废(status=3)的夹具补记，不进 status=2 累计，但 `balance` 与 `balance_after` 链里都还含着 → 两侧同时多 200，A7 一比即相等；抹平后由一条 status=2 反向流水显式抵消，两边才同时归位。
+- 幂等/越权：重复调用 → 400「已抹平过（存在 [testFixtureReverse=…]）」，反向流水仍 2 行；传非夹具流水 `FF202610250009`(status=2) → 400「只允许抹平已作废(status=3)的夹具流水」，无写入。
+
+### 35.2 BL-3 乐观锁分支端到端（409 = 业务文案，不是「系统繁忙」）
+- `AtomicBalanceUpdater`：`:31` `DEFAULT_MAX_RETRY=3`、`:45` `@Value("${app.finance.balance.max-retry:3}")` 构造注入（**默认 3，生产语义不变**）、`:49` `≤0` 回落默认、`:66` 循环用 `maxRetry`、`:90` 文案带实际次数。`application.yml` 未动。
+- 确定性制造冲突：外部 psql 对现金户 20 持行锁 + 同事务 `version+1` 提交 → 存行首次 UPDATE 命中 0 行；测试实例用 `SPRING_APPLICATION_JSON` 把 `max-retry` 覆盖为 1。
+- **实测**：`POST /deposit-slips/4/deposit` → **HTTP 409** `{"code":409,"message":"余额更新乐观锁冲突，重试 1 次仍失败：accountId=20",…}`；余额未变、slip4 仍 RECEIVED。
+- 恢复默认 3 后单线程存行 → 200/DEPOSITED（20: 465,290→233,310；24: 264,380→496,360）；随后 SL10 冲正 slip4/slip5 → 余额回 `20:695,470/v510`、`24:34,200/v107`，本卡净影响 0。
+
+### 35.3 三路径号段验证（50 笔混合）
+- **答（a）：三处确实共用同一张 `order_sequence` 表** —— `FundFlowServiceImpl#generateFlowNo`→`FundFlowMapper#nextFlowSequence`（键 `FLOWyyyyMMdd`，**无 GREATEST 兜底**）；`DepositSlipMapper#nextFlowSequenceWithFloor`（同键，**有兜底**）、`nextSlipSequenceWithFloor`（`SLIPyyyyMMdd`，单据号）；`ReconCashSupport#nextFlowNo`（jdbc 直写同表同键，**有兜底**）。
+- 50 笔实跑（POS 20 / 缴款单存行 20 / 差异冲正 10）：号段区间 **114–133 / 134–175 / 176–185**，首尾相接、**无交叉无重复**；`count(*) − count(distinct flow_no) = 0`。
+- **洞**：FLOW20261025 min=1 / max=185 / 实际 177；缺失 **81–88（8 个）**，全部 ≤ 本轮基线最大号 113 → **历史洞**；**本轮新增洞 = 0**。**不新增巡检断言**（无处置价值、会长期报红），登记为本节已知项，待 BL-2 收敛时一并处理。
+- 余额净影响：账户 20 **−200 分**（= POS 现金收款 +17,000 / 退款 −17,200，**真实业务**，非缴款单链路泄漏；缴款单 `category=5` 出 −4,611,600 与冲正 +4,611,600 完全相抵）；账户 24 净 **0**（回到 34,200）。20 张缴款单 20/20 已 SL10 冲正。
+- 已知边界（BL-2 收敛前）：`FundFlowServiceImpl#nextFlowSequence` **无 GREATEST 兜底**，若号段落后于当天 MAX（历史直写造成）仍可能撞号；另两处已有兜底。
+
+### 35.4 BL-1 的 `no_account` 业务含义（只报告，未改代码）
+`PosSaleFinanceRecorder#resolveAccount` 三个触发点（均为**配置缺失**，不是瞬时不可用）：
+| 分支 | 触发条件 | 日志 reason | 业务含义 |
+|---|---|---|---|
+| 1 | `order.storeId == null` | `order_store_missing` | 订单缺门店归属，无法定位资金账户 |
+| 2 | `status=1 AND store_id=?` 的候选账户为空 | `no_store_account`（hint 指向 `2026-10-23-seed-store-cash-accounts.sql`） | 门店**未配置**资金账户（含账户被停用 `status=0` 的情况） |
+| 3 | 候选非空但无匹配支付方式的账户（关键字/类型双轮均未命中） | `no_matching_account_in_store` | 门店**未配置该支付方式**的收款账户（如缺微信/支付宝商户账户） |
+**结论：属「配置缺失」，拒绝支付是合理的，`isFatalFinanceFailure` 归为致命保持。** 若改为「允许支付 + 挂待处理」，就会退回到 P2 那种「已支付无流水」的状态，与 BL-1 的修复目标冲突。建议（非本轮）：错误文案对用户显示「门店未配置 XX 收款账户，请联系管理员」，对运维保留 `hint` 与候选快照。
