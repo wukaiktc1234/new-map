@@ -29,6 +29,15 @@ public class DepositSlip {
     @TableField("shift_id")
     private Long shiftId;
 
+    /**
+     * 业务日期（交班日）：TD-36 —— 取所属班次 pos_shifts.end_time 的日期。
+     *
+     * <p>生成时由 {@code DepositSlipServiceImpl.generate} 接线写入（ts-purchase 负责）；
+     * 历史行为 NULL，由 scripts/db-fix/2026-10-25-backfill-deposit-slip-business-date.sql 回填。</p>
+     */
+    @TableField("business_date")
+    private LocalDate businessDate;
+
     @TableField("cashier_employee_id")
     private Long cashierEmployeeId;
 
@@ -115,6 +124,9 @@ public class DepositSlip {
 
     public Long getShiftId() { return shiftId; }
     public void setShiftId(Long shiftId) { this.shiftId = shiftId; }
+
+    public LocalDate getBusinessDate() { return businessDate; }
+    public void setBusinessDate(LocalDate businessDate) { this.businessDate = businessDate; }
 
     public Long getCashierEmployeeId() { return cashierEmployeeId; }
     public void setCashierEmployeeId(Long cashierEmployeeId) { this.cashierEmployeeId = cashierEmployeeId; }
