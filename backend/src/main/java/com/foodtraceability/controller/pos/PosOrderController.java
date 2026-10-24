@@ -1,6 +1,7 @@
 package com.foodtraceability.controller.pos;
 
 import com.foodtraceability.common.Result;
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.*;
 import com.foodtraceability.service.PosOrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,6 +10,8 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -123,8 +126,20 @@ public class PosOrderController {
      */
     @PostMapping("/order/pay")
     @Operation(summary = "订单支付")
-    public Result<OrderResultDTO> payOrder(@RequestBody @Valid PayRequestDTO request) {
-        return posOrderService.payOrder(request);
+    public ResponseEntity<Result<OrderResultDTO>> payOrder(@RequestBody @Valid PayRequestDTO request) {
+        try {
+            return ResponseEntity.ok(posOrderService.payOrder(request));
+        } catch (BusinessException be) {
+            // BL-1：财务入账失败（SALE 流水写不进去）必须让调用方看到**非 200**，
+            // 不能只回 body code。这里只把 5xx 业务异常映射成 HTTP 500，
+            // 其余业务校验（如「订单已支付」）仍按项目惯例 HTTP 200 + body code 返回。
+            Integer code = be.getCode();
+            if (code != null && code >= 500) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Result.error(code, be.getMessage()));
+            }
+            throw be;
+        }
     }
 
     /**

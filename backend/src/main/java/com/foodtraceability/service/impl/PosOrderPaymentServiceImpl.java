@@ -2,6 +2,7 @@ package com.foodtraceability.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.OrderResultDTO;
 import com.foodtraceability.dto.PayRequestDTO;
 import com.foodtraceability.entity.OperationLogEntity;
@@ -274,6 +275,12 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             }
 
             return Result.success(result);
+        } catch (BusinessException be) {
+            // BL-1：财务入账失败等业务异常必须继续向上抛 —— 只有异常离开 @Transactional 方法，
+            // Spring 才会回滚「支付记录 + 订单已支付状态」；若在这里吞掉，事务照样提交，
+            // 就会留下「订单已支付、SALE 流水缺失」的脏数据（P2 的 4 笔就是这么来的）。
+            log.error("订单支付中止（业务异常，触发回滚）: orderId={}, msg={}", request.getOrderId(), be.getMessage());
+            throw be;
         } catch (Exception e) {
             log.error("订单支付失败: orderId={}", request.getOrderId(), e);
             return Result.error("支付失败，请重试或联系客服");
@@ -690,9 +697,21 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
                     order.getOrderId(), orderNumberForFinance, finance.getFundFlowNo(),
                     finance.getAccountId(), finance.getReceivableSettledFen());
         } else {
-            log.error("POS 销售入账未完成（支付已成功，需财务人工补录）: orderId={}, orderNumber={}, amount={}分, status={}, note={}",
+            log.error("POS 销售入账未完成: orderId={}, orderNumber={}, amount={}分, status={}, note={}",
                     order.getOrderId(), orderNumberForFinance, dueCents,
                     finance.getFundFlowStatus(), finance.getNote());
+            // BL-1：SALE 流水没写进去（failed / no_account）→ 必须让 /pay 返回非 200 并回滚支付，
+            // 不允许再出现「订单已支付、流水缺失」的脏状态（P2 曾出现 4 笔，A1 巡检报红）。
+            if (finance.isFatalFinanceFailure()) {
+                // 对外只给可读口径（SQL 原文/堆栈留在日志里，别抛给收银员）
+                String brief = finance.getNote() == null ? "" : finance.getNote().trim();
+                if (brief.length() > 60) {
+                    brief = brief.substring(0, 60).replaceAll("\s+", " ") + "…";
+                }
+                throw new BusinessException(500,
+                        "支付入账失败，请重试（SALE 资金流水未写入，订单支付已回滚）"
+                                + (brief.isEmpty() ? "" : "；原因：" + brief));
+            }
         }
 
         // 支付成功旁路：确认叫号号（下单时已取号 → 读回同一个号，幂等；历史单 → 此时补号）

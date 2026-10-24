@@ -440,5 +440,16 @@ public class PosSaleFinanceRecorder {
         public String getNote() { return note; }
 
         public boolean isRecorded() { return "recorded".equals(fundFlowStatus); }
+
+        /**
+         * 是否是「致命财务失败」：SALE 流水没写进去（写入失败 / 本店无可用资金账户）。
+         *
+         * <p>BL-1：这两类必须让支付接口返回非 200 并回滚支付，不能再「支付成功但无流水」。
+         * duplicate（幂等命中）与 recorded（已写入）不算失败；skipped 仅用于入参不合法（订单标识/金额），
+         * 正常支付链路不会出现。</p>
+         */
+        public boolean isFatalFinanceFailure() {
+            return "failed".equals(fundFlowStatus) || "no_account".equals(fundFlowStatus);
+        }
     }
 }
