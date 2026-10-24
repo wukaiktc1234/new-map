@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.foodtraceability.common.finance.AtomicBalanceUpdater;
 import com.foodtraceability.common.util.PosPaymentMethodResolver;
 import com.foodtraceability.dto.finance.*;
 import com.foodtraceability.entity.OrderItemNew;
@@ -55,16 +56,20 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
 
     private final BankAccountMapper bankAccountMapper;
     private final FundFlowMapper fundFlowMapper;
+    /** BL-4：负 delta 的余额扣减必须走「带下限校验」的共用实现（与 deposit/冲正/抹平同一套文案） */
+    private final AtomicBalanceUpdater atomicBalanceUpdater;
     /** 详情接口透出 POS 订单摘要所需的订单侧 mapper（列表接口不查，避免 N+1） */
     private final OrderNewMapper orderNewMapper;
     private final OrderItemNewMapper orderItemNewMapper;
     private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
 
     public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper,
+                               AtomicBalanceUpdater atomicBalanceUpdater,
                                OrderNewMapper orderNewMapper, OrderItemNewMapper orderItemNewMapper,
                                OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
+        this.atomicBalanceUpdater = atomicBalanceUpdater;
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
@@ -120,17 +125,18 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         }
         entity.setCreatedBy(createdBy);
 
-        // 并发安全：数据库端原子增减余额。
-        // 原实现「select 出余额 → 计算 → updateById 回写」在并发下会丢更新（多终端同时支付时余额少记）。
+        // 并发安全 + 余额下限（BL-4）：
+        //  ① 原子性：数据库端 balance = balance + delta / version = version + 1，不做「查-算-写」；
+        //  ② 下限校验：direction=2（退款/支出）时 delta 为负，余额不足必须**拒绝记账**，不允许把余额打成负数。
+        //     统一走 AtomicBalanceUpdater#addBalanceGuarded —— 与 deposit 存行 / 冲正 / 夹具抹平共用同一实现与文案
+        //     （同一次读既做下限校验又做乐观锁版本条件，无额外竞态窗口）；余额不足/乐观锁耗尽均抛 ConflictException(409)。
+        //     **不要再自己拼条件更新或另写文案。**
         long delta = dto.getFlowDirection() == 1 ? dto.getAmount() : -dto.getAmount();
-        int updated = bankAccountMapper.addBalance(account.getAccountId(), delta);
-        if (updated == 0) {
-            throw new BusinessException("银行账户不存在或已删除，无法记账");
-        }
-        // 回读余额作为 balance_after（同一事务内可见本事务的原子更新结果）
-        BankAccount afterAccount = bankAccountMapper.selectById(account.getAccountId());
-        entity.setBalanceAfter(afterAccount != null && afterAccount.getBalance() != null
-                ? afterAccount.getBalance() : delta);
+        String scene = dto.getFlowDirection() == 1 ? "POS销售入账" : "POS退款/支出";
+        AtomicBalanceUpdater.BalanceSnapshot snapshot =
+                atomicBalanceUpdater.addBalanceGuarded(account.getAccountId(), delta, scene, entity.getFlowNo());
+        // balance_after 必须取原子更新返回的 afterBalance，不得手填（红线）
+        entity.setBalanceAfter(snapshot.getBalanceAfter());
 
         baseMapper.insert(entity);
 

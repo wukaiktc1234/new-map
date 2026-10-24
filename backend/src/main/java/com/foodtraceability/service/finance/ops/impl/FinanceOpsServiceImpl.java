@@ -113,7 +113,9 @@ public class FinanceOpsServiceImpl implements FinanceOpsService {
             // ---- 反向流水：方向取反、金额相同 ----
             int reverseDirection = direction == 1 ? 2 : 1;
             long delta = reverseDirection == 1 ? amount : -amount;
-            AtomicBalanceUpdater.BalanceSnapshot snap = balanceUpdater.addBalance(accId, delta);
+            // BL-4：方向为 IN 的原流水，其反向是**扣款**（delta<0）——必须走带下限校验的共用方法，
+            // 余额不足时抛 ConflictException(409) 并整体回滚（不允许把账户余额打成负数）。
+            AtomicBalanceUpdater.BalanceSnapshot snap = balanceUpdater.addBalanceGuarded(accId, delta, "抹平", flowNo);
             // 批内只有第一条记录「抹平前」快照，最后一条记录「抹平后」快照，
             // 否则会变成「最后一条的前值」，看报告的人会误以为总额只动了 100 分。
             if (vo.balanceBefore == null) {
