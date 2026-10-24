@@ -21,6 +21,10 @@
      D. purchase_stockins 新增 >=1 条，最新一行 stockin_type=2 且 status=1
      E. 后端日志出现「处理采购入库完成事件」（日志不可读时退化为「C 已写入」间接证明）
      F. 追溯码状态 == in_stock
+     G. purchase_stockins 新行 location_id 非空，且该 id 在 locations 中存在（FK 有效）
+     H. purchase_stockin_items 新行存在且 material_id/actual_quantity/unit_price/amount/location_id 全非空，
+        且 amount == actual_quantity × unit_price
+     I. 反证：UPDATE purchase_stockin_items SET location_id=NULL 必须被数据库拒绝（NOT NULL 生效）
   任一失败打印五项 before/after 数字与接口响应体。
 
 用法：
@@ -381,6 +385,9 @@ class Runner:
         except Exception:
             pass
         good = [r for r in rows if str(r[2]).strip() == "2" and str(r[3]).strip() == "1"]
+        if good:
+            self.stockin_id = int(good[-1][0])
+            self.stockin_code = good[-1][1]
         ok = len(good) >= 1
         return self.step("D purchase_stockins 新增且 stockin_type=2/status=1", ok,
                          "before=%d after=%d 窗口内新增=%d（type=2&status=1 的 %d 条）行=%s" % (
@@ -412,6 +419,79 @@ class Runner:
         return self.step("E 采购入库完成事件（日志不可见，退化断言 cost_records 已写入）", cost_new >= 1,
                          "日志未命中「%s」；窗口内 cost_type=7 新增=%d；日志片段=%s" % (
                              token, cost_new, tail or "（无）"))
+
+    def assert_g_stockin_location(self):
+        """G. purchase_stockins 新行 location_id 非空，且该 location_id 在 locations 中真实存在（FK 有效）"""
+        sid = getattr(self, "stockin_id", None)
+        if not sid:
+            return self.step("G purchase_stockins.location_id 非空且 FK 有效", False, "未取得本次入库单 id（D 断言未命中）")
+        col_cnt = int(self.scalar(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' "
+            "AND table_name='purchase_stockins' AND column_name='location_id'", "0"))
+        if col_cnt == 0:
+            return self.step("G purchase_stockins.location_id 非空且 FK 有效", False,
+                             "purchase_stockins 尚无 location_id 列（迁移未落盘）stockin_id=%s" % sid)
+        loc = (self.scalar(
+            "SELECT COALESCE(location_id::text,'') FROM purchase_stockins WHERE stockin_id = %s" % sid, "") or "").strip()
+        if not loc:
+            return self.step("G purchase_stockins.location_id 非空且 FK 有效", False,
+                             "location_id 为空：stockin_id=%s（NOT NULL / 写入未生效）" % sid)
+        fk_hit = int(self.scalar("SELECT COUNT(*) FROM locations WHERE location_id = %s" % int(loc), "0"))
+        return self.step("G purchase_stockins.location_id 非空且 FK 有效", fk_hit >= 1,
+                         "stockin_id=%s location_id=%s locations 命中=%d" % (sid, loc, fk_hit))
+
+    def assert_h_stockin_item(self):
+        """H. purchase_stockin_items 新行存在，material_id/actual_quantity/unit_price/amount/location_id 全非空，
+              且 amount == actual_quantity × unit_price"""
+        sid = getattr(self, "stockin_id", None)
+        if not sid:
+            return self.step("H purchase_stockin_items 明细非空且 amount==qty×price", False,
+                             "未取得本次入库单 id（D 断言未命中）")
+        rc, out, err = self.psql(
+            "SELECT stockin_item_id, material_id, actual_quantity, unit_price, amount, location_id "
+            "FROM purchase_stockin_items WHERE stockin_id = %s AND deleted = 0 "
+            "ORDER BY stockin_item_id" % sid)
+        if rc != 0:
+            return self.step("H purchase_stockin_items 明细非空且 amount==qty×price", False,
+                             "psql rc=%s %s" % (rc, (err or out)[:200]))
+        rows = [line.split("|") for line in (out or "").splitlines() if line.strip()]
+        if not rows:
+            return self.step("H purchase_stockin_items 明细非空且 amount==qty×price", False,
+                             "stockin_id=%s 无明细行（未强制写明细）" % sid)
+        r = rows[-1] + [""] * 6
+        iid, mid, qty, price, amount, loc = r[0], r[1], r[2], r[3], r[4], r[5]
+        missing = [name for name, v in (("material_id", mid), ("actual_quantity", qty),
+                                        ("unit_price", price), ("amount", amount), ("location_id", loc))
+                   if (v or "").strip() == ""]
+        try:
+            ok_math = abs(dec(amount) - dec(qty) * dec(price)) <= Decimal("1")
+        except Exception:
+            ok_math = False
+        self.item_id = int(iid)
+        self.item_location_id = (loc or "").strip()
+        ok = not missing and ok_math
+        return self.step("H purchase_stockin_items 明细非空且 amount==qty×price", ok,
+                         "stockin_id=%s item=%s material_id=%s qty=%s unit_price=%s amount=%s location_id=%s；"
+                         "空字段=%s；amount==qty×price=%s" % (
+                             sid, iid, mid, qty, price, amount, loc,
+                             ("无" if not missing else ",".join(missing)), ok_math))
+
+    def assert_i_not_null_enforced(self):
+        """I. 反证：把明细行 location_id 置 NULL 必须被数据库拒绝（NOT NULL 约束生效）"""
+        iid = getattr(self, "item_id", None)
+        if not iid:
+            return self.step("I location_id NOT NULL 反证（置 NULL 必须被拒）", False,
+                             "未取得明细行 id（H 断言未命中）")
+        rc, out, err = self.psql(
+            "UPDATE purchase_stockin_items SET location_id = NULL WHERE stockin_item_id = %s" % iid)
+        if rc != 0:
+            first = ((err or out or "").strip().splitlines() or [""])[0]
+            return self.step("I location_id NOT NULL 反证（置 NULL 必须被拒）", True,
+                             "数据库已拒绝（rc=%s）：%s" % (rc, first[:200]))
+        restore = self.item_location_id or "NULL"
+        self.psql("UPDATE purchase_stockin_items SET location_id = %s WHERE stockin_item_id = %s" % (restore, iid))
+        return self.step("I location_id NOT NULL 反证（置 NULL 必须被拒）", False,
+                         "UPDATE 竟然成功（NOT NULL 未生效）；已回填 location_id=%s item=%s" % (restore, iid))
 
     def assert_f_status(self):
         st, body = call("GET", "/v1/material-trace-code/query/%s" %
@@ -454,6 +534,9 @@ class Runner:
         self.assert_d_stockin()
         self.assert_e_event()
         self.assert_f_status()
+        self.assert_g_stockin_location()
+        self.assert_h_stockin_item()
+        self.assert_i_not_null_enforced()
         return self.summary()
 
     def summary(self):
