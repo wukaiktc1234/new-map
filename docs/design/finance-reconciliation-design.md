@@ -508,7 +508,12 @@ expected_amount（分）
 | V2 | 月末余额 == 次月 1 日期初 | 期间切分开错日 |
 | V3 | `bank_accounts.balance` == 最新一笔 `balance_after` | 账户余额与流水脱钩（历史漂移，TD-22） |
 
-> **V3 例外规则（PC-7 实测发现，必须遵守）**：历史补账流水（`flow_no LIKE 'FFH%'` 或 `remark LIKE '%[历史补账%'`）的 `balance_after` **按设计写 0**（补账不回写余额，避免篡改上线后真实余额），因此 V3 **不得用"最新一笔 balance_after"直接比**，而应取「**最新一笔非补账流水**」的 `balance_after`；若该账户全部流水均为补账行，则 V3 判 **N/A（不参与一致性判定）**，并在报告中单列。
+> **V3 豁免规则（白名单式，唯一口径；2026-10-24 收窄）**：仅下列两类行豁免 V3 比对 ——
+> ① `flow_no LIKE 'FFH%'`（历史补账流水，前缀即标记）；② `created_by LIKE 'system/backfill-%'`（补账脚本审计名）。
+> 豁免理由：补账行 `balance_after` **按设计写 0**（补账不回写余额，避免篡改上线后真实余额）。
+> **反例（不得豁免）**：普通流水 `balance_after = 0` 仍参与 V3 比对；若它成为某账户最新一笔流水，V3 必须报红（真实不一致），不准放宽规则、不准改数据。
+> V3 取「最新一笔**非豁免**流水」的 `balance_after` 与 `bank_accounts.balance` 比较；若账户全部流水均为豁免行，判 **N/A** 并单列。
+> 落地：`scripts/qa/pc7_balance_baseline.sql`（第 3/4 段分别输出豁免行数与普通 0 值清单）+ `consistency_check.py` 的 **A7**（参与判定）/ **A8**（INFO）。
 >
 > **V3 修复方向（单向，TD-23 附带裁决）**：不一致时**只允许用最新 `balance_after` 回填 `bank_accounts.balance`（覆盖缓存）并写校准审计**；**禁止反向修改 `fund_flows.balance_after`**（这是「不改历史金额」红线的延伸，历史快照一旦被改写，审计链即失效）。校准执行记录：改前/改后值、账户、依据流水号、操作人、时间。
 | V4 | `balance_after` 与当日最后 `balance_snapshot` 之差 == 当日未达账项净额 | 调节表要解释的差 |
@@ -996,7 +1001,7 @@ expected_amount（分）
 | AC-29 | 缴款单审计：每一步状态变化在 `finance_audit_logs` 可查（operator / 时间 / 前后状态） | SQL | §3 |
 | AC-30 | 与勾稽联动：存行后该笔 `bank_transactions` 能被 L1 命中（`deposit_ref_no` ↔ `external_txn_id`） | 接口 + SQL | §3 |
 | AC-31 | 日记账闭合：任取 30 天，逐日 `期初=前日期末` 且 `期末=期初+收入−支出`，不满足行数 = 0 | SQL（V1/V2） | §4 |
-| AC-32 | 账户余额一致：`bank_accounts.balance == 最新**非补账** fund_flows.balance_after`（补账行 `balance_after=0` 按 V3 例外规则排除；全补账账户判 N/A），不一致账户数 = 0（或全在已知漂移清单） | SQL（V3） | §4 |
+| AC-32 | 账户余额一致：`bank_accounts.balance == 最新**非豁免** fund_flows.balance_after`（豁免仅 `FFH%` 与 `created_by LIKE 'system/backfill-%'`；普通行 `balance_after=0` **不豁免**；全豁免账户判 N/A），不一致账户数 = 0 | SQL（V3 / `consistency_check` A7） | §4 |
 | AC-33 | 调节表硬门禁：构造 `diff≠0` → `approve` 必须失败（业务错误码非 0） | 接口断言 | §4 |
 | AC-34 | 未达账项一致：四类合计 == 列合计；同一笔跨期间不重复挂账（V6/V7） | SQL | §4 |
 | AC-35 | 平衡可审核：`diff=0` → `APPROVED`，且提交人 ≠ 审核人（四眼） | 接口 + SQL | §4 |

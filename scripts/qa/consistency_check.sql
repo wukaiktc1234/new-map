@@ -17,6 +17,10 @@
 --       amount=0 AND deleted=0 AND record_type=1（收入）AND record_category=101（订单收入）
 --       口径来源：DATA-006 清理（scripts/db-fix/2026-10-24-cleanup-zero-amount-finance-records.sql）
 --   A6  （信息性，不参与 TOTAL）users.roles 与 user_roles 的角色集合不一致的用户数
+--   A7  （参与判定，V3）bank_accounts.balance <> 最新一笔「非补账豁免」flow.balance_after 的账户数
+--       豁免白名单（唯一口径）：flow_no LIKE 'FFH%' 或 created_by LIKE 'system/backfill-%'
+--       反例：普通流水 balance_after=0 **不豁免**；若它成为账户最新流水，A7 必须报红
+--   A8  （信息性，不参与 TOTAL）普通流水（非豁免行）balance_after=0 的条数
 --       口径：users.roles 里形如 '["1"]' / '[7]' / '["ROLE_ADMIN"]' 的 token 归一成 role_id
 --             （数字直接取，编码走 roles.role_id_str 映射），与 user_roles(deleted=0) 的
 --             role_id 集合作对比（数字或 ROLE_ 编码都做同样归一）。
@@ -127,6 +131,30 @@ WITH a1 AS (
            GROUP BY f.order_id
           HAVING count(*) > 1
       ) t
+), a7 AS (
+    -- V3（§4.2）：账户余额（缓存）必须等于「最新一笔**非补账豁免**流水」的 balance_after。
+    -- 豁免白名单（唯一口径）：flow_no LIKE 'FFH%'（历史补账） 或 created_by LIKE 'system/backfill-%'。
+    -- 反例（不得豁免）：普通流水 balance_after=0 仍参与比对 —— 若它是某账户最新一笔，就会在这里报红。
+    SELECT count(*) AS n
+      FROM bank_accounts b
+      LEFT JOIN (
+          SELECT account_id, balance_after,
+                 ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY flow_id DESC) rn
+            FROM fund_flows
+           WHERE deleted = 0
+             AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
+      ) lf ON lf.account_id = b.account_id AND lf.rn = 1
+     WHERE b.deleted = 0
+       AND lf.balance_after IS NOT NULL
+       AND lf.balance_after <> b.balance
+), a8 AS (
+    -- 信息性：普通流水（非补账豁免行）balance_after = 0 的条数。
+    -- 这类行若成为账户最新流水会直接把 A7 打红；单独列出便于定位是历史遗留还是写入缺陷。
+    SELECT count(*) AS n
+      FROM fund_flows
+     WHERE deleted = 0
+       AND balance_after = 0
+       AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
 )
 SELECT line
   FROM (
@@ -160,13 +188,25 @@ SELECT line
            '[INFO] A6 users.roles 与 user_roles 角色集合不一致 users=' || n
       FROM a6
     UNION ALL
+    -- A7 参与判定：V3 账户余额 vs 最新非补账流水快照（豁免仅 FFH% 与 system/backfill-%）
     SELECT 7,
+           CASE WHEN n = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+           || 'A7 V3 账户余额<>最新非补账流水快照 accounts=' || n
+      FROM a7
+    UNION ALL
+    -- A8 信息性：普通流水 balance_after=0 条数（不豁免、但不直接判红；若是最新流水会先让 A7 红）
+    SELECT 8,
+           '[INFO] A8 普通流水 balance_after=0 rows=' || n
+      FROM a8
+    UNION ALL
+    SELECT 9,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a3) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a4) > 0 THEN 1 ELSE 0 END
-             + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END
+             + CASE WHEN (SELECT n FROM a7) > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
