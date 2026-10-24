@@ -91,6 +91,17 @@ public interface MaterialTraceCodeService extends IService<MaterialTraceCode> {
     boolean confirmStockin(String traceCode, String operatorName);
 
     /**
+     * 扫码确认入库（整改 1：显式库位/单价可选，内部强制解析，解析不到即拒绝）。
+     *
+     * @param traceCode            追溯码
+     * @param operatorName         操作人
+     * @param explicitLocationId   显式入库库位（可空；空则走 StockinLocationResolver 五级 ID 链）
+     * @param explicitUnitPriceFen 显式单价（分，可空；空则走单价解析链，仍为空则抛错）
+     */
+    boolean confirmStockin(String traceCode, String operatorName,
+                           Long explicitLocationId, Long explicitUnitPriceFen);
+
+    /**
      * 批量扫码确认入库
      * @param traceCodes 追溯码列表
      * @param operatorName 操作人

@@ -67,6 +67,13 @@ public class PurchaseStockin {
     private Long warehouseId;
 
     /**
+     * 入库库位ID（locations.location_id；整改 1 起 NOT NULL：只允许 ID→ID 解析结果）
+     */
+    @TableField("location_id")
+    @Schema(description = "入库库位ID", example = "1")
+    private Long locationId;
+
+    /**
      * 入库日期
      */
     @TableField("stockin_date")
@@ -310,6 +317,14 @@ public class PurchaseStockin {
 
     public void setWarehouseId(Long warehouseId) {
         this.warehouseId = warehouseId;
+    }
+
+    public Long getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(Long locationId) {
+        this.locationId = locationId;
     }
 
     public LocalDate getStockinDate() {

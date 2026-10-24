@@ -17,6 +17,7 @@ import com.foodtraceability.service.MaterialTraceCodeService;
 import com.foodtraceability.service.PrintService;
 import com.foodtraceability.service.PurchaseStockinService;
 import com.foodtraceability.service.StoreInventoryLogService;
+import com.foodtraceability.service.purchase.StockinLocationResolver;
 import com.foodtraceability.entity.MaterialArchive;
 import com.foodtraceability.entity.PurchaseStockin;
 import com.foodtraceability.entity.PurchaseStockinItem;
@@ -48,7 +49,8 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
                                         @Nullable PurchaseStockinService purchaseStockinService,
                                         EventPublisher eventPublisher,
                                         MaterialArchiveMapper materialArchiveMapper,
-                                        PurchaseStockinItemMapper purchaseStockinItemMapper) {
+                                        PurchaseStockinItemMapper purchaseStockinItemMapper,
+                                        StockinLocationResolver stockinLocationResolver) {
         this.materialTraceCodeMapper = materialTraceCodeMapper;
         this.printService = printService;
         this.inventoryService = inventoryService;
@@ -57,6 +59,7 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
         this.eventPublisher = eventPublisher;
         this.materialArchiveMapper = materialArchiveMapper;
         this.purchaseStockinItemMapper = purchaseStockinItemMapper;
+        this.stockinLocationResolver = stockinLocationResolver;
     }
 
     private final MaterialTraceCodeMapper materialTraceCodeMapper;
@@ -75,6 +78,9 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
 
     /** 入库明细（purchase_stockin_items）：单价解析链第二级来源 unit_price（单位：分） */
     private final PurchaseStockinItemMapper purchaseStockinItemMapper;
+
+    /** 入库库位解析（整改 1：ID → ID，五级优先序，绝不返回 null） */
+    private final StockinLocationResolver stockinLocationResolver;
 
     private static final String PREFIX = "MTC";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -386,6 +392,19 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
     @Override
     @Transactional
     public boolean confirmStockin(String traceCode, String operatorName) {
+        return confirmStockin(traceCode, operatorName, null, null);
+    }
+
+    /**
+     * 扫码确认入库（整改 1）：强制解析库位与单价，强制写 purchase_stockin_items。
+     *
+     * @param explicitLocationId 显式入库库位（可空；空则走 StockinLocationResolver 五级链）
+     * @param explicitUnitPriceFen 显式单价（分，可空；空则走单价解析链，仍为空则拒绝确认）
+     */
+    @Override
+    @Transactional
+    public boolean confirmStockin(String traceCode, String operatorName,
+                                  Long explicitLocationId, Long explicitUnitPriceFen) {
         MaterialTraceCode code = getByTraceCode(traceCode);
         if (code == null) {
             log.warn("追溯码不存在: {}", traceCode);
@@ -407,12 +426,33 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
                     "确认入库失败：追溯码状态更新未生效（traceCode=" + traceCode + "）");
         }
         
-        log.info("追溯码确认入库成功: traceCode={}, materialName={}", traceCode, code.getMaterialName());
-        
-        // DATA-007 顺序：建入库单（拿单号）→ 落统一库存账（用单号做 sourceRef）→ 发事件（AFTER_COMMIT 联动成本）
-        PurchaseStockin stockin = createPurchaseStockinRecord(code, operatorName);
+        // 整改 1：库位与单价都必须解析出来，否则拒绝确认（不再软匹配/不写 0）
+        Long orderId = parseLongOrNull(code.getPurchaseOrderId());
+        Long locationId = stockinLocationResolver.resolveLocationId(explicitLocationId, null, orderId, code.getStoreId());
+        Long unitPriceFen = explicitUnitPriceFen != null && explicitUnitPriceFen > 0
+                ? explicitUnitPriceFen
+                : resolveUnitPriceFen(code, null);
+        if (unitPriceFen == null || unitPriceFen <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "无法确定入库单价：请指定 unitPrice 或维护物料参考价");
+        }
 
-        updateInventoryAfterConfirm(code, stockin.getStockinCode());
+        // 物料ID必须可解析：脏数据一律拒绝，且必须在建单/写明细之前拦下（避免部分写入）
+        Long materialId = parseLongOrNull(code.getMaterialId());
+        if (materialId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "确认入库失败：物料ID非法（materialId=" + code.getMaterialId()
+                            + "，traceCode=" + code.getTraceCode() + "）");
+        }
+
+        log.info("追溯码确认入库成功: traceCode={}, materialName={}, locationId={}, unitPriceFen={}, materialId={}",
+                traceCode, code.getMaterialName(), locationId, unitPriceFen, materialId);
+
+        // 顺序：建入库单（含 location/order/明细）→ 落统一库存账（用单号做 sourceRef）→ 发事件（AFTER_COMMIT 联动成本）
+        PurchaseStockin stockin = createPurchaseStockinRecord(code, operatorName, locationId, orderId,
+                unitPriceFen, materialId);
+
+        updateInventoryAfterConfirm(code, stockin.getStockinCode(), locationId, unitPriceFen, materialId);
 
         publishTraceConfirmStockinEvent(stockin, code);
 
@@ -463,7 +503,8 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
      * @param code      追溯码
      * @param sourceRef 来源单据号（入库单号），写入 inventory_movement.source_ref
      */
-    private void updateInventoryAfterConfirm(MaterialTraceCode code, String sourceRef) {
+    private void updateInventoryAfterConfirm(MaterialTraceCode code, String sourceRef,
+                                             Long locationId, Long unitPriceFen, Long materialId) {
         if (inventoryService == null) {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
                     "确认入库失败：库存服务未注入（traceCode=" + code.getTraceCode() + "）");
@@ -473,28 +514,16 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
                     "确认入库失败：追溯码缺少门店（traceCode=" + code.getTraceCode() + "）");
         }
 
-        Long storeIdLong;
-        try {
-            storeIdLong = Long.parseLong(code.getStoreId().trim());
-        } catch (NumberFormatException e) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "确认入库失败：门店ID格式不正确（storeId=" + code.getStoreId() + "）");
-        }
-
-        // storeId → locationId（stores_new 口径；未纳入位置体系的门店显式拒绝，禁止数值兜底）
-        Long locationId = LocationIdBridge.locationIdOfStore(storeIdLong);
+        // 整改 1：库位已由 StockinLocationResolver 统一按 ID→ID 解析（禁止字符串软匹配/数值兜底），
+        // 这里只做非空校验，不再自行换算 store_id。
         if (locationId == null) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "确认入库失败：门店未映射到库存位置（storeId=" + storeIdLong + "，traceCode=" + code.getTraceCode() + "）");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, StockinLocationResolver.RESOLVE_FAILED_MESSAGE);
         }
 
-        // 物料ID：追溯码存的是字符串，必须能转 Long（无法解析=脏数据，禁止静默跳过）
-        Long materialId;
-        try {
-            materialId = Long.parseLong(code.getMaterialId() == null ? "" : code.getMaterialId().trim());
-        } catch (NumberFormatException e) {
+        // materialId 已由 confirmStockin 早期解析（此处保证非空）
+        if (materialId == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "确认入库失败：物料ID非法（materialId=" + code.getMaterialId() + "，traceCode=" + code.getTraceCode() + "）");
+                    "确认入库失败：物料ID非法（traceCode=" + code.getTraceCode() + "）");
         }
 
         BigDecimal quantity = code.getWeight() != null ? code.getWeight() : code.getQuantity();
@@ -517,7 +546,7 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
                 code.getMaterialName(),
                 quantity,
                 unit,
-                null,                       // unitCost：追溯码无单价，交给加权平均，不臆造 0
+                unitPriceFen,               // unitCost：整改 1 起单价必填（分），参与加权平均
                 code.getBatchNumber(),      // batchNo
                 "TRACE_CONFIRM_STOCKIN",    // sourceType（S5 词表）
                 sourceRef);
@@ -554,7 +583,9 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
      * - createUserId: 创建人ID长整型（原 createdBy字符串）
      * - stockinDate: LocalDate类型（原 Date类型）
      */
-    private PurchaseStockin createPurchaseStockinRecord(MaterialTraceCode code, String operatorName) {
+    private PurchaseStockin createPurchaseStockinRecord(MaterialTraceCode code, String operatorName,
+                                                       Long locationId, Long orderId, Long unitPriceFen,
+                                                       Long materialId) {
         if (purchaseStockinService == null) {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
                     "确认入库失败：采购入库服务未注入（traceCode=" + code.getTraceCode() + "）");
@@ -587,16 +618,81 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
             // 备注：记录追溯码信息便于溯源
             stockin.setQualityRemark("扫码确认入库 - 追溯码: " + code.getTraceCode());
 
+            // 整改 1：库位归属只走 ID（resolver 结果，非空；列 NOT NULL），采购单关联能推出来就写上
+            if (locationId == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, StockinLocationResolver.RESOLVE_FAILED_MESSAGE);
+            }
+            stockin.setLocationId(locationId);
+            stockin.setOrderId(orderId);
+            BigDecimal quantity = code.getWeight() != null ? code.getWeight() : code.getQuantity();
+            if (quantity != null && unitPriceFen != null) {
+                // total_amount 存分（bigint）
+                stockin.setTotalAmount(quantity.multiply(BigDecimal.valueOf(unitPriceFen))
+                        .setScale(0, java.math.RoundingMode.HALF_UP).longValue());
+            }
+
             // 使用MyBatis-Plus的save方法保存（替代原createPurchaseStockin方法）
             if (!purchaseStockinService.save(stockin) || stockin.getStockinId() == null) {
                 throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
                         "确认入库失败：采购入库单保存失败（traceCode=" + code.getTraceCode() + "）");
             }
 
-            log.info("确认入库-创建采购入库记录成功: traceCode={}, stockinId={}, stockinCode={}",
-                code.getTraceCode(), stockin.getStockinId(), stockin.getStockinCode());
+            log.info("确认入库-创建采购入库记录成功: traceCode={}, stockinId={}, stockinCode={}, locationId={}, orderId={}",
+                code.getTraceCode(), stockin.getStockinId(), stockin.getStockinCode(), locationId, orderId);
+
+            // 整改 1：强制写明细（purchase_stockin_items），location_id 必须是 resolver 的 ID 结果
+            createStockinItem(stockin, code, locationId, unitPriceFen, quantity, materialId);
             return stockin;
         }
+    }
+
+    /**
+     * 写入库明细（整改 1：扫码确认也必须写 purchase_stockin_items，且 location_id 非空）。
+     *
+     * <p>字段口径：actual_quantity=追溯码重量；unit_price=单价（分）；amount=数量×单价（分）；
+     * location_id=StockinLocationResolver 的 ID 结果（禁止字符串软匹配）；order_item_id 扫码确认场景为空。</p>
+     */
+    private void createStockinItem(PurchaseStockin stockin, MaterialTraceCode code,
+                                   Long locationId, Long unitPriceFen, BigDecimal quantity,
+                                   Long materialId) {
+        if (purchaseStockinItemMapper == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "确认入库失败：入库明细 Mapper 未注入（traceCode=" + code.getTraceCode() + "）");
+        }
+        if (locationId == null) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, StockinLocationResolver.RESOLVE_FAILED_MESSAGE);
+        }
+        if (unitPriceFen == null || unitPriceFen <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "无法确定入库单价：请指定 unitPrice 或维护物料参考价");
+        }
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "确认入库失败：入库数量为空或非正数（traceCode=" + code.getTraceCode() + "）");
+        }
+
+        PurchaseStockinItem item = new PurchaseStockinItem();
+        item.setStockinId(stockin.getStockinId());
+        item.setOrderItemId(null);   // 扫码确认无采购订单行
+        item.setMaterialId(materialId);
+        item.setMaterialName(code.getMaterialName());
+        item.setBatchNo(code.getBatchNumber());
+        item.setActualQuantity(quantity);
+        item.setUnit(code.getWeightUnit() != null && !code.getWeightUnit().isBlank()
+                ? code.getWeightUnit() : "kg");
+        item.setUnitPrice(unitPriceFen);
+        item.setAmount(quantity.multiply(BigDecimal.valueOf(unitPriceFen))
+                .setScale(0, java.math.RoundingMode.HALF_UP).longValue());
+        item.setLocationId(locationId);
+        item.setRemark("扫码确认入库 - 追溯码:" + code.getTraceCode());
+        item.setCreateTime(LocalDateTime.now());
+        item.setUpdateTime(LocalDateTime.now());
+        item.setDeleted(0);
+
+        purchaseStockinItemMapper.insert(item);
+        log.info("确认入库-已写入库明细: stockinId={}, materialId={}, qty={}, unitPrice={}分, amount={}分, locationId={}",
+                stockin.getStockinId(), item.getMaterialId(), item.getActualQuantity(),
+                item.getUnitPrice(), item.getAmount(), item.getLocationId());
     }
 
     /**
@@ -633,7 +729,7 @@ public class MaterialTraceCodeServiceImpl extends ServiceImpl<MaterialTraceCodeM
         // 单价解析链（DATA-007 收尾）：a) 追溯码自身 → b) 入库明细 → c) 物料主档参考价 → d) 缺失则 null + WARN
         Long unitPriceFen = resolveUnitPriceFen(code, stockin);
         BigDecimal quantity = code.getWeight() != null ? code.getWeight() : code.getQuantity();
-        if (unitPriceFen != null) {
+        if (unitPriceFen != null) {   // confirmStockin 已强校验非空；此处保留防御分支
             // 事件里的金额/单价单位是「元」，库里是「分」
             event.setUnitPrice(BigDecimal.valueOf(unitPriceFen).divide(BigDecimal.valueOf(100L), 2, java.math.RoundingMode.HALF_UP));
             if (quantity != null) {

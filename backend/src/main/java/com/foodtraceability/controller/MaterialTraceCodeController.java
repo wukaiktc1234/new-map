@@ -215,9 +215,21 @@ public class MaterialTraceCodeController {
     @PreAuthorize("hasAuthority('trace:update')")
     public Result<Boolean> confirmStockin(
             @Parameter(description = "追溯码") @RequestParam String traceCode,
-            @Parameter(description = "操作人") @RequestParam(required = false) String operatorName) {
+            @Parameter(description = "操作人") @RequestParam(required = false) String operatorName,
+            @Parameter(description = "显式入库库位ID（可空；空则按 采购单仓库→采购单门店→追溯码门店→用户归属 解析）")
+            @RequestParam(required = false) Long locationId,
+            @Parameter(description = "显式单价（分，可空；空则按 入库明细→物料参考价 解析）")
+            @RequestParam(required = false) Long unitPriceFen,
+            @Parameter(description = "显式单价（元，可空；与 unitPriceFen 二选一，优先 unitPriceFen）")
+            @RequestParam(required = false) java.math.BigDecimal unitPrice) {
         try {
-            boolean result = materialTraceCodeService.confirmStockin(traceCode, operatorName);
+            Long resolvedUnitPriceFen = unitPriceFen;
+            if (resolvedUnitPriceFen == null && unitPrice != null) {
+                // 元 → 分（HALF_UP）
+                resolvedUnitPriceFen = unitPrice.multiply(java.math.BigDecimal.valueOf(100L))
+                        .setScale(0, java.math.RoundingMode.HALF_UP).longValue();
+            }
+            boolean result = materialTraceCodeService.confirmStockin(traceCode, operatorName, locationId, resolvedUnitPriceFen);
             if (result) {
                 return Result.success(true);
             } else {
