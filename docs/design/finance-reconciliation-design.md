@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 文档名 | `docs/design/finance-reconciliation-design.md` |
-| 版本 | **v1.1-draft**（修订：§5 与 §4 调节表对齐 / TD-22 提升为 PC-7 / 新增 AC-42 与 PC-8） |
+| 版本 | **v1.2-draft**（v1.1：§5 与 §4 调节表对齐 / TD-22 提升为 PC-7 / 新增 AC-42、AC-43、PC-8；**v1.2：修正调节表公式方向（A/B↔C/D 曾写反）、§4.3 示例数字与符号、V5–V7 口径统一、`bank_balance` 取值字段名；补 TD-12 退化键 NEEDS_REVIEW、TD-23 单向修复**） |
 | 日期 | 2026-10-24（时区 Asia/Shanghai） |
 | 作者 | 数据/财务轨（fund-500）+ ts-hr-asset（A 部分），由架构总控合并 |
 | 合并自 | `docs/design/draft-finance-recon-a.md`（CSV 导入 / 日记账 / 调节表）+ `docs/design/draft-finance-recon-b.md`（自动勾稽 / 交款单） |
@@ -154,8 +154,18 @@
 | B | `(account_id, txn_time, amount, counterparty_account)` | 覆盖无流水号来源；同额同秒多笔真实交易会误判 |
 | **C（建议默认）** | A 为主；无 `external_txn_id` 时退 B，并在行上标 `dedupe_basis=COMPOSITE` | 兼顾精度与覆盖（TD-12） |
 
-**批次内去重**：同键重复 → 保留首条，后续 `import_rows.status=DUPLICATE` + `duplicate_of_row_no`。
-**与库内去重**：命中既有 `bank_transactions` → `import_rows.status=DUPLICATE` + `matched_transaction_id`。
+**批次内去重**：同键重复 → 保留首条，后续行按下方「按 dedupe_basis 分流」处理，并写 `duplicate_of_row_no`。
+**与库内去重**：命中既有 `bank_transactions` → 按下方「按 dedupe_basis 分流」处理，并写 `matched_transaction_id`。
+
+**按 dedupe_basis 分流（TD-12 附带裁决，误判成本不对称）**
+
+| 命中场景 | 处理 | 理由 |
+|---|---|---|
+| **精确键**（`dedupe_basis=EXTERNAL_ID`，即命中 `external_txn_id`） | `import_rows.status=DUPLICATE`，**静默跳过**，不落 `bank_transactions` | 渠道唯一号相同 = 同一笔，误判概率极低 |
+| **退化键**（`dedupe_basis=COMPOSITE`，即仅「时间+金额+对方」相同） | `import_rows.status=NEEDS_REVIEW`，**落 `bank_transactions` 但置 `needs_review=1` 且 `match_status=EXCEPTION`**，不静默判重 | 组合键置信度天然低：同额同秒也可能是两笔真实交易；吞掉真实交易的代价 > 多一次人工确认 |
+| 后续到达同笔且带 `external_txn_id` | 允许把原 COMPOSITE 行「升级」关联（写 `upgraded_from`，非阻塞项） | 事后可纠偏 |
+
+> **结论：精确键重复 = DUPLICATE（跳过）；退化键重复 = NEEDS_REVIEW（落库+人工确认），绝不静默吞单。**
 **文件级去重**：`file_sha256` 相同直接提示「该文件已导过（批次 xxx）」，不产生新批次（TD-15 允许覆盖）。
 
 ### 1.5 接口草案（导入模块）
@@ -497,6 +507,8 @@ expected_amount（分）
 | V1 | 日记账期末 == 当日最后一笔 `balance_after` | 流水链断裂/并发丢失 |
 | V2 | 月末余额 == 次月 1 日期初 | 期间切分开错日 |
 | V3 | `bank_accounts.balance` == 最新一笔 `balance_after` | 账户余额与流水脱钩（历史漂移，TD-22） |
+
+> **V3 修复方向（单向，TD-23 附带裁决）**：不一致时**只允许用最新 `balance_after` 回填 `bank_accounts.balance`（覆盖缓存）并写校准审计**；**禁止反向修改 `fund_flows.balance_after`**（这是「不改历史金额」红线的延伸，历史快照一旦被改写，审计链即失效）。校准执行记录：改前/改后值、账户、依据流水号、操作人、时间。
 | V4 | `balance_after` 与当日最后 `balance_snapshot` 之差 == 当日未达账项净额 | 调节表要解释的差 |
 
 ### 4.3 调节表结构与四类未达账项
@@ -504,19 +516,24 @@ expected_amount（分）
 ```
 银行存款余额调节表（账户 招商银行 ****8821，期间 2026-10-01 ~ 10-31，币种 CNY）
 ──────────────────────────────────────────────────────────────
-  A. 企业账面余额                                     ¥ 12,345.67
-  B. 加：银行已收、企业未收                            ¥    500.00
-  C. 减：银行已付、企业未付                            ¥    120.00
-  D. 加：企业已收、银行未收                            ¥    300.00
-  E. 减：企业已付、银行未付                            ¥     80.00
+  ① 企业账面余额（book_balance）                        ¥ 12,345.67
+  ② 加：银行已收、企业未收        （C 类，企业侧加）    ¥    500.00
+  ③ 减：银行已付、企业未付        （D 类，企业侧减）    ¥    120.00
+  ④ 加：企业已收、银行未收        （A 类，银行侧加）    ¥    300.00
+  ⑤ 减：企业已付、银行未付        （B 类，银行侧减）    ¥     80.00
 ──────────────────────────────────────────────────────────────
-  企业调节后余额 = A + B − C                          ¥ 12,725.67
-  对账单余额                                          ¥ 12,545.67
-  银行调节后余额 = 对账单余额 − D + E                 ¥ 12,725.67  ← 必须相等
-  差异                                               ¥      0.00
+  企业调节后余额 = ① + ② − ③ = book_balance + C − D     ¥ 12,725.67
+  对账单余额（bank_balance）                            ¥ 12,505.67
+  银行调节后余额 = 对账单 + ④ − ⑤ = bank_balance + A − B ¥ 12,725.67  ← 必须相等
+  （12,505.67 + 300.00 − 80.00 = 12,725.67；与企业侧 12,345.67 + 500.00 − 120.00 恒等）
+  差异                                                  ¥      0.00
 ──────────────────────────────────────────────────────────────
 ```
 
+> **四类未达账项与字段字母的固定映射（全文唯一口径，§5.10.1 同名）**：
+> **A** = 企业已收、银行未收（银行侧加）；**B** = 企业已付、银行未付（银行侧减）；
+> **C** = 银行已收、企业未收（企业侧加）；**D** = 银行已付、企业未付（企业侧减）。
+> 恒等式：`book_balance + C − D = bank_balance + A − B`（即上例两条调节后余额必须相等，V5）。
 | 类 | 名称 | 自动建议线索 | 调整方向 |
 |---|---|---|---|
 | 1 | 企业已收、银行未收 | `fund_flows` 有进账、同期 `bank_transactions` 无对应 | 银行侧加 |
@@ -528,8 +545,8 @@ expected_amount（分）
 
 | 编号 | 规则 |
 |---|---|
-| V5 | 调节后两侧余额必须相等；不等 → 只能存 `DRAFT`，**禁止** `APPROVED` |
-| V6 | 每条未达账项必须有「挂账人 + 原因 + 期间」，且金额合计与所属类别列合计一致 |
+| V5 | 调节后两侧余额必须相等；不等 → 只能存 `DRAFT`，**禁止 `SUBMIT` 与 `APPROVED`**（`is_balanced=false` 时的硬门禁） |
+| V6 | 每条未达账项必须有「挂账人 + 原因 + 期间」，且按 `category` 的金额合计与主表四列 `uncleared_*` 一致（落地为 AC-43） |
 | V7 | 同一笔（`flow_id` / `transaction_id`）在同一期间只出现一次，不得跨期重复挂账 |
 
 ### 4.4 接口草案（日记账 / 调节表）
@@ -560,7 +577,7 @@ expected_amount（分）
 
 ┌─ 银行存款余额调节表（草稿）──────────────────────────────────────────┐
 │ 账户：招商银行 ****8821  期间：2026-10-01 ~ 10-31  [重算] [提交]      │
-│ 企业账面 ¥12,345.67  ↔  对账单 ¥12,545.67                             │
+│ 企业账面 ¥12,345.67  ↔  对账单 ¥12,505.67                             │
 │ ┌ 未达账项 ─────────────────────────────────────────────────────────┐│
 │ │ ① 企业已收银行未收 │ 2 笔 │ +300 │ [查看][移除]                    ││
 │ │ ② 企业已付银行未付 │ 1 笔 │  -80 │ [查看]                          ││
@@ -784,14 +801,14 @@ expected_amount（分）
 | `store_id` | BIGINT | 账户归属门店（`scope=GLOBAL` 的总部账户为 NULL） |
 | `period_start` / `period_end` | DATE | 期间起止；首版按自然月（TD-21），`period_end` 为该月最后一日 |
 | `book_balance` | BIGINT | **分**，期间末企业账面余额（取 `fund_flows.balance_after` 快照，见 TD-23） |
-| `bank_balance` | BIGINT | **分**，期间末银行对账单余额（取 `bank_transactions.balance_after_fen` 最新一笔） |
+| `bank_balance` | BIGINT | **分**，期间末银行对账单余额（取 `bank_transactions.balance_snapshot` 最新一笔；字段名见 §5.3，**不是** `balance_after_fen`） |
 | `uncleared_in_credit` | BIGINT | **分**，未达账项 A：企业已收、银行未收（合计） |
 | `uncleared_in_debit` | BIGINT | **分**，未达账项 B：企业已付、银行未付（合计） |
 | `uncleared_out_credit` | BIGINT | **分**，未达账项 C：银行已收、企业未收（合计） |
 | `uncleared_out_debit` | BIGINT | **分**，未达账项 D：银行已付、企业未付（合计） |
-| `adjusted_book_balance` | BIGINT | **分**，`book_balance + A − B`（企业侧调节后余额） |
-| `adjusted_bank_balance` | BIGINT | **分**，`bank_balance + C − D`（银行侧调节后余额） |
-| `is_balanced` | BOOLEAN | 生成时计算：`adjusted_book_balance = adjusted_bank_balance`；**false 时只允许保存 DRAFT，禁止 SUBMIT**（V7 硬门禁） |
+| `adjusted_book_balance` | BIGINT | **分**，`book_balance + C − D`（企业侧：企业账面 **+ 银行已收企业未收(C) − 银行已付企业未付(D)**） |
+| `adjusted_bank_balance` | BIGINT | **分**，`bank_balance + A − B`（银行侧：对账单余额 **+ 企业已收银行未收(A) − 企业已付银行未付(B)**） |
+| `is_balanced` | BOOLEAN | 生成时计算：`adjusted_book_balance = adjusted_bank_balance`；**false 时只允许保存 DRAFT，禁止 SUBMIT 与 APPROVED**（§4.3 **V5** 硬门禁） |
 | `status` | VARCHAR(16) | `DRAFT` / `SUBMITTED` / `APPROVED`（审核通过后锁定，改动需重开新表） |
 | `submitted_by` / `submitted_at` | BIGINT / TIMESTAMP | 提交人（出纳）/ 时间 |
 | `approved_by` / `approved_at` | BIGINT / TIMESTAMP | 审核人（财务主管）/ 时间；**四眼原则：提交人 ≠ 审核人**（可配 `app.finance.recon.require-four-eyes`，默认 true） |
@@ -829,7 +846,7 @@ expected_amount（分）
 | 关联点 | 说明 |
 |---|---|
 | §4 S3–S9 接口 | 均以本节两表为落库载体（S3 生成草稿 = INSERT statements + items；S8 审核 = status → APPROVED）；若 TD-24 改口径，这些接口同步改写 |
-| §4 V5–V7 校验 | V5 = 调节表四类合计与 items 求和一致（AC-43）；V6 = `is_balanced` 与两侧公式自洽；V7 = `is_balanced=false` 时 status 不得为 SUBMITTED/APPROVED |
+| §4 V5–V7 校验 | 以 §4.3 定义为唯一口径：**V5** = 调节后两侧相等（`is_balanced=false` 时不得 SUBMIT/APPROVED）；**V6** = 未达项必须有挂账人+原因+期间，且四类合计与 items 求和一致（AC-43）；**V7** = 同一笔（`flow_id`/`transaction_id`）同期间唯一 |
 | §10.1 分期 | 本两表属 **P1**，P0 不建；P0 的 7 张表保持 §5.1–§5.7 不变 |
 | 表数量口径 | 全案共 **9 张新表**：P0 建 7 张（§5.1–§5.7）+ P1 建 2 张（§5.10） |
 
@@ -1025,7 +1042,7 @@ expected_amount（分）
 
 | 编号 | 待裁决问题 | 建议默认值 | 影响面 |
 |---|---|---|---|
-| TD-12 | 幂等唯一键取 A（external_id）/ B（时间+金额+对方）/ C（组合） | **C**（A 为主键，无号退化 B 并标 `dedupe_basis=COMPOSITE`） | §1.4、§5.3 唯一索引 |
+| TD-12 | 幂等唯一键取 A（external_id）/ B（时间+金额+对方）/ C（组合） | **C**（A 为主键，无号退化 B 并标 `dedupe_basis=COMPOSITE`）；**附带裁决：精确键命中=DUPLICATE 静默跳过；退化键命中=NEEDS_REVIEW 落库+人工确认，不得静默判重** | §1.4、§5.3 唯一索引、AC-3 |
 | TD-13 | `external_txn_id` 是否带渠道前缀（如 `WX:`），银行流水号缺失时是否退化组合键 | 带前缀 + 允许退化 | §1.1、§1.4 |
 | TD-14 | `bank_transactions` 是否生成 `fund_flows`（到账即记账） | **否**（事实层/账面层分离） | §5.3、§3.4 |
 | TD-15 | 是否两段式（预检→确认）；已 `COMMITTED` 批次能否撤销 | 两段式 + 可撤销且留痕 | §1.2、§1.5 |
@@ -1036,7 +1053,7 @@ expected_amount（分）
 | TD-20 | 日记账粒度 `account × day` 是否够（是否需 currency / store 维度） | 够（store 由账户间接确定） | §4.1 |
 | TD-21 | 调节期间：自然月 vs 自定义起止；是否允许跨月未结账 | 自然月（首版） | §4.1、§4.4 |
 | TD-22 | 历史余额漂移（`balance` 与流水不一致）是否先做一次基线校准 | 先校准（以对账单为锚点）；**已提升为 PC-7（§10.3）**，不再是『可选优化』：未完成校准不得进 P1 | §4.2 V3、§10.3 PC-7 |
-| TD-23 | `balance_after`（流水快照）vs `bank_accounts.balance` 谁是唯一真值 | 流水快照为准，账户余额为派生缓存 | §4.2 |
+| TD-23 | `balance_after`（流水快照）vs `bank_accounts.balance` 谁是唯一真值 | 流水快照为准，账户余额为派生缓存；**附带裁决：V3 修复单向（快照→缓存），禁止反向改 `balance_after`** | §4.2、PC-7、AC-32 |
 | TD-24 | 未达账项挂账载体（新建 `reconciliation_items` / `fund_flows.remark` / `match_status`） | 新建独立表（便于跨期追溯）；**必须连带确认：§5.10 两张调节表（`reconciliation_statements` + `reconciliation_items`）是否保留、归属 P0 还是 P1** | **§5 表数量（7 张 vs 9 张）、§10.1 P0/P1 分期、§4 S3–S9 落地、§5.10 去留、AC-43 是否生效** |
 | TD-25 | 调节表是否只做四类（是否要「暂收暂付 / 在途」） | 只做四类 | §4.3 |
 | TD-26 | 是否复用既有 `bank_payment_records`（已有同名 Controller） | 不复用，避免语义混淆 | §5.3 |
@@ -1066,10 +1083,10 @@ expected_amount（分）
 
 | 编号 | 问题 | 建议默认值 | 驳回后的影响面 | 连带确认事项 |
 |---|---|---|---|---|
-| **TD-12** | 外部流水幂等唯一键 | **组合式**：`external_txn_id` 为主键；缺号时退化为「交易时间 + 金额 + 对方名称」并标 `dedupe_basis=COMPOSITE` | 驳回为纯 A 方案 → 缺少流水号的银行文件整批被拒；驳回为纯 B 方案 → 同额同日多笔会被误判重复，真实交易被吞 | 需确认唯一索引形态（§5.3）与 AC-3 断言口径 |
+| **TD-12** | 外部流水幂等唯一键 | **组合式**：`external_txn_id` 为主键；缺号时退化为「交易时间 + 金额 + 对方名称」并标 `dedupe_basis=COMPOSITE`；**退化键命中重复 → `NEEDS_REVIEW`（落库+人工确认），精确键命中才 `DUPLICATE` 静默跳过** | 驳回为纯 A 方案 → 缺少流水号的银行文件整批被拒；驳回为纯 B 方案 → 同额同日多笔会被误判重复，真实交易被吞 | 需确认唯一索引形态（§5.3）与 AC-3 断言口径 |
 | **TD-14** | `bank_transactions` 是否生成 `fund_flows`（到账即记账） | **否**：事实层（银行流水）与账面层（业务流水）分离，勾稽才有两侧可比 | 改为「是」→ 每笔到账都会多出一笔收入流水，与 SALE 流水重复计收入；勾稽退化为自证，§2 全部匹配规则需重写 | 需确认 §3.4 三段式（RECEIVED 不入账 / DEPOSITED 内部转账）是否仍成立 |
-| **TD-23** | 余额唯一真值：`fund_flows.balance_after` 快照 vs `bank_accounts.balance` | **流水快照为准**，账户余额为派生缓存，每日巡检校验（§4.2 V3、AC-32） | 改为「账户余额为准」→ 冲正/补账后必须重算全表，历史流水失去可审计快照；调节表 book_balance 取值口径需改写 | 连带 PC-7（基线校准）的口径定义 |
-| **TD-24** | 未达账项挂账载体 | **新建独立表**：`reconciliation_statements` + `reconciliation_items`（§5.10 字段级草案） | 改为 remark / match_status 承载 → **§5.10 整节删除**，§4 的 S3–S9 与 V5–V7 全部改写，AC-43 作废，表数量从 9 回落 7 | **必须同时确认**：§5.10 两表是否保留、归属 **P1**（推荐）还是 **P0**；若不保留，需指定替代载体 |
+| **TD-23** | 余额唯一真值：`fund_flows.balance_after` 快照 vs `bank_accounts.balance` | **流水快照为准**，账户余额为派生缓存，每日巡检校验（§4.2 V3、AC-32）；**V3 修复单向：快照→缓存，禁止反向改 `balance_after`** | 改为「账户余额为准」→ 冲正/补账后必须重算全表，历史流水失去可审计快照；调节表 book_balance 取值口径需改写 | 连带 PC-7（基线校准）的口径定义 |
+| **TD-24** | 未达账项挂账载体 | **新建独立表**：`reconciliation_statements` + `reconciliation_items`（§5.10 字段级草案） | 改为 remark / match_status 承载 → **§5.10 整节删除**，§4 的 S3–S9 与 V5–V7 全部改写，AC-43 作废，表数量从 9 回落 7 | **必须同时确认**：§5.10 两表是否保留、归属 **P1**（推荐）还是 **P0**；若不保留，需指定替代载体。**另：若保留，P1 开工前须复核本版（v1.2）已修正的四处——① §5.10.1 调节公式方向（A/B 与 C/D 曾写反）② §4.3 示例数字与符号（`+D−E`）③ V5–V7 编号口径（以 §4.3 为唯一权威）④ `bank_balance` 取值字段名（应为 `bank_transactions.balance_snapshot`，非 `balance_after_fen`）** |
 
 #### B. 其余 25 条（可实现中默认后置调整）
 
@@ -1122,7 +1139,7 @@ expected_amount（分）
 | PC-4 | 权限码入库 + 角色绑定，且 `permission_assignment_log` 留痕 | 待实现 |
 | PC-5 | 三道既有防线（consistency / ui_e2e_payment / schema_guard）在基线全绿 | 已具备 |
 | PC-6 | 至少 3 份真实样例文件（微信 / 支付宝 / 银行）可用于验收 | 待收集 |
-| **PC-7** | **P0 开工前完成历史余额基线校准**：跑 `bank_accounts.balance` vs 最新 `fund_flows.balance_after` 对账（§4.2 V3），输出**漂移账户清单**（账户/账面/快照/差额/建议处理）。**未校准不得进 P1**（否则 AC-32 第一天就红） | **未满足（TD-22 提升而来）** |
+| **PC-7** | **P0 开工前完成历史余额基线校准**：跑 `bank_accounts.balance` vs 最新 `fund_flows.balance_after` 对账（§4.2 V3），输出**漂移账户清单**（账户/账面/快照/差额/建议处理）并按 **V3 单向修复**（快照 → 缓存，禁止反向改 `balance_after`）执行校准。**未校准不得进 P1**（否则 AC-32 第一天就红） | **未满足（TD-22 提升而来）** |
 | **PC-8** | **PostgreSQL 服务改为自动启动或写入启动脚本**：避免夜间巡航 / CI / E2E 因服务 Stopped 直接失败（2026-10-24 已发生一次，需手动 `pg_ctl` 拉起） | **未满足** |
 
 ---
@@ -1176,7 +1193,7 @@ expected_amount（分）
 | `recon_runs` | RUNNING → FINALIZED / FAILED；FINALIZED --force-->（新 run）RUNNING | 旧 run 只读 |
 | `recon_differences` | OPEN → ASSIGNED → RESOLVING → CLOSED；ASSIGNED/RESOLVING → EXEMPT；CLOSED --reopen-->（新记录）OPEN | CLOSED 不可原地改（TD-10） |
 | `deposit_slips` | DRAFT → SUBMITTED → RECEIVED → DEPOSITED → VERIFIED → CLOSED；SUBMITTED → REJECTED → SUBMITTED；任意已提交态 → REVERSED | 不得回退到 DRAFT；`expected_amount` 只读 |
-| 调节表（§4 / §5.10） | DRAFT → SUBMITTED → APPROVED | `is_balanced=false` 不得 SUBMITTED/APPROVED（V7）；落地表为 `reconciliation_statements` + `reconciliation_items`，**随 TD-24 裁决确定去留与归属期** |
+| 调节表（§4 / §5.10） | DRAFT → SUBMITTED → APPROVED | `is_balanced=false` 不得 SUBMITTED/APPROVED（**V5**）；落地表为 `reconciliation_statements` + `reconciliation_items`，**随 TD-24 裁决确定去留与归属期** |
 
 ## 附录 C：与现状表字段对照（易混点）
 
