@@ -7,6 +7,8 @@ public class DepositSlipVO {
 
     private Long slipId;
     private String slipNo;
+    /** TD-36：业务日期（= 班次 end_time 的日期 / 交班日） */
+    private java.time.LocalDate businessDate;
     private Long storeId;
     private Long shiftId;
     private Long cashierEmployeeId;
@@ -39,6 +41,9 @@ public class DepositSlipVO {
 
     public String getSlipNo() { return slipNo; }
     public void setSlipNo(String slipNo) { this.slipNo = slipNo; }
+
+    public java.time.LocalDate getBusinessDate() { return businessDate; }
+    public void setBusinessDate(java.time.LocalDate businessDate) { this.businessDate = businessDate; }
 
     public Long getStoreId() { return storeId; }
     public void setStoreId(Long storeId) { this.storeId = storeId; }

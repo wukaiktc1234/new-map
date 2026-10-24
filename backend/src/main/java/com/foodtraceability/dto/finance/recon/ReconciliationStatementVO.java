@@ -38,5 +38,7 @@ public class ReconciliationStatementVO {
     public String remark;
     public Long createUserId;
     public LocalDateTime createTime;
+    /** BL-6：未解决的同额歧义条数（>0 时 isBalanced 恒为 false，禁止 submit/approve） */
+    public Integer ambiguousItemCount;
     public List<ReconciliationItemVO> items;
 }

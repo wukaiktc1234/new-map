@@ -17,4 +17,6 @@ public class ReconciliationItemVO {
     public String ownerName;
     public String reason;
     public Boolean clearedFlag;
+    /** BL-6：该条是否处于未解决的同额歧义（reason 以 AMBIGUOUS: 开头） */
+    public Boolean ambiguous;
 }
