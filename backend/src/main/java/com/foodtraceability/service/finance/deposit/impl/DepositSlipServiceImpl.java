@@ -383,6 +383,20 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     "现金账户与存行账户是同一个账户，无法做内部转账：accountId=" + cashAccount.getAccountId());
         }
 
+        // BL-4（P3 收口）：现金户实时余额校验——必须在事务内、在 AtomicBalanceUpdater / insertFlow **之前**。
+        // 转账后余额不得为负：当前余额必须 >= 本次转出金额 amount（= actual_amount）。
+        // 失败即抛 409（ConflictException，与项目「业务冲突 → 409」口径一致），事务整体回滚：
+        // 余额不变、无流水写入、单据状态不变。A15 巡检（现金户余额非负）作为事后第二道防线保留不动。
+        long cashBalance = cashAccount.getBalance() == null ? 0L : cashAccount.getBalance();
+        if (cashBalance < amount) {
+            long shortfall = amount - cashBalance;
+            log.warn("[METRIC] deposit_insufficient_cash slipNo={} accountId={} balance={} amount={} shortfall={}",
+                    slip.getSlipNo(), cashAccount.getAccountId(), cashBalance, amount, shortfall);
+            throw new ConflictException("现金户余额不足：当前 " + cashBalance + " 分，需 " + amount
+                    + " 分，差额 " + shortfall + " 分（accountId=" + cashAccount.getAccountId()
+                    + "，slipNo=" + slip.getSlipNo() + "）");
+        }
+
         LocalDate businessDate = businessDateOf(slip);
         Long operatorId = currentOperatorId();
         String operatorName = currentOperatorName();
