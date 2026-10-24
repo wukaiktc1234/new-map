@@ -2,7 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 六类断言（A1~A5 参与 PASS/FAIL 判定，**期望 rows=0**；A6 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A9 为信息性输出，不影响 TOTAL）：
 --   A1  已支付但资金流水缺失：orders.payment_status=2 的订单，没有对应的 SALE 资金流水
 --       匹配口径：fund_flows.order_id = orders.order_id
 --                 AND flow_direction=1 AND flow_category=1 AND deleted=0
@@ -27,6 +28,18 @@
 --             role_id 集合作对比（数字或 ROLE_ 编码都做同样归一）。
 --       为什么不参与判定：授权权威源是 user_roles（鉴权只读它），users.roles 只是冗余镜像；
 --       是否影响鉴权在明细里标注（受影响 = users.roles 有角色但 user_roles 无行 → 登录后无权限）。
+--   A10 （参与判定，P1-D）status='FINALIZED' 的 recon_runs 却没有任何 recon_items
+--       = 跑批「声称完成却零结果」；期望 rows=0。
+--       守卫：recon_runs / recon_items（及其判定所需列）不存在时输出
+--             [INFO] A10 跳过（表未创建），**不计入 TOTAL**。
+--   A11 （参与判定，P1-D）status='APPROVED' 的 reconciliation_statements 中
+--       approved_by = submitted_by（同一人自审）**或** approved_by 属 ROLE_TELLER（出纳自批）；
+--       期望 rows=0。角色判定：
+--         user_roles ur JOIN roles r ON r.role_id_str = ur.role_id
+--          WHERE ur.user_id::text = approved_by::text
+--            AND r.role_id_str = 'ROLE_TELLER' AND COALESCE(ur.deleted,0)=0
+--       守卫：reconciliation_statements（及其判定所需列）不存在时输出
+--             [INFO] A11 跳过（表未创建），**不计入 TOTAL**。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -44,6 +57,66 @@
 
 BEGIN;
 SET TRANSACTION READ ONLY;
+
+-- ------------------------------------------------------------
+-- A10 / A11 前置守卫（P1-D）
+--   P1 迁移未落盘时，两张表（recon_runs / recon_items / reconciliation_statements）
+--   可能尚不存在。psql 会在**解析期**就报 relation 不存在，因此不能用 CASE 包住静态查询，
+--   必须用 \if 条件分支：缺表 → 只输出 [INFO] 跳过，且变量置 0（不进 TOTAL FAIL）。
+--   \gset 同时把「整行输出文本」与「计数」写进 psql 变量，供下方汇总 UNION 与 TOTAL 使用。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.recon_runs') IS NOT NULL
+        AND to_regclass('public.recon_items') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'recon_runs'
+                       AND column_name IN ('run_id', 'status') GROUP BY table_name HAVING count(*) = 2)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'recon_items'
+                       AND column_name = 'run_id')) AS recon_ready
+\gset
+
+\if :recon_ready
+SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A10 FINALIZED 的 recon_run 无 recon_items rows=' || count(*) AS a10_line,
+       count(*) AS a10_n
+  FROM recon_runs r
+ WHERE r.status = 'FINALIZED'
+   AND NOT EXISTS (SELECT 1 FROM recon_items i WHERE i.run_id = r.run_id)
+\gset
+\else
+\set a10_line '[INFO] A10 跳过（表未创建）'
+\set a10_n 0
+\endif
+
+SELECT (to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
+                       AND column_name IN ('status', 'submitted_by', 'approved_by')
+                     GROUP BY table_name HAVING count(*) = 3)) AS stmt_ready
+\gset
+
+\if :stmt_ready
+SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A11 APPROVED 调节表自审/出纳自批 rows=' || count(*) AS a11_line,
+       count(*) AS a11_n
+  FROM reconciliation_statements s
+ WHERE s.status = 'APPROVED'
+   AND s.approved_by IS NOT NULL
+   AND (
+         (s.submitted_by IS NOT NULL AND s.approved_by::text = s.submitted_by::text)
+         OR EXISTS (
+              SELECT 1
+                FROM user_roles ur
+                JOIN roles r ON r.role_id_str = ur.role_id
+               WHERE ur.user_id::text = s.approved_by::text
+                 AND r.role_id_str = 'ROLE_TELLER'
+                 AND COALESCE(ur.deleted, 0) = 0)
+       )
+\gset
+\else
+\set a11_line '[INFO] A11 跳过（表未创建）'
+\set a11_n 0
+\endif
 
 -- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
@@ -218,14 +291,24 @@ SELECT line
            '[INFO] A9 已知历史 0 值项(精确白名单,待 P2 清理) rows=' || n
       FROM a9
     UNION ALL
+    -- A10 参与判定：FINALIZED 的 run 必须有 items（缺表时输出 [INFO] 跳过，不进 TOTAL）
     SELECT 10,
+           :'a10_line'
+    UNION ALL
+    -- A11 参与判定：APPROVED 调节表不得自审/出纳自批（缺表时输出 [INFO] 跳过，不进 TOTAL）
+    SELECT 11,
+           :'a11_line'
+    UNION ALL
+    SELECT 12,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a3) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a4) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END
-             + CASE WHEN (SELECT n FROM a7) > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN (SELECT n FROM a7) > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a10_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a11_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -377,5 +460,56 @@ SELECT us.uid,
  WHERE us.rids IS DISTINCT FROM COALESCE(urs.rids, ARRAY[]::bigint[])
  ORDER BY us.uid
  LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A10 明细（前 20 行）：status='FINALIZED' 但没有任何 recon_items 的跑批
+-- 期望为空；出现即为「跑批假装完成」——报表会显示已对账但零结果
+-- ------------------------------------------------------------
+\if :recon_ready
+\echo ''
+\echo '-- A10 明细（前 20）--'
+SELECT r.run_id, r.run_key, r.account_id, r.status, r.started_at, r.finished_at
+  FROM recon_runs r
+ WHERE r.status = 'FINALIZED'
+   AND NOT EXISTS (SELECT 1 FROM recon_items i WHERE i.run_id = r.run_id)
+ ORDER BY r.run_id DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A10 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A11 明细（前 20 行）：APPROVED 调节表中的「自审」与「出纳自批」
+-- 期望为空；四眼原则要求提交人与审核人不同，且审核人不得是出纳（ROLE_TELLER）
+-- ------------------------------------------------------------
+\if :stmt_ready
+\echo ''
+\echo '-- A11 明细（前 20）--'
+SELECT s.status,
+       s.submitted_by,
+       s.approved_by,
+       CASE WHEN s.submitted_by IS NOT NULL AND s.approved_by::text = s.submitted_by::text
+            THEN 'approved_by = submitted_by（同一人自审）'
+            ELSE 'approved_by 属 ROLE_TELLER（出纳自批）' END AS reason
+  FROM reconciliation_statements s
+ WHERE s.status = 'APPROVED'
+   AND s.approved_by IS NOT NULL
+   AND (
+         (s.submitted_by IS NOT NULL AND s.approved_by::text = s.submitted_by::text)
+         OR EXISTS (
+              SELECT 1
+                FROM user_roles ur
+                JOIN roles r ON r.role_id_str = ur.role_id
+               WHERE ur.user_id::text = s.approved_by::text
+                 AND r.role_id_str = 'ROLE_TELLER'
+                 AND COALESCE(ur.deleted, 0) = 0)
+       )
+ ORDER BY s.approved_by
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A11 明细跳过（表未创建）--'
+\endif
 
 COMMIT;

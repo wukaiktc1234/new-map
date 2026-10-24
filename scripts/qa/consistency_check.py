@@ -7,6 +7,19 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A1  已支付订单缺 SALE 资金流水（fund_flows.order_id 关联）
   A2  orders.paid_amount <> SUM(order_payment_records.payment_amount)
   A3  负库存（inventory.quantity / food.stock / foods.stock）
+  A4  同一订单多条 SALE 流水（重复入账风险）
+  A5  0 元「订单收入」财务流水残留（DATA-006 清理后必须为 0）
+  A6  （信息性）users.roles 与 user_roles 角色集合不一致（不参与判定）
+  A7  （参与判定）bank_accounts.balance <> 最新非补账流水快照（V3）
+  A8  （信息性）普通流水 balance_after=0 未知异常（不参与判定）
+  A9  （信息性）已知历史 0 值项白名单命中（不参与判定）
+  A10 （参与判定，P1-D）status='FINALIZED' 的 recon_runs 却没有任何 recon_items
+  A11 （参与判定，P1-D）status='APPROVED' 的 reconciliation_statements 中
+      approved_by = submitted_by（自审）或 approved_by 属 ROLE_TELLER（出纳自批）
+
+P1 迁移未落盘时：A10 / A11 由 SQL 内的 to_regclass 守卫自动降级为
+  '[INFO] A10 跳过（表未创建）' / '[INFO] A11 跳过（表未创建）'，
+  此时**不计入 TOTAL FAIL**，也不会让本脚本报错（退出码仍按其余断言判定）。
 
 输出约定（来自 SQL）：每类一行 '[PASS]/[FAIL] <断言名> rows=<n>'，最后 'TOTAL FAIL=<k>'。
 

@@ -84,6 +84,30 @@ SELECT v.role_id_str, p.permission_id_str, 0, NOW()
            AND rp.permission_id = v.permission_id_str
            AND COALESCE(rp.deleted, 0) = 0);
 
+-- ------------------------------------------------------------
+-- 2.2) **P1 调节表码**：finance:bank:reconcile 授予 ROLE_FINANCE_MANAGER + ROLE_TELLER
+--     依据 §7 角色矩阵：finance:bank:reconcile = 出纳 ✅（出具草稿）/ 财务主管 ✅（审核/封账）。
+--     注意：出纳拿到该码**不等于能审核**——V8 硬门禁在 service 层实时查 ROLE_TELLER 并拒绝 APPROVED
+--     （design §4.3 V8：「业务错误，不是前端提示」），所以这里按矩阵授权是安全的。
+-- ------------------------------------------------------------
+INSERT INTO role_permissions (role_id, permission_id, deleted, create_time)
+SELECT v.role_id_str, p.permission_id_str, 0, NOW()
+  FROM (VALUES
+        ('ROLE_FINANCE_MANAGER', 'PERM_FINANCE_BANK_RECONCILE'),
+        ('ROLE_TELLER',          'PERM_FINANCE_BANK_RECONCILE')
+       ) AS v(role_id_str, permission_id_str)
+  JOIN roles r       ON r.role_id_str = v.role_id_str AND r.deleted = 0
+  JOIN permissions p ON p.permission_id_str = v.permission_id_str AND p.deleted = 0
+ WHERE NOT EXISTS (
+        SELECT 1 FROM role_permissions rp
+         WHERE rp.role_id = v.role_id_str AND rp.permission_id = v.permission_id_str AND COALESCE(rp.deleted,0) = 0);
+
+SELECT r.role_id_str, count(*) AS reconcile_bound
+  FROM role_permissions rp
+  JOIN roles r ON r.role_id_str = rp.role_id
+ WHERE rp.permission_id = 'PERM_FINANCE_BANK_RECONCILE' AND COALESCE(rp.deleted,0) = 0
+ GROUP BY 1 ORDER BY 1;
+
 -- 验收断言：应为 3
 SELECT count(*) AS p0_required_codes_granted
   FROM role_permissions rp
