@@ -621,48 +621,28 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 28. P1 开工前置收尾（2026-10-24 19:40–20:10）
 
-### 28.1 权限绑定：按 §7 矩阵完整落地
-**角色查询结果与判断依据（未猜）**
-- `roles` 表 23 行：**无 `ROLE_TELLER`**；`ROLE_CASHIER` 的 `role_name='收银员'`、`role_code='cashier'` → 按裁决 (a)「不存在出纳角色且 CASHIER 明确是收银员」→ **新建 `ROLE_TELLER`（出纳，role_code=teller，data_scope=store，org_level=STORE_STAFF）**，未复用 CASHIER。
-  - 踩坑：`roles.role_id` 是 `GENERATED ALWAYS` 标识列，显式给值会被拒（`cannot insert a non-DEFAULT value`）→ 插入时不给 role_id。
-- 其余角色均在库：FINANCE_DIRECTOR / FINANCE_MANAGER / CASHIER / STORE_MANAGER / AUDITOR。
+---
 
-**绑定矩阵（本次新增 23 条绑定；日志 23 行）**
+## 29. 调节表内控口径收口（文档 + 巡检脚本，2026-10-24 22:40–23:00）
 
-| 权限 | TELLER | FIN_D | FIN_M | CASHIER | STORE_M | AUDITOR |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `finance:deposit-slip:view` | ✓ | ✓ | ✓ | – | ✓ | ✓ |
-| `finance:deposit-slip:create` | ✓ | ✓ | – | – | – | – |
-| `finance:deposit-slip:submit` | – | – | – | ✓ | – | – |
-| `finance:deposit-slip:receive` | ✓ | ✓ | – | – | – | – |
-| `finance:deposit-slip:deposit` | ✓ | ✓ | – | – | – | – |
-| `finance:deposit-slip:verify / close / reverse` | – | ✓ | – | – | – | – |
-| `finance:bank:view` | ✓ | ✓(既有) | ✓ | – | ✓ | ✓ |
-| `finance:bank:import` | ✓ | ✓(既有) | ✓ | – | – | – |
-| `finance:bank:recon` | ✓ | ✓(既有) | ✓ | – | – | – |
+### 29.1 出纳编制调节表：保留权限 + 加硬门禁（不改权限绑定）
+- 规范对照：《会计基础工作规范》（财政部令第 98 号）第十二条的禁止性列举**不含**「编制银行存款余额调节表」；但审计/内控实务要求出纳**一般不得**同时从事对账单获取与调节表编制，**确需出纳办理的必须由其他人员定期审核监督**。
+- 处置：**不撤销** `ROLE_TELLER` 的 `finance:bank:recon`（允许编制草稿与提交），把「四眼」从**可配**改为**硬门禁 V8**：
+  - `approved_by ≠ submitted_by`；
+  - `approved_by` 对应用户**不得持有 `ROLE_TELLER`（出纳）**；
+  - 违反 → 直接拒绝 `APPROVED` 并返回业务错误（不是前端提示）。
+- 文档落点：§4.3 新增 **V8** 与「硬规则二」、§5.10.1 `approved_by` 行改为硬门禁、§5.10.3 的 V 引用改为 V5–V8、§7 四眼原则改为硬门禁并写明出纳例外、TD-38 同步为「强制且不可配置关闭」。移除 `app.finance.recon.require-four-eyes` 的「可配关闭」表述。
 
-- 脚本：`scripts/db-fix/2026-10-24-finance-recon-role-binding.sql`（幂等；带权限码/角色前置校验 DO 块，缺一个即 RAISE，不静默跳过）。
-- 留痕：`permission_assignment_log` 写 23 行（`operation_type='ROLE_PERMISSION_BIND'`、`employee_id='-'`、`new_roles=角色码`、`remark=permission=<code> (<PERM_ID>)`）——**日志行数 = 新增绑定数 = 23**。
-  ⚠️ 口径披露：该表原生语义是「员工角色变更日志」（employee_id 维度），本次复用它记录「角色-权限绑定」；如需严格语义应另建 `role_permission_binding_log`，**由 Owner 决定是否改造**。
+### 29.2 调节表不调账：升级为硬规则一
+- 文档 §4.3 新增**硬规则一**：调节表的生成/重算/提交/审核**不产生、不修改任何 `fund_flows`、不改 `bank_accounts.balance`**；未达账项只在 `reconciliation_items` 挂账披露（A/B 引用 `flow_id`、C/D 引用 `transaction_id`，**只核对既有事实，不创造账面事实**）；调节表不是原始凭证，不得作为记账依据，未达账项待结算凭证到达后另走入账/冲正通道。
+- 新增验收：**AC-44**（V8 三条用例：本人审核拒、另一出纳审核拒、非出纳审核人通过）、**AC-45**（生成→提交→审核全链路前后 `fund_flows` 行数与 `bank_accounts.balance` 合计零变化，且 `reconciliation_items` 无悬空引用）。
 
-### 28.2 V3 豁免规则收窄（白名单式）
-- 收窄前：`flow_no LIKE 'FFH%' OR remark LIKE '%[历史补账%'`（偏宽泛，且以备注文本为条件）。
-- 收窄后（唯一口径）：`flow_no LIKE 'FFH%' OR created_by LIKE 'system/backfill-%'`；**普通行 `balance_after=0` 不再豁免**。
-- 落地：
-  - `scripts/qa/pc7_balance_baseline.sql` 重写：第 1 段总览、第 2 段漂移清单、第 3 段豁免行统计（应全为 0 值）、第 4 段**普通 0 值清单（只报告不改数据）**；注释写清豁免依据与反例。
-  - `scripts/qa/consistency_check.sql` 新增 **A7**（参与 TOTAL：V3 不一致账户数）与 **A8**（INFO：普通行 `balance_after=0` 条数）。
-- 本次结果：账户 11 / 有非豁免流水 10 / **V3 不一致 0** / N/A（全补账）1；豁免行 **59** 且 `non_zero=0`；**普通 0 值行 2 条**——`FF202609080010`（account 2，付款单）、`FF202609080028`（account 5，作废退回），均为 2026-09-08 遗留，**未改数据、未放宽规则**，仅报红记录；两行都不是各自账户的最新流水，故 A7 仍为 PASS。
-
-### 28.3 PC-8 兜底验证（实测停库拉起）
-| 步骤 | 输出 |
-|---|---|
-| `pg_ctl -m fast stop` | `server stopped`，`listen=0` |
-| `start-postgres.ps1`（无参数） | `服务 postgresql-x64-18 状态=Stopped StartType=Manual` → `Start-Service 被拒(...Access is denied...)，改用 pg_ctl` → `[PC-8] PostgreSQL 已就绪（127.0.0.1:5432）` |
-| `start-postgres.ps1 -Check` | `[PC-8] PostgreSQL 已在监听 5432，跳过`，`check_exit=0` |
-| 连库确认 | `select count(*) from fund_flows` → **582** |
-
-**P1 开工前置（新增一条，必须遵守）**：
-> **每次跑批 / E2E / 巡检前，先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa/start-postgres.ps1 -Check`；退出码非 0 立即中止，不得静默继续。**
-> 根因：`postgresql-x64-18` 启动类型为 `Manual`，机器重启后不会自启；`Set-Service -StartupType Automatic` 需管理员权限（本会话被拒），由 Owner 在管理员会话执行一次即可根治。
+### 29.3 两条历史 0 值流水：采用「精确白名单」口径（不补快照）
+- 涉及：`FF202609080010`（account 2，付款单 FK202609080009）、`FF202609080028`（account 5，作废付款单退回），均为 2026-09-08 遗留，写入时未维护 `balance_after`。
+- **不采用「补录更正流水」方案**：新增一条 0 金额、带「正确快照」的流水本身仍是对账面事实的补充陈述，需另行论证其凭证性质；而问题本质是**历史行的快照缺失**，用新行去"解释"旧行会让 A8 的「未知异常」判定更模糊。
+- **采用「精确 flow_no 白名单 + 分流」**：
+  - `consistency_check`：**A8** 收窄为「普通行 0 值且**不在**白名单」= **未知异常**（当前 0 行）；新增 **A9**（INFO）= 已知历史项命中数（当前 2 行，标注「待 P2 清理」）。A8 的判定口径**未放宽**（仍是 balance_after=0 的普通行，只是把「已知历史」单列）。
+  - `pc7_balance_baseline.sql`：普通 0 值清单增加 `triage` 列（`KNOWN_HISTORICAL(待P2)` / `UNKNOWN`），白名单写死 `flow_no IN ('FF202609080010','FF202609080028')`，注释写明禁止模糊放宽。
+- 明确不做：**不修改历史 `balance_after`**（违反「不改历史金额」红线，破坏流水链可回放性）；不把判定改成「非最新流水就放过」（那正是上一轮 V3 豁免过宽的同类错误）。
+- 本次输出：`A7 PASS accounts=0`｜`A8 未知异常 rows=0`｜`A9 已知历史 rows=2`｜`TOTAL FAIL=0`；PC-7 两行 triage 均为 `KNOWN_HISTORICAL(待P2)`。

@@ -20,7 +20,8 @@
 --   A7  （参与判定，V3）bank_accounts.balance <> 最新一笔「非补账豁免」flow.balance_after 的账户数
 --       豁免白名单（唯一口径）：flow_no LIKE 'FFH%' 或 created_by LIKE 'system/backfill-%'
 --       反例：普通流水 balance_after=0 **不豁免**；若它成为账户最新流水，A7 必须报红
---   A8  （信息性，不参与 TOTAL）普通流水（非豁免行）balance_after=0 的条数
+--   A8  （信息性，不参与 TOTAL）普通流水（非豁免行、非已知白名单）balance_after=0 的条数 = 未知异常
+--   A9  （信息性，不参与 TOTAL）已知历史 0 值项（精确 flow_no 白名单，待 P2 清理）命中数
 --       口径：users.roles 里形如 '["1"]' / '[7]' / '["ROLE_ADMIN"]' 的 token 归一成 role_id
 --             （数字直接取，编码走 roles.role_id_str 映射），与 user_roles(deleted=0) 的
 --             role_id 集合作对比（数字或 ROLE_ 编码都做同样归一）。
@@ -148,13 +149,26 @@ WITH a1 AS (
        AND lf.balance_after IS NOT NULL
        AND lf.balance_after <> b.balance
 ), a8 AS (
-    -- 信息性：普通流水（非补账豁免行）balance_after = 0 的条数。
-    -- 这类行若成为账户最新流水会直接把 A7 打红；单独列出便于定位是历史遗留还是写入缺陷。
+    -- 信息性：普通流水（非补账豁免行、且不在已知历史白名单）balance_after = 0 的条数。
+    -- 这类行若成为账户最新流水会直接把 A7 打红；此处单列以便区分「未知异常」与「已知历史项」。
+    -- ⚠️ 已知历史白名单（精确 flow_no，禁止用模糊条件放宽）：
+    --    FF202609080010  2026-09-08 付款单（account 2），写入时未维护快照
+    --    FF202609080028  2026-09-08 作废付款单退回（account 5），同上
+    --    两条均非账户最新流水，A7 不受影响；待 P2 以「补录更正流水」或「历史重述」方式处理，
+    --    在此之前仅登记为已知项（A9），**不修改历史 balance_after、不放宽 A8 判定**。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
        AND balance_after = 0
        AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
+       AND flow_no NOT IN ('FF202609080010', 'FF202609080028')
+), a9 AS (
+    -- 信息性：已知历史异常项命中数（精确 flow_no 白名单），用于确认白名单没有失效
+    SELECT count(*) AS n
+      FROM fund_flows
+     WHERE deleted = 0
+       AND balance_after = 0
+       AND flow_no IN ('FF202609080010', 'FF202609080028')
 )
 SELECT line
   FROM (
@@ -194,12 +208,17 @@ SELECT line
            || 'A7 V3 账户余额<>最新非补账流水快照 accounts=' || n
       FROM a7
     UNION ALL
-    -- A8 信息性：普通流水 balance_after=0 条数（不豁免、但不直接判红；若是最新流水会先让 A7 红）
+    -- A8 信息性：普通流水 balance_after=0 且不在已知白名单（未知异常）
     SELECT 8,
-           '[INFO] A8 普通流水 balance_after=0 rows=' || n
+           '[INFO] A8 普通流水 balance_after=0 未知异常 rows=' || n
       FROM a8
     UNION ALL
+    -- A9 信息性：已知历史白名单命中数（精确 flow_no；待 P2 清理）
     SELECT 9,
+           '[INFO] A9 已知历史 0 值项(精确白名单,待 P2 清理) rows=' || n
+      FROM a9
+    UNION ALL
+    SELECT 10,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END

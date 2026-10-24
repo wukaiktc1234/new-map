@@ -55,11 +55,16 @@ SELECT 'exempt_rows' AS section, count(*) AS rows,
    AND (flow_no LIKE 'FFH%' OR COALESCE(created_by,'') LIKE 'system/backfill-%');
 
 -- 4) 普通行 balance_after = 0 清单（不豁免！只报告，不改数据；若成为最新流水会让 V3 报红）
-SELECT flow_id, flow_no, account_id, amount, balance_after, created_by, LEFT(COALESCE(remark,''),40) AS remark
+--    已知历史白名单（精确 flow_no，禁止模糊放宽）：FF202609080010 / FF202609080028
+--    白名单只用于「标注已知项」，不改变 A8 的判定口径；未知异常仍会在 A8 报红。
+SELECT flow_id, flow_no, account_id, amount, balance_after, created_by,
+       LEFT(COALESCE(remark,''),40) AS remark,
+       CASE WHEN flow_no IN ('FF202609080010','FF202609080028')
+            THEN 'KNOWN_HISTORICAL(待P2)' ELSE 'UNKNOWN' END AS triage
   FROM fund_flows
  WHERE deleted = 0
    AND balance_after = 0
    AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by,'') LIKE 'system/backfill-%')
- ORDER BY flow_id;
+ ORDER BY triage, flow_id;
 
 COMMIT;
