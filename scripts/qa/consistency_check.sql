@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A9/A16 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A9/A16/A17 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -218,6 +218,25 @@ SELECT CASE WHEN count(*) = 0
    AND f.create_time >= now() - interval '24 hours'
 \gset
 
+-- A17：近 24h 夹具余额抹平动作（finance_audit_logs.operation_type='FIXTURE_FLOW_REVERSED'）
+--      纯 INFO，不进 TOTAL；与 A8/A9/A16 同级。
+--      意义：该动作只应出现在测试/迁移期（生产 profile 不加载 FinanceOpsController），
+--      生产巡检看到 >0 就是「生产上启用了 ops profile」的强信号，需要排查。
+--      守卫：finance_audit_logs 不存在时输出 [INFO] 跳过，不计入 TOTAL。
+SELECT CASE
+         WHEN to_regclass('public.finance_audit_logs') IS NULL
+           THEN '[INFO] A17 跳过（finance_audit_logs 未创建）'
+         WHEN count(*) = 0
+           THEN '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=0'
+         ELSE '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=' || count(*)
+              || '（生产 profile 下出现即为异常：ops 端点不该启用）'
+       END AS a17_line,
+       CASE WHEN to_regclass('public.finance_audit_logs') IS NULL THEN 0 ELSE count(*) END AS a17_n
+  FROM finance_audit_logs l
+ WHERE l.operation_type = 'FIXTURE_FLOW_REVERSED'
+   AND l.create_time >= now() - interval '24 hours'
+\gset
+
 -- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
@@ -419,7 +438,11 @@ SELECT line
     SELECT 16,
            :'a16_line'
     UNION ALL
+    -- A17 信息性：近 24h 夹具余额抹平（不进 TOTAL；与 A8/A9/A16 同级）
     SELECT 17,
+           :'a17_line'
+    UNION ALL
+    SELECT 18,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END

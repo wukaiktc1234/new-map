@@ -60,8 +60,9 @@ public class FinanceOpsServiceImpl implements FinanceOpsService {
         if (req == null || req.getFlowNos() == null || req.getFlowNos().isEmpty()) {
             throw err("flowNos 不能为空");
         }
+        // 审计要求：原因必填，且不得静默兜底成默认文案（否则审计里看不出「谁为什么抹平」）
         if (req.getReason() == null || req.getReason().isBlank()) {
-            throw err("reason 必填（审计留痕要求）");
+            throw err("抹平原因不能为空");
         }
         // 去重且保序，避免同一批里重复抹平
         List<String> flowNos = new ArrayList<>(new LinkedHashSet<>(req.getFlowNos()));
@@ -169,6 +170,29 @@ public class FinanceOpsServiceImpl implements FinanceOpsService {
         desc.append(" 余额 ").append(vo.balanceBefore).append("→").append(vo.balanceAfter);
         desc.append(" 原因=").append(req.getReason());
 
+        // 结构化审计数据（含 reason / 全部原流水号 / 全部反向流水号 / 金额合计 / 时间）
+        StringBuilder originalsJson = new StringBuilder("[");
+        StringBuilder reversesJson = new StringBuilder("[");
+        for (int i = 0; i < vo.items.size(); i++) {
+            if (i > 0) {
+                originalsJson.append(",");
+                reversesJson.append(",");
+            }
+            originalsJson.append("\"").append(vo.items.get(i).originalFlowNo).append("\"");
+            reversesJson.append("\"").append(vo.items.get(i).reverseFlowNo).append("\"");
+        }
+        originalsJson.append("]");
+        reversesJson.append("]");
+        long sumFen = vo.items.stream().mapToLong(it -> it.amountFen).sum();
+        String auditDataJson = "{\"reason\":\"" + req.getReason().replace("\"", "'") + "\","
+                + "\"originalFlowNos\":" + originalsJson + ","
+                + "\"reverseFlowNos\":" + reversesJson + ","
+                + "\"amountTotalFen\":" + sumFen + ","
+                + "\"accountId\":" + accountId + ","
+                + "\"balanceBefore\":" + vo.balanceBefore + ","
+                + "\"balanceAfter\":" + vo.balanceAfter + ","
+                + "\"occurredAt\":\"" + LocalDateTime.now() + "\"}";
+
         KeyHolder kh = new GeneratedKeyHolder();
         final String descText = desc.toString();
         final Long operatorId = currentUserId();
@@ -176,8 +200,8 @@ public class FinanceOpsServiceImpl implements FinanceOpsService {
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
                     "INSERT INTO finance_audit_logs (operator_id, operator_name, operation_type, module,"
-                            + " target_id, target_type, operation_desc, create_time, created_by, version) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,0)", new String[]{"log_id"});
+                            + " target_id, target_type, operation_desc, operation_data, create_time, created_by, version) "
+                            + "VALUES (?,?,?,?,?,?,?,?,?,?,0)", new String[]{"log_id"});
             ps.setLong(1, operatorId);
             ps.setString(2, operatorName);
             ps.setString(3, "FIXTURE_FLOW_REVERSED");
@@ -185,8 +209,10 @@ public class FinanceOpsServiceImpl implements FinanceOpsService {
             ps.setObject(5, null);
             ps.setString(6, "FUND_FLOW");
             ps.setString(7, descText);
-            ps.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
-            ps.setString(9, operatorName);
+            // operation_data：结构化审计（机器可读，便于巡检/追查；desc 供人看）
+            ps.setString(8, auditDataJson);
+            ps.setTimestamp(9, java.sql.Timestamp.valueOf(LocalDateTime.now()));
+            ps.setString(10, operatorName);
             return ps;
         }, kh);
         vo.auditLogId = kh.getKey() == null ? null : kh.getKey().longValue();
