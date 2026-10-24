@@ -612,43 +612,41 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 25. DATA-007 整改：明细强制写入 + location_id 硬约束（2026-10-24 12:58–13:35）
 
-### 25.1 源头强制写（不再只写表头）
-- 新增 `service/purchase/StockinLocationResolver`：**严格 ID → ID**，五级优先序
-  ① 显式 locationId（校验存在）→ ② `purchase_orders.warehouse_id` → `location_id_map('warehouses')` → ③ 采购单 `store_id` → `('stores_new')` → ④ 追溯码 `store_id` → 同映射 → ⑤ 当前用户 `users.location_id`；
-  **任何分支都不返回 null**，全失败抛 `PARAM_ERROR`（提示显式传 locationId）。代码内零字符串匹配。
-- `confirmStockin(traceCode, operatorName, locationId, unitPriceFen)` 新签名（旧签名委托）；Controller 增 `locationId / unitPriceFen / unitPrice(元)`。
-- **强制写 `purchase_stockin_items`**：`stockin_id / material_id / material_name / batch_no / actual_quantity / unit / unit_price(分) / amount(=qty×price) / location_id`；表头同时写 `location_id / order_id / total_amount`。
-- 单价解析链：入库明细 `unit_price` → `material_archives.reference_price` → **无价直接拒绝确认**（抛错），不再写 0 或跳过；`increaseStockAtLocation` 的 `unitCost` 也改为真实单价。
+---
 
-### 25.2 历史数据清洗（纯 ID 关联，无软匹配）
-脚本 `scripts/db-fix/2026-10-24-fix-stockin-location-id.sql`（幂等、带备份与回滚）：
-| 对象 | 分类 | 行数 |
+## 26. 库存预测软匹配根治 + R8 覆盖率只读排查（2026-10-24 13:55–14:15）
+
+### 26.1 StockForecastMapper 软匹配 → location_id
+| 方法 | 原（错） | 现 |
 |---|---|---|
-| items | ① order_id→warehouse 映射 | 3 |
-| items | ①b stockins.warehouse_id→映射 | 10 |
-| items | ③ 无法归属 → 逻辑删除（deleted=1 + `[LEGACY-NO-LOCATION 20261024]`） | 13 |
-| 表头 | 真实库位回填（location 5） | 12 |
-| 表头 | 指向专用历史库位 `LEGACY-VOID-20261024`(id=71) | 29 |
-- 新建 `locations` 记录 `LEGACY-VOID-20261024`（type=CENTRAL）承载"库位不可考"的历史行，满足 NOT NULL + FK 而不改变业务语义；
-- 终态：`purchase_stockin_items.location_id IS NULL` = **0**（全表，含 deleted=1）、`purchase_stockins.location_id IS NULL` = **0**。
+| `getActualConsumed` | `l.location_code = #{storeId}` | `l.location_id = #{locationId, BIGINT}` |
+| `getAvailableStock` | 同上 | 同上 |
+| `getSafetyStock` | 同上 | 同上 |
+- 参数类型 `String storeId → Long locationId`；
+- `StockForecastServiceImpl.resolveLocationId`：① `users.location_id` → ② `stores_new.store_id` 经 `LocationIdBridge` 正查 → ③ 都无则 `null`（全量口径）；**声明了门店却无映射 → WARN + 空结果，不查全量**；
+- `orders.store_id` 仍用 store 空间，库存/locations 一律 location_id，两个空间不再混用。
 
-### 25.3 数据库强约束（Flyway）
-| 迁移 | 内容 |
+**before/after 实证（证明原来确实错匹配）**：
+| 口径 | inventory 命中 | inventory_movement 命中 |
+|---|---|---|
+| 旧 `location_code = '1'` | **0 行** | **0 行**（真实 code 是 `STORE_A`，永不相等） |
+| 新 `location_id = 1` | **4 行**（101.7） | **109 行**（近 7 天 OUT 28.1） |
+
+单测：`StockForecast*` **16/16**（新增 `StockForecastLocationScopeTest` 6 例，含源码断言：去注释后不含 `location_code = #{storeId}`、`location_id = #{locationId}` 命中 ≥3）。
+
+### 26.2 R8 / P1-DASHBOARD-FILTER-001 覆盖率只读排查（未改任何开关）
+脚本：`scripts/qa/r8_location_coverage.sql` + `r8_location_coverage.py`（只读，`--json` 机读）。
+
+| 指标 | 数值 |
 |---|---|
-| `V20261024_001__stockin_location_hardening.sql` | `purchase_stockins.location_id` 新列 + 索引；两条 FK → `locations(location_id)`（ON DELETE RESTRICT）；`purchase_stockin_items.location_id`、`material_id` SET NOT NULL；前置数据闸门（未清洗则 RAISE 可读报错） |
-| `V20261024_002__stockin_header_location_not_null.sql` | 表头 `location_id` SET NOT NULL + 依赖检查 + 数据闸门 |
-- 已应用：`flyway_schema_history` 两条均 `success=true`；两文件内 `warehouse_code`/`location_code` 字面量 **0 处**（软匹配口径彻底移除）。
+| users 总数 / 有 location / 空 | 22 / 5 / 17 |
+| **启用用户 location 覆盖率** | **23.81%**（21 启用，5 有值） |
+| employees 总数 / 有 location / 空 | 14 / 3 / 11 |
+| **在职员工 location 覆盖率** | **21.43%** |
+| 交叉兜底（空 location 用户可由 employees 补齐） | **0**（不可兜底 17） |
+| 悬空 / 引用已删除库位 | users 0 / employees 0 / purchase_stockins 0 |
+| 近 30 天订单可经 stores_new→location 限定 | **617/617 = 100%**（门店1 570、门店2 47） |
 
-### 25.4 验证
-| 项 | 结果 |
-|---|---|
-| 单测 | `StockinLocationResolverTest` 9 + `MaterialTraceCodeConfirmStockinTest` 12 = **21/21**，BUILD SUCCESS |
-| `scripts/qa/schema_guard.py`（新增） | **5/5**：items.location_id NOT NULL、两条 FK、items/stockins NULL=0 |
-| `e2e_trace_confirm_stockin.py` | **12/12**：G 表头 location_id=1（FK 有效）、H 明细全字段非空且 amount==qty×price(5×350=1750)、I 反证置 NULL 被数据库拒绝 |
-| `e2e_core_chain`（先 release 托盘） | **13 / 0 / 0** |
-| `qa/consistency_check` | 5 PASS / TOTAL FAIL=0 |
-
-### 25.5 新发现（另开卡，未处理）
-`StockForecastMapper` 三处 `l.location_code = #{storeId}` 仍是「storeId 当 location_code 比」的软匹配残留（库存预测模块，不在扫码入库链路）；建议按同一 ID 映射口径整改。
+**结论：暂不开启 `app.dashboard.store-scope.enabled`**（本次未修改该配置）。理由：开关按「登录用户 location」过滤，启用用户里 16/21 无 location（含 qa_admin、emp-* 全套、finqa_*），打开等于对 76% 账号关店；员工侧同样 11/14 为空；兜底路径实测为 0。
+补数路径（全部 ID 关联）：users ← 同 user 的 employees.location_id → 再按 user_roles + 门店归属人工确认；employees ← warehouse_id/门店 → `location_id_map`；达标阈值建议 ≥90% 且悬空 0。
