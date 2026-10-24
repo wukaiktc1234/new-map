@@ -508,6 +508,8 @@ expected_amount（分）
 | V2 | 月末余额 == 次月 1 日期初 | 期间切分开错日 |
 | V3 | `bank_accounts.balance` == 最新一笔 `balance_after` | 账户余额与流水脱钩（历史漂移，TD-22） |
 
+> **V3 例外规则（PC-7 实测发现，必须遵守）**：历史补账流水（`flow_no LIKE 'FFH%'` 或 `remark LIKE '%[历史补账%'`）的 `balance_after` **按设计写 0**（补账不回写余额，避免篡改上线后真实余额），因此 V3 **不得用"最新一笔 balance_after"直接比**，而应取「**最新一笔非补账流水**」的 `balance_after`；若该账户全部流水均为补账行，则 V3 判 **N/A（不参与一致性判定）**，并在报告中单列。
+>
 > **V3 修复方向（单向，TD-23 附带裁决）**：不一致时**只允许用最新 `balance_after` 回填 `bank_accounts.balance`（覆盖缓存）并写校准审计**；**禁止反向修改 `fund_flows.balance_after`**（这是「不改历史金额」红线的延伸，历史快照一旦被改写，审计链即失效）。校准执行记录：改前/改后值、账户、依据流水号、操作人、时间。
 | V4 | `balance_after` 与当日最后 `balance_snapshot` 之差 == 当日未达账项净额 | 调节表要解释的差 |
 
@@ -994,7 +996,7 @@ expected_amount（分）
 | AC-29 | 缴款单审计：每一步状态变化在 `finance_audit_logs` 可查（operator / 时间 / 前后状态） | SQL | §3 |
 | AC-30 | 与勾稽联动：存行后该笔 `bank_transactions` 能被 L1 命中（`deposit_ref_no` ↔ `external_txn_id`） | 接口 + SQL | §3 |
 | AC-31 | 日记账闭合：任取 30 天，逐日 `期初=前日期末` 且 `期末=期初+收入−支出`，不满足行数 = 0 | SQL（V1/V2） | §4 |
-| AC-32 | 账户余额一致：`bank_accounts.balance == 最新 fund_flows.balance_after`，不一致账户数 = 0（或全在已知漂移清单） | SQL（V3） | §4 |
+| AC-32 | 账户余额一致：`bank_accounts.balance == 最新**非补账** fund_flows.balance_after`（补账行 `balance_after=0` 按 V3 例外规则排除；全补账账户判 N/A），不一致账户数 = 0（或全在已知漂移清单） | SQL（V3） | §4 |
 | AC-33 | 调节表硬门禁：构造 `diff≠0` → `approve` 必须失败（业务错误码非 0） | 接口断言 | §4 |
 | AC-34 | 未达账项一致：四类合计 == 列合计；同一笔跨期间不重复挂账（V6/V7） | SQL | §4 |
 | AC-35 | 平衡可审核：`diff=0` → `APPROVED`，且提交人 ≠ 审核人（四眼） | 接口 + SQL | §4 |
@@ -1139,7 +1141,7 @@ expected_amount（分）
 | PC-4 | 权限码入库 + 角色绑定，且 `permission_assignment_log` 留痕 | 待实现 |
 | PC-5 | 三道既有防线（consistency / ui_e2e_payment / schema_guard）在基线全绿 | 已具备 |
 | PC-6 | 至少 3 份真实样例文件（微信 / 支付宝 / 银行）可用于验收 | 待收集 |
-| **PC-7** | **P0 开工前完成历史余额基线校准**：跑 `bank_accounts.balance` vs 最新 `fund_flows.balance_after` 对账（§4.2 V3），输出**漂移账户清单**（账户/账面/快照/差额/建议处理）并按 **V3 单向修复**（快照 → 缓存，禁止反向改 `balance_after`）执行校准。**未校准不得进 P1**（否则 AC-32 第一天就红） | **未满足（TD-22 提升而来）** |
+| **PC-7** | **P0 开工前完成历史余额基线校准**：跑 `bank_accounts.balance` vs 最新**非补账** `fund_flows.balance_after` 对账（§4.2 V3 例外规则：`FFH%`/`[历史补账%` 行 `balance_after=0` 属设计，须排除；全补账账户判 N/A），输出**漂移账户清单**（账户/账面/快照/差额/建议处理）并按 **V3 单向修复**（快照 → 缓存，禁止反向改 `balance_after`）执行校准。**未校准不得进 P1**（否则 AC-32 第一天就红） | **未满足（TD-22 提升而来）** |
 | **PC-8** | **PostgreSQL 服务改为自动启动或写入启动脚本**：避免夜间巡航 / CI / E2E 因服务 Stopped 直接失败（2026-10-24 已发生一次，需手动 `pg_ctl` 拉起） | **未满足** |
 
 ---
