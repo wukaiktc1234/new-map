@@ -1022,8 +1022,9 @@ expected_amount（分）
 | AC-40 | （建议新增 A9）存行流水成对：每张 `DEPOSITED` 缴款单对应恰好 2 条 `[depositSlip=…]` 内部转账 | 挂 `consistency_check.py` | §8 |
 | AC-41 | （建议新增 A10）现金户余额非负：`count(bank_accounts WHERE account_type=2 AND balance<0)` = 0 | 挂 `consistency_check.py` | §8 |
 | AC-42 | （建议新增 A11，**INFO 非阻断**）`MATCHED` 超期未处理：`count(recon_items WHERE subject_status='MATCHED' AND matched_since < now() - interval 'N days')`，N 默认 3、可配置 `app.finance.recon.matched-stale-days`；输出行数供巡检看板展示，**不计入 TOTAL FAIL** | 挂 `consistency_check.py`（INFO 段） | §2.3、§5.5 |
+| AC-43 | （建议新增 A12）调节表汇总自洽：每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
 | AC-44 | （P1 新增）**审核人硬门禁 V8**：以出纳身份提交的调节表，用同一账号 approve → 必须被拒（业务错误码非 0）；用另一出纳账号 approve → 也必须被拒；用非出纳的其他审核人 approve → 通过。三条用例全部断言 | 接口 + SQL | §4.3 V8、§5.10.1 |
-| AC-45 | （P1 新增）**调节表不调账**：`POST /statements`（生成）→ `submit` → `approve` 全链路前后，`fund_flows` 行数与 `bank_accounts.balance` 合计**零变化**；`reconciliation_items` 只引用既有 `flow_id`/`transaction_id`，不存在指向不存在记录的悬空引用 | SQL | §4.3 硬规则一 |每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
+| AC-45 | （P1 新增）**调节表不调账**：`POST /statements`（生成）→ `submit` → `approve` 全链路前后，`fund_flows` 行数与 `bank_accounts.balance` 合计**零变化**；`reconciliation_items` 只引用既有 `flow_id`/`transaction_id`，不存在指向不存在记录的悬空引用 | SQL | §4.3 硬规则一 |
 
 ### 8.1 与现有 QA 脚本的挂载关系
 
