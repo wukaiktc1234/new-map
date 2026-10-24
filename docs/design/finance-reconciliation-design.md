@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 文档名 | `docs/design/finance-reconciliation-design.md` |
-| 版本 | v1.0-draft（合并稿） |
+| 版本 | **v1.1-draft**（修订：§5 与 §4 调节表对齐 / TD-22 提升为 PC-7 / 新增 AC-42 与 PC-8） |
 | 日期 | 2026-10-24（时区 Asia/Shanghai） |
 | 作者 | 数据/财务轨（fund-500）+ ts-hr-asset（A 部分），由架构总控合并 |
 | 合并自 | `docs/design/draft-finance-recon-a.md`（CSV 导入 / 日记账 / 调节表）+ `docs/design/draft-finance-recon-b.md`（自动勾稽 / 交款单） |
@@ -583,7 +583,7 @@ expected_amount（分）
 
 ## 5. 数据模型总览（全部新表集中于此，字段级）
 
-> **本章是唯一权威定义**：§1/§2/§3 只引用本章，不重复列字段。全部 7 张表在活库中**均不存在**（2026-10-24 `to_regclass` 实测为空）；落地一律走 Flyway（只增不改，禁止手写 DDL 脚本）。
+> **本章是唯一权威定义**：§1/§2/§3 只引用本章，不重复列字段。全部 **9 张表**（P0 的 §5.1–§5.7 共 7 张 + P1 的 §5.10 共 2 张）在活库中**均不存在**（2026-10-24 `to_regclass` 实测为空）；落地一律走 Flyway（只增不改，禁止手写 DDL 脚本）。
 
 ### 5.1 `import_batches`（导入批次）
 
@@ -687,6 +687,7 @@ expected_amount（分）
 | `txn_time` | TIMESTAMP | Asia/Shanghai |
 | `counterparty_name` | VARCHAR(100) | 关键词相似度用 |
 | `subject_status` | VARCHAR(16) | 五态（§2.3） |
+| `matched_since` | TIMESTAMP | 进入 `MATCHED`（待人工确认）的时刻；**NULL 表示非 MATCHED**。供 AC-42 统计「超期未处理」（如需回填历史，可临时以 `update_time` 代替，但新数据必须写本列） |
 | `match_level` | VARCHAR(8) | `L1` / `L2` / `L3` / `MANUAL` / NULL |
 | `match_group` | VARCHAR(64) | 合并勾稽分组键（1:N/N:1 相同），NULL=1:1 |
 | `suggested_external_ref` | VARCHAR(64) | L3 建议 |
@@ -760,14 +761,77 @@ expected_amount（分）
 | 项 | 策略 |
 |---|---|
 | 变更通道 | 一律 Flyway（`V*.sql` 只增不改）；**禁止**手写 schema 脚本（项目 PG-003） |
-| 顺序 | ① 建 7 张新表（纯新增，不改现状表结构）→ ② 建索引/唯一约束 → ③ 权限码入库 → ④ 前端菜单开关 |
+| 顺序 | ① **P0 建 7 张新表**（§5.1–§5.7，纯新增，不改现状表结构）→ ② 建索引/唯一约束 → ③ 权限码入库 → ④ 前端菜单开关 → ⑤ **P1 按 TD-24 裁决追加 §5.10 的调节表两表**（若 TD-24 裁决为其他载体则跳过 ⑤） |
 | 现状表影响 | **零结构变更**；`fund_flows` / `bank_accounts` 仅新增写入方（冲正、内部转账），字段不动 |
-| 回滚 | 新表无外部依赖 → 直接 `DROP` 7 张新表即可回到基线（数据一并消失）；**前提**：回滚前确认没有已 `DEPOSITED` 的缴款单与已 `CLOSED` 的差异（否则会丢失账务事实） |
+| 回滚 | 新表无外部依赖 → P0 阶段 `DROP` 7 张新表即可回到基线；若已执行 P1 的 §5.10，需连 `reconciliation_items` / `reconciliation_statements` 一并 `DROP`（数据一并消失）；**前提**：回滚前确认没有已 `DEPOSITED` 的缴款单与已 `CLOSED` 的差异（否则会丢失账务事实） |
 | 数据回滚 | 若已生成冲正/内部转账流水：只能再冲正一次（反向），**不得删除历史 `fund_flows` 行** |
 | 权限回滚 | 撤销新增权限码 + 从角色解除绑定（保留 `permission_assignment_log` 记录） |
 | 灰度 | 建议先「只读」上线：导入 + 勾稽可跑，所有写动作（resolve/deposit）默认关闭，观察 1 个结账周期 |
 
 ---
+
+### 5.10 调节表相关表（待 TD-24 裁决后定稿）
+
+> **结论：本节是 §4 调节表功能的落地载体草案（二表），归属 P1，不在 P0 的 7 张表内。若 TD-24 裁决为其他载体（如复用 `fund_flows.remark` / 仅用 `bank_transactions.match_status`），则**整节删除**，并同步改写 §4 的 S3–S9 接口与 V5–V7 校验点。**
+
+#### 5.10.1 `reconciliation_statements`（银行存款余额调节表主表）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `statement_id` | BIGINT PK | — |
+| `statement_no` | VARCHAR(32) | UNIQUE，`BS<yyyyMM><NNNN>`（如 `BS2026100001`） |
+| `account_id` | BIGINT | → `bank_accounts.account_id`，NOT NULL（一个账户一张表） |
+| `store_id` | BIGINT | 账户归属门店（`scope=GLOBAL` 的总部账户为 NULL） |
+| `period_start` / `period_end` | DATE | 期间起止；首版按自然月（TD-21），`period_end` 为该月最后一日 |
+| `book_balance` | BIGINT | **分**，期间末企业账面余额（取 `fund_flows.balance_after` 快照，见 TD-23） |
+| `bank_balance` | BIGINT | **分**，期间末银行对账单余额（取 `bank_transactions.balance_after_fen` 最新一笔） |
+| `uncleared_in_credit` | BIGINT | **分**，未达账项 A：企业已收、银行未收（合计） |
+| `uncleared_in_debit` | BIGINT | **分**，未达账项 B：企业已付、银行未付（合计） |
+| `uncleared_out_credit` | BIGINT | **分**，未达账项 C：银行已收、企业未收（合计） |
+| `uncleared_out_debit` | BIGINT | **分**，未达账项 D：银行已付、企业未付（合计） |
+| `adjusted_book_balance` | BIGINT | **分**，`book_balance + A − B`（企业侧调节后余额） |
+| `adjusted_bank_balance` | BIGINT | **分**，`bank_balance + C − D`（银行侧调节后余额） |
+| `is_balanced` | BOOLEAN | 生成时计算：`adjusted_book_balance = adjusted_bank_balance`；**false 时只允许保存 DRAFT，禁止 SUBMIT**（V7 硬门禁） |
+| `status` | VARCHAR(16) | `DRAFT` / `SUBMITTED` / `APPROVED`（审核通过后锁定，改动需重开新表） |
+| `submitted_by` / `submitted_at` | BIGINT / TIMESTAMP | 提交人（出纳）/ 时间 |
+| `approved_by` / `approved_at` | BIGINT / TIMESTAMP | 审核人（财务主管）/ 时间；**四眼原则：提交人 ≠ 审核人**（可配 `app.finance.recon.require-four-eyes`，默认 true） |
+| `remark` | VARCHAR(500) | 说明（`is_balanced=false` 时必填差异原因） |
+| `create_user_id` / `created_by` / `create_time` / `update_time` / `version` / `deleted` | — | 项目通用列 |
+
+约束：UNIQUE `(account_id, period_start, period_end)` —— 同账户同期间只允许一张有效调节表（重开走新记录 + 旧记录 `status` 保持 `APPROVED` 并存档）。
+
+#### 5.10.2 `reconciliation_items`（未达账项明细）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `item_id` | BIGINT PK | — |
+| `statement_id` | BIGINT | → `reconciliation_statements.statement_id`，NOT NULL |
+| `category` | VARCHAR(4) | 四类之一：`A`(企业已收银行未收) / `B`(企业已付银行未付) / `C`(银行已收企业未收) / `D`(银行已付企业未付)（TD-25：首版只做四类） |
+| `flow_id` | BIGINT | → `fund_flows.flow_id`（A/B 类填此项，内部侧） |
+| `transaction_id` | BIGINT | → `bank_transactions.transaction_id`（C/D 类填此项，外部侧） |
+| `amount` | BIGINT | **分**，该笔未达金额（正数；方向由 `category` 决定） |
+| `business_date` | DATE | 该笔业务发生日（A/B 取 `fund_flows.business_date`；C/D 取 `bank_transactions.txn_time` 的日期） |
+| `period_start` / `period_end` | DATE | 归属期间（冗余自 statement，便于跨期追溯与索引） |
+| `owner_user_id` / `owner_name` | BIGINT / VARCHAR(50) | **挂账人**（认领该未达项的责任人；出纳或主管） |
+| `reason` | VARCHAR(500) | **原因**（必填；如「月末在途」「银行已扣手续费未回单」） |
+| `cleared_flag` | BOOLEAN | 是否已在下期核销（默认 false；下期调节表命中同一 `flow_id`/`transaction_id` 时置 true） |
+| `cleared_statement_id` | BIGINT | 在下一期哪张调节表被核销（可空） |
+| `create_time` / `update_time` / `deleted` | — | 项目通用列 |
+
+约束：
+
+- CHECK：`(category IN ('A','B') AND flow_id IS NOT NULL) OR (category IN ('C','D') AND transaction_id IS NOT NULL)` —— 不允许「既无内部引用也无外部引用」的悬空未达项；
+- UNIQUE `(statement_id, category, COALESCE(flow_id,0), COALESCE(transaction_id,0))` —— 同一张表内同一笔不重复挂账；
+- 汇总一致性（AC-43）：每张 statement 的四个 `uncleared_*_credit/debit` 合计 = 本表按 `category` 的 `SUM(amount)`（`deleted=0`）。
+
+#### 5.10.3 与 §4 / §9 的联动
+
+| 关联点 | 说明 |
+|---|---|
+| §4 S3–S9 接口 | 均以本节两表为落库载体（S3 生成草稿 = INSERT statements + items；S8 审核 = status → APPROVED）；若 TD-24 改口径，这些接口同步改写 |
+| §4 V5–V7 校验 | V5 = 调节表四类合计与 items 求和一致（AC-43）；V6 = `is_balanced` 与两侧公式自洽；V7 = `is_balanced=false` 时 status 不得为 SUBMITTED/APPROVED |
+| §10.1 分期 | 本两表属 **P1**，P0 不建；P0 的 7 张表保持 §5.1–§5.7 不变 |
+| 表数量口径 | 全案共 **9 张新表**：P0 建 7 张（§5.1–§5.7）+ P1 建 2 张（§5.10） |
 
 ## 6. 接口总览（按模块分组，共 36 个端点）
 
@@ -875,10 +939,10 @@ expected_amount（分）
 
 ---
 
-## 8. 验收标准与自动化防线（AC-1 – AC-41）
+## 8. 验收标准与自动化防线（AC-1 – AC-43）
 
 > 编号统一为 **AC-n**（合并 A 稿 A1-x / A4-x 与 B 稿 V2-x / V3-x，去重后单一编号）。
-> **结论：其中 AC-1～AC-36 可作为实现期自测；AC-37 是「不许破坏既有防线」的硬门禁；AC-38～AC-41 建议直接挂进 `scripts/qa/consistency_check.py`（新增 A7–A10），与既有 A1–A6 并列。**
+> **结论：其中 AC-1～AC-36 可作为实现期自测；AC-37 是「不许破坏既有防线」的硬门禁；AC-38～AC-41 与 AC-43 建议直接挂进 `scripts/qa/consistency_check.py`（新增 A7–A10、A12），与既有 A1–A6 并列；AC-42 为 INFO 信息性断言（A11），只输出超期条数供看板展示，不计入 TOTAL FAIL。**
 
 | 编号 | 断言（可直接写成 SQL / 脚本） | 验证方式 | 章节 |
 |---|---|---|---|
@@ -923,6 +987,8 @@ expected_amount（分）
 | AC-39 | （建议新增 A8）缴款单与班次一对一：分组 `shift_id` 计 `count>1` 的行数 = 0 | 挂 `consistency_check.py` | §8 |
 | AC-40 | （建议新增 A9）存行流水成对：每张 `DEPOSITED` 缴款单对应恰好 2 条 `[depositSlip=…]` 内部转账 | 挂 `consistency_check.py` | §8 |
 | AC-41 | （建议新增 A10）现金户余额非负：`count(bank_accounts WHERE account_type=2 AND balance<0)` = 0 | 挂 `consistency_check.py` | §8 |
+| AC-42 | （建议新增 A11，**INFO 非阻断**）`MATCHED` 超期未处理：`count(recon_items WHERE subject_status='MATCHED' AND matched_since < now() - interval 'N days')`，N 默认 3、可配置 `app.finance.recon.matched-stale-days`；输出行数供巡检看板展示，**不计入 TOTAL FAIL** | 挂 `consistency_check.py`（INFO 段） | §2.3、§5.5 |
+| AC-43 | （建议新增 A12）调节表汇总自洽：每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
 
 ### 8.1 与现有 QA 脚本的挂载关系
 
@@ -969,9 +1035,9 @@ expected_amount（分）
 | TD-19 | 是否多币种（`currency` 恒 CNY 是否长期成立） | 本期仅 CNY；非 CNY 整批拒绝 | §0.4、§1.3 |
 | TD-20 | 日记账粒度 `account × day` 是否够（是否需 currency / store 维度） | 够（store 由账户间接确定） | §4.1 |
 | TD-21 | 调节期间：自然月 vs 自定义起止；是否允许跨月未结账 | 自然月（首版） | §4.1、§4.4 |
-| TD-22 | 历史余额漂移（`balance` 与流水不一致）是否先做一次基线校准 | 先校准（以对账单为锚点） | §4.2 V3 |
+| TD-22 | 历史余额漂移（`balance` 与流水不一致）是否先做一次基线校准 | 先校准（以对账单为锚点）；**已提升为 PC-7（§10.3）**，不再是『可选优化』：未完成校准不得进 P1 | §4.2 V3、§10.3 PC-7 |
 | TD-23 | `balance_after`（流水快照）vs `bank_accounts.balance` 谁是唯一真值 | 流水快照为准，账户余额为派生缓存 | §4.2 |
-| TD-24 | 未达账项挂账载体（新建 `reconciliation_items` / `fund_flows.remark` / `match_status`） | 新建独立表（便于跨期追溯） | §4.3、§5 |
+| TD-24 | 未达账项挂账载体（新建 `reconciliation_items` / `fund_flows.remark` / `match_status`） | 新建独立表（便于跨期追溯）；**必须连带确认：§5.10 两张调节表（`reconciliation_statements` + `reconciliation_items`）是否保留、归属 P0 还是 P1** | **§5 表数量（7 张 vs 9 张）、§10.1 P0/P1 分期、§4 S3–S9 落地、§5.10 去留、AC-43 是否生效** |
 | TD-25 | 调节表是否只做四类（是否要「暂收暂付 / 在途」） | 只做四类 | §4.3 |
 | TD-26 | 是否复用既有 `bank_payment_records`（已有同名 Controller） | 不复用，避免语义混淆 | §5.3 |
 | TD-27 | L3 金额容忍阈值（手续费差上限） | 0.5% 且 ≤ 5 元 | §2.2 L3 |
@@ -991,6 +1057,34 @@ expected_amount（分）
 
 **开工前置（不定就无法写代码）**：TD-12（幂等键）、TD-14（是否生成流水）、TD-23（真值口径）、TD-24（未达账项载体）。其余可在实现中默认后置调整。
 
+> 决策用汇总表见 **§9.3 拍板清单**（含建议默认值、驳回影响面、连带确认事项）。
+### 9.3 拍板清单（Owner 用这一节决策）
+
+> **结论：Owner 拍板下列 4 条 + 确认 §5.10 去留后，方可开 P0 代码；其余 25 条可在实现中按建议默认值先做，后置调整。**
+
+#### A. 开工前置 4 条（不定无法写 P0 代码）
+
+| 编号 | 问题 | 建议默认值 | 驳回后的影响面 | 连带确认事项 |
+|---|---|---|---|---|
+| **TD-12** | 外部流水幂等唯一键 | **组合式**：`external_txn_id` 为主键；缺号时退化为「交易时间 + 金额 + 对方名称」并标 `dedupe_basis=COMPOSITE` | 驳回为纯 A 方案 → 缺少流水号的银行文件整批被拒；驳回为纯 B 方案 → 同额同日多笔会被误判重复，真实交易被吞 | 需确认唯一索引形态（§5.3）与 AC-3 断言口径 |
+| **TD-14** | `bank_transactions` 是否生成 `fund_flows`（到账即记账） | **否**：事实层（银行流水）与账面层（业务流水）分离，勾稽才有两侧可比 | 改为「是」→ 每笔到账都会多出一笔收入流水，与 SALE 流水重复计收入；勾稽退化为自证，§2 全部匹配规则需重写 | 需确认 §3.4 三段式（RECEIVED 不入账 / DEPOSITED 内部转账）是否仍成立 |
+| **TD-23** | 余额唯一真值：`fund_flows.balance_after` 快照 vs `bank_accounts.balance` | **流水快照为准**，账户余额为派生缓存，每日巡检校验（§4.2 V3、AC-32） | 改为「账户余额为准」→ 冲正/补账后必须重算全表，历史流水失去可审计快照；调节表 book_balance 取值口径需改写 | 连带 PC-7（基线校准）的口径定义 |
+| **TD-24** | 未达账项挂账载体 | **新建独立表**：`reconciliation_statements` + `reconciliation_items`（§5.10 字段级草案） | 改为 remark / match_status 承载 → **§5.10 整节删除**，§4 的 S3–S9 与 V5–V7 全部改写，AC-43 作废，表数量从 9 回落 7 | **必须同时确认**：§5.10 两表是否保留、归属 **P1**（推荐）还是 **P0**；若不保留，需指定替代载体 |
+
+#### B. 其余 25 条（可实现中默认后置调整）
+
+> 以下编号保持 §9.2 原编号与建议默认值不变，此处仅汇总，不重复展开（详见 §9.2 表）：TD-13、TD-15、TD-16、TD-17、TD-18、TD-19、TD-20、TD-21、TD-25、TD-26、TD-27、TD-28、TD-29、TD-30、TD-31、TD-32、TD-33、TD-34、TD-35、TD-36、TD-37、TD-38、TD-39、TD-40 —— 共 **24 条**，加上已提升为 PC-7 的 **TD-22**，合计 **25 条**。
+
+| 分组 | 编号 | 共同处理方式 |
+|---|---|---|
+| 导入侧细节 | TD-13、TD-15、TD-16、TD-17、TD-18、TD-19 | 按 §9.2 建议默认值实现，验收时回归确认 |
+| 勾稽/差异细节 | TD-25、TD-26、TD-27、TD-28、TD-29、TD-30、TD-31、TD-32 | 同上；其中 TD-28（核销是否生成费用流水）在 P1 上线前需再确认一次 |
+| 日记账/调节表 | TD-20、TD-21、TD-22（→PC-7） | TD-22 已升级为前置条件，其余按默认值 |
+| 缴款单/内控 | TD-33、TD-34、TD-35、TD-36、TD-37、TD-38、TD-39、TD-40 | 同上；TD-38（收银员=出纳强制二次复核）建议保持 强制 |
+
+**生效条件（硬门禁）**：Owner 拍板 **TD-12 / TD-14 / TD-23 / TD-24** 四条 + 确认 **§5.10 去留与归属期** 之后，方可开 P0 代码。
+
+
 ---
 
 ## 10. 实施分期、风险与前置条件
@@ -999,11 +1093,11 @@ expected_amount（分）
 
 | 期 | 范围 | 交付物 | 退出标准 |
 |---|---|---|---|
-| **P0（地基，必须先行）** | 7 张新表 Flyway；权限码入库；`bank_transactions` CSV 导入（微信/支付宝/银行各 1 份样例）；幂等与行级回执；只读接口（I1–I6） | 可导入、可回执、可查 | AC-1～AC-6、AC-37 全绿；无任何写账动作 |
-| **P1（勾稽与日记账）** | 跑批（R1–R4）、主体/差异列表（R5、R8）、认领与处理（R9、R10）、人工勾稽（R6、R7）、日记账（S1、S2）、调节表草稿与审核（S3–S9） | 能跑通「导入 → 勾稽 → 处理 → 调节表」闭环 | AC-7～AC-18、AC-31～AC-36 全绿；一个结账周期内勾稽率可解释 |
+| **P0（地基，必须先行）** | **只建 §5.1–§5.7 的 7 张新表**（调节表两表 §5.10 **不属 P0**，按 TD-24 裁决归 P1 或取消）；权限码入库；`bank_transactions` CSV 导入（微信/支付宝/银行各 1 份样例）；幂等与行级回执；只读接口（I1–I6） | 可导入、可回执、可查 | AC-1～AC-6、AC-37 全绿；无任何写账动作 |
+| **P1（勾稽与日记账）** | 跑批（R1–R4）、主体/差异列表（R5、R8）、认领与处理（R9、R10）、人工勾稽（R6、R7）、日记账（S1、S2）、调节表草稿与审核（S3–S9，落地表为 §5.10 的 `reconciliation_statements` + `reconciliation_items`，随本阶段 Flyway 建表） | 能跑通「导入 → 勾稽 → 处理 → 调节表」闭环 | AC-7～AC-18、AC-31～AC-36 全绿；一个结账周期内勾稽率可解释 |
 | **P2（现金缴款单 + 硬化）** | 缴款单全链路（SL1–SL11）；冲正/补记；新增 A7–A10 巡检；导出 | 现金「收银员→出纳→银行」闭环 + 账实一致 | AC-19～AC-30、AC-38～AC-41 全绿；连续 2 个班次实测平账/短款各 1 例 |
 
-**结论：P0 是纯新增（不改现状表），风险最低，可先独立上线；P2 涉及生成 `fund_flows`，必须在 P0/P1 稳定后再动。**
+**结论：P0 是纯新增（不改现状表），风险最低，可先独立上线；P2 涉及生成 `fund_flows`，必须在 P0/P1 稳定后再动。表数量口径：全案 9 张 = P0 的 7 张（§5.1–§5.7）+ P1 的 2 张（§5.10，随 TD-24 裁决可能取消）。**
 
 ### 10.2 风险与缓解
 
@@ -1028,6 +1122,8 @@ expected_amount（分）
 | PC-4 | 权限码入库 + 角色绑定，且 `permission_assignment_log` 留痕 | 待实现 |
 | PC-5 | 三道既有防线（consistency / ui_e2e_payment / schema_guard）在基线全绿 | 已具备 |
 | PC-6 | 至少 3 份真实样例文件（微信 / 支付宝 / 银行）可用于验收 | 待收集 |
+| **PC-7** | **P0 开工前完成历史余额基线校准**：跑 `bank_accounts.balance` vs 最新 `fund_flows.balance_after` 对账（§4.2 V3），输出**漂移账户清单**（账户/账面/快照/差额/建议处理）。**未校准不得进 P1**（否则 AC-32 第一天就红） | **未满足（TD-22 提升而来）** |
+| **PC-8** | **PostgreSQL 服务改为自动启动或写入启动脚本**：避免夜间巡航 / CI / E2E 因服务 Stopped 直接失败（2026-10-24 已发生一次，需手动 `pg_ctl` 拉起） | **未满足** |
 
 ---
 
@@ -1080,7 +1176,7 @@ expected_amount（分）
 | `recon_runs` | RUNNING → FINALIZED / FAILED；FINALIZED --force-->（新 run）RUNNING | 旧 run 只读 |
 | `recon_differences` | OPEN → ASSIGNED → RESOLVING → CLOSED；ASSIGNED/RESOLVING → EXEMPT；CLOSED --reopen-->（新记录）OPEN | CLOSED 不可原地改（TD-10） |
 | `deposit_slips` | DRAFT → SUBMITTED → RECEIVED → DEPOSITED → VERIFIED → CLOSED；SUBMITTED → REJECTED → SUBMITTED；任意已提交态 → REVERSED | 不得回退到 DRAFT；`expected_amount` 只读 |
-| 调节表（§4，落地表名待定） | DRAFT → SUBMITTED → APPROVED | `isBalanced=false` 不得 APPROVED |
+| 调节表（§4 / §5.10） | DRAFT → SUBMITTED → APPROVED | `is_balanced=false` 不得 SUBMITTED/APPROVED（V7）；落地表为 `reconciliation_statements` + `reconciliation_items`，**随 TD-24 裁决确定去留与归属期** |
 
 ## 附录 C：与现状表字段对照（易混点）
 
