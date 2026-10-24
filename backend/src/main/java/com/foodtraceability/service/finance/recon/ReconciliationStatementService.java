@@ -29,6 +29,15 @@ public interface ReconciliationStatementService {
     /** S7 审核（V8 四眼门禁 + 角色门禁 + 复核 V5） */
     ReconciliationStatementVO approve(Long statementId);
 
+    /**
+     * BL-6 §3：人工处置同额歧义（不自动二选一）。
+     *
+     * @param decision  对侧类别：A↔C、B↔D（必须与 item 自身类别相反）
+     * @param targetRef 对侧条目 ref：A/B 用 transaction_id，C/D 用 flow_id
+     */
+    ReconciliationStatementVO resolveAmbiguity(Long statementId, Long itemId, String decision,
+                                               String targetRef, String reason);
+
     /** S9 导出 CSV */
     String exportCsv(Long statementId);
 }

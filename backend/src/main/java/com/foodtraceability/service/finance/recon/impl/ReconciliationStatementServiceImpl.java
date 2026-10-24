@@ -40,6 +40,9 @@ import java.util.Set;
 @Service
 public class ReconciliationStatementServiceImpl implements ReconciliationStatementService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ReconciliationStatementServiceImpl.class);
+
     /** A7 非豁免口径（唯一来源）：补账流水的 balance_after 按设计写 0，必须排除，否则账面链被判断裂 */
     private static final String NON_EXEMPT =
             " AND COALESCE(ff.flow_no, '') NOT LIKE 'FFH%' AND COALESCE(ff.created_by, '') NOT LIKE 'system/backfill-%' ";
@@ -123,6 +126,11 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                 : autoDetectItems(accountId, ps, pe, statementId);
         validateItems(items, ps, pe);
 
+        // ---- 假平衡门禁（BL-6）：先识别「同额对侧候选」歧义，再算 is_balanced ----
+        // 规则：**不自动二选一**。按金额分组，同一金额在本表内同时存在内部侧(A/B)与外部侧(C/D)条目时，
+        // 该组内每一条都标记 AMBIGUOUS（复用 reason 前缀，不加列），并记下对侧候选 ref，交人工处置。
+        int ambiguousCount = markAmbiguities(items);
+
         // ---- 四类合计与两个调节后余额 ----
         long a = sum(items, "A");
         long b = sum(items, "B");
@@ -131,10 +139,16 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         long bankBalance = req.getBankStatementBalanceFen();
         long adjustedBook = bookBalance + c - d;
         long adjustedBank = bankBalance + a - b;
-        boolean balanced = adjustedBook == adjustedBank;
+        // is_balanced 前置条件（BL-6）：只要存在未解决的 AMBIGUOUS 歧义，即使两侧金额相等也判**不平衡**，
+        // 否则就是「假平衡」——金额凑巧相等，但根本没确认哪笔对哪笔。
+        boolean amountBalanced = adjustedBook == adjustedBank;
+        boolean balanced = amountBalanced && ambiguousCount == 0;
 
         if (!balanced && (req.getRemark() == null || req.getRemark().isBlank())) {
-            // 只允许存 DRAFT，但差异原因必须写清（V5 / V6 精神）
+            // 只允许存 DRAFT，但差异/歧义原因必须写清（V5 / V6 精神）
+            if (ambiguousCount > 0) {
+                throw err("存在 " + ambiguousCount + " 笔未解决的同额歧义（AMBIGUOUS），remark 必须填写处置说明");
+            }
             throw err("调节后两侧余额不等（企业侧 " + adjustedBook + " 分 vs 银行侧 " + adjustedBank
                     + " 分，差 " + (adjustedBook - adjustedBank) + " 分），remark 必须填写差异原因");
         }
@@ -252,8 +266,11 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     it.ownerName = rs.getString("owner_name");
                     it.reason = rs.getString("reason");
                     it.clearedFlag = rs.getBoolean("cleared_flag");
+                    it.ambiguous = it.reason != null && it.reason.startsWith("AMBIGUOUS:");
                     return it;
                 }, statementId);
+        vo.ambiguousItemCount = (int) vo.items.stream()
+                .filter(it -> Boolean.TRUE.equals(it.ambiguous)).count();
         return vo;
     }
 
@@ -267,7 +284,13 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         if (!"DRAFT".equals(vo.status)) {
             throw err("只有 DRAFT 状态可以提交，当前状态：" + vo.status);
         }
-        // V5 硬门禁：调节后两侧必须相等，否则禁止 SUBMIT（不可配置关闭）
+        // V5 硬门禁：调节后两侧必须相等 **且** 无未解决歧义，否则禁止 SUBMIT（不可配置关闭）
+        int ambiguous = vo.ambiguousItemCount == null ? 0 : vo.ambiguousItemCount;
+        if (ambiguous > 0) {
+            // 文案必须报**原因分类**，不能只说「两侧不等」——金额可能是相等的（假平衡）
+            throw err("V5 门禁失败：存在 " + ambiguous + " 笔未解决的同额歧义（AMBIGUOUS），请先处置后再提交"
+                    + "（处置端点：POST /v1/finance/recon/statements/" + statementId + "/items/{itemId}/resolve-ambiguity）");
+        }
         if (!Boolean.TRUE.equals(vo.isBalanced)) {
             long diff = (vo.adjustedBookBalance == null ? 0 : vo.adjustedBookBalance)
                     - (vo.adjustedBankBalance == null ? 0 : vo.adjustedBankBalance);
@@ -393,7 +416,7 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
 
         // C / D：银行侧已发生、企业侧无对应（matched_flow_id 为空）
         out.addAll(jdbc.query(
-                "SELECT bt.transaction_id, bt.amount, bt.business_date, bt.direction FROM bank_transactions bt "
+                "SELECT bt.transaction_id, bt.amount, bt.business_date, bt.direction, bt.needs_review FROM bank_transactions bt "
                         + " WHERE bt.account_id = ? AND bt.deleted = 0 "
                         + "   AND bt.business_date BETWEEN ? AND ? "
                         + "   AND bt.matched_flow_id IS NULL "
@@ -405,8 +428,13 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     it.setAmount(rs.getLong("amount"));
                     it.setBusinessDate(rs.getDate("business_date").toLocalDate());
                     it.setOwnerUserId(userId);
+                    String timeNote = "";
+                    if (rs.getBoolean("needs_review")) {
+                        // BL-6 §5：导入时源文件只有日期 → 该银行流水时间不可用，必须显式标注，避免 ±10 分钟窗静默失效
+                        timeNote = "；【时间不可用】该银行流水导入时仅有日期无时刻（needs_review）";
+                    }
                     it.setReason("自动识别：银行侧已" + (rs.getInt("direction") == 1 ? "入账" : "扣款")
-                            + "，企业侧期间内无对应流水（系统挂账，待下期核销）");
+                            + "，企业侧期间内无对应流水（系统挂账，待下期核销）" + timeNote);
                     return it;
                 }, accountId, ps, pe));
         return out;
@@ -442,6 +470,181 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
      * V6 每条必须有挂账人 + 原因 + 期间（挂账人缺省取当前操作者，原因必须显式给）；
      * V7 同一笔（flow_id / transaction_id）在同一期间只出现一次，且不得已被同期间其他调节表挂过。
      */
+    /**
+     * 标记同额歧义（BL-6，**不自动二选一**）。
+     *
+     * <p>规则：按金额分组；同一金额在本表内同时存在内部侧（A/B）与外部侧（C/D）条目时，
+     * 该组内**每一条**都标 AMBIGUOUS，并在 reason 里写明对侧候选 ref（A/B 组给 transaction_id，
+     * C/D 组给 flow_id），交人工用 resolve-ambiguity 端点处置。</p>
+     *
+     * <p>为什么用 reason 前缀而不是加列：§5.10.2 没有状态列，lead 明确要求「不加列」；前缀
+     * {@code AMBIGUOUS:} 可被 SQL 直接 LIKE 出来，且人眼看报告也直观。</p>
+     *
+     * @return 歧义条目数
+     */
+    private int markAmbiguities(List<StatementItemRequest> items) {
+        java.util.Map<Long, java.util.List<StatementItemRequest>> byAmount = new java.util.LinkedHashMap<>();
+        for (StatementItemRequest it : items) {
+            if (it.getAmount() == null) {
+                continue;
+            }
+            byAmount.computeIfAbsent(it.getAmount(), k -> new java.util.ArrayList<>()).add(it);
+        }
+        int marked = 0;
+        for (java.util.Map.Entry<Long, java.util.List<StatementItemRequest>> e : byAmount.entrySet()) {
+            java.util.List<StatementItemRequest> group = e.getValue();
+            java.util.List<StatementItemRequest> internal = new java.util.ArrayList<>();
+            java.util.List<StatementItemRequest> external = new java.util.ArrayList<>();
+            for (StatementItemRequest it : group) {
+                if ("C".equals(it.getCategory()) || "D".equals(it.getCategory())) {
+                    external.add(it);
+                } else {
+                    internal.add(it);
+                }
+            }
+            // 只有「两侧都有同额条目」才叫歧义；单侧多笔不算（那是内部重复入账，另有 A4 管）
+            if (internal.isEmpty() || external.isEmpty()) {
+                continue;
+            }
+            String extRefs = external.stream()
+                    .map(it -> it.getTransactionId() == null ? "-" : String.valueOf(it.getTransactionId()))
+                    .distinct().collect(java.util.stream.Collectors.joining(","));
+            String intRefs = internal.stream()
+                    .map(it -> it.getFlowId() == null ? "-" : String.valueOf(it.getFlowId()))
+                    .distinct().collect(java.util.stream.Collectors.joining(","));
+            for (StatementItemRequest it : group) {
+                if (it.getReason() != null && it.getReason().startsWith("AMBIGUOUS:")) {
+                    continue;
+                }
+                String candidates = ("C".equals(it.getCategory()) || "D".equals(it.getCategory()))
+                        ? "对侧同额候选 flow_id=" + intRefs
+                        : "对侧同额候选 transaction_id=" + extRefs;
+                it.setReason("AMBIGUOUS: 金额 " + it.getAmount() + " 分，" + candidates
+                        + "；原挂账原因：" + (it.getReason() == null ? "-" : it.getReason()));
+                marked++;
+            }
+        }
+        return marked;
+    }
+
+    /**
+     * 人工处置歧义（BL-6 §3）：**不自动选**，由人指定 decision + 对侧 targetRef。
+     *
+     * <p>校验（同一事务内）：
+     * ① item 必须属于该 statement 且 reason 以 AMBIGUOUS: 开头；
+     * ② decision 必须是对侧类别（A↔C、B↔D），不能选自己这一侧；
+     * ③ targetRef 必须能在本表内找到同类别、同金额的对侧条目（A 对应 transaction_id，C 对应 flow_id）。</p>
+     *
+     * <p>处置后：条目的 AMBIGUOUS 前缀去掉、追加处置说明，并重算 statement 的 is_balanced
+     * （歧义清零且金额相等 → 回到 true，可继续 submit）。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReconciliationStatementVO resolveAmbiguity(Long statementId, Long itemId, String decision,
+                                                      String targetRef, String reason) {
+        if (decision == null || decision.isBlank()) {
+            throw err("decision 必填（A/B/C/D，且必须是对侧类别）");
+        }
+        String dec = decision.trim().toUpperCase();
+        if (!java.util.Set.of("A", "B", "C", "D").contains(dec)) {
+            throw err("decision 只能是 A/B/C/D，收到：" + decision);
+        }
+        if (targetRef == null || targetRef.isBlank()) {
+            throw err("targetRef 必填（对侧条目的 flow_id 或 transaction_id）");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw err("处置原因不能为空");
+        }
+
+        java.util.List<java.util.Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT item_id, statement_id, category, flow_id, transaction_id, amount, reason "
+                        + "  FROM reconciliation_items WHERE item_id = ? AND deleted = 0 FOR UPDATE", itemId);
+        if (rows.isEmpty()) {
+            throw err("未达账项不存在：" + itemId);
+        }
+        java.util.Map<String, Object> item = rows.get(0);
+        long sid = ((Number) item.get("statement_id")).longValue();
+        if (sid != statementId.longValue()) {
+            throw err("该 item 不属于调节表 " + statementId + "（实际属于 " + sid + "）");
+        }
+        String cat = String.valueOf(item.get("category"));
+        String itemReason = item.get("reason") == null ? "" : String.valueOf(item.get("reason"));
+        if (!itemReason.startsWith("AMBIGUOUS:")) {
+            throw err("该 item 没有同额歧义标记（reason 不以 AMBIGUOUS: 开头），无需处置：" + cat + " #" + itemId);
+        }
+        String opposite = switch (cat) {
+            case "A" -> "C";
+            case "B" -> "D";
+            case "C" -> "A";
+            case "D" -> "B";
+            default -> throw err("未知类别：" + cat);
+        };
+        if (!opposite.equals(dec)) {
+            throw err("decision 必须是对侧类别 " + opposite + "（当前 item 类别 " + cat + "），收到：" + decision);
+        }
+        long amount = ((Number) item.get("amount")).longValue();
+        // 对侧候选必须存在且同额
+        // 对侧是 C/D（银行侧）时比对 transaction_id；对侧是 A/B（企业侧）时比对 flow_id
+        Integer cand = jdbc.queryForObject(
+                "SELECT count(*) FROM reconciliation_items WHERE statement_id = ? AND deleted = 0 "
+                        + " AND category = ? AND amount = ? "
+                        + " AND (CASE WHEN ? IN ('C','D') THEN transaction_id ELSE flow_id END)::text = ?",
+                Integer.class, statementId, dec, amount, dec, targetRef.trim());
+        if (cand == null || cand == 0) {
+            throw err("对侧候选不存在或金额不一致：category=" + dec + "，amount=" + amount
+                    + " 分，targetRef=" + targetRef);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Long userId = currentUserId();
+        String userName = currentUserName();
+        String cleaned = itemReason.startsWith("AMBIGUOUS:") ? itemReason.substring("AMBIGUOUS:".length()).trim() : itemReason;
+        String newReason = "已处置(AMBIGUITY->" + dec + ":" + targetRef.trim() + ")：原因=" + reason
+                + "；" + cleaned;
+        jdbc.update("UPDATE reconciliation_items SET reason = ?, update_time = ? WHERE item_id = ?",
+                newReason, now, itemId);
+
+        // 双事务校验：处置后重算歧义数与 is_balanced（同一事务内写入，失败整体回滚）
+        reconcileStatementFlags(statementId, userId, userName, now);
+
+        // 审计留痕
+        try {
+            jdbc.update("INSERT INTO finance_audit_logs (operator_id, operator_name, operation_type, module,"
+                            + " target_id, target_type, operation_desc, operation_data, create_time, created_by, version) "
+                            + "VALUES (?,?,'RECON_AMBIGUITY_RESOLVED','finance',?,'RECON_ITEM',?,?,?,?,0)",
+                    userId, userName, itemId,
+                    "调节表 " + statementId + " 歧义处置：item=" + itemId + " 类别=" + cat + " → " + dec
+                            + "，targetRef=" + targetRef + "，原因=" + reason,
+                    "{\"statementId\":" + statementId + ",\"itemId\":" + itemId + ",\"decision\":\"" + dec
+                            + "\",\"targetRef\":\"" + targetRef.trim() + "\",\"reason\":\""
+                            + reason.replace("\"", "'") + "\"}",
+                    now, userName);
+        } catch (Exception e) {
+            log.warn("歧义处置审计写入失败（不影响处置结果）: itemId={}, err={}", itemId, e.getMessage());
+        }
+        return detail(statementId);
+    }
+
+    /** 重算 statement 的歧义数与 is_balanced（歧义清零 + 金额相等 才算平衡） */
+    private void reconcileStatementFlags(Long statementId, Long userId, String userName, LocalDateTime now) {
+        Integer ambiguous = jdbc.queryForObject(
+                "SELECT count(*) FROM reconciliation_items WHERE statement_id = ? AND deleted = 0 "
+                        + " AND reason LIKE 'AMBIGUOUS:%'", Integer.class, statementId);
+        java.util.Map<String, Object> row = oneOrNull(
+                "SELECT adjusted_book_balance, adjusted_bank_balance FROM reconciliation_statements WHERE statement_id = ?",
+                statementId);
+        if (row == null) {
+            throw err("调节表不存在：" + statementId);
+        }
+        long adjBook = ((Number) row.get("adjusted_book_balance")).longValue();
+        long adjBank = ((Number) row.get("adjusted_bank_balance")).longValue();
+        boolean balanced = adjBook == adjBank && (ambiguous == null || ambiguous == 0);
+        jdbc.update("UPDATE reconciliation_statements SET is_balanced = ?, update_time = ?, version = version + 1 "
+                + " WHERE statement_id = ?", balanced, now, statementId);
+        log.info("[RECON_AMBIGUITY] statement={} 剩余歧义={} 金额相等={} is_balanced={}",
+                statementId, ambiguous, adjBook == adjBank, balanced);
+    }
+
     private void validateItems(List<StatementItemRequest> items, LocalDate ps, LocalDate pe) {
         Set<String> seen = new HashSet<>();
         for (StatementItemRequest it : items) {

@@ -46,6 +46,13 @@ public final class CsvImportParser {
     public static final String ERR_MISSING_TXN_TIME = "MISSING_TXN_TIME";
     public static final String ERR_MISSING_EXTERNAL_ID = "MISSING_EXTERNAL_ID";
     public static final String ERR_TXN_TIME_INVALID = "TXN_TIME_INVALID";
+    /**
+     * BL-6 §5：源文件只有「日期」没有「时刻」。
+     * 以前这里会 atStartOfDay() 兜底成 00:00:00 —— 那是**写假数据**：后续 ±10 分钟时间窗匹配会静默失效，
+     * 而且外部流水表里留下 25 行「午夜 00:00:00」的假时间。现在改为：保留日期但整行标 NEEDS_REVIEW，
+     * 并把该标记写进入库行的 error_message / raw_json，由勾稽侧在 item 上标「时间不可用」。
+     */
+    public static final String MARK_TIME_UNAVAILABLE = "TIME_UNAVAILABLE";
     public static final String ERR_FUTURE_TIME = "FUTURE_TIME";
     public static final String ERR_DIRECTION_UNKNOWN = "DIRECTION_UNKNOWN";
     public static final String ERR_FILE_HEADER = "HEADER_MISSING";
@@ -184,6 +191,12 @@ public final class CsvImportParser {
                 rows.add(row);
                 continue;
             }
+            // 时间不可用的行：保留 NEEDS_REVIEW（不参与 OK 计数，也不会被误当正常行）
+            if (row.status() == RowStatus.NEEDS_REVIEW) {
+                review++;
+                rows.add(row);
+                continue;
+            }
             // 去重分流（design §1.4）
             boolean exactHit = row.externalTxnId() != null && !row.externalTxnId().isBlank();
             String exactKey = exactHit ? (sourceType.name() + "|" + row.externalTxnId()) : null;
@@ -238,8 +251,11 @@ public final class CsvImportParser {
         }
         LocalDateTime txnTime = parseTime(timeRaw);
         if (txnTime == null) {
+            // 无法解析 → 行级 ERROR（绝不写 00:00:00 假时间）
             return errorRow(rowNo, external, merchantNo, null, null, null, summary, cpAccount, rawHash, ERR_TXN_TIME_INVALID, "时间格式无法识别: " + timeRaw);
         }
+        // 源文件只有日期（时间部分缺失）→ 保留日期，但整行必须标「时间不可用」待人工确认
+        boolean timeUnavailable = isDateOnly(timeRaw);
         if (txnTime.isAfter(LocalDateTime.now().plusDays(1))) {
             return errorRow(rowNo, external, merchantNo, txnTime, null, null, summary, cpAccount, rawHash, ERR_FUTURE_TIME, "未来时间: " + timeRaw);
         }
@@ -273,6 +289,12 @@ public final class CsvImportParser {
             return errorRow(rowNo, external, merchantNo, txnTime, amount.fen(), fee, summary, cpAccount, rawHash, ERR_DIRECTION_UNKNOWN, "无法判定收/支: " + dirRaw);
         }
         DedupeBasis basis = (external != null && !external.isBlank()) ? DedupeBasis.EXTERNAL_ID : DedupeBasis.COMPOSITE;
+        if (timeUnavailable) {
+            // NEEDS_REVIEW：落库但 needs_review=1 / match_status=EXCEPTION，且 error_message 带标记
+            return new ParsedRow(rowNo, external, merchantNo, txnTime, amount.fen(), fee, direction, summary,
+                    cpAccount, basis, RowStatus.NEEDS_REVIEW, MARK_TIME_UNAVAILABLE,
+                    MARK_TIME_UNAVAILABLE + ": 源文件只有日期无时刻（" + timeRaw + "），时间窗匹配不可用，需人工确认", rawHash);
+        }
         return new ParsedRow(rowNo, external, merchantNo, txnTime, amount.fen(), fee, direction, summary,
                 cpAccount, basis, RowStatus.OK, null, null, rawHash);
     }
@@ -346,6 +368,18 @@ public final class CsvImportParser {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /** 单元格是否只有日期（yyyy-MM-dd / yyyy/MM/dd），没有时分秒 */
+    private boolean isDateOnly(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String t = raw.trim().replace('T', ' ');
+        if (t.contains(":")) {
+            return false;
+        }
+        return t.matches("^\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}$");
     }
 
     private Map<String, Integer> mapHeader(String[] cells) {

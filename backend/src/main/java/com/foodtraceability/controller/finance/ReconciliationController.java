@@ -84,6 +84,19 @@ public class ReconciliationController {
         return Result.success(statementService.approve(statementId));
     }
 
+    /** BL-6 §3：人工处置同额歧义（不自动二选一） */
+    @Operation(summary = "处置调节表同额歧义（decision=A|C / B|D + targetRef）")
+    @PostMapping("/recon/statements/{statementId}/items/{itemId}/resolve-ambiguity")
+    @PreAuthorize("hasAnyAuthority('ROLE_FINANCE_DIRECTOR','ROLE_FINANCE_MANAGER')")
+    public Result<ReconciliationStatementVO> resolveAmbiguity(@PathVariable Long statementId,
+                                                             @PathVariable Long itemId,
+                                                             @RequestBody java.util.Map<String, String> body) {
+        return Result.success(statementService.resolveAmbiguity(statementId, itemId,
+                body == null ? null : body.get("decision"),
+                body == null ? null : body.get("targetRef"),
+                body == null ? null : body.get("reason")));
+    }
+
     /** S9 导出 CSV */
     @Operation(summary = "导出调节表 CSV")
     @GetMapping("/recon/statements/{statementId}/export")
