@@ -171,11 +171,13 @@ class Runner:
         return self.not_ready(name, "HTTP %s 403 权限不足 → %s %s" % (status, FORBIDDEN_HINT, dump(body, 160)))
 
     def gate(self, name, status, body):
-        """统一闸门：403 → NOT_READY，404 → NOT_READY，其它照常返回 False。"""
+        """统一闸门：403/404 → 记 NOT_READY 并返回 True（调用方须立即 return）；否则 False。"""
         if is_forbidden(status, body):
-            return self.forbidden(name, status, body)
+            self.forbidden(name, status, body)
+            return True
         if is_endpoint_missing(status, body):
-            return self.not_ready(name, "端点未就绪 HTTP %s %s" % (status, dump(body, 160)))
+            self.not_ready(name, "端点未就绪 HTTP %s %s" % (status, dump(body, 160)))
+            return True
         return False
 
     # -------------------------------------------------- psql
