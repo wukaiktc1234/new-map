@@ -27,13 +27,26 @@ public class AtomicBalanceUpdater {
 
     private static final Logger log = LoggerFactory.getLogger(AtomicBalanceUpdater.class);
 
-    /** 乐观锁冲突时的最大重试次数（每次重读 version 再试） */
-    private static final int MAX_RETRY = 3;
+    /** 乐观锁冲突时的默认最大重试次数（每次重读 version 再试） */
+    private static final int DEFAULT_MAX_RETRY = 3;
+
+    /**
+     * 乐观锁冲突时的最大重试次数（可配置，默认 {@value #DEFAULT_MAX_RETRY}）。
+     *
+     * <p>BL-3 验收：仅为了能在测试实例上用启动参数
+     * {@code --app.finance.balance.max-retry=1} 制造「一次冲突即耗尽」，
+     * 生产默认仍是 3，语义不变。</p>
+     */
+    private final int maxRetry;
 
     private final BankAccountMapper bankAccountMapper;
 
-    public AtomicBalanceUpdater(BankAccountMapper bankAccountMapper) {
+    public AtomicBalanceUpdater(BankAccountMapper bankAccountMapper,
+                                @org.springframework.beans.factory.annotation.Value("${app.finance.balance.max-retry:3}")
+                                int maxRetry) {
         this.bankAccountMapper = bankAccountMapper;
+        // 防御：配置成 <=0 时回落到默认值，避免出现「0 次尝试」的死路
+        this.maxRetry = maxRetry > 0 ? maxRetry : DEFAULT_MAX_RETRY;
     }
 
     /**
@@ -50,7 +63,7 @@ public class AtomicBalanceUpdater {
         if (delta == 0L) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "余额变动额不能为 0：accountId=" + accountId);
         }
-        for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
             BankAccount account = bankAccountMapper.selectById(accountId);
             if (account == null || Integer.valueOf(1).equals(account.getDeleted())) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "银行账户不存在或已删除：accountId=" + accountId);
@@ -74,7 +87,7 @@ public class AtomicBalanceUpdater {
         }
         // BL-3：乐观锁冲突属「业务可识别的冲突」，返回 HTTP 409 + 原文，不再落入 500「系统繁忙」
         throw new ConflictException(
-                "余额更新乐观锁冲突，重试 " + MAX_RETRY + " 次仍失败：accountId=" + accountId);
+                "余额更新乐观锁冲突，重试 " + maxRetry + " 次仍失败：accountId=" + accountId);
     }
 
     /** 余额快照（变更前后） */
