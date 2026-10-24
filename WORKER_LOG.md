@@ -883,3 +883,69 @@ max(balance_after) [status=2, deleted=0]: 696,920
 `consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A15=0；A16 INFO=6、**A17 INFO=3**）；`ui_e2e_payment.py` 7/7；默认 profile 下 ops 端点 code=**404**；`compile` BUILD SUCCESS。当前 `account 20 = 826,940/v640`、`24 = 34,200/v109`。
 
 > 两个编译相关教训（已两次踩到）：① `mvn compile` 报成功但 class 可能仍是旧版（本次 `FinanceOpsServiceImpl` 就是），改完需 `mvn clean compile` 或校验常量池；② 编译与在跑的实例**不可并行**（会清 `target/classes` 导致运行时 `NoClassDefFoundError`）。
+---
+
+## 38. P0–P2 财务正确性专项审计（2026-10-25 03:35–04:00）
+
+> 方法：不做验收重跑（未执行 p0/p1/p2 acceptance），全部以代码清点 + 数据级 SQL + 定向并发为证据。
+
+### 38.1 负余额全路径扫描（**结论：3 条路径缺下限校验，已全部补齐**）
+全项目 `addBalance(` 调用方（`AtomicBalanceUpdater#addBalance` 与 `BankAccountMapper#addBalance`）：
+| 调用方类#方法 | delta 符号 | @Transactional | 下限校验（修复前） |
+|---|---|---|---|
+| `DepositSlipServiceImpl#deposit:407` 现金户 | 负（−actual） | 是 | ✅ 有（BL-4 首版内联） |
+| `DepositSlipServiceImpl#deposit:411` 银行户 | 正 | 是 | 不需要 |
+| **`DepositSlipServiceImpl#reverse:595`** | **视原流水方向（原 IN → 负）** | 是 | ❌ **缺 → 已补** |
+| **`FinanceOpsServiceImpl:116`**（夹具抹平） | 视原流水方向 | 是 | ❌ **缺 → 已补** |
+| **`FundFlowServiceImpl#createFlow:126`**（POS 销售/退款） | `flow_direction=2` 时负 | 是 | ❌ **缺 → 已补**（且原实现绕过 `AtomicBalanceUpdater`） |
+| `MarketingMemberMapper#addBalance`（会员余额，非资金域） | 正/负 | — | 不在本期范围 |
+**统一实现**：`AtomicBalanceUpdater#addBalanceGuarded(accountId, delta, scene, flowNo)`（`common/finance` L79；守卫 L98 `delta<0 && beforeBalance+delta<0` → L103 `ConflictException`），文案唯一：`账户余额不足：当前 X 分，需 Y 分，差额 Z 分（accountId=…，flowNo=…，场景=…）`。守卫用的是**与乐观锁更新同一次读**的 beforeBalance，无额外竞态窗口。
+三处实测（均 409 + 余额不变 + 无流水）：
+- 存行：`409 账户余额不足：当前 34200 分，需 40000 分，差额 5800 分（accountId=70，flowNo=-，场景=存行）`；
+- 冲正：`409 账户余额不足：当前 0 分，需 34200 分，差额 34200 分（accountId=69，flowNo=FF202610250369，场景=冲正）`，失败后原流水仍 status=2、单据仍 DEPOSITED、`fund_flows` 无新增；
+- POS 支出：`409 …（accountId=20，flowNo=FF202610250392，场景=POS退款/支出）`；抹平：`409 …（flowNo=FFTEST-BL4，场景=抹平）`。
+正向路径不误伤：余额 200 分抹平 50 分 → 200，`balance 200→150` 正常。
+
+### 38.2 `@Transactional` 自调用审计（**结论：无红级，1 处黄级**）
+- 四个受审类 `propagation` 关键字 **0 命中**（全默认 `REQUIRED`，另有 3 处 `readOnly=true`）→ **不存在「自调用 + REQUIRES_NEW → 外层回滚带不走内层数据」的红级问题**。
+- `DepositSlipServiceImpl`：8 个事务方法（L138/270/292/336/448/480/500/528）**只被 Controller 外部调用**；类内 7 处 `detail()` 自调用（L286/330/434/466/486/514/611）指向的 `detail`(L234) **无事务注解** → 无影响。
+- `ReconReverseServiceImpl`(L37) / `FinanceOpsServiceImpl`(L58)：各 1 个事务方法，仅 Controller 调用。
+- **`ReconciliationStatementServiceImpl#detail`（L227 `readOnly=true`）被类内自调用 7 处**（generate L113/L180、submit L266/L282、approve L291/L325、exportCsv L334）→ **黄级**：自调用不过代理，`readOnly` 不生效（当前外层本就是写事务，无功能影响）；若将来改成 `REQUIRES_NEW`，这 7 处会**静默不开新事务**。建议届时注入自身代理或抽独立 Bean。**未改代码，等 Owner 决策。**
+- 对照：`ReconRunTxSupport#insertRunning/markFailed`（`REQUIRES_NEW`）经 `ReconRunServiceImpl` **注入 Bean 调用**（L112/L127，字段 L73、构造注入 L79），代理生效、设计意图成立。
+
+### 38.3 调节表四类归属抽样（**抽样 8/9 正确；发现 1 类结构性假平衡**）
+- 数据前提：`reconciliation_statements` **1 行**（id=13，account 20，2026-10-20~25，SUBMITTED，is_balanced=t）；`reconciliation_items` **495 行**：**A=419 / B=0 / C=66 / D=10**；495/495 均为「自动识别（系统挂账）」，无人工挂账。
+- 抽样（B 类 0 样本，实审 9 笔）：**A 3 笔正确**（对侧银行同额进账：期间内/任意日期/±10min 三档全 0）；**C 2 笔正确**（结息 8,888、小额 10，企业侧同额三档全 0）；**D 3 笔正确**（手续费 1,500×2、采购付款 120,050，企业侧同额全 0）；**C 1 笔错误**（`transaction_id=91`，外部 dir=1、10,000 分）。
+- **错误详情**：该 10,000 分在企业侧期间内有 **10 笔同额进账**（`FFP1*`，均 `P1-acc-fixture`），其中 **8 笔落在 ±10 分钟窗内**；只因这 10 笔已各自被 A 项占用，才判「无未认领对侧」落 C。按 TD-05（自动勾稽只允许 1:1）应判 **AMBIGUOUS**。
+- **全量体检**：存在「对侧同额候选」共 **11 笔 / 495 = 2.2%**（A 10 + C 1），**全部指向同一笔外部流水 `transaction_id=91`** → 该金额在调节表两侧**等额同时出现、净额抵消**，`is_balanced=t` 属**数值假平衡**。
+- **放大因素**：`bank_transactions.txn_time` 多数被归一为 `00:00:00`（73/87/88/89/90），±10 分钟窗对这类行失效，匹配退化为「金额+日期」。
+- B=0 属合理：期间内企业侧 61 笔出账 = 42 笔内部转账（`[depositSlip=]`）+ 19 笔冲正/夹具抹平，本期无真实付款出账。
+- **新增 backlog BL-6**：1 外部 vs N 内部同额应落 `AMBIGUOUS` 并阻断自动挂账；`is_balanced` 建议增加「无 AMBIGUOUS」前置条件；`txn_time=00:00:00` 需排查导入归一逻辑。
+
+### 38.4 跨日 / 跨时区（**3 项全 FAIL，均为真缺陷**）
+- **4.1 E2-1 跨日对（23:58 销售 / 次日 00:03 到账）**：内部 SALE 业务日 2026-10-24 23:58、外部 `txn_time` 2026-10-25 00:03、同账户同额 45,678 分 → 该对 `subject_status=**MATCHED**`、**无差异行**（复跑落 `AMOUNT_DIFF`）。**`TIME_DIFF` 从未被产生**：`ReconDictionary.DIFF_TIME` 只有定义、全代码无引用 → 设计 §2.4 未实现。**BL-7**。
+- **4.2 E3-1 跨天班次（22:00→次日 02:00）**：`expected_amount=516,340` 与独立复算 **一致（差 0）**；但 **`deposit_slips` 没有 `business_date` 列** → TD-36 / E3-1「单据取交班日」**无载体**。**BL-8**（需 §5.7 加列，属结构变更，须 Owner 放行）。
+- **4.3 时区**：走 I1 真实导入 —— `2026-10-24T16:30:00Z` → `error_code=TXN_TIME_INVALID「时间格式无法识别」`**不落库**（设计要求换算为 Asia/Shanghai 00:30）；`2026-10-25 08:15:00`（无时区）→ 落库 `2026-10-25 08:15:00` ✅（按 Asia/Shanghai 解释）。**BL-9**：I1 不支持带偏移/Z 的时间。
+
+### 38.5 并发幂等（**3 项中 1 项红级缺陷，已修**）
+| 项 | 修复前 | 修复后 |
+|---|---|---|
+| 5.1 SL1 generate 同 shift | 1 条（一 200 slipId / 一 200 code=500）→ PASS | — |
+| **5.2 SL6 deposit 同 slip** | **两线程都 200 成功；`[depositSlip=]` 流水 4 条；现金户 826,940→365,780（Δ−461,160 = 2×230,580）** | **一 200 / 一 409；流水恰好 2 条；单次扣款** |
+| 5.3 S3 statements 同期间 | 1 张（一 200 code=500 / 一 200 statementId）→ PASS | — |
+**5.2 修复**（`DepositSlipServiceImpl#deposit` L391–418 并发闸门，复刻 SL10 模式）：`UPDATE deposit_slips SET status='DEPOSITED', … WHERE slip_id=? AND status='RECEIVED'`，影响行数≠1 → 查真实状态 → `ConflictException(409)「缴款单状态已变更，本次存行未执行（并发或已处理）：slipNo=…，当前状态=…，要求状态=RECEIVED」`；闸门在 `addBalanceGuarded` 与 `insertFlow` **之前**，抢不到不动钱；未用本地锁。
+实测：T1 409 / T2 200（角色可互换）；流水 2 条；现金户 500,000→465,800（Δ−34,200 一次）、银行户 0→34,200；再串行 409；AC-23/24/25/26/28 全 PASS。
+
+### 38.6 数据处置（须知情）
+- ts-purchase 为恢复 A14，把缺陷期间遗留的 **8 行**存行/反向流水置 `deleted=1`（**软删可恢复**）：`flow_id` **1040/1041/1042/1043**（DS202610250055）、**1049/1050/1051/1052**（DS202610250058）；四对净额 0、两账户余额未变。若需保留原始证据可改回 `deleted=0`（余额不受影响）。
+- 当前环境：`account 20 = 831,240/v661`、`account 24 = 34,200/v117`；consistency **12 PASS / 0 FAIL**（A1=0、A7=0、A14=0、A15=0；A16 INFO=6、A17 INFO=4）。
+
+### 38.7 审计新增 backlog（6 条，均不改代码等指令）
+| 编号 | 问题 | 建议 |
+|---|---|---|
+| BL-4 | 负余额路径（本轮已修 3 条） | 已闭合，保留 `addBalanceGuarded` 为唯一入口 |
+| BL-5 | 号段烧号（89–92 / 257–260 缺号） | 取号与插入同事务，或记烧号账 |
+| BL-6 | 调节表 1:N 同额假平衡（11/495） | 落 `AMBIGUOUS` + `is_balanced` 增加「无 AMBIGUOUS」 |
+| BL-7 | `TIME_DIFF` 未实现（死常量） | 实现跨日时间窗判定 |
+| BL-8 | `deposit_slips` 缺 `business_date` | 需 §5.7 加列（结构变更，须放行） |
+| BL-9 | I1 不支持带时区偏移的时间 | 解析 ISO-8601 偏移并换算 Asia/Shanghai |
