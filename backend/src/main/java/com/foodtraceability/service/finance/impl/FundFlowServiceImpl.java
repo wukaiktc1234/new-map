@@ -249,7 +249,7 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     }
 
     /**
-     * 生成流水号：FF + yyyyMMdd + 4位序号。
+     * 生成流水号：FF + yyyyMMdd + 4 位序号。
      *
      * <p>并发安全：序号来自 order_sequence 号段表的原子自增（键 {@code FLOWyyyyMMdd}），
      * 不再「查最后一条 +1」——高并发支付时原实现会拿到相同号并撞唯一键，导致流水写不进去。</p>
@@ -259,10 +259,19 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         String sequenceKey = "FLOW" + datePart;
         String prefix = "FF" + datePart;
         try {
-            // 首日/首次使用时，以当天已有最大流水号初始化号段（并发下只有一条 INSERT 生效）
-            Integer maxExisting = fundFlowMapper.maxFlowSequenceByPrefix(prefix);
-            fundFlowMapper.initFlowSequenceIfAbsent(sequenceKey, maxExisting != null ? maxExisting : 0);
-            Integer seq = fundFlowMapper.nextFlowSequence(sequenceKey);
+            // BL-2-b：改用带「下限兜底」的取号（FundFlowMapper#nextFlowSequenceWithFloor）：
+            // 单条语句 = GREATEST(号段当前值, 当天已用最大序号) + 1 并 RETURNING。
+            //
+            // 为什么同事务内连续取 N 个号也不会重号（三条理由，缺一不可）：
+            //  ① 号源是号段表 sequence_value **自身的行级锁自增**，不是「查 MAX + 1」——
+            //     并发事务在这里排队天然串行；号段落后只会被抬升，不会被压低。
+            //  ② 每次调用都真实执行本语句：注解上 flushCache=TRUE（清一级缓存）、useCache=false（跳二级缓存），
+            //     否则 MyBatis 会把同事务内第二次同参调用当缓存命中并返回同一个号 → 撞
+            //     fund_flows_flow_no_key（P2-A 缺陷 1 即此）。
+            //  ③ GREATEST(..., 当天 MAX) 只做**下限兜底**：防的是「号段被调低 / 历史直写 SQL 越过号段」
+            //     造成的落后（如号段 200 而当天已用到 232）；事务内它最多等于上一号，
+            //     不会撞上本事务刚取走的下一个值。
+            Integer seq = fundFlowMapper.nextFlowSequenceWithFloor(sequenceKey, prefix);
             if (seq != null && seq > 0) {
                 return String.format("%s%04d", prefix, seq);
             }
