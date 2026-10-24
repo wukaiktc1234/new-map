@@ -679,3 +679,54 @@ AC-19～AC-30、AC-38～AC-41、AC-37（consistency 12/12、ui_e2e 7/7、schema_
 ### 32.8 测试残留与夹具（可清理）
 - `bank_transactions` 夹具：`transaction_id` 113/114/129（`SELFTEST-*`/`P2D*`）；`pos_shifts.shift_id` 56/57/58（`P2D-ACCEPT-FIXTURE`）。
 - 自测缴款单 DS202610250001–022 已全部走 **SL10 冲正**（不删数据），余额回基线；`fund_flows` 689 行、现金户 20 = 694,340 / 存款户 24 = 34,200。
+---
+
+## 33. P3 前置：4 个追问的取证 + 2 个 backlog + 2 项拍板 + A16（2026-10-25 01:40–02:05）
+
+### 33.1 追问 1：AtomicBalanceUpdater 重试耗尽后的行为（**不是返回 false，是抛异常**）
+- 类/方法：`com.foodtraceability.common.finance.AtomicBalanceUpdater#addBalance(Long accountId, long delta)`
+- `MAX_RETRY = 3`（第 30 行）；循环内每次重读 `version` 后调 `bankAccountMapper.addBalanceOptimistic`（第 52–73 行）；三次均 `rows != 1` → **第 74–75 行 throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, 余额更新乐观锁冲突，重试 3 次仍失败：accountId=…)**。
+- **无 false 返回路径**：方法返回 `BalanceSnapshot`，异常路径直接抛出 → 不存在「false 后仍继续提交」的分支；调用方 `DepositSlipServiceImpl#deposit/#reverse`、`ReconReverseServiceImpl#executeReverse` 均在 `@Transactional(rollbackFor = Exception.class)` 内，异常 → 整体回滚。
+- ⚠️ **前端可见文案不是该中文原文**：`GlobalExceptionHandler` 对 500 类走 `buildUserMessage(traceId)`（GlobalExceptionHandler.java:273/294/304），用户看到「系统繁忙 + traceId」，业务细节只在服务端日志。列 P3 backlog（33.5-BL-3）。
+
+### 33.2 追问 2：SL10 冲正并发安全（**先查后改，竞态窗口存在**）
+- `DepositSlipServiceImpl#reverse`（479–550 行）：`requireSlip` 先 SELECT（482）→ 内存判 `REVERSED`（486）、`!DEPOSITED/VERIFIED/CLOSED`（489）→ 逐条判原流水状态（501）与 `existsReverseFlow`（505）→ 最后 `LambdaUpdateWrapper.eq(slipId).set(status, REVERSED)`（535–539）。
+- **该 UPDATE 不带 `AND status IN (...)`、也未校验影响行数** → 并发两个 reverse 可能都通过内存判断，各生成一对反向流水（余额反向两次）。`[reconReverseOf=]` 无 DB 唯一约束，仅靠先查。
+- **P2 验收的「重复调用 400」只覆盖串行场景**（ts-ops AC-28 与 ts-purchase 重复调用测试均为串行），并发未覆盖。
+- 按指令**只报告未改码**。建议修复（待指令）：`UPDATE deposit_slips SET status='REVERSED' WHERE slip_id=? AND status IN ('DEPOSITED','VERIFIED','CLOSED')` 断言影响行数=1；原流水 `UPDATE … SET status=3 WHERE flow_id=? AND status=2`；`[reconReverseOf=]` 加唯一约束或改用幂等表。
+
+### 33.3 追问 3：补记 SALE 是否真关联订单（**6 条中 4 条合格、2 条不匹配 → 标红**）
+SQL：`select flow_no, order_id, amount, remark from fund_flows where remark like '%[cashBackfill]%'`
+| flow_no | order_id | amount | order_number | payment_status | 现金合计(method=1,deleted=0) | 判定 |
+|---|---|---:|---|---|---:|---|
+| FF202610250010 | P2BF010413401 | 100 | P2BF010413401 | 2 | **0** | ❌ 不匹配（该单现金支付记录 deleted=1，测试夹具；流水金额无对应支付事实） |
+| FF202610250011 | P2BF010607008 | 100 | P2BF010607008 | 2 | **0** | ❌ 不匹配（同上） |
+| FF202610250012 | O1792861544278 | 2,000 | W20261025004 | 2 | 2,000 | ✅ 匹配 |
+| FF202610250013 | O1792861544280 | 1,800 | W20261025005 | 2 | 1,800 | ✅ 匹配 |
+| FF202610250014 | O1792861544282 | 80 | W20261025006 | 2 | 80 | ✅ 匹配 |
+| FF202610250015 | O1792861544284 | 2,500 | W20261025007 | 2 | 2,500 | ✅ 匹配 |
+**结论**：A1 4→0 的真实业务补齐是 4 条（合计 6,380 分，逐笔与订单现金合计相等）；但 FF…010/011（各 100 分）属**流水侧凑数**——P2 自测 P2BF* 夹具订单，支付记录已软删，`order_id` 非空却无支付事实。**A1 归零不完全等于数据修复**，这 2 条待 P3 处置（删除，或恢复 order_payment_records 后重算）。按指令**未改数据**。
+
+### 33.4 追问 4：短款 500 字段落库（**符号与设计稿相反 → 标红**）
+| slip_no | expected_amount | actual_amount | difference_amount | actual − expected |
+|---|---:|---:|---:|---:|
+| DS202610250022 | 230,680 | 230,180 | **+500** | **−500** |
+（DS…019/020/021 同形；DS…017 因 REJECTED、actual=0 不参与）
+- **设计稿 §5.7 第 766 行**：`difference_amount = actual − expected`（>0 长款、<0 短款）；**AC-21 第 1005 行**同式。
+- **实现写的是 `expected − actual`（+500）**，与设计稿/AC-21 **符号相反**。字段非空非 0，但语义方向错：前端「差额」会反、按符号做损溢科目的逻辑会反向。
+- 按指令**只报告未改码**。必须二选一（不能两存）：改写入为 `actual − expected`，或把 §5.7/AC-21 改成 `expected − actual` 并同步 §3.5 与 E2E 断言。
+
+### 33.5 三个 backlog（不改代码）
+- **BL-1 POS 入账异常被吞**：`PosSaleFinanceRecorder` 在 `fund_flows` 写入失败（如 DuplicateKeyException）时只打 `[METRIC] pos_fund_flow_recorded result=failed`，`/pay` 仍 200 → 订单已支付但无 SALE 流水（本次 4 笔 / 6,380 分）。P2 已用补记修数据，**根因未修**。
+  **P3 开工前置**：把该 metric 接入 `consistency_check.py` INFO 段（已落 **A16**）**或**让 `/pay` 在 SALE 写入失败时返回非 200（推荐后者为主、A16 兜底监控）。
+- **BL-2 三处发号器收敛**：`FundFlowServiceImpl#generateFlowNo`、`DepositSlipMapper#nextSlipSequenceWithFloor`、`ReconCashSupport#nextFlowNo` 并存（后两者已统一 `order_sequence` + `GREATEST` + `+1 RETURNING`）。应收敛为唯一工具类。**会动 call-number 相关文件，需 Owner 放行，暂不执行。**
+- **BL-3 500 类异常前端不可读**：`GlobalExceptionHandler` 对 INTERNAL_SERVER_ERROR 统一回「系统繁忙 + traceId」，`AtomicBalanceUpdater` 的乐观锁冲突文案前端拿不到。P3 建议：业务可识别的冲突改用 400/409 专用码，保留 500 仅给未知异常。
+
+### 33.6 拍板执行（2 项）
+1) **`finance:deposit-slip:reject` 已建并绑定**：`permission_id=33501`、`PERM_FINANCE_DEPOSIT_SLIP_REJECT`；绑定 **ROLE_TELLER + ROLE_FINANCE_DIRECTOR**（各 1 条，`permission_assignment_log` 2 行）；脚本 `scripts/db-fix/2026-10-25-deposit-slip-reject-permission.sql`（幂等；`permission_id` 是 GENERATED ALWAYS 不能显式给值——与建 ROLE_TELLER 同一个坑）。
+   SL9 `@PreAuthorize` 已从 `:close` 切到 **`:reject`**（DepositSlipController 第 114 行）；运行时验证：带 `:reject` → 业务 400（状态不允许），仅带 `:close` → **403**。
+2) **SL1 storeId 一致性校验**：门店集合 = 班次时间窗内「存在有效支付记录的订单」的 `orders.store_id` 去重；显式 storeId ∉ 集合 → 400 并列出集合；缺省且集合≠1 → 400 并列候选（**不默认取第一个**）；集合为空或该店现金合计 ≤0 → 400；**校验前移到幂等命中之前**。
+   三组输出原文：`shiftId=58+storeId=999 → 400 storeId 与班次实际门店不一致：shiftId=58，请求 storeId=999，班次时间窗内实际门店集合=[1, 2]`；`shiftId=58 不传 → 400 班次无法唯一归属门店（命中 2 个：[1, 2]），请显式传 storeId…`；`shiftId=6+storeId=1 → 新生成 DS202610250023 expected_amount=34,200 分；再调 reused=true`。
+
+### 33.7 A16（INFO，不计入 TOTAL）
+首次输出：`[INFO] A16 近24h POS 入账失败后补记 rows=6（存在 POS 入账失败后补记，需排查 pos_fund_flow_recorded=failed）`；明细含 `A1 缺账修复：POS 号段撞号` 与 `P2 补记实测` 两类来源；与 A8/A9 并列，**不进 TOTAL FAIL**（求和止于 `a15_n`，已核对）。
