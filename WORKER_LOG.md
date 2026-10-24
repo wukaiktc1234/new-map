@@ -609,36 +609,46 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 24. DATA-007 收口：扫码确认入库落统一账 + 成本不再落 0（2026-10-24 12:08–12:55）
 
-### 24.1 缺陷事实
-- `MaterialTraceCodeServiceImpl.updateInventoryAfterConfirm` 只 `new Inventory()` 填字段 + `log.info`，**从不落库**；只写 legacy `store_inventory_log`；
-- `createPurchaseStockinRecord` 直接 `purchaseStockinService.save`，**不发 PurchaseStockInEvent** → `cost_records` 也不写；
-- 结果：扫码确认入库「状态变 in_stock、库存与成本双失真」。
+---
 
-### 24.2 修复
-1) 落统一账：`storeId → locationId` 走 `LocationIdBridge`，解析不到**抛错回滚**（不再静默跳过/假成功）；materialId 非法抛错；调用 `inventoryService.increaseStockAtLocation(..., sourceType="TRACE_CONFIRM_STOCKIN", sourceRef=入库单号)`；legacy 审计日志的 before/after 改为**真实库存**。
-2) 事件：`PurchaseStockInEvent` 新增 `sourceType`（`TRACE_CONFIRM`）；监听器对扫码确认来源**跳过追溯码再生成**（防「确认一张又生成一张」的递归），只写成本。
-3) 顺序：状态→in_stock → 建入库单 → 落库存账 → 发事件，同一事务，异常一律回滚。
-4) **单价解析链**（成本不再落 0）：追溯码（无单价列）→ `purchase_stockin_items.unit_price`（分）→ **`material_archives.reference_price`（分）**；都没有则 `totalAmount=null` + WARN，监听器**不写成本行**（`cost_records.amount` 是 NOT NULL DEFAULT 0，禁止落 0 制造错账）。
+## 25. DATA-007 整改：明细强制写入 + location_id 硬约束（2026-10-24 12:58–13:35）
 
-### 24.3 验证
+### 25.1 源头强制写（不再只写表头）
+- 新增 `service/purchase/StockinLocationResolver`：**严格 ID → ID**，五级优先序
+  ① 显式 locationId（校验存在）→ ② `purchase_orders.warehouse_id` → `location_id_map('warehouses')` → ③ 采购单 `store_id` → `('stores_new')` → ④ 追溯码 `store_id` → 同映射 → ⑤ 当前用户 `users.location_id`；
+  **任何分支都不返回 null**，全失败抛 `PARAM_ERROR`（提示显式传 locationId）。代码内零字符串匹配。
+- `confirmStockin(traceCode, operatorName, locationId, unitPriceFen)` 新签名（旧签名委托）；Controller 增 `locationId / unitPriceFen / unitPrice(元)`。
+- **强制写 `purchase_stockin_items`**：`stockin_id / material_id / material_name / batch_no / actual_quantity / unit / unit_price(分) / amount(=qty×price) / location_id`；表头同时写 `location_id / order_id / total_amount`。
+- 单价解析链：入库明细 `unit_price` → `material_archives.reference_price` → **无价直接拒绝确认**（抛错），不再写 0 或跳过；`increaseStockAtLocation` 的 `unitCost` 也改为真实单价。
+
+### 25.2 历史数据清洗（纯 ID 关联，无软匹配）
+脚本 `scripts/db-fix/2026-10-24-fix-stockin-location-id.sql`（幂等、带备份与回滚）：
+| 对象 | 分类 | 行数 |
+|---|---|---|
+| items | ① order_id→warehouse 映射 | 3 |
+| items | ①b stockins.warehouse_id→映射 | 10 |
+| items | ③ 无法归属 → 逻辑删除（deleted=1 + `[LEGACY-NO-LOCATION 20261024]`） | 13 |
+| 表头 | 真实库位回填（location 5） | 12 |
+| 表头 | 指向专用历史库位 `LEGACY-VOID-20261024`(id=71) | 29 |
+- 新建 `locations` 记录 `LEGACY-VOID-20261024`（type=CENTRAL）承载"库位不可考"的历史行，满足 NOT NULL + FK 而不改变业务语义；
+- 终态：`purchase_stockin_items.location_id IS NULL` = **0**（全表，含 deleted=1）、`purchase_stockins.location_id IS NULL` = **0**。
+
+### 25.3 数据库强约束（Flyway）
+| 迁移 | 内容 |
+|---|---|
+| `V20261024_001__stockin_location_hardening.sql` | `purchase_stockins.location_id` 新列 + 索引；两条 FK → `locations(location_id)`（ON DELETE RESTRICT）；`purchase_stockin_items.location_id`、`material_id` SET NOT NULL；前置数据闸门（未清洗则 RAISE 可读报错） |
+| `V20261024_002__stockin_header_location_not_null.sql` | 表头 `location_id` SET NOT NULL + 依赖检查 + 数据闸门 |
+- 已应用：`flyway_schema_history` 两条均 `success=true`；两文件内 `warehouse_code`/`location_code` 字面量 **0 处**（软匹配口径彻底移除）。
+
+### 25.4 验证
 | 项 | 结果 |
 |---|---|
-| `MaterialTraceCodeConfirmStockinTest` | **7/7**（含无 location 映射零写入、防递归、参考价 350 分×2.5=875 分、无价不写行） |
-| `scripts/e2e_trace_confirm_stockin.py`（新增） | **9/9 PASS**：库存 142.5→147.5(+5)、movement 2 条、cost=1750 分（参考价 350×5）、入库单 type=2、事件日志可见、状态 in_stock |
-| `e2e_core_chain`（先 release 托盘） | **PASS=13 / FAIL=0 / SKIP=0** |
+| 单测 | `StockinLocationResolverTest` 9 + `MaterialTraceCodeConfirmStockinTest` 12 = **21/21**，BUILD SUCCESS |
+| `scripts/qa/schema_guard.py`（新增） | **5/5**：items.location_id NOT NULL、两条 FK、items/stockins NULL=0 |
+| `e2e_trace_confirm_stockin.py` | **12/12**：G 表头 location_id=1（FK 有效）、H 明细全字段非空且 amount==qty×price(5×350=1750)、I 反证置 NULL 被数据库拒绝 |
+| `e2e_core_chain`（先 release 托盘） | **13 / 0 / 0** |
 | `qa/consistency_check` | 5 PASS / TOTAL FAIL=0 |
-| `qa/ui_e2e_payment` | 7/7 PASS（三处一致 现金 / ¥22.00） |
 
-### 24.4 历史补账（已执行，幂等）
-| 脚本 | 结果 |
-|---|---|
-| `2026-10-24-backfill-stockin-inventory-v2.sql` | movement +2（PSI:23:24、PSI:24:25），`inventory(5,3)` **165 → 175**，补出 10 数量 / 5,000 分；复跑 0 行 |
-| `2026-10-24-backfill-cost-records.sql` | `cost_records` +2（D7STK20-21 / D7STK3-3），**530,000 分（5,300 元）**；复跑 0 行 |
-| 不可补 13 条 | 虚构仓（WH-E2E-*/WH_TEST_*/WH-160258715）在 `locations` 无对应库位，`inventory.location_id` 有 FK，**未绕过约束硬写**；需先立库位 |
-| 历史存档 | `store_inventory_log_legacy` 19 行不可安全归属，保持原样（不写 movement，避免制造新不一致） |
-
-### 24.5 遗留
-- `purchase_stockin_items.location_id` 活库 22 条全 NULL，回退链依赖 `warehouses.warehouse_code = locations.location_code`；建议后续在入库单写入时补 location_id。
-- 扫码确认入库目前只写 `purchase_stockins` 表头不写 items，单价因此主要依赖物料主档；建议后续补 items 明细。
+### 25.5 新发现（另开卡，未处理）
+`StockForecastMapper` 三处 `l.location_code = #{storeId}` 仍是「storeId 当 location_code 比」的软匹配残留（库存预测模块，不在扫码入库链路）；建议按同一 ID 映射口径整改。
