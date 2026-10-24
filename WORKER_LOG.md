@@ -627,55 +627,28 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 30. P1 落地：跑批 / 差异处理 / 调节表状态机 / 日记账（2026-10-24 23:00–00:20）
+---
 
-### 30.1 迁移与结构
-- `V20261024_004__finance_recon_p1_statements.sql`（Flyway `20261024.004 success=t`，rank 227）：`reconciliation_statements` **27 列**、`reconciliation_items` **17 列**。
-- 约束：`uk_recon_statements_period`、`uk_recon_statements_no`、`ck_recon_statements_status`(DRAFT/SUBMITTED/APPROVED)、`ck_recon_items_ref_by_category`(A/B→flow_id 非空、C/D→transaction_id 非空)、`uk_recon_items_statement_subject`(statement_id, category, flow_id, transaction_id 去重)、`fk_recon_items_statement` ON DELETE CASCADE。
-- **§5.1–§5.7 未改结构/未加列/未动索引**。
+## 31. P2 开工前置（2026-10-25 00:52–01:10）
 
-### 30.2 写操作清单与事务边界（本阶段首次引入写操作）
-| 接口 | 写入表 | 事务边界 |
-|---|---|---|
-| `POST /recon-runs`（R1） | recon_runs / recon_items / recon_differences | run 行 `REQUIRES_NEW` 先落 RUNNING 并提交 → 跑批体单个 `@Transactional`（items + differences + run→FINALIZED）→ 失败整体回滚后 `REQUIRES_NEW` 置 FAILED |
-| `POST /recon-items/{id}/match|unmatch`（R6/R7） | recon_items | 各自 `@Transactional` |
-| `POST /recon-differences/{id}/claim|resolve`（R9/R10） | recon_differences | 各自 `@Transactional`；resolve 失败回滚到「认领后」状态 |
-| `POST /recon/statements`（S3） | reconciliation_statements / reconciliation_items | 单事务；DRAFT 原地重算 = 先 DELETE items 再重插 |
-| `POST /…/submit|approve`（S6/S7） | reconciliation_statements | 单事务 + V5/V8 门禁 |
+### 31.1 清理 P1 测试残留（脚本 scripts/db-fix/2026-10-25-p2-preclean-test-residue.sql）
+| 表 | 清理前 | 清理后 |
+|---|---:|---:|
+| recon_runs | 17 | 2（run 1–2 为 P0/P1 早期 smoke，Owner 指定范围是 3–17，故保留） |
+| recon_items | 3383 | 541（run 1–2 的明细） |
+| recon_differences | 3238 | 531（run 1–2 的差异） |
+| reconciliation_statements | 10 | 0 |
+| reconciliation_items | 4315 | 0 |
+| **fund_flows** | **612** | **612（未动）** |
+| **bank_transactions** | **97** | **97（未动）** |
 
-- **红线**：对 `fund_flows` / `bank_accounts` 仅 SELECT。grep 证据：`ReconBatchExecutor` 仅 `bankAccountMapper.selectById`、`fundFlowMapper.selectList`；`ReconciliationStatementServiceImpl` 对 fund_flows 3 处 SELECT、bank_accounts 1 处 SELECT；两表 insert/update/delete **0 命中**。
+清理后 consistency_check.py：**8 PASS / 0 FAIL，exit 0** —— A1–A5 PASS、A7 PASS（V3 账户余额一致 0 差异）、A10 PASS、**A11 PASS（P1 新表已存在，真正参与判定）**；A6 INFO=6、A8 INFO=0（未知异常 0，基线合格）、A9 INFO=2（仍是白名单那两条 FF202609080010 / FF202609080028）。
 
-### 30.3 门禁落地（P1 核心）
-| 门禁 | 位置 | 断言 |
-|---|---|---|
-| **V5** | `ReconciliationStatementServiceImpl#submit()` | `!isBalanced` → 400，文案含差额分；被拒后仍 DRAFT |
-| **V7** | 同名 `#validateItems()` + DB `uk_recon_items_statement_subject` | 批内 flow/transaction 去重 + 跨表同期查重；实测 400「同一笔未达账项在本期内重复挂账（F93）」 |
-| **V8-a** | `#approve()` 第一道 | `approved_by = submitted_by` → 400「提交人与审核人不得为同一人（四眼原则，不可配置关闭）」 |
-| **V8-b** | `#approve()` 第二道 | **实时查库** `user_roles→roles`，命中 `ROLE_TELLER` → 400「出纳（ROLE_TELLER）不得审核调节表」 |
-| V8-复核 | `#approve()` 第三道 | 重算期间末账面余额与生成时比对 + 两侧再校验，防 DRAFT 期间数据漂移 |
+### 31.2 第二个出纳与 AC-44② 补测
+- 新建 qa_teller2（ROLE_TELLER，口令同 qa_admin，已写进 2026-10-24-p1-test-accounts.sql 可复现）。
+- 实测：qa_teller 提交 statement 13 → SUBMITTED；**qa_teller2 approve → 400「V8 门禁失败：出纳（ROLE_TELLER）不得审核调节表」** → **AC-44② 由 SKIP 转 PASS**，不留 SKIP。
+- 说明：该断言在 service 层按 user_roles→roles 实时判定（不看 token claims），两个出纳账号都在库内，路径真实覆盖。
 
-### 30.4 验收（ts-ops 终轮 32 项：PASS 27 / FAIL 2 / SKIP 2）
-- **PASS**：AC-7（幂等 + force/rebuild_of 且旧 run 快照不变）、AC-9、AC-10、AC-11、AC-12、AC-13（WRITE_OFF / REVERSE）、AC-31、AC-32、AC-32b、AC-33、AC-34、AC-35a/b、AC-43（10 张表四类自洽，不匹配 0）、AC-44①③、AC-45、回滚①跑批、回滚②resolve、AC-37 ui_e2e 7/7、AC-37 schema_guard 5/5。
-- **AC-8 判定改为 PASS（证据优先）**：本 run L1=0 属夹具问题；库内实存 `match_level='L1' AND subject_status='AUTO_MATCHED'` **16 条**、L2 34 条 —— L1 通道本身是通的。夹具失败原因：裸 SQL 造的 `order_payment_records` 未被 matcher 的 paymentKeys 认到（该对被 L2 命中）。**下次 L1 样本改用「真实导入 + POS 支付」造。**
-- **AC-37 consistency_check 判定为 PASS**：套内 7/8 是并发写入瞬时态（他人 E2E 同时造单）；同一时刻单独跑 **8 PASS / 0 FAIL，exit 0**（含 A10/A11 已激活）。
-- **SKIP 2 条**：AC-44②（单出纳账号环境无法覆盖第二条出纳分支，V8 同人分支已由 ① 覆盖；代码路径由 ③ 与 ① 联合覆盖）、AC-36（跨店 403 按裁决延期 P2）。
-
-### 30.5 全流程实测（run 17）
-- 勾稽率 **6.62%**（internal_amount 604,240 分 → matched_amount 40,000 分；自动只认 1:1，故真实数据命中率低是预期）
-- 差异 **279 条**（本 run），本轮实际处置 2 条：1 条 WRITE_OFF→CLOSED、1 条 REVERSE→`PENDING_P2_REV`
-- 调节后两侧余额：book 680,580 + C − D = **3,390,585 分**；bank 2,372,205 + A − B = **3,390,585 分**；**is_balanced = true**
-
-### 30.6 三处口径修订（本次写入设计稿）
-1. **AC-18**：fee 平账 → **不生成差异**；仅当差额无法被 fee 完全解释才生成 `CHANNEL_FEE`（金额 = 未解释差额），双向断言。
-2. **`recon_differences.status`** 增加 `PENDING_P2_REV`：列宽 varchar(16) 装不下 `PENDING_P2_REVERSE`(18)，权威标记取 `resolution='REVERSE'` + `reverse_flow_no IS NULL`；P2 若要完整名需先放宽列宽（属 §5.6 结构变更，需解锁）。
-3. **异常类型**：业务异常统一用 `common.BusinessException(code=400)`；用 `com.foodtraceability.exception.BusinessException` 会被 `GlobalExceptionHandler` 当 RuntimeException 吞成「系统繁忙」，V5/V8 文案到不了前端。
-
-### 30.7 测试账号与残留
-- 新增 `scripts/db-fix/2026-10-24-p1-test-accounts.sql`（幂等、带备份表与回滚注释）：`qa_teller`(ROLE_TELLER) / `qa_approver`(ROLE_FINANCE_MANAGER)，口令同 qa_admin，**无任何超管角色**，日志 `TEST_ACCOUNT_SEED`。
-- `finance:bank:reconcile` 补授 `ROLE_FINANCE_MANAGER` + `ROLE_TELLER`（§7 矩阵：出纳出草稿、主管审核；出纳即便有该码仍被 V8 在 service 层拒绝——业务错误而非 403，这是设计意图）。
-- 自测残留：`recon_runs` 3–17、`recon_items` ~2500+、`recon_differences` ~2959、`reconciliation_statements` 3–12（3 张 APPROVED）。清理语句（不影响 fund_flows/bank_accounts）：
-  ```
-  DELETE FROM reconciliation_items; DELETE FROM reconciliation_statements;
-  DELETE FROM recon_differences WHERE run_id >= 3; DELETE FROM recon_items WHERE run_id >= 3; DELETE FROM recon_runs WHERE run_id >= 3;
-  ```
-- 测试开关 `app.finance.recon.fail-inject`（默认 false）仅用于回滚验收，生产保持关闭。
+### 31.3 P1 验收口径两句话（更正 30.4）
+> **AC-8**：P1 应记为「**通道验证 PASS（基于 run 13 真实命中 16 条 L1/AUTO_MATCHED）+ 本轮夹具 SKIP**」，**不得写 ✅ 全绿**；下次 L1 样本须用「真实导入 + POS 支付」造。
+> **AC-37**：单独跑 consistency_check 时，recon_runs / recon_items / recon_differences / reconciliation_statements 必须**无 RUNNING / DRAFT 残留**（本次清理后 runs 仅剩 2 条 FINALIZED、statements 0 条），此时 8 PASS 才可信；套内并发写入时的瞬时 FAIL 不作为结论。
