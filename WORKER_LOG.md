@@ -842,3 +842,44 @@ max(balance_after) [status=2, deleted=0]: 696,920
 
 ### 36.5 回归
 `consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A15=0、A16 INFO=6）；`ui_e2e_payment.py` **7/7**；`compile` BUILD SUCCESS。当前 `account 20 = 699,770/v512`、`24 = 34,200/v107`；`FLOW20261025 = 235`。
+---
+
+## 37. P3 收口：BL-4 余额校验 / ops 审计 / 误删事故复核 / 号段并发（2026-10-25 03:15–03:30）
+
+### 37.1 BL-4 实时余额校验（硬缺陷已修，Owner 已否决「允许负值+告警」）
+- `DepositSlipServiceImpl#deposit`（SL6）**L386–398**：`requireCashAccount` 之后、**所有** `AtomicBalanceUpdater`/`insertFlow` 之前；`if (cashBalance < amount) throw new ConflictException("现金户余额不足：当前 X 分，需 Y 分，差额 Z 分（accountId=…，slipNo=…）")`；同步打点 `[METRIC] deposit_insufficient_cash`。
+- 选 **409**（`ConflictException`）而非 400：语义是资金侧冲突；同链路（乐观锁冲突、并发冲正）已用同一类；与 E3-8/E3-9/状态非法等参数错误可区分。
+- **A15 保留为事后第二道防线**：实时校验在前、A15 在后，**两者不是替代关系**（前者拦「本次会转成负数」，后者抓「已经为负」，覆盖历史数据与外部直改）。
+- 测试（新建测试门店 99001 的账户 66/67，**未动 account 20/24**，夹具已清理）：
+  · 余额不足：现金户 34,200 < 存行额 40,000 → `code=409「现金户余额不足：当前 34200 分，需 40000 分，差额 5800 分（accountId=66，slipNo=DSBL4A0001）」`；校验后现金户/银行户余额不变、`fund_flows` 854→854、单据仍 RECEIVED（事务整体回滚）。
+  · 刚好够：34,200 == 34,200 → 200 DEPOSITED，现金户 34,200→0（v0→v1）、银行户 0→34,200、`fund_flows` 854→856（+2）；随后 SL10 冲正回滚到位。
+
+### 37.2 ops 端点审计补全
+- `FinanceOpsServiceImpl:65` reason 必填（缺失/全空白 → `{"code":400,"message":"抹平原因不能为空"}`，无默认值）；`:187-198` 构造结构化 `auditDataJson`；`:203-215` 写入 `finance_audit_logs.operation_data`（**落既有表，无自定义表**）。
+- 实测记录（log_id=197）：`operator_id=2110437068670001200`、`operation_type=FIXTURE_FLOW_REVERSED`、`operation_data={"reason":…,"originalFlowNos":["FFTEST-AUDIT02"],"reverseFlowNos":["FF202610250366"],"amountTotalFen":50,"accountId":20,"balanceBefore":825190,"balanceAfter":825140,"occurredAt":…}`、`create_time=2026-10-25 03:25:46` —— 要求的 6 项字段全齐。
+- 新增 **A17**（INFO，不进 TOTAL）：近 24h `FIXTURE_FLOW_REVERSED` 条数；当前 `rows=3`（log_id 120/196/197），提示「生产 profile 下出现即为异常：ops 端点不该启用」。
+
+### 37.3 误删 150 行事故的独立复核（结论：**无隐藏改动**）
+- `git diff --numstat a8ca02c~1 a8ca02c -- FundFlowServiceImpl.java` → **`14  5`**（单文件、14 增 5 删）。
+- 全部 hunk 头只有 **2 个**：`@@ -249,7 +249,7 @@`、`@@ -259,10 +259,19 @@` —— 均在 `generateFlowNo` 区域；**行 279 之后无任何 hunk**，即尾部（含 `convertToVO`）与改动前逐字节一致。
+- blob 身份：`HEAD~1 blob = e61fcf9a…`、`HEAD blob = 98913fff…`、`git hash-object 工作区 = 98913fff…`（**三者对齐**），`git diff a8ca02c -- <file>` 输出为空。
+- 完整 diff 原文见提交 `a8ca02c`（`git show a8ca02c -- <file>`）。
+
+### 37.4 GREATEST 号段并发测试（100 笔两线程）
+- 路径：**POS 支付**（单笔只 1 条 SALE 流水，压得准）；不用 SL6 的理由：单笔 8+ 次调用，并发窗口大半在非取号环节。
+- 结果：2.2s 内 **100/100 成功**（50+50），新增流水 `FF202610250265..364`，`generate_series` 反查区间内缺号 **0**。
+| 断言 | 结果 | 输出 |
+|---|---|---|
+| 无重复 | **PASS** | `count(*)-count(distinct flow_no)=0` |
+| 当天号段无洞（排除白名单 81–88） | **FAIL** | 白名单外缺号 **89,90,91,92,257,258,259,260** |
+| 号段值 == 当天 MAX | **PASS** | `FLOW20261025=364` = MAX 364，差 0 |
+| 无 DuplicateKey / flow_no_key | **PASS** | 日志新增 524,535 字节全扫，命中 0 |
+- **缺号定性 = 号段烧号，不是并发撞号**：这 8 个号在 `fund_flows` 里**完全不存在**（连 `deleted=1` 也没有）；证据链 `FF…253-256 POS 03:18:28` → **257-260 缺** → `FF…261-264 缴款单 03:19:16`。结合「取号与插入非同事务 / 内层事务回滚」→ 号段前移但无行。
+- **已知项登记**（脚本白名单**不追加**，下次仍会照实报 FAIL）：历史洞 **81–88**（§35.3）+ 本次新增 **89–92 / 257–260**。
+- **新增 backlog BL-5（号段烧号）**：修法二选一 ——（a）取号与流水插入同一事务；（b）失败回滚时把号段回退或记录「烧号账」。并发本身正常（无重复、无撞键、号段值精确 == MAX）。
+- 余额影响：账户 20 `721,240 → 825,190`（+103,950 分 = 100 笔现金收款 1,039.50 元，与流水汇总完全对齐）；账户 24 净 0。POS 单全部保留（真实业务数据）。
+
+### 37.5 回归与现状
+`consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A15=0；A16 INFO=6、**A17 INFO=3**）；`ui_e2e_payment.py` 7/7；默认 profile 下 ops 端点 code=**404**；`compile` BUILD SUCCESS。当前 `account 20 = 826,940/v640`、`24 = 34,200/v109`。
+
+> 两个编译相关教训（已两次踩到）：① `mvn compile` 报成功但 class 可能仍是旧版（本次 `FinanceOpsServiceImpl` 就是），改完需 `mvn clean compile` 或校验常量池；② 编译与在跑的实例**不可并行**（会清 `target/classes` 导致运行时 `NoClassDefFoundError`）。
