@@ -108,10 +108,10 @@ public class DepositSlipController {
         return Result.success(depositSlipService.close(slipId));
     }
 
-    /** SL9：驳回 */
+    /** SL9：驳回（权限码 finance:deposit-slip:reject —— P3 前置已独立成码，2026-10-25） */
     @Operation(summary = "驳回（SUBMITTED/RECEIVED → REJECTED）")
     @PostMapping("/{slipId}/reject")
-    @PreAuthorize("hasAuthority('finance:deposit-slip:close')")
+    @PreAuthorize("hasAuthority('finance:deposit-slip:reject')")
     public Result<DepositSlipVO> reject(@PathVariable Long slipId, @Valid @RequestBody RejectSlipDTO dto) {
         return Result.success(depositSlipService.reject(slipId, dto));
     }

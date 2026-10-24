@@ -907,7 +907,7 @@ expected_amount（分）
 | SL6 | POST | `/v1/finance/deposit-slips/{id}/deposit` | 存行（生成 2 条内部转账） |
 | SL7 | POST | `/v1/finance/deposit-slips/{id}/verify` | 复核 |
 | SL8 | POST | `/v1/finance/deposit-slips/{id}/close` | 归档 |
-| SL9 | POST | `/v1/finance/deposit-slips/{id}/reject` | 退回 |
+| SL9 | POST | `/v1/finance/deposit-slips/{id}/reject` | 退回（权限 `finance:deposit-slip:reject`；出纳/财务总监） |
 | SL10 | POST | `/v1/finance/deposit-slips/{id}/reverse` | 冲正 |
 | SL11 | GET | `/v1/finance/deposit-slips/{id}/export` | 导出单张 |
 
@@ -971,7 +971,7 @@ expected_amount（分）
 
 **四眼原则（硬门禁，不可配置关闭）**：调节表 `submitted_by ≠ approved_by`，且**审核人不得为出纳（`ROLE_TELLER`）**——出纳可编制/提交（`finance:bank:recon` 保留），但审核必须由他人完成（§4.3 V8）；缴款单收妥人与复核人同样不得同一人（TD-38）。
 
-**权限码缺口（P2 实现披露，待 Owner 决定）**：`finance:deposit-slip:reject` **不存在**于权限表；P2 阶段 SL9 退回动作暂挂 `finance:deposit-slip:close`，**未自建权限码**。若需独立码，须同步 `permissions` + `role_permissions`（出纳/财务总监）并更新本节矩阵。
+**权限码（P3 前置已拍板，2026-10-25）**：新建 `finance:deposit-slip:reject`（`PERM_FINANCE_DEPOSIT_SLIP_REJECT`，permission_id=33501），绑 **`ROLE_TELLER` + `ROLE_FINANCE_DIRECTOR`**；SL9 `reject` 从 `finance:deposit-slip:close` **切回 `finance:deposit-slip:reject`**。绑定脚本 `scripts/db-fix/2026-10-25-deposit-slip-reject-permission.sql`（幂等，留痕 2 行）。矩阵中「退回」一列：出纳 ✓、财务总监 ✓，其余角色不得退回。
 
 ---
 

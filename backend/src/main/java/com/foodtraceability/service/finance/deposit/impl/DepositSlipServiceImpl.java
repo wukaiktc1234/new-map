@@ -143,14 +143,40 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "班次不存在：shiftId=" + dto.getShiftId());
         }
 
+        // P3 前置：门店归属校验先于幂等命中执行（请求带了错误 storeId 时，即便单据已存在也应 400，
+        // 否则调用方会拿到一张「不属于该门店」的既有单据，掩盖数据问题）
+        Set<Long> shiftStores = resolveShiftStores(shift);
+        if (dto.getStoreId() != null && !shiftStores.contains(dto.getStoreId())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "storeId 与班次实际门店不一致：shiftId=" + shift.getShiftId()
+                            + "，请求 storeId=" + dto.getStoreId()
+                            + "，班次时间窗内实际门店集合=" + shiftStores);
+        }
+
+        // 门店解析与校验同样先于幂等命中：缺省推导不唯一时必须 400，不能因为「单据已存在」就放过
+        long storeId;
+        if (dto.getStoreId() != null) {
+            storeId = dto.getStoreId();
+        } else {
+            if (shiftStores.size() != 1) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "班次无法唯一归属门店（命中 " + shiftStores.size() + " 个：" + shiftStores
+                                + "），请显式传 storeId（必须是其中之一），或修正班次数据。shiftId=" + shift.getShiftId());
+            }
+            storeId = shiftStores.iterator().next();
+        }
+
         DepositSlip existing = findByShiftId(dto.getShiftId());
         if (existing != null) {
             log.info("[METRIC] deposit_slip_reused shiftId={} slipNo={}", dto.getShiftId(), existing.getSlipNo());
             return new GenerateSlipResultVO(true, toVO(existing));
         }
-
-        long storeId = dto.getStoreId() != null ? dto.getStoreId() : resolveStoreId(shift);
         long expected = sumCashPayments(shift, storeId);
+        if (expected <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "班次在该门店没有现金支付（payment_method=1）可交，拒绝生成金额为 0 的缴款单：shiftId="
+                            + shift.getShiftId() + "，storeId=" + storeId);
+        }
 
         DepositSlip slip = new DepositSlip();
         slip.setSlipNo(nextSlipNo());
@@ -579,31 +605,61 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         return rows == null || rows.isEmpty() ? null : rows.get(0);
     }
 
-    /** 门店推导：班次时间窗内订单的门店必须唯一，否则 400（不猜、不给默认值） */
-    private long resolveStoreId(PosShift shift) {
+    /**
+     * 班次的门店集合（P3 前置口径，供 SL1 做一致性校验）。
+     *
+     * <p>集合 = 「班次时间窗内、且存在 order_payment_records（deleted=0）的订单」的 orders.store_id 去重。</p>
+     * <ul>
+     *   <li>集合为空（班次内没有带支付记录的订单）→ 400，绝不静默生成 0 额单据；</li>
+     *   <li>集合多值 → 由调用方决定：显式 storeId 时校验必须命中，缺省时 400 并列候选（不默认取第一个）。</li>
+     * </ul>
+     */
+    private Set<Long> resolveShiftStores(PosShift shift) {
         if (shift.getStartTime() == null || shift.getEndTime() == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "班次缺少起止时间，无法推导门店：shiftId=" + shift.getShiftId());
+                    "班次缺少起止时间，无法确定门店范围：shiftId=" + shift.getShiftId());
         }
         List<OrderNew> orders = orderNewMapper.selectList(new LambdaQueryWrapper<OrderNew>()
                 .eq(OrderNew::getDeleted, 0)
                 .ge(OrderNew::getCreateTime, shift.getStartTime())
                 .le(OrderNew::getCreateTime, shift.getEndTime())
-                .select(OrderNew::getStoreId));
-        Set<Long> stores = new LinkedHashSet<>();
-        if (orders != null) {
-            for (OrderNew order : orders) {
-                if (order.getStoreId() != null) {
-                    stores.add(order.getStoreId());
+                .select(OrderNew::getOrderId, OrderNew::getStoreId));
+        if (orders == null || orders.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "班次时间窗内没有订单，无法确定门店：shiftId=" + shift.getShiftId());
+        }
+        List<String> orderIds = new ArrayList<>();
+        for (OrderNew order : orders) {
+            if (order.getOrderId() != null) {
+                orderIds.add(order.getOrderId());
+            }
+        }
+        Set<String> paidOrderIds = new java.util.HashSet<>();
+        if (!orderIds.isEmpty()) {
+            List<OrderPaymentRecordNew> payments = orderPaymentRecordMapper.selectList(
+                    new LambdaQueryWrapper<OrderPaymentRecordNew>()
+                            .in(OrderPaymentRecordNew::getOrderId, orderIds)
+                            .eq(OrderPaymentRecordNew::getDeleted, 0)
+                            .select(OrderPaymentRecordNew::getOrderId));
+            if (payments != null) {
+                for (OrderPaymentRecordNew payment : payments) {
+                    if (payment.getOrderId() != null) {
+                        paidOrderIds.add(payment.getOrderId());
+                    }
                 }
             }
         }
-        if (stores.size() != 1) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "班次无法唯一归属门店（命中 " + stores.size() + " 个：" + stores
-                            + "），请在请求里显式传 storeId，或修正班次数据。shiftId=" + shift.getShiftId());
+        Set<Long> stores = new LinkedHashSet<>();
+        for (OrderNew order : orders) {
+            if (order.getStoreId() != null && paidOrderIds.contains(order.getOrderId())) {
+                stores.add(order.getStoreId());
+            }
         }
-        return stores.iterator().next();
+        if (stores.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "班次时间窗内没有带支付记录的订单，无法生成缴款单（拒绝生成 0 额单据）：shiftId=" + shift.getShiftId());
+        }
+        return stores;
     }
 
     /** TD-03：应交额 = 该班次该门店 order_payment_records 中现金支付（payment_method=1）的合计（分） */
