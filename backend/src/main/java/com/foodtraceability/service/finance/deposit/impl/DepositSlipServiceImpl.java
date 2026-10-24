@@ -383,38 +383,22 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     "现金账户与存行账户是同一个账户，无法做内部转账：accountId=" + cashAccount.getAccountId());
         }
 
-        // BL-4（P3 收口）：现金户实时余额校验——必须在事务内、在 AtomicBalanceUpdater / insertFlow **之前**。
-        // 转账后余额不得为负：当前余额必须 >= 本次转出金额 amount（= actual_amount）。
-        // 失败即抛 409（ConflictException，与项目「业务冲突 → 409」口径一致），事务整体回滚：
-        // 余额不变、无流水写入、单据状态不变。A15 巡检（现金户余额非负）作为事后第二道防线保留不动。
-        long cashBalance = cashAccount.getBalance() == null ? 0L : cashAccount.getBalance();
-        if (cashBalance < amount) {
-            long shortfall = amount - cashBalance;
-            log.warn("[METRIC] deposit_insufficient_cash slipNo={} accountId={} balance={} amount={} shortfall={}",
-                    slip.getSlipNo(), cashAccount.getAccountId(), cashBalance, amount, shortfall);
-            throw new ConflictException("现金户余额不足：当前 " + cashBalance + " 分，需 " + amount
-                    + " 分，差额 " + shortfall + " 分（accountId=" + cashAccount.getAccountId()
-                    + "，slipNo=" + slip.getSlipNo() + "）");
-        }
+        // BL-4（P3 收口 / 专项审计 §1）：现金户（转出方）实时余额下限校验，统一由
+        // AtomicBalanceUpdater#addBalanceGuarded 负责（负 delta 时要求 当前余额 + delta >= 0，
+        // 不足抛 ConflictException(409)，文案全项目一套）。此处在写任何流水之前，失败即整体回滚：
+        // 余额不变、无流水写入、单据状态不变。A15 巡检（现金户余额非负）保留为事后第二道防线。
 
-        LocalDate businessDate = businessDateOf(slip);
-        Long operatorId = currentOperatorId();
-        String operatorName = currentOperatorName();
-        String remark = "缴款单存行：" + slip.getSlipNo() + "（现金户→" + bankAccount.getAccountName()
-                + "）[depositSlip=" + slip.getSlipNo() + "]";
-
-        // 现金户出
-        AtomicBalanceUpdater.BalanceSnapshot cashSnap = atomicBalanceUpdater.addBalance(cashAccount.getAccountId(), -amount);
-        String cashFlowNo = insertFlow(cashAccount.getAccountId(), DIRECTION_OUT, amount, cashSnap.getBalanceAfter(),
-                businessDate, remark, operatorId, operatorName);
-        // 银行户入
-        AtomicBalanceUpdater.BalanceSnapshot bankSnap = atomicBalanceUpdater.addBalance(bankAccount.getAccountId(), amount);
-        String bankFlowNo = insertFlow(bankAccount.getAccountId(), DIRECTION_IN, amount, bankSnap.getBalanceAfter(),
-                businessDate, remark, operatorId, operatorName);
-
+        // ===== 并发闸门（审计 §5.2）：先抢单据状态，再动钱 =====
+        // 条件更新 RECEIVED → DEPOSITED，且把本次存行的账户/流水/时间一起落库；
+        // 影响行数 ≠ 1 说明另一个请求已把状态推进走 → 立刻 409 退出，绝不进入余额与流水。
+        // 该语句在事务内、且在 addBalanceGuarded / insertFlow **之前**：
+        // 第二个并发事务会阻塞在这一行的行锁上，等第一个提交后匹配 0 行 → 409（幂等键 [depositSlip=]
+        // 只能做事后兜底，挡不住同时进来的两个请求，故不能依赖它做并发控制）。
+        // 不使用 synchronized/本地锁：多实例部署下无效，DB 条件更新才是唯一有效的仲裁点。
         LocalDateTime now = LocalDateTime.now();
-        depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
+        int guarded = depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
                 .eq(DepositSlip::getSlipId, slipId)
+                .eq(DepositSlip::getStatus, ST_RECEIVED)
                 .set(DepositSlip::getStatus, ST_DEPOSITED)
                 .set(DepositSlip::getCashAccountId, cashAccount.getAccountId())
                 .set(DepositSlip::getBankAccountId, bankAccount.getAccountId())
@@ -424,6 +408,31 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 .set(DepositSlip::getDepositedAt, now)
                 .set(DepositSlip::getRemark, mergeRemark(slip.getRemark(), dto.getRemark()))
                 .set(DepositSlip::getUpdateTime, now));
+        if (guarded != 1) {
+            DepositSlip latest = depositSlipMapper.selectById(slipId);
+            String actualStatus = latest == null ? "UNKNOWN" : latest.getStatus();
+            log.warn("[METRIC] deposit_slip_concurrent_rejected slipNo={} currentStatus={}",
+                    slip.getSlipNo(), actualStatus);
+            throw new ConflictException("缴款单状态已变更，本次存行未执行（并发或已处理）：slipNo="
+                    + slip.getSlipNo() + "，当前状态=" + actualStatus + "，要求状态=" + ST_RECEIVED);
+        }
+
+        LocalDate businessDate = businessDateOf(slip);
+        Long operatorId = currentOperatorId();
+        String operatorName = currentOperatorName();
+        String remark = "缴款单存行：" + slip.getSlipNo() + "（现金户→" + bankAccount.getAccountName()
+                + "）[depositSlip=" + slip.getSlipNo() + "]";
+
+        // 现金户出
+        AtomicBalanceUpdater.BalanceSnapshot cashSnap =
+                atomicBalanceUpdater.addBalanceGuarded(cashAccount.getAccountId(), -amount, "存行", null);
+        String cashFlowNo = insertFlow(cashAccount.getAccountId(), DIRECTION_OUT, amount, cashSnap.getBalanceAfter(),
+                businessDate, remark, operatorId, operatorName);
+        // 银行户入
+        AtomicBalanceUpdater.BalanceSnapshot bankSnap = atomicBalanceUpdater.addBalance(bankAccount.getAccountId(), amount);
+        String bankFlowNo = insertFlow(bankAccount.getAccountId(), DIRECTION_IN, amount, bankSnap.getBalanceAfter(),
+                businessDate, remark, operatorId, operatorName);
+
         audit(slip, "DEPOSIT_SLIP_DEPOSIT",
                 "缴款单存行：slipNo=" + slip.getSlipNo() + " 金额=" + amount + "分 现金户=" + cashAccount.getAccountId()
                         + "(余额" + cashSnap.getBalanceBefore() + "→" + cashSnap.getBalanceAfter()
@@ -592,7 +601,10 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 int reverseDirection = original.getFlowDirection() != null && original.getFlowDirection() == DIRECTION_IN
                         ? DIRECTION_OUT : DIRECTION_IN;
                 long delta = reverseDirection == DIRECTION_IN ? amount : -amount;
-                AtomicBalanceUpdater.BalanceSnapshot snap = atomicBalanceUpdater.addBalance(original.getAccountId(), delta);
+                // 专项审计 §1：冲正的反向流水可能从某账户转出（delta<0），必须做余额下限校验，
+                // 失败抛 409 并整体回滚（原流水不会被置 status=3、不新增反向流水）。
+                AtomicBalanceUpdater.BalanceSnapshot snap = atomicBalanceUpdater
+                        .addBalanceGuarded(original.getAccountId(), delta, "冲正", original.getFlowNo());
                 String remark = "缴款单冲正：" + slip.getSlipNo() + " 原流水 " + original.getFlowNo()
                         + " [reconReverseOf=" + original.getFlowNo() + "]";
                 reversedFlowNos.add(insertFlow(original.getAccountId(), reverseDirection, amount, snap.getBalanceAfter(),

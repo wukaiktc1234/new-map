@@ -57,6 +57,30 @@ public class AtomicBalanceUpdater {
      * @return 变更前/后余额与版本（balance_after 必须取 afterBalance，不得手填）
      */
     public BalanceSnapshot addBalance(Long accountId, long delta) {
+        return doAddBalance(accountId, delta, null, null);
+    }
+
+    /**
+     * 【BL-4 全覆盖】带下限校验的原子增减——**所有 delta 可能为负的调用方都应走这里**。
+     *
+     * <p>校验口径：{@code delta < 0} 时要求「账户当前余额 + delta >= 0」，即余额不得被扣成负数；
+     * 不足即抛 {@link ConflictException}（429→409 口径：业务冲突），文案全项目统一：</p>
+     * <pre>账户余额不足：当前 X 分，需 Y 分，差额 Z 分（accountId=…，flowNo=…，场景=…）</pre>
+     *
+     * <p>校验放在与乐观锁更新**同一次读**之后（同一个 beforeBalance/beforeVersion），
+     * 因此不存在「先查后改」的额外窗口；影响行数校验与重试逻辑与 {@link #addBalance} 完全一致。
+     * 由调用方事务包裹，抛错即整体回滚（余额不变、无流水写入）。</p>
+     *
+     * @param accountId 账户ID
+     * @param delta     变动额（分），正=入账 负=出账
+     * @param scene     业务场景（如「存行」「冲正」），仅用于报错定位
+     * @param flowNo    关联流水号（冲正传原流水号；存行尚未生成流水时传 null，文案显示 "-"）
+     */
+    public BalanceSnapshot addBalanceGuarded(Long accountId, long delta, String scene, String flowNo) {
+        return doAddBalance(accountId, delta, scene == null || scene.isBlank() ? "未指定" : scene, flowNo);
+    }
+
+    private BalanceSnapshot doAddBalance(Long accountId, long delta, String scene, String flowNo) {
         if (accountId == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "账户ID不能为空");
         }
@@ -70,6 +94,17 @@ public class AtomicBalanceUpdater {
             }
             long beforeBalance = account.getBalance() == null ? 0L : account.getBalance();
             int beforeVersion = account.getVersion() == null ? 0 : account.getVersion();
+            // BL-4：负 delta 下限校验（与下面的乐观锁更新用同一次读，避免额外竞态窗口）
+            if (scene != null && delta < 0 && beforeBalance + delta < 0) {
+                long need = -delta;
+                long shortfall = need - beforeBalance;
+                log.warn("[METRIC] balance_insufficient accountId={} delta={} balance={} shortfall={} scene={} flowNo={}",
+                        accountId, delta, beforeBalance, shortfall, scene, flowNo);
+                throw new ConflictException("账户余额不足：当前 " + beforeBalance + " 分，需 " + need
+                        + " 分，差额 " + shortfall + " 分（accountId=" + accountId
+                        + "，flowNo=" + (flowNo == null || flowNo.isBlank() ? "-" : flowNo)
+                        + "，场景=" + scene + "）");
+            }
             int rows = bankAccountMapper.addBalanceOptimistic(accountId, delta, beforeVersion);
             if (rows == 1) {
                 BankAccount after = bankAccountMapper.selectById(accountId);
