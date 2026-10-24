@@ -1,6 +1,7 @@
 package com.foodtraceability.common.finance;
 
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ConflictException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.entity.finance.BankAccount;
 import com.foodtraceability.mapper.finance.BankAccountMapper;
@@ -71,7 +72,8 @@ public class AtomicBalanceUpdater {
             log.warn("[METRIC] balance_version_conflict accountId={} expectedVersion={} attempt={}",
                     accountId, beforeVersion, attempt);
         }
-        throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+        // BL-3：乐观锁冲突属「业务可识别的冲突」，返回 HTTP 409 + 原文，不再落入 500「系统繁忙」
+        throw new ConflictException(
                 "余额更新乐观锁冲突，重试 " + MAX_RETRY + " 次仍失败：accountId=" + accountId);
     }
 

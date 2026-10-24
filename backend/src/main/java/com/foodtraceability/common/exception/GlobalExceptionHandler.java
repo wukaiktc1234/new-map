@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -117,10 +118,38 @@ public class GlobalExceptionHandler {
      * 处理BusinessException异常
      */
     @ExceptionHandler(BusinessException.class)
-    public Result<?> handleBusinessException(BusinessException e) {
+    public ResponseEntity<?> handleBusinessException(BusinessException e) {
         log.error("BusinessException: {}", e.getMessage(), e);
         recordExceptionToMonitoring(e);
-        return Result.error(e.getCode(), e.getMessage());
+
+        Integer httpStatus = resolveHttpStatus(e);
+        if (httpStatus != null) {
+            // 业务可识别的冲突/越权类：真实 HTTP 状态 + 中文业务原文（不套 500 兜底、不带 traceId）
+            return ResponseEntity.status(httpStatus).body(Result.error(httpStatus, e.getMessage()));
+        }
+        // 其余业务异常保持历史行为（HTTP 200 + 业务 code + 原文），避免影响存量前端判定
+        return ResponseEntity.ok(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    /**
+     * 解析 BusinessException 应映射的 HTTP 状态码。
+     *
+     * <p>只对「业务可识别的冲突/越权类」生效，<b>不</b>把全部 BusinessException 一刀切成 409：</p>
+     * <ul>
+     *   <li>异常显式携带 {@link BusinessException#getHttpStatus()} → 用它（ConflictException=409、
+     *       四眼/权限类=400/403）；</li>
+     *   <li>业务 code 恰为 409（历史写法 {@code new BusinessException(409, ...)}）→ 视为冲突 409；</li>
+     *   <li>其它（400/404/业务码 …）→ 返回 null，走历史 200 + code 语义。</li>
+     * </ul>
+     */
+    private Integer resolveHttpStatus(BusinessException e) {
+        if (e.getHttpStatus() != null) {
+            return e.getHttpStatus();
+        }
+        if (e.getCode() != null && e.getCode() == ConflictException.CONFLICT) {
+            return ConflictException.CONFLICT;
+        }
+        return null;
     }
 
     /**

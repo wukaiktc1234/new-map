@@ -17,6 +17,15 @@ public class BusinessException extends RuntimeException {
     private String message;
 
     /**
+     * 期望的 HTTP 状态码（可空）。
+     *
+     * <p>为 null 时保持历史行为（HTTP 200 + 业务 code）；非 null 时由
+     * {@code GlobalExceptionHandler} 映射成对应 HTTP 状态，让前端能直接区分类别
+     * （409 冲突 / 403 越权 / 400 业务违规）。</p>
+     */
+    private Integer httpStatus;
+
+    /**
      * 构造函数
      * @param code 错误码
      * @param message 错误信息
@@ -46,6 +55,44 @@ public class BusinessException extends RuntimeException {
         super(message);
         this.code = errorCode.getCode();
         this.message = message;
+    }
+
+    /**
+     * 构造函数：携带期望 HTTP 状态码（业务可识别的冲突/越权类）。
+     *
+     * @param code       业务错误码
+     * @param message    业务文案（原样返回前端）
+     * @param httpStatus 期望的 HTTP 状态码（如 409 / 400 / 403）
+     */
+    public BusinessException(Integer code, String message, int httpStatus) {
+        super(message);
+        this.code = code;
+        this.message = message;
+        this.httpStatus = httpStatus;
+    }
+
+    /**
+     * 构造函数：错误码枚举 + 期望 HTTP 状态码。
+     */
+    public BusinessException(ErrorCode errorCode, String message, int httpStatus) {
+        super(message);
+        this.code = errorCode.getCode();
+        this.message = message;
+        this.httpStatus = httpStatus;
+    }
+
+    /**
+     * 获取期望 HTTP 状态码（可空）
+     */
+    public Integer getHttpStatus() {
+        return httpStatus;
+    }
+
+    /**
+     * 设置期望 HTTP 状态码
+     */
+    public void setHttpStatus(Integer httpStatus) {
+        this.httpStatus = httpStatus;
     }
 
     /**
