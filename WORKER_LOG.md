@@ -805,3 +805,40 @@ SQL：`select flow_no, order_id, amount, remark from fund_flows where remark lik
 | 2 | `status=1 AND store_id=?` 的候选账户为空 | `no_store_account`（hint 指向 `2026-10-23-seed-store-cash-accounts.sql`） | 门店**未配置**资金账户（含账户被停用 `status=0` 的情况） |
 | 3 | 候选非空但无匹配支付方式的账户（关键字/类型双轮均未命中） | `no_matching_account_in_store` | 门店**未配置该支付方式**的收款账户（如缺微信/支付宝商户账户） |
 **结论：属「配置缺失」，拒绝支付是合理的，`isFatalFinanceFailure` 归为致命保持。** 若改为「允许支付 + 挂待处理」，就会退回到 P2 那种「已支付无流水」的状态，与 BL-1 的修复目标冲突。建议（非本轮）：错误文案对用户显示「门店未配置 XX 收款账户，请联系管理员」，对运维保留 `hint` 与候选快照。
+
+---
+
+## 36. P3 收口：幽灵余额数字澄清 + ops 端点双锁 + 号段 GREATEST 兜底（2026-10-25 02:54–03:10）
+
+### 36.1 数字矛盾定性：**属 (a) 报告口径问题**（我混排了不同时刻的快照，且未标注时间）
+原始 SQL 结果（未加工）：
+```
+FF202610250143 | acct=24 | amt=230580 | dir=1 | ba=1,187,100  | status=3 | 02:25:40.967
+FF202610250144 | acct=20 | amt=   100 | dir=2 | ba=−440,330  | status=2 | 02:25:41.100
+FF202610250145 | acct=20 | amt=   100 | dir=2 | ba=−440,430  | status=2 | 02:25:41.104
+bank_accounts(20): balance=695,470 version=510
+max(balance_after) [status=2, deleted=0]: 696,920
+```
+**证据链**（account 20 流水按 flow_id 倒序，原文）：`FF202610250232`（02:38:51, ba=**695,470**）→ `FF…230`（ba=465,290）→ `FF…228`（ba=233,310, status=3）→ `FF…226`（ba=465,290, status=3）→ `FF…224`（ba=695,470）…；A7 实际取的行 = **FF202610250232 ba=695,470**（与账户余额相等）。
+**定性**：
+- 抹平发生在 **02:25:41**，那一刻 account 20 的真实余额就是 **−440,330**（同一秒里多张缴款单正在并发存行把钱转走，02:25:50 才由冲正流回），所以 `balance_after` **写得对**（原子快照，不是算错）；
+- `696,920` 是 **02:07–02:22 的早期流水**（`FF…094/099/114`），不是「最新一条」，与当前余额无矛盾；
+- 我在上一份报告里把「抹平时刻的原子快照」与「事后即时快照」并列且未标时间，才显得自相矛盾 —— **属 (a)**，不是 (b)/(c)；流水 `account_id` 也正确（144/145 都指向 20）。
+- **A7 无需修改**：它取「按 flow_id 最新的一笔非豁免流水」比账户余额，两者现在都是 695,470。
+
+### 36.2 由此暴露的真实问题（新发现，非本次矛盾，列 backlog）
+- **02:25:41 时刻现金户 20 余额为 −440,330，系统没有任何下限守卫**（`addBalance` 允许负值）；该时刻 A15「现金户余额为负」**必然是红的**（本轮事后跑已是 0 accounts）。
+- 成因是并发测试：存行先于冲正执行，钱被转走多于账面。业务上「现金户不能为负」应有守卫：要么存行前校验 `balance + delta ≥ 0`，要么允许负值但强制告警 + 阻断后续存行。**列 backlog（BL-4），待 Owner 定口径，本轮不改。**
+
+### 36.3 ops 端点处置（选 (b)：保留 + 双锁）
+- `FinanceOpsController:36` `@Profile("ops")` → 生产 profile 下 Bean 不存在；`:49` `@PreAuthorize("hasAnyAuthority('ROLE_FINANCE_DIRECTOR')")`（项目既有写法），**未改权限码、未动绑定**；`:20-33` 类注释写入裁决理由与启用方式。
+- 理由：业务上不存在该场景，但测试/迁移期还可能再遇夹具流水；删掉会迫使运维手写反向流水（绕过乐观锁、易错），而双锁后生产 profile 下根本无此 Bean，误用风险为 0。
+- 实测：默认 profile(`pg`) → `{"code":404,"message":"资源不存在"}`（路由不存在）；`ops` profile → qa_admin `code=400`（已授权，进业务逻辑：已抹平过）、qa_teller `{"code":403,"message":"权限不足…"}`。
+
+### 36.4 `FundFlowServiceImpl` 号段补 GREATEST 兜底（BL-2-b 前置）
+- `FundFlowServiceImpl.java:274` 改为 `fundFlowMapper.nextFlowSequenceWithFloor(sequenceKey, prefix)`（单语句 `GREATEST(号段, 当天MAX)+1 RETURNING`），`:262-273` 写入三条不重号理由（行级锁自增 / flushCache+useCache / GREATEST 仅下限兜底）。
+- 实测：号段 233 → 手动调低到 **201**（落后当天 MAX 32 个）→ 跑一笔 POS 支付 → `code=0`、`flowNo=FF202610250234`（=原 MAX 233+1）、**不撞 `fund_flows_flow_no_key`**、号段自动追平 **234 = 当天 MAX**；复位后终态 **235 = MAX 235**。
+- 事故披露：改文件时字符串切片切多，误删尾部约 150 行（`convertToVO` 等），已用 `git show HEAD:` **只读导出**基线重建并重套改动，`convertToVO`→文件尾 7568 字符与 HEAD 逐字节一致，编译与回归均通过。教训：大文件用带唯一锚点的定点 edit。
+
+### 36.5 回归
+`consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A15=0、A16 INFO=6）；`ui_e2e_payment.py` **7/7**；`compile` BUILD SUCCESS。当前 `account 20 = 699,770/v512`、`24 = 34,200/v107`；`FLOW20261025 = 235`。
