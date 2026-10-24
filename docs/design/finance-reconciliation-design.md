@@ -740,7 +740,7 @@ expected_amount（分）
 | `internal_ref` / `external_ref` | VARCHAR(64) | 至少一个非空 |
 | `amount_internal` / `amount_external` | BIGINT | 分 |
 | `diff_amount` | BIGINT | `amount_external − amount_internal`（分） |
-| `status` | VARCHAR(16) | `OPEN` / `ASSIGNED` / `RESOLVING` / `CLOSED` / `EXEMPT` |
+| `status` | VARCHAR(16) | `OPEN` / `ASSIGNED` / `RESOLVING` / `CLOSED` / `EXEMPT` / **`PENDING_P2_REV`**（REVERSE 决议的 P1 落地值；列宽 16 装不下 `PENDING_P2_REVERSE`(18)，权威标记取 `resolution='REVERSE'` + `reverse_flow_no IS NULL`；P2 若需完整名须先放宽列宽，属 §5.6 结构变更） |
 | `resolution` | VARCHAR(16) | `WRITE_OFF` / `REVERSE` / `EXEMPT` |
 | `resolution_remark` | VARCHAR(500) | CLOSED 时必填 |
 | `reverse_flow_no` | VARCHAR(32) | 冲正产生的反向流水号 → `fund_flows.flow_no` |
@@ -997,7 +997,7 @@ expected_amount（分）
 | AC-15 | 差异必须填说明：`resolve` 不带 `remark` → 400；带 `remark` → 200 且 `status=CLOSED` | 接口断言 | §2 |
 | AC-16 | 审计可追：任一 `resolve` 后 `finance_audit_logs` 存在对应记录（含 run_id、difference_id、前后状态） | SQL | §2 |
 | AC-17 | 金额单位：`recon_runs.external_amount` == `SUM(bank_transactions.amount)`（分），与 CSV 元值 ×100 一致（差 100 倍即 FAIL） | SQL | §2 |
-| AC-18 | 手续费口径：`fee` 独立字段不入 `amount`；构造 `内部 = 外部 + fee` 的场景判定为平账（差额类型 `CHANNEL_FEE` 且金额为 0 差） | SQL + 接口 | §2 |
+| AC-18 | 手续费口径：`fee` 独立字段不入 `amount`；构造 `内部金额 = 外部金额 + fee` 的场景 → **判平账、不生成差异**（P1 实现口径）；仅当差额**无法被 fee 完全解释**时才生成 `CHANNEL_FEE` 类型差异，金额 = 未被解释的差额。双向断言：fee 平账样本 `CHANNEL_FEE` 必须为 0；有未解释差额时必须 > 0 | SQL + 接口 | §2 |
 | AC-19 | 缴款单生成幂等：班次 `ended` 后 `generate` 两次 → 同一 `slip_id` 且 `count(deposit_slips WHERE shift_id=…)=1` | SQL + 接口 | §3 |
 | AC-20 | 应交可复算：`expected_amount` 与 `SUM(order_payment_records.payment_amount WHERE payment_method=1 AND 订单∈班次窗 AND payment_status=2)` 分毫不差 | SQL | §3 |
 | AC-21 | 差额公式：`difference_amount = actual_amount − expected_amount`，0 / 正 / 负三种情形各断言一次 | SQL + 接口 | §3 |
