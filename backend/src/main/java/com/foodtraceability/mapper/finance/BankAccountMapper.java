@@ -27,4 +27,23 @@ public interface BankAccountMapper extends BaseMapper<BankAccount> {
             + "version = COALESCE(version, 0) + 1, update_time = NOW() "
             + "WHERE account_id = #{accountId} AND deleted = 0")
     int addBalance(@Param("accountId") Long accountId, @Param("delta") Long delta);
+
+    /**
+     * 带乐观锁的原子调整余额（P2 缴款单专用，红线 4）。
+     *
+     * <p>与 {@link #addBalance} 的差别：多一个 {@code AND COALESCE(version,0) = #{expectedVersion}}。
+     * 调用方先读到 version=expectedVersion，更新成功后 version+1；影响行数 ≠ 1 即并发冲突，
+     * 必须重读 version 重试或整体回滚 —— 绝不允许「裸 SET balance = 绝对值」覆盖他人更新。</p>
+     *
+     * @param accountId       账户ID
+     * @param delta           变动额（分），正=入账 负=出账
+     * @param expectedVersion 期望的当前版本号（乐观锁）
+     * @return 影响行数（1=成功；0=版本冲突/账户不存在/已删除）
+     */
+    @Update("UPDATE bank_accounts SET balance = COALESCE(balance, 0) + #{delta}, "
+            + "version = COALESCE(version, 0) + 1, update_time = NOW() "
+            + "WHERE account_id = #{accountId} AND COALESCE(version, 0) = #{expectedVersion} AND deleted = 0")
+    int addBalanceOptimistic(@Param("accountId") Long accountId,
+                             @Param("delta") Long delta,
+                             @Param("expectedVersion") Integer expectedVersion);
 }
