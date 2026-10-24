@@ -34,6 +34,18 @@ public class PurchaseStockInEvent implements Serializable {
     private String operatorName;
     private LocalDateTime eventTime;
 
+    /**
+     * 来源类型（DATA-007）：用于区分「采购入库单确认」与「扫码确认入库」两条链路。
+     *
+     * <p>取值：null/其它 = 采购入库单确认（走完整联动，含追溯码生成）；
+     * {@link #SOURCE_TRACE_CONFIRM} = 扫码确认入库——此时追溯码已经存在（本次确认的就是它），
+     * 监听器必须跳过 generateMaterialTraceCodes，否则会递归再生成一批码。</p>
+     */
+    private String sourceType;
+
+    /** 来源类型：扫码确认入库（追溯码确认入库） */
+    public static final String SOURCE_TRACE_CONFIRM = "TRACE_CONFIRM";
+
     public PurchaseStockInEvent() {
         this.eventTime = LocalDateTime.now();
     }
@@ -298,6 +310,14 @@ public class PurchaseStockInEvent implements Serializable {
         final java.lang.Object other$eventTime = other.getEventTime();
         if (this$eventTime == null ? other$eventTime != null : !this$eventTime.equals(other$eventTime)) return false;
         return true;
+    }
+
+    public String getSourceType() {
+        return this.sourceType;
+    }
+
+    public void setSourceType(String sourceType) {
+        this.sourceType = sourceType;
     }
 
     protected boolean canEqual(final java.lang.Object other) {

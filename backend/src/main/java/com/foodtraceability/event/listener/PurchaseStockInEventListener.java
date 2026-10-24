@@ -54,12 +54,20 @@ public class PurchaseStockInEventListener {
         
         Exception firstFailure = null;
 
-        try {
-            generateMaterialTraceCodes(event);
-        } catch (Exception e) {
-            log.error("采购入库联动-生成原料追溯码失败: stockinId={}, error={}",
-                    event.getStockinId(), e.getMessage(), e);
-            firstFailure = e;
+        // DATA-007 防递归：扫码确认入库（TRACE_CONFIRM）时，本次入库的来源就是一张已存在的追溯码，
+        // 若再走 generateMaterialTraceCodes 会「确认一张码 → 又生成一张新码 → 新码又待入库」，
+        // 形成无休止的追溯码增殖。该来源只补成本入账。
+        if (PurchaseStockInEvent.SOURCE_TRACE_CONFIRM.equals(event.getSourceType())) {
+            log.info("扫码确认入库来源（TRACE_CONFIRM），跳过追溯码再生成，仅记录采购成本: stockinId={}",
+                    event.getStockinId());
+        } else {
+            try {
+                generateMaterialTraceCodes(event);
+            } catch (Exception e) {
+                log.error("采购入库联动-生成原料追溯码失败: stockinId={}, error={}",
+                        event.getStockinId(), e.getMessage(), e);
+                firstFailure = e;
+            }
         }
 
         try {
@@ -137,16 +145,28 @@ public class PurchaseStockInEventListener {
         log.info("记录采购成本: stockinId={}, amount={}",
                 event.getStockinId(), event.getTotalAmount());
 
+        // DATA-007 收尾：金额未知时**不写 0**。
+        // cost_records.amount 是 NOT NULL DEFAULT 0（已核 information_schema），无法用 NULL 表达「金额未知」，
+        // 所以宁可**不写成本行**并留 WARN，也不制造「有行、金额 0」的错账（等于把漏账伪装成 0 元成本）。
+        // 补数路径：补到单价后按 stockinId/入库单号手工补录 cost_records。
+        if (event.getTotalAmount() == null) {
+            log.warn("采购入库成本待补：无单价，跳过成本行写入（cost_records.amount 为 NOT NULL，禁止落 0）: "
+                            + "stockinId={}, stockinNo={}, productId={}, productName={}, quantity={}",
+                    event.getStockinId(), event.getStockinNo(), event.getProductId(),
+                    event.getProductName(), event.getQuantity());
+            return;
+        }
+
         try {
             CostRecordCreateDTO dto = new CostRecordCreateDTO();
             dto.setCostType(7); // 7-其他成本（采购入库）
             dto.setCostCenterId(event.getStoreId());
-            // 金额：元（BigDecimal）转分（Long）
-            BigDecimal amountYuan = event.getTotalAmount() != null
-                    ? event.getTotalAmount() : BigDecimal.ZERO;
+            // 金额：元（BigDecimal）转分（Long）；此处 amount 必非空（上面已拦截）
+            BigDecimal amountYuan = event.getTotalAmount();
             dto.setAmount(amountYuan.multiply(BigDecimal.valueOf(100L)).longValue());
             dto.setPeriod(LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
-            dto.setRemark("采购入库成本 - " + event.getProductName());
+            dto.setRemark("采购入库成本 - " + event.getProductName()
+                    + (event.getStockinNo() != null ? "（入库单:" + event.getStockinNo() + "）" : ""));
             dto.setCalculationMethod(1); // 1-实际发生
 
             costRecordService.create(dto);
