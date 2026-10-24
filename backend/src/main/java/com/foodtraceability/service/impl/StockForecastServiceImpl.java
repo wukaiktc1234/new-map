@@ -7,6 +7,7 @@ import com.foodtraceability.entity.DishRecipeNew;
 import com.foodtraceability.entity.FoodNew;
 import com.foodtraceability.mapper.DishRecipeNewMapper;
 import com.foodtraceability.mapper.FoodNewMapper;
+import com.foodtraceability.common.util.LocationIdBridge;
 import com.foodtraceability.mapper.StockForecastMapper;
 import com.foodtraceability.service.StockForecastService;
 import com.foodtraceability.utils.SecurityUtils;
@@ -38,20 +39,46 @@ public class StockForecastServiceImpl implements StockForecastService {
     private final DishRecipeNewMapper dishRecipeNewMapper;
     private final StockForecastMapper forecastMapper;
 
+    /** 门店/库位 ID 换算（整改：禁止 code 软匹配，一律 ID → ID） */
+    private final LocationIdBridge locationIdBridge;
+
     public StockForecastServiceImpl(FoodNewMapper foodNewMapper,
                                     DishRecipeNewMapper dishRecipeNewMapper,
-                                    StockForecastMapper forecastMapper) {
+                                    StockForecastMapper forecastMapper,
+                                    LocationIdBridge locationIdBridge) {
         this.foodNewMapper = foodNewMapper;
         this.dishRecipeNewMapper = dishRecipeNewMapper;
         this.forecastMapper = forecastMapper;
+        this.locationIdBridge = locationIdBridge;
     }
 
     @Override
     public StockForecastVO forecast(Long dishId, Integer days) {
         int window = days == null || days < 1 ? 7 : Math.min(days, 90);
         LocalDateTime since = LocalDateTime.now().minusDays(window);
-        String storeId = SecurityUtils.getCurrentUserStoreId();
+        String storeId = currentUserStoreId();
         Long storeIdLong = parseStoreIdLong(storeId);
+
+        // 整改：库存范围只认 location_id（ID → ID）。指定了门店却映射不到库位 → 空结果 + WARN，
+        // 绝不再用 location_code 字符串比较，也不回退成全量（那会把「查不到」伪装成「全店数据」）。
+        Long locationId = resolveLocationId(storeId);
+        if (storeId != null && !storeId.isBlank() && locationId == null) {
+            log.warn("库存预测-门店未映射到库位，返回空结果（禁止 code 软匹配/全量回退）: storeId={}, dishId={}",
+                    storeId, dishId);
+            StockForecastVO empty = new StockForecastVO();
+            empty.setDishId(dishId);
+            empty.setDataWindowDays(window);
+            empty.setItems(new ArrayList<>());
+            empty.setCanMake(false);
+            empty.setMaxServings(0);
+            empty.setTheoreticalServings(0);
+            empty.setHasSufficientData(false);
+            empty.setAvgDailySales(BigDecimal.ZERO);
+            empty.setDaysToSellout(BigDecimal.ZERO);
+            empty.setSuggestedRestock(0);
+            empty.setBottleneckMaterialName("");
+            return empty;
+        }
 
         FoodNew food = foodNewMapper.selectById(dishId);
         List<DishRecipeNew> recipes = dishRecipeNewMapper.selectList(
@@ -77,9 +104,9 @@ public class StockForecastServiceImpl implements StockForecastService {
             }
             Long materialId = recipe.getMaterialId();
             BigDecimal recipeQty = recipe.getRequiredQuantity() != null ? recipe.getRequiredQuantity() : BigDecimal.ZERO;
-            BigDecimal available = forecastMapper.getAvailableStock(materialId, storeId);
-            BigDecimal safety = forecastMapper.getSafetyStock(materialId, storeId);
-            BigDecimal actualConsumed = forecastMapper.getActualConsumed(materialId, since, storeId);
+            BigDecimal available = forecastMapper.getAvailableStock(materialId, locationId);
+            BigDecimal safety = forecastMapper.getSafetyStock(materialId, locationId);
+            BigDecimal actualConsumed = forecastMapper.getActualConsumed(materialId, since, locationId);
             BigDecimal sold = forecastMapper.getSoldServings(materialId, since, storeIdLong);
 
             boolean sufficient = sold != null && sold.compareTo(BigDecimal.ZERO) > 0
@@ -162,7 +189,7 @@ public class StockForecastServiceImpl implements StockForecastService {
         if (bottleneckName.isEmpty()) {
             result.setSuggestedRestock(0);
         } else {
-            BigDecimal available = forecastMapper.getAvailableStock(getBottleneckMaterialId(result), storeId);
+            BigDecimal available = forecastMapper.getAvailableStock(getBottleneckMaterialId(result), locationId);
             BigDecimal shortage = bottleneckSafety.subtract(available != null ? available : BigDecimal.ZERO);
             result.setSuggestedRestock(shortage.compareTo(BigDecimal.ZERO) > 0 ? shortage.intValue() : 0);
         }
@@ -187,8 +214,14 @@ public class StockForecastServiceImpl implements StockForecastService {
         int window = days == null || days < 1 ? 7 : Math.min(days, 90);
         int topN = limit == null || limit < 1 ? 20 : Math.min(limit, 100);
         LocalDateTime since = LocalDateTime.now().minusDays(window);
-        String storeId = SecurityUtils.getCurrentUserStoreId();
+        String storeId = currentUserStoreId();
         Long storeIdLong = parseStoreIdLong(storeId);
+
+        Long locationId = resolveLocationId(storeId);
+        if (storeId != null && !storeId.isBlank() && locationId == null) {
+            log.warn("消耗差异分析-门店未映射到库位，返回空结果（禁止 code 软匹配/全量回退）: storeId={}", storeId);
+            return new ArrayList<>();
+        }
 
         List<Map<String, Object>> rows = forecastMapper.getTheoreticalConsumedGrouped(since, storeIdLong);
         List<Map<String, Object>> result = new ArrayList<>();
@@ -200,7 +233,7 @@ public class StockForecastServiceImpl implements StockForecastService {
             }
             BigDecimal theoretical = toDecimal(row.get("theoreticalConsumed"));
             BigDecimal sold = toDecimal(row.get("soldServings"));
-            BigDecimal actual = forecastMapper.getActualConsumed(materialId, since, storeId);
+            BigDecimal actual = forecastMapper.getActualConsumed(materialId, since, locationId);
             if (actual == null) {
                 actual = BigDecimal.ZERO;
             }
@@ -226,6 +259,54 @@ public class StockForecastServiceImpl implements StockForecastService {
         result.sort(Comparator.comparing((Map<String, Object> m) -> toDecimal(m.get("varianceQty")).abs())
                 .reversed());
         return result.size() > topN ? result.subList(0, topN) : result;
+    }
+
+    /**
+     * 解析库存查询使用的 location_id。
+     *
+     * <p>口径（整改：只允许 ID → ID）：</p>
+     * <ol>
+     *   <li>优先用当前登录人的 {@code users.location_id}（本身即 locations.location_id）；</li>
+     *   <li>退化：把 {@code users.location_id} 反查出的 stores_new.store_id 经
+     *       {@code location_id_map(src_table='stores_new', src_id=store_id)} 正查回 location_id；</li>
+     *   <li>两者都拿不到 → 返回 null（= 无门店范围，仅当调用方确实没有归属时出现）。</li>
+     * </ol>
+     *
+     * <p><b>禁止</b>用 location_code 与 storeId 做字符串比较（历史缺陷即此），也禁止数值兜底。</p>
+     *
+     * @param storeId 当前用户的 stores_new.store_id 字符串（可空）
+     * @return location_id；无法确定返回 null
+     */
+    private Long resolveLocationId(String storeId) {
+        Long direct = currentUserLocationId();
+        if (direct != null) {
+            return direct;
+        }
+        return resolveStoreLocationId(storeId);
+    }
+
+    /** 当前登录人的 users.location_id（protected 便于单测注入） */
+    protected Long currentUserLocationId() {
+        return SecurityUtils.getCurrentUserLocationId();
+    }
+
+    /** 当前登录人的 stores_new.store_id（protected 便于单测注入；观察期兼容口径） */
+    @SuppressWarnings("deprecation")
+    protected String currentUserStoreId() {
+        return SecurityUtils.getCurrentUserStoreId();
+    }
+
+    /**
+     * stores_new.store_id → location_id（供单测与退化路径使用）。
+     *
+     * @return 映射结果；无映射返回 null（调用方转空结果 + WARN）
+     */
+    Long resolveStoreLocationId(String storeId) {
+        Long storeIdLong = parseStoreIdLong(storeId);
+        if (storeIdLong == null || locationIdBridge == null) {
+            return null;
+        }
+        return locationIdBridge.toLocationId(LocationIdBridge.SRC_STORES_NEW, storeIdLong);
     }
 
     private Long parseStoreIdLong(String storeId) {

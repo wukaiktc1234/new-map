@@ -24,15 +24,21 @@ public interface StockForecastMapper {
     BigDecimal getRecipeQty(@Param("dishId") Long dishId, @Param("materialId") Long materialId);
 
     /**
-     * 近 N 天某原料的实际出库消耗量（Σ 库存减少，含销售/损耗/调拨出/调整减，天然含损耗）
+     * 近 N 天某原料的实际出库消耗量（Σ 库存减少，含销售/损耗/调拨出/调整减，天然含损耗）。
+     *
+     * <p>整改：门店范围只按 <b>location_id</b> 过滤（ID → ID）。原实现用
+     * {@code l.location_code = #{storeId}}（stores_new.store_id 与 location_code 做字符串比较），
+     * 门店编码一改就静默查不到/查错门店。locationId 为 null 表示不限定门店（全量口径，
+     * 仅当调用方确实没有门店归属时出现）。</p>
      */
     @Select("SELECT COALESCE(SUM(ABS(m.change_qty)), 0) FROM inventory_movement m " +
             "JOIN locations l ON l.location_id = m.location_id AND l.deleted = 0 " +
             "WHERE m.material_id = #{materialId} AND m.movement_type = 'OUT' " +
             "AND l.location_type = 'STORE' AND m.create_time >= #{since} " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR})")
+            "AND (#{locationId, jdbcType=BIGINT} IS NULL OR l.location_id = #{locationId, jdbcType=BIGINT})")
     BigDecimal getActualConsumed(@Param("materialId") Long materialId,
-                                 @Param("since") LocalDateTime since, @Param("storeId") String storeId);
+                                 @Param("since") LocalDateTime since,
+                                 @Param("locationId") Long locationId);
 
     /**
      * 近 N 天所有售出、且 BOM 中含该原料的菜品总份数（分母，用于反推实际每份用量）
@@ -70,22 +76,26 @@ public interface StockForecastMapper {
                                       @Param("since") LocalDateTime since, @Param("storeIdLong") Long storeIdLong);
 
     /**
-     * 某原料当前可用库存（按门店，可为空=所有门店）
+     * 某原料当前可用库存（按库位；locationId 为 null = 所有门店，仅在调用方无门店归属时出现）。
+     *
+     * <p>整改：原 {@code l.location_code = #{storeId}} 属 code 软匹配，现改 {@code l.location_id = #{locationId}}。</p>
      */
     @Select("SELECT COALESCE(SUM(i.quantity), 0) FROM inventory i " +
             "JOIN locations l ON l.location_id = i.location_id AND l.deleted = 0 " +
             "WHERE i.material_id = #{materialId} AND i.deleted = 0 AND l.location_type = 'STORE' " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR})")
-    BigDecimal getAvailableStock(@Param("materialId") Long materialId, @Param("storeId") String storeId);
+            "AND (#{locationId, jdbcType=BIGINT} IS NULL OR l.location_id = #{locationId, jdbcType=BIGINT})")
+    BigDecimal getAvailableStock(@Param("materialId") Long materialId, @Param("locationId") Long locationId);
 
     /**
-     * 某原料当前安全库存（单店取一条）
+     * 某原料当前安全库存（单店取一条；locationId 为 null = 不限门店）。
+     *
+     * <p>整改：原 {@code l.location_code = #{storeId}} 属 code 软匹配，现改 {@code l.location_id = #{locationId}}。</p>
      */
     @Select("SELECT COALESCE(i.safety_stock, 0) FROM inventory i " +
             "JOIN locations l ON l.location_id = i.location_id AND l.deleted = 0 " +
             "WHERE i.material_id = #{materialId} AND i.deleted = 0 AND l.location_type = 'STORE' " +
-            "AND (#{storeId, jdbcType=VARCHAR} IS NULL OR l.location_code = #{storeId, jdbcType=VARCHAR}) LIMIT 1")
-    BigDecimal getSafetyStock(@Param("materialId") Long materialId, @Param("storeId") String storeId);
+            "AND (#{locationId, jdbcType=BIGINT} IS NULL OR l.location_id = #{locationId, jdbcType=BIGINT}) LIMIT 1")
+    BigDecimal getSafetyStock(@Param("materialId") Long materialId, @Param("locationId") Long locationId);
 
     /**
      * 近 N 天所有发生过理论消耗的原料（含售出份数/理论消耗/名称/单位，方案E 差异分析用）
