@@ -184,6 +184,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         slip.setSlipNo(nextSlipNo());
         slip.setStoreId(storeId);
         slip.setShiftId(shift.getShiftId());
+        // TD-36：业务日期 = 所属班次 pos_shifts.end_time 的日期（交班日），不是生成日/提交日；
+        // 跨天班次（22:00→次日 02:00）取次日，即交班当天。
+        slip.setBusinessDate(shift.getEndTime() != null ? shift.getEndTime().toLocalDate() : null);
         slip.setCashierEmployeeId(parseEmployeeId(shift.getEmployeeId()));
         slip.setCashierName(shift.getEmployeeName());
         // TD-03：应交额以 order_payment_records 现金支付重算为权威；closing_cash 只展示，不参与计算
@@ -925,6 +928,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         DepositSlipVO vo = new DepositSlipVO();
         vo.setSlipId(slip.getSlipId());
         vo.setSlipNo(slip.getSlipNo());
+        vo.setBusinessDate(slip.getBusinessDate());
         vo.setStoreId(slip.getStoreId());
         vo.setShiftId(slip.getShiftId());
         vo.setCashierEmployeeId(slip.getCashierEmployeeId());

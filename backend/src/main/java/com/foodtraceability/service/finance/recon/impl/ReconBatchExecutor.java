@@ -53,6 +53,18 @@ import java.util.Set;
  * L2 = 金额相等（或 内部金额 = 外部金额 + fee 视为手续费平账）且时间差 ≤ 窗口（默认 ±10 分钟）；
  * 多候选 → 两侧置 MATCHED（待人工）+ AMBIGUOUS 差异；判不出方向的手续费场景 → AMBIGUOUS。</p>
  *
+ * <p><b>TIME_DIFF（BL-7，激活 {@link ReconDictionary#DIFF_TIME}）</b>——三个时间窗口径：</p>
+ * <ul>
+ *   <li><b>常规窗</b>：|内部入账时间 − 外部 txn_time| ≤ {@code windowMinutes}（默认 10 分钟），由 L2 直接自动匹配；</li>
+ *   <li><b>允许跨日窗</b>：同账户 + 金额<b>完全相等</b>（不适用手续费平账）+ 时间差 ≤ <b>24 小时（1440 分钟）</b>，
+ *       跨自然日也算。落在 (常规窗, 跨日窗] 的 1:1 对 → 两侧置 {@code MATCHED}、
+ *       生成 {@code recon_differences.difference_type = TIME_DIFF}（{@code diff_amount = 0}），
+ *       <b>不落 AMBIGUOUS / ONE_SIDED</b>；窗内多笔同额候选 → 仍按真歧义记 AMBIGUOUS；</li>
+ *   <li><b>超窗</b>：时间差 &gt; 24h → 不配对，继续走既有 ONE_SIDED_* 逻辑（真正的单边）。</li>
+ * </ul>
+ * <p>为什么是 ±24h：门店夜间批次常见 23:58 收单、次日 00:03 到账（跨零点），只按自然日/10 分钟窗会
+ * 同时产出两条 ONE_SIDED 假单边；而放宽到 24h 又不会把隔天的同额流水误配。</p>
+ *
  * <p><b>fail-inject</b>：属性 app.finance.recon.fail-inject=true 时，在写完全部 items 后主动抛错，
  * 仅用于验收「跑批失败 → run=FAILED 且 items=0」的回滚证据；默认关闭。</p>
  */
@@ -60,6 +72,9 @@ import java.util.Set;
 public class ReconBatchExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(ReconBatchExecutor.class);
+
+    /** BL-7：允许跨日窗上界（分钟）= 24h；超出即判单边（ONE_SIDED_*） */
+    private static final long CROSS_DAY_WINDOW_MINUTES = 24L * 60L;
 
     private final ReconRunMapper reconRunMapper;
     private final ReconItemMapper reconItemMapper;
@@ -294,6 +309,47 @@ public class ReconBatchExecutor {
             }
         }
 
+        // ---- TIME_DIFF（BL-7）：同账户同额，但「跨自然日」或「超常规窗口、仍在允许跨日窗内」 ----
+        // 口径（同时写入类注释与 WORKER_LOG）：
+        //   · 常规窗 = 同一自然日 且 |内部入账时间 − 外部 txn_time| ≤ windowMinutes（默认 10 分钟）→ 由 L2 自动匹配；
+        //   · 允许跨日窗 = 同账户 + 金额完全相等 + |差| ≤ 24h（1440 分钟）；
+        //   · 命中「跨自然日」或「同日内超常规窗但 ≤24h」的 1:1 对 → 两侧 MATCHED + TIME_DIFF（金额差 0），
+        //     **不落 AMBIGUOUS / ONE_SIDED**（本条必须先于 L2 执行，否则跨零点但仅差 5 分钟的对会被 L2 直接吞掉）；
+        //   · 超过 24h → 不配对，留给 ONE_SIDED_*。
+        for (InternalSubject internal : internals) {
+            if (!ReconDictionary.ITEM_UNMATCHED.equals(internal.status)) {
+                continue;
+            }
+            List<ExternalSubject> crossDay = new ArrayList<>();
+            for (ExternalSubject external : externals) {
+                if (!ReconDictionary.ITEM_UNMATCHED.equals(external.status)) {
+                    continue;
+                }
+                if (internal.amount != external.amount) {
+                    continue; // 跨日窗只认金额完全相等（手续费平账仍归 L2）
+                }
+                if (normalWindowMatched(internal.txnTime, external.txnTime)) {
+                    continue; // 同日且常规窗内 → 交给 L2
+                }
+                if (!crossDayWindowOk(internal.txnTime, external.txnTime)) {
+                    continue; // 超出允许跨日窗 → 留给 ONE_SIDED
+                }
+                crossDay.add(external);
+            }
+            if (crossDay.size() == 1) {
+                ExternalSubject external = crossDay.get(0);
+                internal.status = ReconDictionary.ITEM_MATCHED;
+                internal.matchLevel = ReconDictionary.LEVEL_L2;
+                internal.matchedRef = external.ref;
+                external.status = ReconDictionary.ITEM_MATCHED;
+                external.matchLevel = ReconDictionary.LEVEL_L2;
+                external.matchedRef = internal.flowNo;
+                differences.add(timeDiff(internal, external));
+            } else if (crossDay.size() > 1) {
+                markAmbiguous(internal, crossDay, differences); // 跨日窗内多笔同额 → 真歧义
+            }
+        }
+
         // ---- L2：金额（含手续费平账）+ 时间窗，1:1 自动 ----
         for (InternalSubject internal : internals) {
             if (!ReconDictionary.ITEM_UNMATCHED.equals(internal.status)) {
@@ -369,6 +425,30 @@ public class ReconBatchExecutor {
         differences.add(ambiguousDiff(internal, candidates.get(0)));
     }
 
+    /**
+     * 允许跨日窗（BL-7）：|内部入账时间 − 外部 txn_time| ≤ 24h（1440 分钟），跨自然日也允许。
+     *
+     * <p>选型理由：门店夜间批次（如 23:58 收单、次日 00:03 到账）会跨自然日，若只按自然日或
+     * 10 分钟常规窗判定，会同时判出两条 ONE_SIDED 假单边；放宽到 ±24h 既覆盖跨零点，
+     * 又不会把「隔了两天的同额流水」误配（超过 24h 仍判 ONE_SIDED）。</p>
+     */
+    /** 常规匹配窗：同一自然日 且 |差| ≤ windowMinutes（不满足即需要走 TIME_DIFF 或单边） */
+    private boolean normalWindowMatched(LocalDateTime internalTime, LocalDateTime externalTime) {
+        if (internalTime == null || externalTime == null) {
+            return false;
+        }
+        return internalTime.toLocalDate().equals(externalTime.toLocalDate())
+                && timeWindowOk(internalTime, externalTime);
+    }
+
+    private boolean crossDayWindowOk(LocalDateTime internalTime, LocalDateTime externalTime) {
+        if (internalTime == null || externalTime == null) {
+            return false;
+        }
+        long minutes = Math.abs(Duration.between(internalTime, externalTime).toMinutes());
+        return minutes <= CROSS_DAY_WINDOW_MINUTES;
+    }
+
     private boolean timeWindowOk(LocalDateTime internalTime, LocalDateTime externalTime) {
         if (internalTime == null || externalTime == null) {
             return false;
@@ -390,6 +470,20 @@ public class ReconBatchExecutor {
         diff.setAmountInternal(internal.amount);
         diff.setAmountExternal(external.amount);
         diff.setDiffAmount(external.amount - internal.amount);
+        return diff;
+    }
+
+    /** TIME_DIFF（BL-7）：同账户同额、时间超常规窗但在允许跨日窗内；金额差恒为 0 */
+    private ReconDifference timeDiff(InternalSubject internal, ExternalSubject external) {
+        ReconDifference diff = baseDiff(ReconDictionary.DIFF_TIME, internal, external);
+        diff.setAmountInternal(internal.amount);
+        diff.setAmountExternal(external.amount);
+        diff.setDiffAmount(0L);
+        long minutes = internal.txnTime == null || external.txnTime == null ? 0L
+                : Math.abs(Duration.between(internal.txnTime, external.txnTime).toMinutes());
+        diff.setResolutionRemark("跨日时间差 " + minutes + " 分钟（常规窗口 " + windowMinutes
+                + " 分钟，允许跨日窗 " + CROSS_DAY_WINDOW_MINUTES + " 分钟）");
+        log.info("[METRIC] recon_time_diff internal={} external={} minutes={}", internal.flowNo, external.ref, minutes);
         return diff;
     }
 
