@@ -16,10 +16,18 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A10 （参与判定，P1-D）status='FINALIZED' 的 recon_runs 却没有任何 recon_items
   A11 （参与判定，P1-D）status='APPROVED' 的 reconciliation_statements 中
       approved_by = submitted_by（自审）或 approved_by 属 ROLE_TELLER（出纳自批）
+  A12 （参与判定，AC-38）recon_runs.run_key 唯一（count(*) - count(DISTINCT run_key) = 0）
+  A13 （参与判定，AC-39）deposit_slips.shift_id 唯一（一班次一单，deleted=0）
+  A14 （参与判定，AC-40）存行流水成对：每个 [depositSlip=<slip_no>] 键出/入各 1 条且净额 0
+      （P2 缴款单未落盘时无该键 → 天然 0 = PASS，不是 N/A）
+  A15 （参与判定，AC-41）现金户账户（account_type=2）余额非负
 
-P1 迁移未落盘时：A10 / A11 由 SQL 内的 to_regclass 守卫自动降级为
-  '[INFO] A10 跳过（表未创建）' / '[INFO] A11 跳过（表未创建）'，
-  此时**不计入 TOTAL FAIL**，也不会让本脚本报错（退出码仍按其余断言判定）。
+编号对齐（P2-C）：设计稿 AC-38→A12、AC-39→A13、AC-40→A14、AC-41→A15；
+A7（V3 账户余额）与 A10/A11（P1-D）已被占用，故不复用 A7–A10。
+
+迁移未落盘时：A10～A13 由 SQL 内的 to_regclass 守卫自动降级为
+  '[INFO] Axx 跳过（表未创建）'，此时**不计入 TOTAL FAIL**，
+  也不会让本脚本报错（退出码仍按其余断言判定）。
 
 输出约定（来自 SQL）：每类一行 '[PASS]/[FAIL] <断言名> rows=<n>'，最后 'TOTAL FAIL=<k>'。
 

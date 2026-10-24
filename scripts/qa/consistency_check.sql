@@ -2,8 +2,15 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15 参与 PASS/FAIL 判定，**期望 rows=0**；
 -- A6/A8/A9 为信息性输出，不影响 TOTAL）：
+--
+-- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
+--    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
+--    设计稿 AC-39 → 本脚本 **A13**（deposit_slips.shift_id 唯一）
+--    设计稿 AC-40 → 本脚本 **A14**（存行流水成对）
+--    设计稿 AC-41 → 本脚本 **A15**（现金户余额非负）
+--    （A7 已被 V3 账户余额占用、A10/A11 已被 P1-D 占用，故不复用 A7–A10）
 --   A1  已支付但资金流水缺失：orders.payment_status=2 的订单，没有对应的 SALE 资金流水
 --       匹配口径：fund_flows.order_id = orders.order_id
 --                 AND flow_direction=1 AND flow_category=1 AND deleted=0
@@ -40,6 +47,15 @@
 --            AND r.role_id_str = 'ROLE_TELLER' AND COALESCE(ur.deleted,0)=0
 --       守卫：reconciliation_statements（及其判定所需列）不存在时输出
 --             [INFO] A11 跳过（表未创建），**不计入 TOTAL**。
+--   A12 （参与判定，AC-38）recon_runs.run_key 必须唯一：count(*) − count(DISTINCT run_key) = 0
+--       守卫：recon_runs（含 run_key 列）不存在时输出 [INFO] A12 跳过（表未创建），不计入 TOTAL
+--   A13 （参与判定，AC-39）deposit_slips.shift_id 必须唯一（TD-33 一班次一单，deleted=0）：
+--       count(*) − count(DISTINCT shift_id) = 0
+--       守卫：deposit_slips（含 shift_id/deleted 列）不存在时输出 [INFO] A13 跳过（表未创建），不计入 TOTAL
+--   A14 （参与判定，AC-40）存行流水成对：对每个 remark 形如 [depositSlip=<slip_no>] 的幂等键，
+--       必须恰好 2 条（出 1 / 入 1）且 sum(case when flow_direction=2 then amount else -amount end) = 0；
+--       不满足的 slip 数 = 0。无该注释键时（P2 未落盘）天然为 0 → PASS，**不是 N/A**
+--   A15 （参与判定，AC-41）现金户余额非负：bank_accounts 中 account_type=2 且 balance<0 且 deleted=0 的行数 = 0
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -117,6 +133,74 @@ SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
 \set a11_line '[INFO] A11 跳过（表未创建）'
 \set a11_n 0
 \endif
+
+-- ------------------------------------------------------------
+-- A12 – A15 前置守卫与计数（P2-C / AC-38 ~ AC-41）
+--   同 A10/A11：表或列不存在时不能用 CASE 包住静态查询（解析期即报错），
+--   必须用 \if 分支；缺表分支输出 [INFO] 跳过并把计数置 0（不进 TOTAL）。
+--   A14 / A15 只依赖 fund_flows / bank_accounts（A1/A7 已在用的核心表），无守卫。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.recon_runs') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'recon_runs'
+                       AND column_name = 'run_key')) AS runs_key_ready
+\gset
+
+\if :runs_key_ready
+SELECT CASE WHEN count(*) - count(DISTINCT run_key) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A12 recon_runs.run_key 唯一 rows=' || (count(*) - count(DISTINCT run_key)) AS a12_line,
+       count(*) - count(DISTINCT run_key) AS a12_n
+  FROM recon_runs
+\gset
+\else
+\set a12_line '[INFO] A12 跳过（表未创建）'
+\set a12_n 0
+\endif
+
+SELECT (to_regclass('public.deposit_slips') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'deposit_slips'
+                       AND column_name IN ('shift_id', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 2)) AS slips_ready
+\gset
+
+\if :slips_ready
+SELECT CASE WHEN count(*) - count(DISTINCT shift_id) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A13 deposit_slips.shift_id 唯一(一班次一单) rows=' || (count(*) - count(DISTINCT shift_id)) AS a13_line,
+       count(*) - count(DISTINCT shift_id) AS a13_n
+  FROM deposit_slips
+ WHERE deleted = 0
+\gset
+\else
+\set a13_line '[INFO] A13 跳过（表未创建）'
+\set a13_n 0
+\endif
+
+-- A14：存行流水成对（无 [depositSlip= 键时为 0 → PASS，不是 N/A）
+SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A14 存行流水未成对(出/入各 1 条且金额相等) slips=' || count(*) AS a14_line,
+       count(*) AS a14_n
+  FROM (
+      SELECT split_part(split_part(f.remark, '[depositSlip=', 2), ']', 1) AS slip_no,
+             count(*)                                                       AS cnt,
+             sum(CASE WHEN f.flow_direction = 2 THEN f.amount ELSE -f.amount END) AS net
+        FROM fund_flows f
+       WHERE f.deleted = 0
+         AND f.remark LIKE '%[depositSlip=%'
+       GROUP BY 1
+  ) k
+ WHERE k.cnt <> 2 OR k.net <> 0
+\gset
+
+-- A15：现金户（account_type=2）余额非负
+SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
+       || 'A15 现金户余额为负(account_type=2) accounts=' || count(*) AS a15_line,
+       count(*) AS a15_n
+  FROM bank_accounts
+ WHERE deleted = 0
+   AND account_type = 2
+   AND balance < 0
+\gset
 
 -- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
@@ -299,7 +383,23 @@ SELECT line
     SELECT 11,
            :'a11_line'
     UNION ALL
+    -- A12 参与判定（AC-38）：recon_runs.run_key 唯一
     SELECT 12,
+           :'a12_line'
+    UNION ALL
+    -- A13 参与判定（AC-39）：deposit_slips.shift_id 唯一（一班次一单）
+    SELECT 13,
+           :'a13_line'
+    UNION ALL
+    -- A14 参与判定（AC-40）：存行流水成对（出 1 / 入 1，金额相等）
+    SELECT 14,
+           :'a14_line'
+    UNION ALL
+    -- A15 参与判定（AC-41）：现金户余额非负
+    SELECT 15,
+           :'a15_line'
+    UNION ALL
+    SELECT 16,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -308,7 +408,11 @@ SELECT line
              + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a7) > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a10_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a11_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a11_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a12_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a13_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a14_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -511,5 +615,80 @@ SELECT s.status,
 \echo ''
 \echo '-- A11 明细跳过（表未创建）--'
 \endif
+
+-- ------------------------------------------------------------
+-- A12 明细（前 20）：run_key 重复（同一账户同一业务日被建了多个 run）
+-- 期望为空；重复会导致「重跑」语义失效、勾稽率被重复计入
+-- ------------------------------------------------------------
+\if :runs_key_ready
+\echo ''
+\echo '-- A12 明细（前 20）--'
+SELECT r.run_key, count(*) AS run_cnt, min(r.run_id) AS first_run_id, max(r.run_id) AS last_run_id,
+       string_agg(r.status, ',' ORDER BY r.run_id) AS statuses
+  FROM recon_runs r
+ GROUP BY r.run_key
+HAVING count(*) > 1
+ ORDER BY count(*) DESC, r.run_key
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A12 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A13 明细（前 20）：一个班次挂多张缴款单（违反 TD-33 一班次一单）
+-- 期望为空；出现即意味着现金被重复交款/重复入账
+-- ------------------------------------------------------------
+\if :slips_ready
+\echo ''
+\echo '-- A13 明细（前 20）--'
+SELECT s.shift_id, count(*) AS slip_cnt,
+       string_agg(s.slip_no, ',' ORDER BY s.slip_id) AS slip_nos,
+       string_agg(s.status, ',' ORDER BY s.slip_id) AS statuses
+  FROM deposit_slips s
+ WHERE s.deleted = 0
+ GROUP BY s.shift_id
+HAVING count(*) > 1
+ ORDER BY count(*) DESC, s.shift_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A13 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A14 明细（前 20）：存行流水未成对（[depositSlip=...] 键对应的出/入条数或净额不合格）
+-- 期望为空；P2 缴款单未落盘时本段天然 0 行
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A14 明细（前 20）--'
+SELECT split_part(split_part(f.remark, '[depositSlip=', 2), ']', 1) AS slip_no,
+       count(*)                                                        AS flow_cnt,
+       sum(CASE WHEN f.flow_direction = 1 THEN 1 ELSE 0 END)           AS in_cnt,
+       sum(CASE WHEN f.flow_direction = 2 THEN 1 ELSE 0 END)           AS out_cnt,
+       sum(CASE WHEN f.flow_direction = 2 THEN f.amount ELSE -f.amount END) AS net_fen,
+       string_agg(f.flow_no, ',' ORDER BY f.flow_id)                   AS flow_nos
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.remark LIKE '%[depositSlip=%'
+ GROUP BY 1
+HAVING count(*) <> 2
+    OR sum(CASE WHEN f.flow_direction = 2 THEN f.amount ELSE -f.amount END) <> 0
+ ORDER BY 1
+ LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A15 明细（前 20）：现金户余额为负
+-- 期望为空；负余额说明存行流水多记、或手工改过余额（见 TD-08 禁止改历史）
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A15 明细（前 20）--'
+SELECT b.account_id, b.account_name, b.account_type, b.store_id, b.balance, b.version, b.update_time
+  FROM bank_accounts b
+ WHERE b.deleted = 0
+   AND b.account_type = 2
+   AND b.balance < 0
+ ORDER BY b.balance
+ LIMIT 20;
 
 COMMIT;
