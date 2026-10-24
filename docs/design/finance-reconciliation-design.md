@@ -971,6 +971,8 @@ expected_amount（分）
 
 **四眼原则（硬门禁，不可配置关闭）**：调节表 `submitted_by ≠ approved_by`，且**审核人不得为出纳（`ROLE_TELLER`）**——出纳可编制/提交（`finance:bank:recon` 保留），但审核必须由他人完成（§4.3 V8）；缴款单收妥人与复核人同样不得同一人（TD-38）。
 
+**权限码缺口（P2 实现披露，待 Owner 决定）**：`finance:deposit-slip:reject` **不存在**于权限表；P2 阶段 SL9 退回动作暂挂 `finance:deposit-slip:close`，**未自建权限码**。若需独立码，须同步 `permissions` + `role_permissions`（出纳/财务总监）并更新本节矩阵。
+
 ---
 
 ## 8. 验收标准与自动化防线（AC-1 – AC-43）
@@ -1211,7 +1213,7 @@ expected_amount（分）
 | `bank_transactions.match_status` | UNMATCHED → AUTO_MATCHED / MANUAL_MATCHED / EXCEPTION；MATCHED → MANUAL_MATCHED | 解绑仅 MANUAL_MATCHED → UNMATCHED |
 | `recon_runs` | RUNNING → FINALIZED / FAILED；FINALIZED --force-->（新 run）RUNNING | 旧 run 只读 |
 | `recon_differences` | OPEN → ASSIGNED → RESOLVING → CLOSED；ASSIGNED/RESOLVING → EXEMPT；CLOSED --reopen-->（新记录）OPEN | CLOSED 不可原地改（TD-10） |
-| `deposit_slips` | DRAFT → SUBMITTED → RECEIVED → DEPOSITED → VERIFIED → CLOSED；SUBMITTED → REJECTED → SUBMITTED；任意已提交态 → REVERSED | 不得回退到 DRAFT；`expected_amount` 只读 |
+| `deposit_slips` | DRAFT → SUBMITTED → RECEIVED → DEPOSITED → VERIFIED → CLOSED；SUBMITTED → REJECTED → SUBMITTED；任意已提交态 → REVERSED | **流水号/单据号必须统一走 `order_sequence` 号段表**（`GREATEST(号段, 当天MAX)+1 RETURNING` + MyBatis `flushCache=TRUE/useCache=false`）；禁止「查 MAX+1」、禁止多套发号器并行（P2 曾因此撞 `fund_flows_flow_no_key`）；不得回退到 DRAFT；`expected_amount` 只读 |
 | 调节表（§4 / §5.10） | DRAFT → SUBMITTED → APPROVED | `is_balanced=false` 不得 SUBMITTED/APPROVED（**V5**）；落地表为 `reconciliation_statements` + `reconciliation_items`，**随 TD-24 裁决确定去留与归属期** |
 
 ## 附录 C：与现状表字段对照（易混点）

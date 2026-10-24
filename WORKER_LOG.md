@@ -629,26 +629,53 @@ API 级体验巡检，15 项断言 + 1 项数据缺口提示：
 
 ---
 
-## 31. P2 开工前置（2026-10-25 00:52–01:10）
+## 32. P2 落地：缴款单 / 冲正执行 / 补记 / 新巡检（2026-10-25 00:52–01:35）
 
-### 31.1 清理 P1 测试残留（脚本 scripts/db-fix/2026-10-25-p2-preclean-test-residue.sql）
-| 表 | 清理前 | 清理后 |
-|---|---:|---:|
-| recon_runs | 17 | 2（run 1–2 为 P0/P1 早期 smoke，Owner 指定范围是 3–17，故保留） |
-| recon_items | 3383 | 541（run 1–2 的明细） |
-| recon_differences | 3238 | 531（run 1–2 的差异） |
-| reconciliation_statements | 10 | 0 |
-| reconciliation_items | 4315 | 0 |
-| **fund_flows** | **612** | **612（未动）** |
-| **bank_transactions** | **97** | **97（未动）** |
+### 32.1 写操作清单（首次真正写 fund_flows 与 bank_accounts.balance）
+| 接口 | 写入表 | 事务边界 | 幂等键 |
+|---|---|---|---|
+| SL1 `POST /deposit-slips/generate` | deposit_slips | 单事务 | `deposit_slips.shift_id` 唯一（TD-33），二次 reused=true |
+| SL4/SL7/SL8/SL9 submit/verify/close/reject | deposit_slips + finance_audit_logs | 各自 @Transactional | 状态机前置校验 |
+| SL5 `receive` | deposit_slips + 审计 | 单事务，**不写 fund_flows** | 状态机 |
+| **SL6 `deposit`** | deposit_slips + **fund_flows(2 条)** + **bank_accounts.balance×2** + 审计 | 单事务：两条乐观锁更新 + 两条流水 + 单据更新，任一失败整体回滚 | remark `[depositSlip=<slip_no>]` |
+| **SL10 `reverse`** | fund_flows(反向) + 原流水 status=3 + bank_accounts×2 + 审计 | 单事务 | remark `[reconReverseOf=<原flow_no>]` |
+| P2-B `execute-reverse` | fund_flows + 原流水 status=3 + bank_accounts + recon_differences | 单事务：`FOR UPDATE` 锁原流水 → 乐观锁 → 反向流水 → 原流水 2→3 → 差异 CLOSED | `[reconReverseOf=…]` |
+| P2-B `backfill/cash-sales` | fund_flows(SALE) + bank_accounts | 单事务；dryRun=true 只读 | remark `[posShift=..][cashBackfill]` |
 
-清理后 consistency_check.py：**8 PASS / 0 FAIL，exit 0** —— A1–A5 PASS、A7 PASS（V3 账户余额一致 0 差异）、A10 PASS、**A11 PASS（P1 新表已存在，真正参与判定）**；A6 INFO=6、A8 INFO=0（未知异常 0，基线合格）、A9 INFO=2（仍是白名单那两条 FF202609080010 / FF202609080028）。
+### 32.2 五条红线实证
+| 红线 | 证据 |
+|---|---|
+| 三段式 | RECEIVED 前后 `fund_flows` **681→681**；DEPOSITED **恰好 2 条** `flow_category=5`（`FF202610250076` 出 230,180 / `FF202610250077` 入 230,180），新增 SALE=0 |
+| 幂等写在 remark | 二次 SL6 → 400「要求 RECEIVED」，`[depositSlip]` 流水仍 2 条（AC-25）；二次 SL10 → 400；二次 execute-reverse → 400 |
+| 冲正只增反向 | 原流水 `status 2→3`（行仍在、金额未改），反向 `FF202610250078/079` 成对；无物理删除（grep `deleteById`/`DELETE FROM` 0 命中） |
+| 余额乐观锁 | 新增 `BankAccountMapper.addBalanceOptimistic`（`balance+delta, version+1 WHERE version=expected`）+ `AtomicBalanceUpdater`（冲突重试 3 次）；**`BankAccountServiceImpl.updateBalance`（裸 SET）0 处可执行调用** |
+| 短款不改 closing_cash | RECEIVED 前后 `pos_shifts.closing_cash` 完全相同（AC-27） |
 
-### 31.2 第二个出纳与 AC-44② 补测
-- 新建 qa_teller2（ROLE_TELLER，口令同 qa_admin，已写进 2026-10-24-p1-test-accounts.sql 可复现）。
-- 实测：qa_teller 提交 statement 13 → SUBMITTED；**qa_teller2 approve → 400「V8 门禁失败：出纳（ROLE_TELLER）不得审核调节表」** → **AC-44② 由 SKIP 转 PASS**，不留 SKIP。
-- 说明：该断言在 service 层按 user_roles→roles 实时判定（不看 token claims），两个出纳账号都在库内，路径真实覆盖。
+### 32.3 验收（ts-ops 终轮 34 项：**PASS 34 / FAIL 0 / SKIP 0，exit 0**）
+AC-19～AC-30、AC-38～AC-41、AC-37（consistency 12/12、ui_e2e 7/7、schema_guard 5/5）全绿；回滚三组全 PASS。
 
-### 31.3 P1 验收口径两句话（更正 30.4）
-> **AC-8**：P1 应记为「**通道验证 PASS（基于 run 13 真实命中 16 条 L1/AUTO_MATCHED）+ 本轮夹具 SKIP**」，**不得写 ✅ 全绿**；下次 L1 样本须用「真实导入 + POS 支付」造。
-> **AC-37**：单独跑 consistency_check 时，recon_runs / recon_items / recon_differences / reconciliation_statements 必须**无 RUNNING / DRAFT 残留**（本次清理后 runs 仅剩 2 条 FINALIZED、statements 0 条），此时 8 PASS 才可信；套内并发写入时的瞬时 FAIL 不作为结论。
+### 32.4 全流程每步（fund_flows / 现金户20 / 存款户24）
+| 步骤 | fund_flows | 现金户 20 | 存款户 24 |
+|---|---:|---:|---:|
+| 起点 | 685 | 691,840 | 34,200 |
+| generate / submit / receive（短款 500） | 685 | 691,840 | 34,200 |
+| deposit | **+2** | **461,660** | **264,380** |
+| verify / close | 不变 | 461,660 | 264,380 |
+| reverse | **+2** | **691,840（回滚到位）** | **34,200（回滚到位）** |
+
+### 32.5 P1 遗留 PENDING_P2_REV 处置
+差异 2（原流水 FF202610240001，1,800 分）：反向 `FF202610250008`，余额 682,780→680,980，原流水 2→3，差异 CLOSED/REVERSE；差异 3 同法（`FF202610250009`）。重复执行均 400。
+
+### 32.6 三个必须记住的坑
+1. **两套发号器**：`FundFlowServiceImpl`（号段表）与自建「查 MAX+1」并行 → `fund_flows_flow_no_key` 冲突。更隐蔽的是 **MyBatis 一级缓存把 `@Select` 的 `INSERT … RETURNING` 当查询缓存**，同一事务第二次调用 SQL 不执行 → 两个号相同。修复：统一 `order_sequence` + `GREATEST(号段,当天MAX)+1 RETURNING` + `flushCache=TRUE/useCache=false`。
+2. **POS 入账异常被吞**：`pos_fund_flow_recorded result=failed` 只记 metric，`/pay` 仍返回成功 → 订单已支付但无 SALE 流水，A1 报红、`ui_e2e_payment` 前置失败。本次用 P2-B 补记端点按 A1 口径补齐（4 条 / 6,380 分），A1 4→0，ui_e2e 恢复 7/7。**建议后续把该 metric 升级为告警/巡检项。**
+3. **并发编译破坏运行实例**：`mvn compile` 清 `target/classes` 导致运行时 `NoClassDefFoundError`（500）。约定：编译与运行不并行。
+
+### 32.7 待 Owner 决定（不阻塞）
+- `finance:deposit-slip:reject` 权限码不存在，SL9 暂挂 `:close`（未自建码）。
+- SL1 增加可选 `storeId`：活库 19 个班次全为 `SYSTEM`/`pos-test-001` 且时间窗跨 2 门店，严格推导必 400；现为「显式优先，缺省推导且不唯一则 400 并列出候选」。
+- 流水号生成应**收敛为唯一工具类**（现 `FundFlowServiceImpl` / `DepositSlipMapper` / `ReconCashSupport` 三处，后两者已对齐号段）。
+
+### 32.8 测试残留与夹具（可清理）
+- `bank_transactions` 夹具：`transaction_id` 113/114/129（`SELFTEST-*`/`P2D*`）；`pos_shifts.shift_id` 56/57/58（`P2D-ACCEPT-FIXTURE`）。
+- 自测缴款单 DS202610250001–022 已全部走 **SL10 冲正**（不删数据），余额回基线；`fund_flows` 689 行、现金户 20 = 694,340 / 存款户 24 = 34,200。
