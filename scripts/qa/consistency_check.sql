@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A9 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A9/A16 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -56,6 +56,9 @@
 --       必须恰好 2 条（出 1 / 入 1）且 sum(case when flow_direction=2 then amount else -amount end) = 0；
 --       不满足的 slip 数 = 0。无该注释键时（P2 未落盘）天然为 0 → PASS，**不是 N/A**
 --   A15 （参与判定，AC-41）现金户余额非负：bank_accounts 中 account_type=2 且 balance<0 且 deleted=0 的行数 = 0
+--   A16 （信息性，不参与 TOTAL）近 24 小时内 fund_flows 中 remark LIKE '%[cashBackfill]%' 且 deleted=0 的条数
+--       = POS 入账失败后被「补记」的次数；>0 时同一行追加提示需排查 pos_fund_flow_recorded=failed。
+--       AC 无对应编号，属运维看板项；与 P3 backlog『POS 入账异常被吞』配套；与 A8/A9 同级，纯 INFO。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -200,6 +203,19 @@ SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
  WHERE deleted = 0
    AND account_type = 2
    AND balance < 0
+\gset
+
+-- A16：近 24h POS 入账失败后补记条数（纯 INFO，不进 TOTAL；n>0 时同一行追加排查提示）
+SELECT CASE WHEN count(*) = 0
+            THEN '[INFO] A16 近24h POS 入账失败后补记 rows=0'
+            ELSE '[INFO] A16 近24h POS 入账失败后补记 rows=' || count(*)
+                 || '（存在 POS 入账失败后补记，需排查 pos_fund_flow_recorded=failed）'
+       END AS a16_line,
+       count(*) AS a16_n
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.remark LIKE '%[cashBackfill]%'
+   AND f.create_time >= now() - interval '24 hours'
 \gset
 
 -- ------------------------------------------------------------
@@ -399,7 +415,11 @@ SELECT line
     SELECT 15,
            :'a15_line'
     UNION ALL
+    -- A16 信息性：近 24h POS 入账失败后补记（不进 TOTAL；与 A8/A9 同级）
     SELECT 16,
+           :'a16_line'
+    UNION ALL
+    SELECT 17,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -689,6 +709,24 @@ SELECT b.account_id, b.account_name, b.account_type, b.store_id, b.balance, b.ve
    AND b.account_type = 2
    AND b.balance < 0
  ORDER BY b.balance
+ LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A16 明细（近 24h 前 20 行）：POS 入账失败后补记
+-- 出现即说明支付链路曾有「已收款但资金流水未写成」，由补记兜底；需排查上游失败原因
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A16 明细（近 24h 前 20）--'
+SELECT f.flow_no,
+       f.order_id,
+       f.amount,
+       left(f.remark, 80) AS remark_snippet,
+       f.create_time
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.remark LIKE '%[cashBackfill]%'
+   AND f.create_time >= now() - interval '24 hours'
+ ORDER BY f.create_time DESC
  LIMIT 20;
 
 COMMIT;

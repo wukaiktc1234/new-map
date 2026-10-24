@@ -21,6 +21,9 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A14 （参与判定，AC-40）存行流水成对：每个 [depositSlip=<slip_no>] 键出/入各 1 条且净额 0
       （P2 缴款单未落盘时无该键 → 天然 0 = PASS，不是 N/A）
   A15 （参与判定，AC-41）现金户账户（account_type=2）余额非负
+  A16 （信息性，不参与 TOTAL）近 24h POS 入账失败后补记（remark 含 [cashBackfill]）条数；
+      >0 时同一行追加提示「需排查 pos_fund_flow_recorded=failed」。AC 无对应编号，
+      属运维看板项，与 P3 backlog『POS 入账异常被吞』配套（与 A8/A9 同级纯 INFO）
 
 编号对齐（P2-C）：设计稿 AC-38→A12、AC-39→A13、AC-40→A14、AC-41→A15；
 A7（V3 账户余额）与 A10/A11（P1-D）已被占用，故不复用 A7–A10。
