@@ -949,3 +949,111 @@ max(balance_after) [status=2, deleted=0]: 696,920
 | BL-7 | `TIME_DIFF` 未实现（死常量） | 实现跨日时间窗判定 |
 | BL-8 | `deposit_slips` 缺 `business_date` | 需 §5.7 加列（结构变更，须放行） |
 | BL-9 | I1 不支持带时区偏移的时间 | 解析 ISO-8601 偏移并换算 Asia/Shanghai |
+
+---
+
+## 39. BL-7 / BL-8 收口（ts-purchase，2026-10-25 04:0x）
+
+### 39.1 BL-7：TIME_DIFF 实现（激活死常量 `ReconDictionary.DIFF_TIME`）
+
+**代码**：`service/finance/recon/impl/ReconBatchExecutor.java`
+- 新增常量 `CROSS_DAY_WINDOW_MINUTES = 24*60`；新增 `crossDayWindowOk(...)` / `normalWindowMatched(...)` / `timeDiff(...)`。
+- 匹配顺序调整：**TIME_DIFF 判定插在 L2 之前**（`match()` 内）。若放在 L2 之后，跨零点但仅差 5 分钟的对会被 L2 的 ±10 分钟窗直接吞掉，永远产不出 TIME_DIFF（这正是 §38.4 4.1 的原始现象）。
+
+**三个时间窗口径（已写进类注释）**
+
+| 口径 | 判定 | 结果 |
+|---|---|---|
+| 常规窗 | **同一自然日** 且 时间差 ≤ windowMinutes（默认 10 分钟） | 走 L2 自动匹配，不产差异 |
+| **允许跨日窗** | 同账户 + 金额**完全相等** + 时间差 ≤ **24h（1440 分钟）**，且不满足常规窗（跨自然日，或同日超 10 分钟） | 两侧 `subject_status=MATCHED` + `recon_differences.difference_type=TIME_DIFF`（`diff_amount=0`），**不落 AMBIGUOUS / ONE_SIDED** |
+| 超窗 | 同额但时间差 > 24h | 不配对 → 既有 `ONE_SIDED_INTERNAL/EXTERNAL` |
+| 窗内多笔同额 | 跨日窗内有 >1 笔同额候选 | 仍按真歧义记 `AMBIGUOUS`（AC-10/12/13 不破） |
+
+**为什么 ±24h**：门店夜间批次常见 23:58 收单、次日 00:03 到账（跨零点但只差 5 分钟），只按自然日/10 分钟窗会同时产出两条 ONE_SIDED 假单边；放宽到 24h 又不会把隔天的同额流水误配。
+
+**E2-1 实测**（`run_id=26`，account 24 / 2026-10-24，**只跑一次**）：
+
+| 项 | 值 |
+|---|---|
+| 内部 | `flow_no=FFBL7E21T01`，amount 45,678，`business_date=2026-10-24`，`create_time=2026-10-24 23:58:00` |
+| 外部 | `external_txn_id=BL7-EXT-E21-01`，amount 45,678，`business_date=2026-10-24`，`txn_time=2026-10-25 00:03:00` |
+| item（内部） | `subject_status=MATCHED`，`match_level=L2`，`txn_time=2026-10-24 23:58:00` |
+| item（外部） | `subject_status=MATCHED`，`match_level=L2`，`txn_time=2026-10-25 00:03:00` |
+| 差异 | `difference_type=TIME_DIFF`，`amount_internal/amount_external=45678/45678`，`diff_amount=0`，`status=OPEN`，`resolution_remark=跨日时间差 5 分钟（常规窗口 10 分钟，允许跨日窗 1440 分钟）` |
+
+run 26 差异分布：`ONE_SIDED_INTERNAL=11`（历史真单边）、`TIME_DIFF=1`、**AMBIGUOUS=0**。
+
+### 39.2 BL-8 / TD-36：deposit_slips.business_date 接线（列由 call-number 提供）
+
+**代码**：`service/finance/deposit/impl/DepositSlipServiceImpl.java`
+- `generate()`：`slip.setBusinessDate(shift.getEndTime() != null ? shift.getEndTime().toLocalDate() : null)` —— 取**交班日**（end_time 日期），不是生成日/提交日。
+- `DepositSlipVO` 新增 `businessDate`，`toVO()` 已映射（接口不再返回 null）。
+
+**跨天班次实测**（shift 85：2026-10-23 22:00 → 2026-10-24 02:00）：
+
+| 字段 | 值 |
+|---|---|
+| slipNo | `DS202610250060`（slipId=69） |
+| business_date | **2026-10-24**（= 交班日） |
+| expected_amount | **516,340** 分（按班次时间窗内 `order_payment_records` 现金支付重算，与独立复算一致） |
+
+### 39.3 回归
+- `scripts/qa/recon_selftest.py`：**26 PASS / 0 FAIL**（含 AC-10/12/13 相关断言；红线：fund_flows 行数不变、bank_accounts.balance 合计不变、历史流水仍 status=2）。
+- `scripts/qa/consistency_check.py`：**12 PASS / 0 FAIL**。
+- 自测脚本：`scripts/qa/bl7_bl8_selftest.py`（7 项断言全 PASS，可复跑）。
+
+### 39.4 数据处置（须知情）
+- 为「只跑一次」，删除了自己刚建的 `recon_runs` run 24/25（account 24 / 2026-10-24）及其 items/differences，最终只保留 **run 26**。
+- E2-1 夹具（`fund_flows.flow_no='FFBL7E21T01'`、`bank_transactions.external_txn_id='BL7-EXT-E21-01'`）在断言后已**物理删除**（recon 结果行保留为证据）。
+- shift 85 上 qa_admin 建的 DRAFT 单 `slip_id=61` 被删除后由 `generate` 重新生成（`slip_id=69 / DS202610250060`）用于验证 TD-36；shift 82 的 `slip_id=58` 未动。
+
+---
+
+## 40. P3 前置六项修复：假平衡门禁 / TIME_DIFF / business_date / 历史扫描 / 双扣标记 / 自调用 backlog（2026-10-25 04:00–04:20）
+
+### 40.1 BL-6 假平衡门禁（最高优先）
+- `ReconciliationStatementServiceImpl:132` 生成前先 `markAmbiguities(items)`；`:145` **`balanced = amountBalanced && ambiguousCount == 0`** —— 金额相等但存在歧义 → `is_balanced=false`。
+- `:291` submit 文案按原因分类：`V5 门禁失败：存在 N 笔未解决的同额歧义（AMBIGUOUS），请先处置后再提交（处置端点：…）`；金额不等才走原「差 X 分」文案。
+- `:485 markAmbiguities()`：按金额分组，**同额且 A/B 与 C/D 两侧都有条目**时组内每条标 `AMBIGUOUS:`（复用 `reason` 前缀，**未加列**）；`:629 reconcileStatementFlags()` 处置后重算。
+- **人工处置端点**（不自动二选一）：`POST /v1/finance/recon/statements/{statementId}/items/{itemId}/resolve-ambiguity`（`ReconciliationController:89`，角色 `FINANCE_DIRECTOR`/`FINANCE_MANAGER`，未新增权限码）；`service :543` 校验 item 归属 + decision 必须是对侧类别（A↔C、B↔D）+ targetRef 必须是同额候选，处置后清前缀 + 同事务重算 `is_balanced` + 写 `finance_audit_logs(RECON_AMBIGUITY_RESOLVED)`。
+- **statement 13 重算前后**：重算前 `SUBMITTED / is_balanced=true`（假平衡，adjBook=adjBank=3,362,785）→ 重算后 **`is_balanced=false`、ambiguousItemCount=15**；歧义分组：**10,000 分 = A 10 条 + C 1 条（transaction_id=91）**（与 §38.3 预期完全一致），**额外发现 45,678 分 = A 2 + C 2（transaction_id=163）**。
+- 逐条处置 15/15 → `ambiguous=0`、`is_balanced=true` → submit `code=0`；审计 log_id **232–246**（15 条）。
+- **txn_time=00:00:00 追查结论：是「缺时间补零」的默认值兜底**（不是源数据本身）——`CsvImportParser.parseTime()` 旧实现末句 `LocalDate.parse(s).atStartOfDay()`。已修：`isDateOnly()` → 整行 `NEEDS_REVIEW` + `error_code=TIME_UNAVAILABLE`，落库 `needs_review=1` + `match_status=EXCEPTION`；无法解析仍走 `TXN_TIME_INVALID`，**不再写 00:00:00**；勾稽侧在 item reason 追加「【时间不可用】…」。历史 27 行午夜数据全部 flagged（27/27）。
+
+### 40.2 BL-7 TIME_DIFF 实现
+- `ReconBatchExecutor` 新增 `CROSS_DAY_WINDOW_MINUTES = 1440` 与 `crossDayWindowOk()/normalWindowMatched()/timeDiff()`；**判定插在 L2 之前**（放在之后会被 ±10 分钟窗吞掉——正是 §38.4 的原缺陷）。
+- 口径：常规窗（同自然日 且 ≤10 分钟）→ L2 无差异；**允许跨日窗**（同账户 + 金额全等 + ≤24h 且非常规窗）→ 两侧 `MATCHED` + `TIME_DIFF`（差 0），**不落 AMBIGUOUS/ONE_SIDED**；>24h → `ONE_SIDED_*`；窗内多笔同额 → 仍 `AMBIGUOUS`（AC-10/12/13 不破）。
+- **E2-1 实测（run 26，只跑一次）**：内部 `FFBL7E21T01` 45,678 分 / `2026-10-24 23:58`；外部 `BL7-EXT-E21-01` 45,678 分 / `2026-10-25 00:03` → 两侧 `subject_status=MATCHED`、`match_level=L2`，差异行 **`difference_type=TIME_DIFF`、diff_amount=0**；该 run 分布 `ONE_SIDED_INTERNAL=11 / TIME_DIFF=1 / AMBIGUOUS=0`。
+
+### 40.3 BL-8 business_date（Owner 已放行）
+- 迁移 `V20261025_002__deposit_slips_business_date.sql`（Flyway `20261025.002 success=t`，rank 229）：`business_date DATE NULL` + 列注释（TD-36）+ 索引 `idx_deposit_slips_store_business_date`；实体 `DepositSlip.businessDate`。
+- 接线：`DepositSlipServiceImpl#generate` 写 `shift.getEndTime().toLocalDate()`（**交班日**，非生成/提交日）；`DepositSlipVO` 已映射。
+- **历史回填**（`scripts/db-fix/2026-10-25-backfill-deposit-slip-business-date.sql`，幂等）：回填前 NULL **51/51** → 回填后 `2026-10-23 = 14`、`2026-10-24 = 37`、仍 NULL **0**；与 `pos_shifts.end_time::date` 不一致 **0**；幂等重跑 0 行。
+- **E3-1 跨天班次实测**（shift 85，2026-10-23 22:00 → 2026-10-24 02:00）：`slipNo=DS202610250060`、**`business_date=2026-10-24`（交班日）**、**`expected_amount=516,340 分`**（与独立复算一致）。
+
+### 40.4 历史数据干净性扫描（SQL 实测）
+- **§4.1 SL6 双扣历史**：`remark LIKE '%[depositSlip=%' AND status=2 AND deleted=0 GROUP BY slip HAVING count>2` → **0 行**；但把软删算进来：**`DS202610250055` 与 `DS202610250058` 各 4 条（2 live + 2 soft_del）** → 双扣缺陷**确曾发生在这 2 张单**，live 侧已恢复为 2 条。
+- **§4.2 原余额更新通道**：`FundFlowServiceImpl:126` 旧实现用 `bankAccountMapper.addBalance(accountId, delta)` —— **单条原子 UPDATE（`balance = balance + delta`），不是裸 SET**，因此**不存在丢更新**；缺陷是**无 version 条件、无余额下限**。
+- **逐账户校验（A7 口径：balance vs 最新非豁免 balance_after）**：11 个账户 **10 个 OK、1 个 N/A（account 22 无任何有效流水）**、**0 个 MISMATCH**。
+  说明：「按 status=2 流水累计 vs balance」这种算法对本库**不可用**：账户存在期初余额与期外历史，累计值与 balance 必然不等（实测差值从 −9.5M 到 +9.1M 不等），所以权威口径是 A7 的「最新 balance_after 比对」，不是求和比对。
+
+### 40.5 8 行双扣产物的可追溯标记（维持 deleted=1）
+脚本 `scripts/db-fix/2026-10-25-mark-double-deduct-duplicates.sql`（幂等），8 行 remark 追加 `[duplicateOfDoubleDeduct:<正常流水号>]`：
+| 软删 flow_id | flow_no | 指向正常流水 | 单号 |
+|---|---|---|---|
+| 1040 | FF202610250378 | FF202610250376 | DS202610250055 |
+| 1041 | FF202610250379 | FF202610250377 | DS202610250055 |
+| 1042 | FF202610250380 | FF202610250382 | DS202610250055（重复的反向） |
+| 1043 | FF202610250381 | FF202610250383 | DS202610250055（重复的反向） |
+| 1049 | FF202610250386 | FF202610250384 | DS202610250058 |
+| 1050 | FF202610250387 | FF202610250385 | DS202610250058 |
+| 1051 | FF202610250388 | FF202610250390 | DS202610250058（重复的反向） |
+| 1052 | FF202610250389 | FF202610250391 | DS202610250058（重复的反向） |
+**未恢复 `deleted=0`、未改 A14 断言**；A14 现为 slips=0 PASS。
+
+### 40.6 `detail()` 自调用（backlog BL-10，本轮不修）
+`ReconciliationStatementServiceImpl#detail`（`readOnly=true`）被类内自调用 7 处（generate L113/L180、submit L266/L282、approve L291/L325、exportCsv L334）→ `readOnly` 不生效（当前外层写事务，无功能影响）。**P3 顺手处理**：抽独立 Bean 或注入自身代理。列 **BL-10**。
+
+### 40.7 回归与现状
+`consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A14=0、A15=0；A16 INFO=6、A17 INFO=4）；`recon_selftest.py` 26 PASS；`compile` BUILD SUCCESS。
+`reconciliation_statements`：**13 = SUBMITTED / is_balanced=true（歧义已处置 15/15）**、14 与 17 = DRAFT / false；`reconciliation_items` 中 `AMBIGUOUS:` 前缀 **0** 条；`deposit_slips.business_date` 分布 `2026-10-23=14 / 2026-10-24=37`、NULL 0。
