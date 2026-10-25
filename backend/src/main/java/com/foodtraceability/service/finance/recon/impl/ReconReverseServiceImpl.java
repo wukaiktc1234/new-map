@@ -1,6 +1,7 @@
 package com.foodtraceability.service.finance.recon.impl;
 
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.finance.FinancePeriodGuard;
 import com.foodtraceability.dto.finance.recon.ReverseExecutionVO;
 import com.foodtraceability.service.finance.backfill.impl.ReconCashSupport;
 import com.foodtraceability.service.finance.recon.ReconReverseService;
@@ -27,10 +28,14 @@ public class ReconReverseServiceImpl implements ReconReverseService {
 
     private final JdbcTemplate jdbc;
     private final ReconCashSupport support;
+    /** P4-4 TD-39：期间封账硬拦截（冲正会写反向流水 + 改余额，必须先过门禁） */
+    private final FinancePeriodGuard financePeriodGuard;
 
-    public ReconReverseServiceImpl(JdbcTemplate jdbc, ReconCashSupport support) {
+    public ReconReverseServiceImpl(JdbcTemplate jdbc, ReconCashSupport support,
+                                   FinancePeriodGuard financePeriodGuard) {
         this.jdbc = jdbc;
         this.support = support;
+        this.financePeriodGuard = financePeriodGuard;
     }
 
     @Override
@@ -70,6 +75,10 @@ public class ReconReverseServiceImpl implements ReconReverseService {
             throw err("原流水不存在或已删除: " + internalRef);
         }
         Map<String, Object> flow = flows.get(0);
+        // TD-39 / P4-4：按**原流水业务日期**判定期间是否已结账（冲正属于封账后禁止的补录）
+        Object bd = flow.get("business_date");
+        financePeriodGuard.assertOpen(bd instanceof java.sql.Date ? ((java.sql.Date) bd).toLocalDate()
+                : (bd == null ? null : LocalDate.parse(String.valueOf(bd))));
         Long flowId = ((Number) flow.get("flow_id")).longValue();
         int originalStatus = ((Number) flow.get("status")).intValue();
         if (originalStatus == 3) {

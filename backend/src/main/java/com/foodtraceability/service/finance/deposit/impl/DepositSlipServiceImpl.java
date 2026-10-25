@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ConflictException;
+import com.foodtraceability.common.finance.FinancePeriodGuard;
 import com.foodtraceability.common.sequence.SequenceAllocator;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
@@ -114,6 +115,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     private final FinanceAuditLogService financeAuditLogService;
     /** P4-1 BL-2：全项目唯一取号实现 */
     private final SequenceAllocator sequenceAllocator;
+    /** P4-4 TD-39：期间封账硬拦截（deposit / verify 都要过） */
+    private final FinancePeriodGuard financePeriodGuard;
 
     public DepositSlipServiceImpl(DepositSlipMapper depositSlipMapper,
                                   PosShiftMapper posShiftMapper,
@@ -124,7 +127,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                                   FundFlowMapper fundFlowMapper,
                                   AtomicBalanceUpdater atomicBalanceUpdater,
                                   FinanceAuditLogService financeAuditLogService,
-                                  SequenceAllocator sequenceAllocator) {
+                                  SequenceAllocator sequenceAllocator,
+                                  FinancePeriodGuard financePeriodGuard) {
         this.depositSlipMapper = depositSlipMapper;
         this.posShiftMapper = posShiftMapper;
         this.orderNewMapper = orderNewMapper;
@@ -135,6 +139,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         this.atomicBalanceUpdater = atomicBalanceUpdater;
         this.financeAuditLogService = financeAuditLogService;
         this.sequenceAllocator = sequenceAllocator;
+        this.financePeriodGuard = financePeriodGuard;
     }
 
     // ==================== SL1 生成 ====================
@@ -343,6 +348,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DepositSlipVO deposit(Long slipId, DepositToBankDTO dto) {
+        // TD-39 / P4-4：期间封账后只读 —— 存行（写 2 条内部转账 + 改余额）必须先过期间门禁
+        financePeriodGuard.assertOpen(businessDateOfSlip(slipId));
         DepositSlip slip = requireSlip(slipId);
         requireStatus(slip, "存行", ST_RECEIVED);
         if (dto == null || dto.getBankTransactionId() == null) {
@@ -464,6 +471,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DepositSlipVO verify(Long slipId) {
+        // TD-39 / P4-4：复核同样属于封账后的写路径
+        financePeriodGuard.assertOpen(businessDateOfSlip(slipId));
         DepositSlip slip = requireSlip(slipId);
         requireStatus(slip, "复核", ST_DEPOSITED);
         Long verifier = requireOperatorId("复核");
@@ -840,6 +849,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /** 缴款单号：DS + yyyyMMdd + 4 位序号（复用 order_sequence 号段，避免并发撞号） */
+    /** 取缴款单业务日期（门禁用；单不存在时返回 null → 守卫放行，由后续逻辑报「不存在」） */
+    private java.time.LocalDate businessDateOfSlip(Long slipId) {
+        try {
+            com.foodtraceability.entity.finance.recon.DepositSlip slip = depositSlipMapper.selectById(slipId);
+            return slip == null ? null : slip.getBusinessDate();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private String nextSlipNo() {
         String datePart = LocalDate.now(ZONE).format(DAY);
         String key = "SLIP" + datePart;

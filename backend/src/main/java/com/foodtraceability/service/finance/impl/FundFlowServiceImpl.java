@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
+import com.foodtraceability.common.finance.FinancePeriodGuard;
 import com.foodtraceability.common.sequence.SequenceAllocator;
 import com.foodtraceability.common.util.PosPaymentMethodResolver;
 import com.foodtraceability.dto.finance.*;
@@ -72,17 +73,21 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     private final FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder;
     /** P4-1 BL-2：全项目唯一取号实现（原 Mapper 内取号 SQL 已删除） */
     private final SequenceAllocator sequenceAllocator;
+    /** P4-4 TD-39：期间封账硬拦截（业务日期所在期间已结账 → 409，禁止补录） */
+    private final FinancePeriodGuard financePeriodGuard;
 
     public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper,
                                AtomicBalanceUpdater atomicBalanceUpdater,
                                OrderNewMapper orderNewMapper, OrderItemNewMapper orderItemNewMapper,
                                OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
                                FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder,
-                               SequenceAllocator sequenceAllocator) {
+                               SequenceAllocator sequenceAllocator,
+                               FinancePeriodGuard financePeriodGuard) {
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
         this.atomicBalanceUpdater = atomicBalanceUpdater;
         this.sequenceAllocator = sequenceAllocator;
+        this.financePeriodGuard = financePeriodGuard;
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
@@ -92,6 +97,8 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FundFlowVO create(FundFlowCreateDTO dto) {
+        // TD-39 / P4-4：期间封账后只读 —— 资金流水新增必须先过期间门禁
+        financePeriodGuard.assertOpen(dto.getBusinessDate());
         // 校验银行账户存在且启用
         BankAccount account = bankAccountMapper.selectById(dto.getAccountId());
         if (account == null) {
