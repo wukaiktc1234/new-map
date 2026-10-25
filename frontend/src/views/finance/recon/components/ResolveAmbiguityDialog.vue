@@ -45,7 +45,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 /** 对侧类别（与后端 switch 完全一致） */
 const OPPOSITE: Record<string, string> = { A: 'C', B: 'D', C: 'A', D: 'B' }
 
-/** 处置方式：RESOLVE（改类别，默认）/ EXEMPT（排除，P4-3 新增） */
+/** 处置方式：RESOLVE（确认归属对侧，默认）/ EXEMPT（排除，P4-3 新增） */
 type AmbiguityMode = 'RESOLVE' | 'EXEMPT'
 const mode = ref<AmbiguityMode>('RESOLVE')
 
@@ -139,13 +139,22 @@ const reasonPlaceholder = computed<string>(() =>
 /** 提交按钮文案 */
 const submitText = computed<string>(() => (isExempt.value ? '标记排除' : '确认处置'))
 
-/** 二次确认文案：RESOLVE 严格为「将 X 类改为 Y 类，涉及金额 N 分，确认？」；EXEMPT 为固定文案 */
+/**
+ * 二次确认文案。
+ *
+ * 【P4-4 语义对齐】RESOLVE **不会修改 category**（后端 ck_recon_items_ref_by_category /
+ * uk_recon_items_statement_subject 不允许），真实语义是「确认本条归属对侧，从本侧未达账项合计中移除」。
+ * 因此文案严格为：
+ * `确认本条归属 Y 类，从当前 X 类未达账项合计中移除，涉及金额 N 分，确认？`（N 为分值）
+ * EXEMPT 文案保持不变。
+ */
 const confirmText = computed<string>(() => {
   if (isExempt.value) {
     return '确认将此条歧义标记为排除？此操作会写审计记录，且不可撤销'
   }
   const amount = currentAmount.value ?? 0
-  return '将 ' + currentCategory.value + ' 类改为 ' + oppositeCategory.value + ' 类，涉及金额 ' + amount + ' 分，确认？'
+  return '确认本条归属 ' + oppositeCategory.value + ' 类，从当前 ' + currentCategory.value
+    + ' 类未达账项合计中移除，涉及金额 ' + amount + ' 分，确认？'
 })
 
 watch(
@@ -155,7 +164,7 @@ watch(
       confirming.value = false
       return
     }
-    // 默认仍是「改类别」（EXEMPT 不是默认）
+    // 默认仍是「确认归属对侧」（EXEMPT 不是默认）
     mode.value = 'RESOLVE'
     decision.value = oppositeCategory.value || ''
     targetRef.value = candidates.value.length === 1 ? candidates.value[0].ref : ''
@@ -252,9 +261,9 @@ function doSubmit(): void {
         </div>
       </div>
 
-      <!-- P4-3：处置方式二选一（默认「改类别」，EXEMPT 不是默认） -->
+      <!-- P4-3：处置方式二选一（默认「确认归属对侧」，EXEMPT 不是默认） -->
       <el-radio-group v-model="mode" data-test="ambiguity-mode" class="ambiguity__mode">
-        <el-radio value="RESOLVE">改类别（对侧同额）</el-radio>
+        <el-radio value="RESOLVE">确认归属对侧</el-radio>
         <el-radio value="EXEMPT">排除（判定为非歧义）</el-radio>
       </el-radio-group>
 
@@ -317,7 +326,12 @@ function doSubmit(): void {
         </el-form-item>
       </el-form>
 
-      <p class="ambiguity__tip">逐笔处置：每次仅处理当前这一条歧义。</p>
+      <p class="ambiguity__tip">
+        <template v-if="!isExempt">
+          本操作不修改该条目的类别字段，仅将其从本侧未达账项合计中移除（对侧已存在同额记录）。
+        </template>
+        逐笔处置：每次仅处理当前这一条歧义。
+      </p>
     </div>
 
     <template #footer>

@@ -250,8 +250,18 @@ async function submitAmbiguity(payload: { decision: string; targetRef: string; r
     })
     statement.value = updated
     ambiguityVisible.value = false
+    // P4-4：提示语与后端真实语义对齐（不修改 category，只从本侧未达账项合计中移除）
+    if (payload.decision === 'EXEMPT') {
+      ElMessage.success('已标记排除（EXEMPT），审计已记录')
+    } else {
+      const isBankSide = payload.decision === 'C' || payload.decision === 'D'
+      const refLabel = (isBankSide ? 'txn#' : 'flow#') + payload.targetRef
+      ElMessage.success(
+        '已确认归属 ' + payload.decision + ' 类（对侧记录 ' + refLabel + '），已从 '
+        + String(item.category || '').toUpperCase() + ' 类合计移除',
+      )
+    }
     ambiguityItem.value = null
-    ElMessage.success('歧义已处置')
   } catch (error) {
     actionError.value = error instanceof Error ? error.message : '歧义处置失败'
   } finally {
@@ -302,7 +312,14 @@ const auditLines = computed<AuditLine[]>(() => {
     const isExempted = /EXEMPT/i.test(reason) || reason.startsWith('已排除')
     const isResolved = reason.startsWith('已处置(AMBIGUITY->') && !isExempted
     if (!isExempted && !isResolved) continue
-    const head = reason.split('；')[0]
+    // P4-4：把后端 reason 前缀「已处置(AMBIGUITY->C:714)」渲染成业务语义文案
+    const parsed = /^已处置\(AMBIGUITY->([ABCD]):([^)]*)\)/.exec(reason)
+    let head = reason.split('；')[0]
+    if (parsed && !isExempted) {
+      const decided = parsed[1]
+      const refLabel = (decided === 'C' || decided === 'D' ? 'txn#' : 'flow#') + parsed[2]
+      head = '已确认归属 ' + decided + ' 类（对侧记录 ' + refLabel + '），已从 ' + category + ' 类合计移除'
+    }
     lines.push({
       field: isExempted ? 'exempted' : 'ambiguityResolved',
       segments: [
