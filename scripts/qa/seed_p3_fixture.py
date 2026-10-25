@@ -285,6 +285,22 @@ class Seeder:
         return bid, d
 
     # ---------- 缴款单 ----------
+    def resolve_store_accounts(self, store_id):
+        """按门店反查现金户(account_type=2)/存行户(account_type=1)；缺任何一个直接失败并列出可用账户。"""
+        rows = self.rows("SELECT account_id, account_type, balance, COALESCE(account_name,'')"
+                         " FROM bank_accounts WHERE deleted=0 AND store_id=%d ORDER BY account_type, account_id"
+                         % int(store_id))
+        cash = [int(r[0]) for r in rows if str(r[1]) == "2"]
+        bank = [int(r[0]) for r in rows if str(r[1]) == "1"]
+        listing = ", ".join("%s(type=%s,bal=%s,%s)" % (r[0], r[1], r[2], r[3]) for r in rows) or "（无）"
+        if not cash or not bank:
+            self.fail("门店 %d 账户就绪" % store_id,
+                      "缺 account_type=2(现金) 或 =1(存行)；该店可用账户：%s；库中全部账户见 bank_accounts，"
+                      "按要求不自动建账户" % listing)
+            return False, None, None
+        return self.ok("门店 %d 账户就绪" % store_id,
+                       "现金户=%d 存行户=%d（该店账户：%s）" % (cash[0], bank[0], listing)), cash[0], bank[0]
+
     def clone_shift(self, remark, start, end):
         rc, o, e = self.psql(
             "INSERT INTO pos_shifts (terminal_id, employee_id, employee_name, shift_type, start_time,"
@@ -297,15 +313,16 @@ class Seeder:
             self.fail("造班次(%s)" % remark, (e or o)[:200])
         return sid
 
-    def pos_orders(self, n, tag):
+    def pos_orders(self, n, tag, store_id=None):
         made = 0
+        sid = int(store_id if store_id is not None else self.a.store_id)
         for i in range(n):
             yuan = 50.00 + i
             st, b = call("POST", "/v1/pos/orders/order", self.cashier or self.token, {
                 "tableNumber": (i % 10) + 1,
                 "items": [{"id": self.food_code, "name": self.food_name, "quantity": 1, "price": yuan}],
                 "totalAmount": yuan, "paymentMethod": "cash", "orderType": "DINE_IN",
-                "storeId": str(self.a.store_id), "remark": "P3 造数 %s" % tag,
+                "storeId": str(sid), "remark": "P3 造数 %s" % tag,
                 "idempotencyKey": "p3seed-%s-%d" % (tag, i)})
             d = data_of(b) or {}
             oid = d.get("orderId") or d.get("id") or d.get("orderNumber")
@@ -320,9 +337,11 @@ class Seeder:
                 self.fail("POS 支付 %s#%d" % (tag, i + 1), dump(b2, 160))
         return made
 
-    def make_slip(self, shift_id, label, short_fen):
+    def make_slip(self, shift_id, label, short_fen, store_id=None, bank_account=None):
+        sid = int(store_id if store_id is not None else self.a.store_id)
+        bacct = int(bank_account if bank_account is not None else self.a.bank_account)
         st, b = call("POST", "/v1/finance/deposit-slips/generate", self.token,
-                     {"shiftId": shift_id, "storeId": int(self.a.store_id)})
+                     {"shiftId": shift_id, "storeId": sid})
         if not ok_code(b):
             return self.fail("%s SL1 生成" % label, dump(b, 200))
         d = data_of(b) or {}
@@ -342,7 +361,7 @@ class Seeder:
                % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), tag,
                   "%.2f" % (actual / 100.0), "%.2f" % (actual / 100.0), slip_no))
         p = self.write("deposit_%s.csv" % label, csv, "utf-8")
-        bid, _ = self.import_one(p, "BANK", int(self.a.bank_account), "存行到账(%s)" % label)
+        bid, _ = self.import_one(p, "BANK", bacct, "存行到账(%s)" % label)
         txn = self.rows("SELECT transaction_id FROM bank_transactions WHERE deleted=0 AND external_txn_id LIKE"
                         " '%%%s%%' ORDER BY transaction_id DESC LIMIT 1" % tag)
         tid = int(txn[0][0]) if txn else 0
@@ -351,13 +370,50 @@ class Seeder:
         row = self.rows("SELECT status, expected_amount, actual_amount, difference_amount,"
                         " COALESCE(business_date::text,'') FROM deposit_slips WHERE slip_id=%s" % slip_id)
         r = row[0] if row else ["-", "0", "0", "0", ""]
-        self.slips.append({"label": label, "slipNo": slip_no, "status": r[0], "expected": r[1],
-                           "actual": r[2], "difference": r[3], "business_date": r[4]})
+        self.slips.append({"label": label, "storeId": sid, "slipNo": slip_no, "status": r[0],
+                           "expected": r[1], "actual": r[2], "difference": r[3],
+                           "business_date": r[4]})
         return self.ok("%s 缴款单走到 DEPOSITED" % label,
-                       "slip=%s status=%s expected=%s actual=%s difference=%s business_date=%s "
-                       "depositOK=%s txnId=%s" % (slip_no, r[0], r[1], r[2], r[3], r[4],
-                                                  ok_code(b4), tid),
+                       "store=%s slip=%s status=%s expected=%s actual=%s difference=%s business_date=%s "
+                       "depositOK=%s txnId=%s bankAcct=%s" % (sid, slip_no, r[0], r[1], r[2], r[3], r[4],
+                                                              ok_code(b4), tid, bacct),
                        state="PASS" if r[0] == "DEPOSITED" else "FAIL")
+
+    # ---------- CHANNEL_FEE 差异样本（AC-50 用） ----------
+    def channel_fee_sample(self):
+        # 1) 需要一条 run：用现金户跑一次 R1
+        st, b = call("POST", "/v1/finance/recon-runs", self.token,
+                     {"accountId": int(self.a.cash_account), "businessDate": str(date.today())})
+        if not ok_code(b):
+            return self.fail("CHANNEL_FEE 样本：准备 run", dump(b, 160))
+        d = data_of(b) or {}
+        run = d.get("run") or d
+        run_id = run.get("runId")
+        # 2) 找一笔真实带手续费的外部流水（fee>0 且 source_type 非空）
+        rows = self.rows("SELECT transaction_id, external_txn_id, fee, source_type, amount"
+                         " FROM bank_transactions WHERE deleted=0 AND fee IS NOT NULL AND fee > 0"
+                         " AND source_type IS NOT NULL AND external_txn_id IS NOT NULL"
+                         " ORDER BY transaction_id DESC LIMIT 1")
+        if not rows:
+            return self.fail("CHANNEL_FEE 样本", "库中没有 fee>0 且 source_type 非空的 bank_transactions")
+        tid, ext_ref, fee, src, amt = rows[0]
+        fee = int(fee or 0)
+        diff_amount = fee
+        rc, out, err = self.psql(
+            "INSERT INTO recon_differences (run_id, difference_type, internal_ref, external_ref,"
+            " amount_internal, amount_external, diff_amount, status, create_time, update_time)"
+            " VALUES (%s, 'CHANNEL_FEE', NULL, '%s', NULL, %s, %s, 'OPEN', now(), now())"
+            " RETURNING difference_id" % (run_id, ext_ref, int(amt or 0), diff_amount))
+        if rc != 0:
+            return self.fail("CHANNEL_FEE 样本：插入", (err or out)[:200])
+        did = (out or "0").splitlines()[0].strip()
+        self.channel_fee = {"differenceId": did, "runId": run_id, "externalRef": ext_ref,
+                            "diffAmount": diff_amount, "fee": fee, "sourceType": src,
+                            "transactionId": tid}
+        return self.ok("CHANNEL_FEE 差异样本（真实关联外部流水）", 
+                       "difference_id=%s run_id=%s external_ref=%s diff_amount=%s fee=%s source_type=%s transaction_id=%s" % (
+                           did, run_id, ext_ref, diff_amount, fee, src, tid),
+                       state="PASS" if int(diff_amount) == fee and int(fee) > 0 else "FAIL")
 
     # ---------- 调节表 ----------
     def make_statement(self):
@@ -455,26 +511,34 @@ class Seeder:
         p3, n3 = self.csv_bank(day)
         self.import_one(p3, "BANK", self.a.bank_account, "银行 GB18030（%d 行）" % n3)
 
-        print("\n--- 2) 两张缴款单 ---")
+        print("\n--- 2) 两张缴款单（两店各一张）---")
         # 班次窗口必须覆盖「POS 下单现在时刻」，否则 SL1 会报「班次时间窗内没有订单」
         tday = date.today()
         start = datetime.combine(tday, datetime.min.time())
         end = datetime.combine(tday, datetime.min.time()) + timedelta(hours=23, minutes=59)
-        sh1 = self.clone_shift("P3SEED-A", start.strftime("%Y-%m-%d %H:%M:%S"),
+        # store 1：平账
+        sh1 = self.clone_shift("P3SEED-A-S1", start.strftime("%Y-%m-%d %H:%M:%S"),
                                end.strftime("%Y-%m-%d %H:%M:%S"))
-        self.pos_orders(5, "A")
+        self.pos_orders(5, "A", store_id=self.a.store_id)
         if sh1:
-            self.make_slip(sh1, "A", 0)
-        sh2 = self.clone_shift("P3SEED-B", start.strftime("%Y-%m-%d %H:%M:%S"),
+            self.make_slip(sh1, "A", 0, store_id=self.a.store_id, bank_account=self.a.bank_account)
+        # store 2：短款 500（现金户/银行户按 store 2 反查；缺账户直接退出，不自动建）
+        ok_b, cash_b, bank_b = self.resolve_store_accounts(self.a.store_b)
+        if not ok_b:
+            return self.summary()
+        sh2 = self.clone_shift("P3SEED-B-S%d" % self.a.store_b, start.strftime("%Y-%m-%d %H:%M:%S"),
                                end.strftime("%Y-%m-%d %H:%M:%S"))
-        self.pos_orders(3, "B")
+        self.pos_orders(3, "B", store_id=self.a.store_b)
         if sh2:
-            self.make_slip(sh2, "B", 500)
+            self.make_slip(sh2, "B", 500, store_id=self.a.store_b, bank_account=bank_b)
 
-        print("\n--- 3) 调节表 ---")
+        print("\n--- 3) CHANNEL_FEE 差异样本 ---")
+        self.channel_fee_sample()
+
+        print("\n--- 4) 调节表 ---")
         self.make_statement()
 
-        print("\n--- 4) 一致性自检 ---")
+        print("\n--- 5) 一致性自检 ---")
         # 每次跑都打印支付宝批次的预期值，便于验收对表（负例不是缺陷）
         ali = next((b for b in self.batches if "支付宝" in b.get("label", "")), None)
         actual = "(本次未导入支付宝批次)"
@@ -497,6 +561,7 @@ class Seeder:
             ("  NOT_READY=%d" % len(nr)) if nr else ""))
         print("批次: %s" % json.dumps(self.batches, ensure_ascii=False))
         print("缴款单: %s" % json.dumps(self.slips, ensure_ascii=False))
+        print("CHANNEL_FEE: %s" % json.dumps(getattr(self, "channel_fee", None), ensure_ascii=False))
         if fails or nr:
             print("-" * 88)
             for name, state, detail in fails + nr:
@@ -517,6 +582,7 @@ def main():
     p.add_argument("--workdir", default=r"P:\my-new-project\.verify-tmp")
     p.add_argument("--repo", default=r"P:\my-new-project")
     p.add_argument("--store-id", type=int, default=1)
+    p.add_argument("--store-b", type=int, default=2)
     p.add_argument("--cash-account", type=int, default=20)
     p.add_argument("--bank-account", type=int, default=24)
     p.add_argument("--cashier-user", default="vcashier01")
