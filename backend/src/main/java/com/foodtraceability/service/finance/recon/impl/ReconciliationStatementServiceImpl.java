@@ -142,7 +142,10 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         // is_balanced 前置条件（BL-6）：只要存在未解决的 AMBIGUOUS 歧义，即使两侧金额相等也判**不平衡**，
         // 否则就是「假平衡」——金额凑巧相等，但根本没确认哪笔对哪笔。
         boolean amountBalanced = adjustedBook == adjustedBank;
-        boolean balanced = amountBalanced && ambiguousCount == 0;
+        // BL-6 收口：再并入 A19 口径的「同额两侧并存」判据 —— 即使 reason 前缀被重算冲掉，
+        // 只要同一金额同时出现在 (A|B) 与 (C|D) 两侧，就不是真平衡（与 A19 同一判据，避免两套口径打架）。
+        boolean sameAmountBothSides = hasSameAmountOnBothSides(items);
+        boolean balanced = amountBalanced && ambiguousCount == 0 && !sameAmountBothSides;
 
         if (!balanced && (req.getRemark() == null || req.getRemark().isBlank())) {
             // 只允许存 DRAFT，但差异/歧义原因必须写清（V5 / V6 精神）
@@ -623,6 +626,35 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
             log.warn("歧义处置审计写入失败（不影响处置结果）: itemId={}, err={}", itemId, e.getMessage());
         }
         return detail(statementId);
+    }
+
+    /**
+     * 同额两侧并存判据（**与 consistency_check A19 同口径**）：
+     * 同一 statement 内，若某金额同时出现在内部侧 (A|B) 与外部侧 (C|D)，即为「形态假平衡」。
+     *
+     * <p>与 {@link #markAmbiguities} 的关系：markAmbiguities 依赖 reason 前缀（可被重算冲掉、
+     * 也可能被人为改写），本方法只看数据形态，因此是**兜底**；两者都进 is_balanced 判定，
+     * 任一为真即 false。A19 在 consistency_check 里按同样口径做持续巡检（>0 直接 FAIL）。</p>
+     */
+    private boolean hasSameAmountOnBothSides(List<StatementItemRequest> items) {
+        java.util.Map<Long, int[]> byAmount = new java.util.HashMap<>();
+        for (StatementItemRequest it : items) {
+            if (it.getAmount() == null) {
+                continue;
+            }
+            int[] sides = byAmount.computeIfAbsent(it.getAmount(), k -> new int[2]);
+            if ("C".equals(it.getCategory()) || "D".equals(it.getCategory())) {
+                sides[1]++;
+            } else {
+                sides[0]++;
+            }
+        }
+        for (int[] sides : byAmount.values()) {
+            if (sides[0] > 0 && sides[1] > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 重算 statement 的歧义数与 is_balanced（歧义清零 + 金额相等 才算平衡） */
