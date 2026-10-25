@@ -448,7 +448,13 @@ WITH a1 AS (
       ) t
 ), a7 AS (
     -- V3（§4.2）：账户余额（缓存）必须等于「最新一笔**非补账豁免**流水」的 balance_after。
-    -- 豁免白名单（唯一口径）：flow_no LIKE 'FFH%'（历史补账） 或 created_by LIKE 'system/backfill-%'。
+    --
+    -- 豁免口径（2026-10-25 收口，三条**同时**满足才算豁免）：
+    --   ① created_by LIKE 'system/backfill-%'            —— backfill 审计署名
+    --   ② AND (remark LIKE '%[cashBackfill]%' OR remark LIKE '%[posShift=%')  —— 补记账备注 token
+    --   ③ flow_no LIKE 'FFH%' **单独不再构成豁免依据**（前缀可被伪造/复用，防止绕过 A7）
+    -- 原因：补账行不维护 balance_after → 若把它们当作账户最新流水会误报；
+    --       但豁免不能只看 flow_no 前缀，必须同时有「backfill 审计名 + 补记账备注 token」，二者缺一不免。
     -- 反例（不得豁免）：普通流水 balance_after=0 仍参与比对 —— 若它是某账户最新一笔，就会在这里报红。
     SELECT count(*) AS n
       FROM bank_accounts b
@@ -457,7 +463,9 @@ WITH a1 AS (
                  ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY flow_id DESC) rn
             FROM fund_flows
            WHERE deleted = 0
-             AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
+             AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
+                      AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
+                           OR COALESCE(remark, '') LIKE '%[posShift=%'))
       ) lf ON lf.account_id = b.account_id AND lf.rn = 1
      WHERE b.deleted = 0
        AND lf.balance_after IS NOT NULL
