@@ -2,7 +2,7 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31 参与 PASS/FAIL 判定，**期望 rows=0**；
 -- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
@@ -112,6 +112,12 @@
 --   A29 （**参与判定，进入 TOTAL FAIL**）结账快照自洽：finance_period_account_balance 每个
 --       (period_code, account_id) 必须满足 closing_fen = 期间内末笔 balance_after（无流水时跳过此项）
 --       且 closing_fen = opening_fen + income_fen - expense_fen。期望 0；>0 即 FAIL。
+--   A30 （**参与判定**）退款侧勾稽①：orders.refund_amount>0 的订单必须有一条退款流水
+--       （flow_direction=2、status=2、flow_category ∈ REFUND_FLOW_CATEGORIES、同 order_id、
+--        amount = round(refund_amount*100) 分）；期望 0。
+--   A31 （**参与判定**）退款侧勾稽②：按日 SUM(退款流水) == SUM(订单退款额×100)。
+--       orders 无 account_id → 退化为「当日全库合计」口径。
+--   ⚠️ TODO(P4-5)：REFUND_FLOW_CATEGORIES 常量等 fund-500 落盘后回填（当前为空 → A30/A31 跳过）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -739,6 +745,81 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A30 / A31（**参与判定**，退款侧勾稽）
+--   【P4-5 已定案】FLOW_CATEGORY_REFUND = **2**（fund-500 已落盘：1=SALE、2=REFUND、
+--      5=存款/内部转账）。**5 是存款内部转账，勿与退款混用**（现有 flow_direction=2 且
+--      category=5 的行是存行出账，不是退款）。常量清空则 A30/A31 一律 [INFO] 跳过（不误红）。
+--   单位口径：orders.refund_amount 是 numeric(12,2) **元**；fund_flows.amount 是 bigint **分**
+--            → 比较统一换成 分：round(orders.refund_amount * 100)。
+-- ------------------------------------------------------------
+\set REFUND_FLOW_CATEGORIES '2'
+
+SELECT (to_regclass('public.orders') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL
+        AND :'REFUND_FLOW_CATEGORIES' <> ''
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'orders'
+                       AND column_name IN ('order_id', 'refund_amount', 'deleted', 'refund_time', 'create_time')
+                     GROUP BY table_name HAVING count(*) = 5)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('order_id', 'amount', 'flow_direction', 'flow_category', 'status', 'deleted', 'business_date')
+                     GROUP BY table_name HAVING count(*) = 7)) AS refund_ready
+\gset
+
+\if :refund_ready
+-- A30：有退款额但缺对应退款流水（零容忍）
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A30 有退款额但无退款流水 orders=0'
+            ELSE '[FAIL] A30 有退款额但无退款流水 orders=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 笔订单有退款额但缺对应退款流水，禁止接受'
+       END AS a30_line,
+       count(*) AS a30_n
+  FROM orders o
+ WHERE o.deleted = 0
+   AND o.refund_amount > 0
+   AND NOT EXISTS (
+         SELECT 1 FROM fund_flows f
+          WHERE f.deleted = 0
+            AND f.status = 2
+            AND f.flow_direction = 2
+            AND f.order_id = o.order_id
+            AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+            AND f.amount = round(o.refund_amount * 100)::bigint)
+\gset
+
+-- A31：按日退款流水合计 vs 订单退款合计（orders 无 account_id → 退化为「当日全库合计」口径）
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A31 当日退款流水合计=订单退款合计 days=0'
+            ELSE '[FAIL] A31 当日退款流水合计=订单退款合计 days=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 个自然日的退款流水合计与订单退款合计不符，禁止接受'
+       END AS a31_line,
+       count(*) AS a31_n
+  FROM (
+      SELECT COALESCE(fl.d, od.d) AS d,
+             COALESCE(fl.amt, 0) AS flow_amt,
+             COALESCE(od.amt, 0) AS order_amt
+        FROM (SELECT f.business_date AS d, SUM(f.amount) AS amt
+                FROM fund_flows f
+               WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
+                 AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+               GROUP BY 1) fl
+        FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
+                          SUM(round(o.refund_amount * 100))::bigint AS amt
+                     FROM orders o
+                    WHERE o.deleted = 0 AND o.refund_amount > 0
+                    GROUP BY 1) od ON od.d = fl.d
+  ) t
+ WHERE t.flow_amt IS DISTINCT FROM t.order_amt
+\gset
+\else
+\set a30_line '[INFO] A30 跳过（退款 flow_category 常量未配置 / 表未创建）'
+\set a30_n 0
+\set a31_line '[INFO] A31 跳过（退款 flow_category 常量未配置 / 表未创建）'
+\set a31_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1014,7 +1095,15 @@ SELECT line
     SELECT 29,
            :'a29_line'
     UNION ALL
+    -- A30 参与判定：有退款额但无退款流水（>0 进 TOTAL）
     SELECT 30,
+           :'a30_line'
+    UNION ALL
+    -- A31 参与判定：当日退款流水合计 vs 订单退款合计（>0 进 TOTAL）
+    SELECT 31,
+           :'a31_line'
+    UNION ALL
+    SELECT 32,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -1033,7 +1122,9 @@ SELECT line
              + CASE WHEN :a25_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a27_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a28_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a29_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a29_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a30_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a31_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -1631,6 +1722,63 @@ SELECT b.period_code, b.account_id,
 \else
 \echo ''
 \echo '-- A29 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A30 明细（前 20）：有退款额但缺对应退款流水的订单
+-- 期望为空；出现即退款未入账（或退款流水 category/金额口径不符）
+-- ------------------------------------------------------------
+\if :refund_ready
+\echo ''
+\echo '-- A30 明细（前 20）--'
+SELECT o.order_id, o.order_status, o.payment_status,
+       o.refund_amount, round(o.refund_amount * 100)::bigint AS refund_fen,
+       o.refund_time, o.create_time
+  FROM orders o
+ WHERE o.deleted = 0
+   AND o.refund_amount > 0
+   AND NOT EXISTS (
+         SELECT 1 FROM fund_flows f
+          WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
+            AND f.order_id = o.order_id
+            AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+            AND f.amount = round(o.refund_amount * 100)::bigint)
+ ORDER BY o.refund_time DESC NULLS LAST, o.order_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A30 明细跳过（退款 flow_category 常量未配置 / 表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A31 明细（前 20）：当日退款流水合计 ≠ 订单退款合计（差值为 flow-orders）
+-- ------------------------------------------------------------
+\if :refund_ready
+\echo ''
+\echo '-- A31 明细（前 20）--'
+SELECT t.d,
+       t.flow_amt  AS flow_refund_fen,
+       t.order_amt AS order_refund_fen,
+       t.flow_amt - t.order_amt AS diff_fen
+  FROM (
+      SELECT COALESCE(fl.d, od.d) AS d,
+             COALESCE(fl.amt, 0) AS flow_amt,
+             COALESCE(od.amt, 0) AS order_amt
+        FROM (SELECT f.business_date AS d, SUM(f.amount) AS amt
+                FROM fund_flows f
+               WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
+                 AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+               GROUP BY 1) fl
+        FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
+                          SUM(round(o.refund_amount * 100))::bigint AS amt
+                     FROM orders o WHERE o.deleted = 0 AND o.refund_amount > 0 GROUP BY 1) od ON od.d = fl.d
+  ) t
+ WHERE t.flow_amt IS DISTINCT FROM t.order_amt
+ ORDER BY t.d DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A31 明细跳过（退款 flow_category 常量未配置 / 表未创建）--'
 \endif
 
 COMMIT;
