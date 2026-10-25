@@ -188,8 +188,14 @@ class OverviewE2E:
             " COALESCE(SUM(difference_count),0), COUNT(*)"
             " FROM recon_runs WHERE status='FINALIZED' AND business_date='%s'" % d)[0]
         internal_fen, external_fen, diff_cnt, run_cnt = (int(runs[0]), int(runs[1]), int(runs[2]), int(runs[3]))
+        # 口径来源：FinanceOverviewServiceImpl:187-191（apples-to-apples，不自行放宽/收紧）
+        #   run 范围 = 当日 status='FINALIZED' 的 run（全局视角不过滤门店）
+        #   状态集合 = ('OPEN','ASSIGNED','RESOLVING')
         unexplained = int(self.scalar(
-            "SELECT COUNT(*) FROM recon_differences WHERE status NOT IN ('CLOSED','REVERSED')"))
+            "SELECT count(*) FROM recon_differences WHERE run_id IN ("
+            "  SELECT r.run_id FROM recon_runs r LEFT JOIN bank_accounts a ON a.account_id = r.account_id"
+            "   WHERE r.business_date = '%s' AND r.status = 'FINALIZED'"
+            ") AND status IN ('OPEN','ASSIGNED','RESOLVING')" % d))
         open_count = int(self.scalar(
             "SELECT COUNT(*) FROM reconciliation_statements WHERE deleted=0 AND status <> 'APPROVED'"))
         oldest = int(self.scalar(
@@ -261,8 +267,8 @@ class OverviewE2E:
                       "" if not bad2 else "；偏差=" + "；".join(bad2) + "；截图=" + self.shot("ac53b")))
         # 3) unexplainedCount
         un_api = int(ch.get("unexplainedCount") or 0)
-        self.step("AC-53c channels.unexplainedCount == 未关闭差异条数", un_api == self.expect["unexplainedCount"],
-                  "接口=%d SQL=%d（status NOT IN ('CLOSED','REVERSED')）%s" % (
+        self.step("AC-53c channels.unexplainedCount == 当日 FINALIZED run 下 OPEN/ASSIGNED/RESOLVING 条数", un_api == self.expect["unexplainedCount"],
+                  "接口=%d SQL=%d（口径=FinanceOverviewServiceImpl:187-191）%s" % (
                       un_api, self.expect["unexplainedCount"],
                       "" if un_api == self.expect["unexplainedCount"] else "；截图=" + self.shot("ac53c")))
         # 4) statements
