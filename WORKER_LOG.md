@@ -1409,3 +1409,28 @@ TOTAL FAIL=0   汇总: 14 条断言，14 PASS / 0 FAIL
 
 ### 48.5 观察项（未改，供参考）
 `汇总: 14 条断言` 这个计数只统计 `[PASS]` 行（14 = A1–A5、A7、A9–A15、A19），**不含 INFO 行**；脚本输出行数实际为 A1–A22 共 22 行 + TOTAL 行。该文案历史悠久、无判定意义，本轮未改；若 Owner 希望「汇总」反映真实断言总数（含 INFO），可另开一次文案调整。
+---
+
+## 49. 守卫确认 + 汇总文案修正（2026-10-25 13:31–13:45）
+
+### 49.1 `backfill_shape_ready` 守卫内容（**结论：检查的是 `fund_flows`，与 A22 匹配，无需改动**）
+```sql
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('created_by', 'remark', 'flow_no', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 4)) AS backfill_shape_ready
+\gset
+```
+- 守卫对象：**`public.fund_flows`**（存在性）**+ 4 个列**（`created_by` / `remark` / `flow_no` / `deleted` 全部存在，`HAVING count(*) = 4`）；
+- A21 与 A22 共用该守卫，两者查询的正是 `fund_flows` 且用到这 4 列 → **条件与查询完全匹配，不存在「误跳过」问题**；
+- 它**不**检查 `finance_audit_logs`（那是 A17 的守卫对象，A17 已改为独立的 `\gset` 探测）。**无需调整。**
+
+### 49.2 汇总文案修正（只改文案，判定逻辑未动）
+`consistency_check.py`：新增 `INFO_RE = re.compile(r"^\s*\[INFO\]\s", re.MULTILINE)`，汇总行改为区分「判定项」与「全部断言」：
+```
+改前: 汇总: 14 条断言，14 PASS / 0 FAIL（SQL 自报 TOTAL FAIL=0）
+改后: 汇总: 14 PASS / 0 FAIL（判定项 14 条）；共 22 条断言（含 8 条 INFO，不计入 TOTAL）；SQL 自报 TOTAL FAIL=0
+```
+- 退出码逻辑未动（仍是 `1 if fails else 0`）；TOTAL FAIL 仍以 SQL 自报为准；
+- 实测：`python scripts/qa/consistency_check.py` → **exit 0**，`TOTAL FAIL=0`，输出如上。
