@@ -174,6 +174,14 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         LocalDateTime now = LocalDateTime.now();
 
         if (statementId == null) {
+            // P4-4d 诊断：forceRecalc=true 却走到「新建表」分支 = 没能按 (account_id, period_start, period_end)
+            // 匹配到已有 DRAFT 表 —— 此时**没有任何处置快照可继承**，自然也不会产生 RECON_DISPOSITION_LOST。
+            // 这通常是调用方传的 periodStart/periodEnd 与该表实际存储的期间不一致（例如表是整月、请求是单日）。
+            if (Boolean.TRUE.equals(req.getForceRecalc())) {
+                log.warn("[RECON_DISPOSITION] forceRecalc=true 但未匹配到 account={} period={}~{} 的已有调节表 → 将新建表"
+                                + "（处置快照无从继承，故不会有 RESTORED/LOST 审计）",
+                        accountId, ps, pe);
+            }
             String statementNo = nextStatementNo(pe);
             jdbc.update("INSERT INTO reconciliation_statements "
                             + "(statement_no, account_id, store_id, period_start, period_end, book_balance, bank_balance,"
