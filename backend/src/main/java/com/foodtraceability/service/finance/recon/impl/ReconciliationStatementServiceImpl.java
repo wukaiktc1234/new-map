@@ -96,6 +96,9 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     + "无法确定企业账面余额（拒绝默认 0；请先补记流水或调整期间）");
         }
 
+        // NEW-8：force 重算前的处置快照（主体键 → cleared_flag/reason/owner）
+        java.util.List<Map<String, Object>> dispositionSnapshot = new java.util.ArrayList<>();
+
         // ---- 已有同账户同期间表的处置（重算规则）----
         Map<String, Object> existing = oneOrNull(
                 "SELECT statement_id, status FROM reconciliation_statements "
@@ -116,6 +119,16 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                 return detail(sid);
             }
             statementId = sid;
+            // NEW-8：重算会 DELETE 全部 items 再重插 —— 人工处置状态（cleared_flag + reason）必须**保留**，
+            // 否则 force 重算一次，用户刚处置完的 113 条全部复活、ambiguousItemCount 回到 113。
+            // 这里先按「主体键 (category, flow_id, transaction_id)」把处置快照读到内存，重插后回填。
+            dispositionSnapshot = jdbc.queryForList(
+                    "SELECT category, COALESCE(flow_id, 0) AS flow_key, COALESCE(transaction_id, 0) AS txn_key,"
+                            + "       cleared_flag, reason, owner_user_id, owner_name "
+                            + "  FROM reconciliation_items WHERE statement_id = ? AND deleted = 0"
+                            + "   AND (cleared_flag = true"
+                            + "        OR COALESCE(reason, '') LIKE '已处置(%'"
+                            + "        OR COALESCE(reason, '') LIKE 'EXEMPTED(%')", statementId);
             // DRAFT 原地重算：先删旧 items 再重插（同一事务内）
             jdbc.update("DELETE FROM reconciliation_items WHERE statement_id = ?", statementId);
         }
@@ -193,6 +206,63 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     it.getOwnerUserId() == null ? userId : it.getOwnerUserId(),
                     it.getOwnerUserId() == null ? userName : lookupUserName(it.getOwnerUserId()),
                     it.getReason(), now, now);
+        }
+
+        // ---- NEW-8：回填人工处置状态（主体键匹配）；匹配不上 → 写 RECON_DISPOSITION_LOST 审计 ----
+        int restored = 0;
+        int lost = 0;
+        for (Map<String, Object> snap : dispositionSnapshot) {
+            String cat = String.valueOf(snap.get("category"));
+            long flowKey = snap.get("flow_key") == null ? 0L : ((Number) snap.get("flow_key")).longValue();
+            long txnKey = snap.get("txn_key") == null ? 0L : ((Number) snap.get("txn_key")).longValue();
+            boolean cleared = snap.get("cleared_flag") != null && Boolean.TRUE.equals(snap.get("cleared_flag"));
+            String snapReason = snap.get("reason") == null ? null : String.valueOf(snap.get("reason"));
+            int updated = jdbc.update(
+                    "UPDATE reconciliation_items SET cleared_flag = ?, reason = ?,"
+                            + "       owner_user_id = COALESCE(?, owner_user_id), owner_name = COALESCE(?, owner_name),"
+                            + "       update_time = ? "
+                            + " WHERE statement_id = ? AND category = ? AND COALESCE(flow_id, 0) = ?"
+                            + "   AND COALESCE(transaction_id, 0) = ? AND deleted = 0",
+                    cleared, snapReason, snap.get("owner_user_id"), snap.get("owner_name"),
+                    now, statementId, cat, flowKey, txnKey);
+            if (updated > 0) {
+                restored++;
+                continue;
+            }
+            // 主体已不存在（底层流水被删/移出期间/金额变化导致不再识别）→ 禁止静默丢弃
+            lost++;
+            String subjectKey = cat + ":" + (flowKey > 0 ? "flow_id=" + flowKey : "transaction_id=" + txnKey);
+            String desc = "调节表 " + statementId + " 重算后人工处置丢失：主体键=" + subjectKey
+                    + "，原 reason 快照=" + (snapReason == null ? "<NULL>" : snapReason)
+                    + "，丢失原因=重算自动识别未再产出该主体（底层流水被删除/移出期间/金额变化）"
+                    + "，操作人=" + userName;
+            String dataJson = "{\"statementId\":" + statementId + ",\"subjectKey\":\"" + subjectKey
+                    + "\",\"originalReason\":\"" + (snapReason == null ? "" : snapReason.replace("\"", "'"))
+                    + "\",\"clearedFlag\":" + cleared
+                    + ",\"lostReason\":\"resubject-not-detected-after-recalc\"}";
+            // 审计失败必须让人看见（但不应阻断重算本身）：记 error 日志并继续，最后由 consistency 侧兜底
+            try {
+                jdbc.update("INSERT INTO finance_audit_logs (operator_id, operator_name, operation_type, module,"
+                                + " target_id, target_type, operation_desc, operation_data, create_time, created_by, version) "
+                                + "VALUES (?,?,'RECON_DISPOSITION_LOST','finance',?,'RECON_ITEM',?,?,?,?,0)",
+                        userId, userName, statementId, desc, dataJson, now, userName);
+            } catch (Exception e) {
+                log.error("[RECON_DISPOSITION_LOST] 审计写入失败（需人工补记）：statement={} subject={} err={}",
+                        statementId, subjectKey, e.getMessage());
+            }
+        }
+        if (!dispositionSnapshot.isEmpty()) {
+            log.info("[RECON_DISPOSITION_RESTORED] statement={} restored={} lost={}",
+                    statementId, restored, lost);
+        }
+        // 回填后按「未 cleared」重算合计与 is_balanced（否则本次 generate 存的是重插前的全量合计）
+        if (!dispositionSnapshot.isEmpty()) {
+            // 先把「对侧已被处置」的陈旧歧义标记清掉，再重算合计/is_balanced（否则歧义会以对侧身份复活）
+            int staleCleared = clearStaleAmbiguityMarks(statementId, now);
+            if (staleCleared > 0) {
+                log.info("[RECON_DISPOSITION_RESTORED] statement={} 清理陈旧 AMBIGUOUS 标记 {} 条", statementId, staleCleared);
+            }
+            reconcileStatementFlags(statementId, userId, userName, now);
         }
         return detail(statementId);
     }
@@ -734,6 +804,61 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         return false;
     }
 
+    /**
+     * 重算四类未达账项合计（**只统计 cleared_flag = false 的条目**）。
+     *
+     * <p>语义定案（P4-4，Owner）：</p>
+     * <ul>
+     *   <li><b>RESOLVE = 本条归属对侧，从本侧未达账项合计中移除</b>（对侧已有同额记录，故不重复计入对侧）；</li>
+     *   <li><b>EXEMPT = 判定非歧义，从本侧合计中移除</b>；</li>
+     * </ul>
+     * <p>两者都使本侧合计减少 → adjusted_book/adjusted_bank 随之变化 → is_balanced 的算式才真的变。
+     * book_balance / bank_balance 是账户侧快照，**不在此处改动**。</p>
+     *
+     * @return {a, b, c, d}（单位分）
+     */
+    private long[] recomputeTotals(Long statementId, LocalDateTime now) {
+        java.util.Map<String, Object> t = oneOrNull(
+                "SELECT COALESCE(SUM(amount) FILTER (WHERE category='A'),0) AS a,"
+                        + "       COALESCE(SUM(amount) FILTER (WHERE category='B'),0) AS b,"
+                        + "       COALESCE(SUM(amount) FILTER (WHERE category='C'),0) AS c,"
+                        + "       COALESCE(SUM(amount) FILTER (WHERE category='D'),0) AS d "
+                        + "  FROM reconciliation_items "
+                        + " WHERE statement_id = ? AND deleted = 0 AND cleared_flag = false", statementId);
+        if (t == null) {
+            return new long[]{0L, 0L, 0L, 0L};
+        }
+        return new long[]{
+                ((Number) t.get("a")).longValue(),
+                ((Number) t.get("b")).longValue(),
+                ((Number) t.get("c")).longValue(),
+                ((Number) t.get("d")).longValue()};
+    }
+
+    /**
+     * NEW-8 配套：清掉「对侧已被人工处置」的陈旧 AMBIGUOUS 标记。
+     *
+     * <p>场景：A 条已 RESOLVE（cleared=true），重算重插后 markAmbiguities 只看新插的全量条目，
+     * 会把对侧 C 条重新标成 AMBIGUOUS —— 但那一对其实已经被处置过，歧义不该「复活」。
+     * 这里把「在未 cleared 的条目里已找不到同额对侧候选」的 AMBIGUOUS 前缀剥掉。</p>
+     *
+     * @return 被清理的条数
+     */
+    private int clearStaleAmbiguityMarks(Long statementId, LocalDateTime now) {
+        return jdbc.update(
+                "UPDATE reconciliation_items i SET reason = NULLIF(regexp_replace(COALESCE(i.reason, ''), '^AMBIGUOUS:[[:space:]]*', ''), ''),"
+                        + "       update_time = ? "
+                        + " WHERE i.statement_id = ? AND i.deleted = 0 AND i.cleared_flag = false"
+                        + "   AND COALESCE(i.reason, '') LIKE 'AMBIGUOUS:%'"
+                        + "   AND NOT EXISTS (SELECT 1 FROM reconciliation_items j"
+                        + "                    WHERE j.statement_id = i.statement_id AND j.deleted = 0"
+                        + "                      AND j.cleared_flag = false AND j.amount = i.amount"
+                        + "                      AND COALESCE(j.reason, '') NOT LIKE 'EXEMPTED(%'"
+                        + "                      AND (CASE WHEN j.category IN ('C','D') THEN 1 ELSE 0 END)"
+                        + "                          <> (CASE WHEN i.category IN ('C','D') THEN 1 ELSE 0 END))",
+                now, statementId);
+    }
+
     /** 重算 statement 的歧义数与 is_balanced（歧义清零 + 金额相等 才算平衡） */
     private void reconcileStatementFlags(Long statementId, Long userId, String userName, LocalDateTime now) {
         Integer ambiguous = jdbc.queryForObject(
@@ -750,21 +875,31 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                         + "  HAVING count(*) FILTER (WHERE category IN ('A','B')) > 0 "
                         + "     AND count(*) FILTER (WHERE category IN ('C','D')) > 0"
                         + ") t", Integer.class, statementId);
+        // P4-4：四类合计必须按「未 cleared」的条目重算 —— 否则 RESOLVE/EXEMPT 之后
+        // 「改为对侧归属 / 判定非歧义」在金额上完全没体现（合计与 adjusted_* 都是生成时的旧值）。
+        // 语义：RESOLVE / EXEMPT 都是「把本条从**本侧**未达账项合计中移除」（对侧已有同额记录，不重复计入对侧）。
+        long[] totals = recomputeTotals(statementId, now);
+        long a = totals[0], b = totals[1], c = totals[2], d = totals[3];
         java.util.Map<String, Object> row = oneOrNull(
-                "SELECT adjusted_book_balance, adjusted_bank_balance FROM reconciliation_statements WHERE statement_id = ?",
-                statementId);
+                "SELECT book_balance, bank_balance, adjusted_book_balance, adjusted_bank_balance "
+                        + "  FROM reconciliation_statements WHERE statement_id = ?", statementId);
         if (row == null) {
             throw err("调节表不存在：" + statementId);
         }
-        long adjBook = ((Number) row.get("adjusted_book_balance")).longValue();
-        long adjBank = ((Number) row.get("adjusted_bank_balance")).longValue();
+        // book_balance / bank_balance 是账户侧快照，**不因处置变化**；adjusted_* 由它们 + 新合计推出
+        long bookBalance = row.get("book_balance") == null ? 0 : ((Number) row.get("book_balance")).longValue();
+        long bankBalance = row.get("bank_balance") == null ? 0 : ((Number) row.get("bank_balance")).longValue();
+        long adjBook = bookBalance + c - d;
+        long adjBank = bankBalance + a - b;
         int sameAmountCnt = sameAmount == null ? 0 : sameAmount;
         // 三个条件同时满足才算平衡：金额相等 + 无 AMBIGUOUS 前缀 + 无「未 EXEMPT 的同额两侧并存」
         boolean balanced = adjBook == adjBank && (ambiguous == null || ambiguous == 0) && sameAmountCnt == 0;
-        jdbc.update("UPDATE reconciliation_statements SET is_balanced = ?, update_time = ?, version = version + 1 "
-                + " WHERE statement_id = ?", balanced, now, statementId);
-        log.info("[RECON_AMBIGUITY] statement={} 剩余歧义={} 同额两侧(非EXEMPT)={} 金额相等={} is_balanced={}",
-                statementId, ambiguous, sameAmountCnt, adjBook == adjBank, balanced);
+        jdbc.update("UPDATE reconciliation_statements SET uncleared_in_credit = ?, uncleared_in_debit = ?,"
+                + " uncleared_out_credit = ?, uncleared_out_debit = ?, adjusted_book_balance = ?, adjusted_bank_balance = ?,"
+                + " is_balanced = ?, update_time = ?, version = version + 1 WHERE statement_id = ?",
+                a, b, c, d, adjBook, adjBank, balanced, now, statementId);
+        log.info("[RECON_AMBIGUITY] statement={} 剩余歧义={} 同额两侧(非EXEMPT)={} A/B/C/D={}/{}/{}/{} adjusted={}/{} is_balanced={}",
+                statementId, ambiguous, sameAmountCnt, a, b, c, d, adjBook, adjBank, balanced);
     }
 
     private void validateItems(List<StatementItemRequest> items, LocalDate ps, LocalDate pe) {
