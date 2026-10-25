@@ -2145,3 +2145,95 @@ if (cand == null || cand == 0) throw err("对侧候选不存在或金额不一�
 | **`e2e_ambiguity_resolve.py`** | **29/29 PASS，exit 0** |
 | `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
 | `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
+---
+
+## 62. P4-4 前置：RESOLVE 语义澄清 + 语义落地 + NEW-8 修复 + A26/A27（2026-10-25 23:00–23:35）
+
+### 62.1 RESOLVE 语义澄清（Owner 三问的正式答复）
+
+**① RESOLVE 时 category 改了吗？—— 没有，而且不能改。**
+`:654` 只做 `UPDATE reconciliation_items SET cleared_flag = true, reason = ?, update_time = ?`，`category/amount/flow_id/transaction_id` 一律不动。原因（两条硬约束，代码在 `reconciliation_items` DDL）：
+- `ck_recon_items_ref_by_category`：A/B 必须 `flow_id` 非空、C/D 必须 `transaction_id` 非空 —— 把 A 改成 C 就得凭空造一个 `transaction_id`；
+- `uk_recon_items_statement_subject (statement_id, category, flow_id, transaction_id)` —— 硬搬会与对侧那条撞唯一键。
+→ 因此 **RESOLVE 的语义定案为「确认本条归属对侧，从本侧未达账项合计中移除」**（对侧已存在同额记录，故不重复计入对侧）。**不是「修改 category 字段」**。
+
+**② cleared_flag=true 的条目，原来仍计入 A/B/C/D 合计 —— 这是真漏洞，本轮已修。**
+修前：`a/b/c/d` 只在 `generate()` 时由 `sum(items,...)` 算出并**存库**（`:135-138`），`reconcileStatementFlags` 只重算 `is_balanced`，**用的是库里的 `adjusted_*`** → 处置后合计一分不动，用户选「归属 C 类」等于什么都没发生（「标记已读」冒充「修正归属」）。
+修后（fund-500，`ReconciliationStatementServiceImpl`）：
+- `:820-844` 新增 `recomputeTotals()`：`SUM(amount) FILTER (WHERE category='X') … WHERE deleted=0 AND cleared_flag=false`；
+- `:881` `reconcileStatementFlags` 先调它，再按**账户快照**（`book_balance`/`bank_balance`，不动）推出 `adjBook = book + c − d`、`adjBank = bank + a − b`；
+- `:897-901` 一次性写回 `uncleared_in_credit/debit`、`uncleared_out_credit/debit`、`adjusted_book_balance`、`adjusted_bank_balance`、`is_balanced`。
+**真联调实测（statement 73，pos-ux）**：处置 A 条前 `A=1000 / adjBank=89670 / amb=2`；处置后 **`A=0`（减少 1000）/ `adjBank=88670`（−1000）/ `amb=1`**；页面四类卡 `cat-A` 的 `data-amount-fen` **1000 → 0**、条数仍为 1（item 未删、category 未改）→ 语义与前端文案一致。
+
+**③ 前端文案已对齐（不再是「将 A 类改为 C 类」）**：
+- 处置方式标签：`改类别（对侧同额）` → **`确认归属对侧`**；
+- 二次确认：**`确认本条归属 C 类，从当前 A 类未达账项合计中移除，涉及金额 1000 分，确认？`**（正则 `^确认本条归属 ([A-D]) 类，从当前 ([A-D]) 类未达账项合计中移除，涉及金额 (\d+) 分，确认？$`，类别必须互为对侧）；
+- 提示语新增「本操作不修改该条目的类别字段，仅将其从本侧未达账项合计中移除（对侧已存在同额记录）」；
+- 时间线渲染：`已确认归属 C 类（对侧记录 txn#714），已从 A 类合计移除`。
+
+**④ `ambiguousItemCount` 完整 SQL（`detail()`，`:346-359`）**
+```sql
+SELECT count(*) FROM reconciliation_items i
+ WHERE i.statement_id = ? AND i.deleted = 0
+   AND i.cleared_flag = false                       -- 外层：处置过的条目不计数
+   AND ( COALESCE(i.reason,'') LIKE 'AMBIGUOUS:%'
+         OR EXISTS ( SELECT 1 FROM reconciliation_items j
+                      WHERE j.statement_id = i.statement_id AND j.deleted = 0
+                        AND j.cleared_flag = false  -- 对侧候选也必须未处置
+                        AND j.amount = i.amount
+                        AND COALESCE(j.reason,'') NOT LIKE 'EXEMPTED(%'   -- 纵深防御（当前冗余）
+                        AND (CASE WHEN j.category IN ('C','D') THEN 1 ELSE 0 END)
+                            <> (CASE WHEN i.category IN ('C','D') THEN 1 ELSE 0 END) ) )
+```
+`NOT LIKE 'EXEMPTED(%'` **当前冗余**（P4-3 起 EXEMPT 在同一句 UPDATE 里同时写 `cleared_flag=true` 与前缀，恒等绑定）；实测「`reason` 已 `EXEMPTED(` 但 `cleared_flag=false`」= **0 行**、「已 `已处置(` 但 flag=false」= **0 行**。保留仅作纵深防御（挡旧构建/人工改库），已在注释说明。
+
+### 62.2 NEW-8 修复（重算保留人工处置）
+- `:125-135` 重算（`DELETE FROM reconciliation_items`）**之前**快照：`(category, COALESCE(flow_id,0), COALESCE(transaction_id,0)) → (cleared_flag, reason, owner_user_id, owner_name)`，只取 `cleared_flag=true` 或 reason 以 `已处置(`/`EXEMPTED(` 开头的行；
+- `:211-250` 重插后按**主体键**回填 cleared/reason/owner；匹配不到 → 写 `RECON_DISPOSITION_LOST` 审计（`target_type='RECON_ITEM'`，desc 含 statementId + 主体键 + **原 reason 快照** + 丢失原因）；**禁止静默丢弃**；
+- `:255` 打日志 `[RECON_DISPOSITION_RESTORED] restored=%d lost=%d`；
+- `:847-873` 配套 `clearStaleAmbiguityMarks`：清掉「对侧已被处置」的陈旧 `AMBIGUOUS:` 前缀（否则重算会把对侧重新标歧义 → 歧义复活）。
+**实测**：force 重算后 item `26971|A|cleared=true|reason=已处置(AMBIGUITY->C:749)…`、`ambiguousItemCount=0`、日志 `restored=1 lost=0`；丢失场景产生 `RECON_DISPOSITION_LOST`（log_id=1504/1506）。
+
+### 62.3 两个边界的确认
+
+**边界 A：item 被重算删除后，`originalReason` 还能追溯吗？—— 能，追溯链已实测闭合。**
+`RECON_DISPOSITION_LOST.operation_data` 字段齐备：`{statementId, subjectKey, originalReason, clearedFlag, lostReason}`，另表列有 `target_id=statementId`、`target_type='RECON_ITEM'`、`operator_id/name`、`create_time`。实测链：
+```sql
+-- 审计 → 主体键 → 原业务
+split_part(split_part(operation_data::json->>'subjectKey','flow_id=',2),':',1)  → 4290
+SELECT flow_id, flow_no, account_id, flow_direction, amount, business_date, status FROM fund_flows WHERE flow_id = 4290;
+-- 4290 | FF202610250837 | 25 | 1 | 888 | 2026-10-25 | 2
+```
+注意两点（已记录）：① `subjectKey` **不含金额**，定位后要以底层记录自身 `amount` 为准（实测夹具 item 1000 分 vs flow 888 分）；② `originalReason` 是删前完整快照（含对侧 ref），item 行不存在也能还原「当初判给谁」。C/D 侧 `subjectKey` 用 `transaction_id`，直落 `bank_transactions`。
+
+**边界 B：`ambiguousItemCount` 是否排除 cleared？—— 是**，外层 `i.cleared_flag = false` + 子查询 `j.cleared_flag = false` 双重排除（SQL 见 62.1 ④）。
+
+### 62.4 新增巡检 A26 / A27
+| 断言 | 类型 | 口径 |
+|---|---|---|
+| **A26** | INFO | `count(*) FROM finance_audit_logs WHERE operation_type='RECON_DISPOSITION_LOST'` —— 「重算吃掉了人工处置，需人工复核」；当前 **2 行**（log_id 1504/1506） |
+| **A27** | **判定** | `reconciliation_statements`（**仅 DRAFT**）的 `uncleared_*`/`adjusted_*` 与「按 `cleared_flag=false` 聚合的 items」逐字段比对，**差 1 分即 FAIL** —— 防有人绕过 service 直改表；当前 **rows=0 PASS**（DRAFT 仅 statement 35，逐字段对拍相等） |
+编号**追加**（A26/A27），A1–A25 一字未改；判定项 15 → **16 条**，INFO 10 → 11 条。
+
+### 62.5 P4-4 E2E 收口（36 PASS / 0 FAIL / 1 NOT_READY，exit=2）
+**cell 选址教训**：先试 account 24（当日 **652 条流水**）→ statement 装进 117 歧义/679 未处置，且别人一次 force 就重建 items → 中途 `item 在 items[] 中消失`；改用 **account 23（当日 0 条流水）**后全绿。**E2E 造数必须选「当日流水为 0」的安静 cell**。
+| 段 | 断言 | 结果 |
+|---|---|---|
+| A | cell 守卫 / A19 基线 / 流水白名单 / 造歧义+force / 夹具配平（`bank = bookBalance`）/ statement 78·歧义 3 / 新鲜度守卫 / 同额并存 / A19 变红 | PASS |
+| A | 行级按钮 / **无批量按钮** / **多候选逐个可选中** / 下拉只含同额+无自由输入 / **新确认文案** / 请求体三字段 / 响应 VO / 计数减少 | PASS |
+| A | **P4-4a 本侧合计减少 == 该条金额** / **P4-4a `is_balanced == (adjBook==adjBank)`** / RESOLVE 后 `clearedFlag=true`+`已处置(AMBIGUITY->…` / timeline | PASS |
+| A | 清空所有未处置条目 / **EXEMPT-1（DB 为准）/ EXEMPT-2（审计 originalReason）/ EXEMPT-3（timeline）** | PASS |
+| B | 前置 `ambiguousItemCount=0` → **`isBalanced=true`** → 页面 `data-balanced=true` → **A19 该表消失** | PASS |
+| C | **NEW-8 硬门禁**：force 重算后歧义仍 0 / 同主体键 clearedFlag+reason 保持 | PASS |
+| D | **P4-4d 丢失审计：NOT_READY（未覆盖）** —— 同额匹配下 `item.flow_id` 与本次白名单流水无交集；**未改任何历史流水、未伪造结论**；该项由后端单测级验证覆盖（62.3 的追溯链） | NOT_READY |
+
+### 62.6 最终回归
+| 套件 | 结果 |
+|---|---|
+| `consistency_check.py` | **16 判定项全 PASS / 0 FAIL**（A19=0、**A26=2 INFO**、**A27=0 PASS**），TOTAL FAIL=0，exit 0 |
+| `schema_guard.py` / `ui_e2e_payment.py` / `e2e_recon_workbench.py` / `e2e_store_recon.py` | exit 0 |
+| `e2e_statement_flow.py` / `e2e_fund_overview.py` / `e2e_p35_bl9_bl5.py` | exit 0 |
+| `e2e_ambiguity_resolve.py` | **36 PASS / 0 FAIL / 1 NOT_READY**（见 62.5） |
+| `seq_concurrency_check_p35.py` | **7 PASS / 0 FAIL**（号段增量 200 = 落库增量 200、余额 1,412,536 对拍一致） |
+| `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
+| `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
