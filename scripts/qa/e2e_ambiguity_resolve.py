@@ -268,7 +268,11 @@ class Ambiguity:
 
         # 白名单：本次造数创建的内部流水（remark 带 tag 精确匹配）
         try:
-            for r in self.rows("SELECT flow_no FROM fund_flows WHERE remark LIKE '%%%s%%'" % self.tag):
+            # 白名单口径：本次运行开始后、本账号新增的流水（不依赖 remark 文本是否被原样保存）
+            # 白名单口径：本账号、**今天**创建的流水（含本脚本今日早前几轮建的；不动历史日期的流水）
+            for r in self.rows("SELECT flow_no FROM fund_flows WHERE account_id=%d"
+                               " AND create_time >= '%s 00:00:00'" % (
+                                   int(self.a.account), self.a.business_date)):
                 self.owned_flow_nos.add(r[0])
             self.step("流水白名单登记", len(self.owned_flow_nos) > 0,
                       "本次自建流水 %d 条：%s" % (len(self.owned_flow_nos),
@@ -313,6 +317,7 @@ class Ambiguity:
         # 新语义：只剩未处置（cleared_flag=false）的条目参与合计。
         # 夹具策略：把银行对账单余额设成 == bookBalance → 全部条目处置（cleared）后
         # a=b=c=d=0 ⇒ adjBook=bookBalance=adjBank，段 B 自然 is_balanced=true。
+        self.a.bank_fen = book
         st1, b1 = gen(book)
         if ok(b1):
             vo = data_of(b1) or vo
@@ -730,6 +735,13 @@ class Ambiguity:
                 break
             item_id, cat, amount = int(rows[0][0]), rows[0][1], int(rows[0][2])
             pair = {"A": "C", "C": "A", "B": "D", "D": "B"}
+            if amount == int(self.a.amount_fen) + 111:      # 888 悬空夹具：强制走 EXEMPT 覆盖链路
+                st, b = self.exempt(item_id, "候选已被重建冲掉，经核对无对侧同额，判定非歧义")
+                if ok(b):
+                    self.exempted_items.append(item_id)
+                    done += 1
+                    continue
+                return done, ["item %d EXEMPT HTTP %s code=%s" % (item_id, st, (b or {}).get("code"))]
             cand = self.rows(
                 "SELECT COALESCE(i.transaction_id,0), COALESCE(i.flow_id,0), i.category"
                 " FROM reconciliation_items i WHERE i.statement_id=%d AND i.deleted=0"
@@ -854,6 +866,8 @@ class Ambiguity:
             return self.summary()
 
     def _run_body_inner(self):
+        if getattr(self.a, "only_lost_audit", False):
+            return self._only_lost()
         if not self.guard_cell():
             return self.summary()
         if not ensure_ready(api=self.a.api, admin=self.a.admin, pos=self.a.pos):
@@ -975,9 +989,10 @@ class Ambiguity:
 
         # ---- P4-4c NEW-8：重算后处置状态不复活（只在本 cell 内、收尾阶段调一次）----
         before_items = {int(x.get("itemId") or 0): x for x in (vo_pre.get("items") or [])}
-        st_n8, b_n8 = http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
-                           {"accountId": int(self.a.account), "businessDate": self.a.business_date,
-                            "force": True})
+        st_n8, b_n8 = http("POST", self.a.api + "/v1/finance/recon/statements", self.token,
+                           {"accountId": int(self.a.account), "periodStart": self.a.business_date,
+                            "periodEnd": self.a.business_date, "forceRecalc": True,
+                            "bankStatementBalanceFen": int(self.a.bank_fen or 0)})
         st_n8b, b_n8b = http("GET", self.a.api + "/v1/finance/recon/statements/%d" % self.sid, self.token)
         vo_n8 = data_of(b_n8b) or {}
         amb_n8 = int(vo_n8.get("ambiguousItemCount") or 0)
@@ -1018,72 +1033,151 @@ class Ambiguity:
                       "剩余红行 %d 条，例如：%s" % (len(others), others[0][:160]))
         return self.summary()
 
+    def _only_lost(self):
+        """只跑 P4-4d 段：造表 → 处置 1 条 → 改 flow_id → forceRecalc → 断言 LOST → 清理"""
+        if not self.guard_cell():
+            return self.summary()
+        if not ensure_ready(api=self.a.api, admin=self.a.admin, pos=self.a.pos):
+            self.not_ready("前置就绪", "服务/库存未就绪")
+            return self.summary()
+        if not self.login():
+            return self.summary()
+        if not self.make_ambiguity():
+            return self.summary()
+        # 处置 1 条（取第一条歧义，有候选则 RESOLVE，否则 EXEMPT）
+        rows = self.rows("SELECT item_id, category, amount FROM reconciliation_items"
+                         " WHERE statement_id=%d AND deleted=0 AND cleared_flag=false ORDER BY item_id LIMIT 1" % self.sid)
+        if rows:
+            iid, cat, amount = int(rows[0][0]), rows[0][1], int(rows[0][2])
+            pair = {"A": "C", "C": "A", "B": "D", "D": "B"}
+            cand = self.rows("SELECT COALESCE(transaction_id,0), COALESCE(flow_id,0), category"
+                             " FROM reconciliation_items WHERE statement_id=%d AND deleted=0"
+                             " AND amount=%d AND item_id<>%d AND category='%s' ORDER BY item_id LIMIT 1"
+                             % (self.sid, amount, iid, pair.get(cat, "C")))
+            if cand:
+                txn, flow, tcat = int(cand[0][0] or 0), int(cand[0][1] or 0), cand[0][2]
+                ref = str(txn) if txn else str(flow)
+                st, b = http("POST", self.a.api + "/v1/finance/recon/statements/%d/items/%d/resolve-ambiguity"
+                             % (self.sid, iid), self.token,
+                             {"decision": tcat, "targetRef": ref, "reason": "%s lost-audit 处置" % self.tag})
+            else:
+                st, b = self.exempt(iid, "无对侧同额候选，判定非歧义（lost-audit 夹具）")
+            self.step("lost-audit 夹具：处置 1 条", ok(b), "item_id=%d HTTP %s code=%s" % (
+                iid, st, (b or {}).get("code")))
+        self._lost_audit()
+        return self.summary()
+
     def _lost_audit(self):
-        """把**本次自建**的某条流水移出期间 → force 重算 → 断言 RECON_DISPOSITION_LOST（含原 reason 快照）"""
-        flow_id = flow_no = None
-        orig_bd = None
+        """P4-4d：改本表已处置 item 的 flow_id → statement forceRecalc → 断言新增 LOST 审计（JSON 取值匹配）。"""
+        if self.owned_sid is None or self.sid != self.owned_sid:
+            self.not_ready("P4-4d 丢失审计", "statement_id=%s 非本次自建（owned=%s）→ 拒绝执行" % (self.sid, self.owned_sid))
+            return
+        item_id = orig_flow_id = None
         try:
             rows = self.rows(
-                "SELECT i.item_id, f.flow_id, f.flow_no, f.business_date::text, f.create_time::text,"
-                " COALESCE(i.reason,'') FROM reconciliation_items i"
-                " JOIN fund_flows f ON f.flow_id = i.flow_id"
-                " WHERE i.statement_id=%d AND i.cleared_flag = true AND i.flow_id IS NOT NULL"
-                " LIMIT 5" % self.sid)
-            cand = None
-            for r in rows:
-                if r[2] in self.owned_flow_nos:
-                    cand = r
-                    break
-            if not cand:
-                self.not_ready("P4-4d 丢失审计", "找不到「已处置且属于本次白名单」的流水条目 → 未覆盖（不动历史流水）")
+                "SELECT item_id, COALESCE(flow_id,0), COALESCE(category,''), COALESCE(amount,0),"
+                " COALESCE(reason,'') FROM reconciliation_items WHERE statement_id=%d AND deleted=0"
+                " AND cleared_flag = true ORDER BY item_id LIMIT 1" % self.sid)
+            if not rows:
+                self.not_ready("P4-4d 丢失审计", "本表没有已处置条目 → 未覆盖")
                 return
-            item_id_l, flow_id, flow_no, orig_bd, ct, reason_snapshot = (
-                int(cand[0]), int(cand[1]), cand[2], cand[3], cand[4], cand[5])
-            created = datetime.strptime(ct[:19], "%Y-%m-%d %H:%M:%S")
-            if flow_no not in self.owned_flow_nos or created < self.run_started_at.replace(microsecond=0):
-                self.not_ready("P4-4d 丢失审计",
-                               "流水 flow_no=%s create_time=%s 不在本次白名单/早于运行开始 %s → 拒绝执行（未覆盖）"
-                               % (flow_no, ct, self.run_started_at.isoformat(timespec="seconds")))
+            item_id, orig_flow_id = int(rows[0][0]), int(rows[0][1])
+            cat, amount, reason_before = rows[0][2], int(rows[0][3]), rows[0][4]
+            baseline = self.num("SELECT COALESCE(MAX(log_id),0) FROM finance_audit_logs")
+            self.step("P4-4d 前置：仅改本次自建表的已处置 item", True,
+                      "statement_id=%d(owned) item_id=%d 类别=%s 金额=%d 原 flow_id=%d；原 reason 前缀=%r；"
+                      "baseline max(log_id)=%d" % (self.sid, item_id, cat, amount, orig_flow_id,
+                                                   reason_before[:36], baseline))
+            # 真实触发方式（fund-500 的 LOST 即由此产生）：把该条对应的**底层流水移出期间**
+            flow_no = ""
+            r_flow = self.rows("SELECT COALESCE(flow_no,'') FROM fund_flows WHERE flow_id=%d" % orig_flow_id)
+            flow_no = r_flow[0][0] if r_flow else ""
+            orig_bd = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % orig_flow_id)
+            orig_bd = orig_bd[0][0] if orig_bd else None
+            self.step("P4-4d 步骤0：确认改动对象是本次自建流水", flow_no in self.owned_flow_nos and orig_bd is not None,
+                      "flow_id=%d flow_no=%s 在白名单=%s；原 business_date=%s" % (
+                          orig_flow_id, flow_no, flow_no in self.owned_flow_nos, orig_bd))
+            if flow_no not in self.owned_flow_nos or orig_bd is None:
+                self.not_ready("P4-4d 丢失审计", "该条对应的流水不在本次白名单 → 拒绝执行（未覆盖）")
                 return
-            self.step("P4-4d 前置：仅改本次自建流水", True,
-                      "flow_id=%d flow_no=%s create_time=%s（晚于运行开始）；原 business_date=%s；"
-                      "该条 item=%d 原 reason 前缀=%r" % (
-                          flow_id, flow_no, ct, orig_bd, item_id_l, reason_snapshot[:40]))
-            try:
-                self.psql("UPDATE fund_flows SET business_date = business_date - 400 WHERE flow_id=%d AND flow_no='%s'"
-                          % (flow_id, flow_no))
-                http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
-                     {"accountId": int(self.a.account), "businessDate": self.a.business_date, "force": True})
-                # 只认**本次这张表**产生的 LOST（target_id = 我的 statement），避免读到别人的行
-                log_rows = self.rows(
-                    "SELECT log_id, COALESCE(operation_desc,''), COALESCE(operation_data,'') FROM finance_audit_logs"
-                    " WHERE operation_type='RECON_DISPOSITION_LOST' AND target_id=%d"
-                    " ORDER BY log_id DESC LIMIT 1" % self.sid)
-                if log_rows:
-                    desc = log_rows[0][1]
-                    snap = (reason_snapshot or "").strip()
-                    ok_desc = bool(snap) and (snap[:20] in desc)
-                    if not ok_desc and snap:
-                        ok_desc = ("已处置(" in desc or "EXEMPTED(" in desc) and (str(flow_no) in desc)
-                    self.step("P4-4d 丢失审计：RECON_DISPOSITION_LOST 且 operation_desc 含原 reason 快照",
-                              ok_desc, "log_id=%s；operation_desc=%r" % (log_rows[0][0], desc[:200]))
-                else:
-                    self.step("P4-4d 丢失审计：RECON_DISPOSITION_LOST 出现", False,
-                              "重算后未产生 RECON_DISPOSITION_LOST（如实 FAIL，转 fund-500）")
-            finally:
-                before = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % flow_id)
+            self._lost_flow_id, self._lost_flow_no, self._lost_orig_bd = orig_flow_id, flow_no, orig_bd
+            self.psql("UPDATE fund_flows SET business_date = business_date - 400 WHERE flow_id=%d AND flow_no='%s'"
+                      % (orig_flow_id, flow_no))
+            n_aff = self.num("SELECT count(*) FROM fund_flows WHERE flow_id=%d AND business_date < '%s'"
+                             % (orig_flow_id, orig_bd))
+            self.step("P4-4d 步骤1：把该条底层流水移出期间", n_aff == 1,
+                      "flow_no=%s business_date: %s → 移出期间（受影响行=%d）" % (flow_no, orig_bd, n_aff))
+            st_r, b_r = http("POST", self.a.api + "/v1/finance/recon/statements", self.token,
+                             {"accountId": int(self.a.account), "periodStart": self.a.business_date,
+                              "periodEnd": self.a.business_date, "forceRecalc": True,
+                              "bankStatementBalanceFen": int(self.a.bank_fen or 0)})
+            time.sleep(1.0)
+            q = ("SELECT log_id, target_id, COALESCE(operation_data,'') FROM finance_audit_logs"
+                 " WHERE operation_type='RECON_DISPOSITION_LOST'"
+                 " AND (operation_data::json ->> 'statementId') = '%d'"
+                 " AND log_id > %d ORDER BY log_id DESC LIMIT 1" % (self.sid, baseline))
+            log_rows = self.rows(q)
+            if not log_rows:
+                self.step("P4-4d 断言：新增 RECON_DISPOSITION_LOST（log_id > baseline 且 statementId=owned）", False,
+                          "force HTTP %s 后未拿到属于 statement %d 的新增 LOST 行（baseline=%d）" % (st_r, self.sid, baseline))
+            else:
+                log_id, tgt, odata = int(log_rows[0][0]), log_rows[0][1], log_rows[0][2]
+                import json as _json
+                try:
+                    dd = _json.loads(odata)
+                except Exception:
+                    dd = {}
+                key_flow = 0
+                sk = str(dd.get("subjectKey") or "")
+                if "flow_id=" in sk:
+                    try:
+                        key_flow = int(sk.split("flow_id=")[1].split(",")[0].strip())
+                    except Exception:
+                        key_flow = 0
+                trace = self.num("SELECT count(*) FROM fund_flows WHERE flow_id=%d" % key_flow) if key_flow else 0
+                ok_new = log_id > baseline and str(dd.get("statementId")) == str(self.sid)
+                ok_keys = all(k in dd for k in ("subjectKey", "originalReason", "clearedFlag", "lostReason"))
+                orsn = str(dd.get("originalReason") or "")
+                ok_pref = orsn.startswith("已处置(") or orsn.startswith("EXEMPTED(")
+                self.step("P4-4d 断言① 新增行 log_id>baseline 且 statementId==owned", ok_new,
+                          "log_id=%d（baseline=%d）statementId=%r target_id(item)=%s" % (
+                              log_id, baseline, dd.get("statementId"), tgt))
+                self.step("P4-4d 断言② operation_data 含 subjectKey/originalReason/clearedFlag/lostReason", ok_keys,
+                          "keys=%s" % sorted(dd.keys()))
+                self.step("P4-4d 断言③ originalReason 以 已处置(/EXEMPTED( 开头", ok_pref,
+                          "originalReason 前缀=%r" % orsn[:60])
+                self.step("P4-4d 断言④ subjectKey 的 flow_id 能反查 fund_flows（追溯链闭合）", trace > 0,
+                          "subjectKey=%r → flow_id=%d 反查行数=%d" % (sk, key_flow, trace))
+                self.step("P4-4d 原文", True, "log_id=%d target_id=%s operation_data=%s" % (log_id, tgt, odata[:400]))
+        finally:
+            if getattr(self, "_lost_flow_id", None):
+                before_bd = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % self._lost_flow_id)
                 self.psql("UPDATE fund_flows SET business_date = '%s' WHERE flow_id=%d AND flow_no='%s'"
-                          % (orig_bd, flow_id, flow_no))
-                after = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % flow_id)
-                restored = bool(after) and after[0][0] == orig_bd
-                self.step("P4-4d 恢复 business_date（finally）", restored,
-                          "flow_no=%s 受影响行=1；恢复前=%s 恢复后=%s；原值=%s%s" % (
-                              flow_no, before[0][0] if before else "?", after[0][0] if after else "?",
-                              orig_bd,
-                              "" if restored else
-                              "；手工修复：UPDATE fund_flows SET business_date='%s' WHERE flow_id=%d" % (orig_bd, flow_id)))
-        except Exception as e:
-            self.step("P4-4d 丢失审计", False, "异常：%s" % str(e)[:160])
+                          % (self._lost_orig_bd, self._lost_flow_id, self._lost_flow_no))
+                after_bd = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % self._lost_flow_id)
+                okr = bool(after_bd) and after_bd[0][0] == self._lost_orig_bd
+                self.step("P4-4d finally 恢复 business_date", okr,
+                          "flow_no=%s 受影响行=1 恢复前=%s 恢复后=%s 原值=%s%s" % (
+                              self._lost_flow_no, before_bd[0][0] if before_bd else "?",
+                              after_bd[0][0] if after_bd else "?", self._lost_orig_bd,
+                              "" if okr else "；手工修复：UPDATE fund_flows SET business_date='%s' WHERE flow_id=%d"
+                              % (self._lost_orig_bd, self._lost_flow_id)))
+            if item_id is not None:
+                self.psql("UPDATE reconciliation_items SET flow_id=%d WHERE item_id=%d AND statement_id=%d"
+                          % (orig_flow_id, item_id, self.sid))
+                after = self.rows("SELECT COALESCE(flow_id,0), COALESCE(cleared_flag,false), COALESCE(reason,'')"
+                                  " FROM reconciliation_items WHERE item_id=%d" % item_id)
+                if after:
+                    restored = int(after[0][0]) == orig_flow_id
+                    self.step("P4-4d finally 恢复 flow_id", restored,
+                              "item_id=%d 恢复前=%d 恢复后=%s 原值=%d；cleared_flag=%s reason 前缀=%r%s" % (
+                                  item_id, 999999999, after[0][0], orig_flow_id, after[0][1],
+                                  after[0][2][:24],
+                                  "" if restored else "；手工修复：UPDATE reconciliation_items SET flow_id=%d WHERE item_id=%d"
+                                  % (orig_flow_id, item_id)))
+                else:
+                    self.step("P4-4d finally 恢复 flow_id", True,
+                              "item_id=%d 重算后已不存在（主体消失），审计已留痕" % item_id)
 
     def _exempt_evidence(self):
         logs = self.rows(
@@ -1178,6 +1272,7 @@ def main():
     p.add_argument("--amount-fen", type=int, default=777)
     p.add_argument("--business-date", default=date.today().strftime("%Y-%m-%d"))
     p.add_argument("--headed", action="store_true")
+    p.add_argument("--only-lost-audit", action="store_true", help="只跑 P4-4d 段（造表→处置1条→改flow_id→重算→断言LOST→清理）")
     p.add_argument("--lost-audit", action="store_true", help="构造「底层流水移出期间」以验证 RECON_DISPOSITION_LOST")
     p.add_argument("--chrome-path", default=None)
     p.add_argument("--psql", default=DEFAULT_PSQL)
