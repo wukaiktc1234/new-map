@@ -38,7 +38,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from e2e_setup import wait_for_data_attr  # 取样竞态机制
+from e2e_setup import wait_for_data_attr, READY_NONEMPTY  # 取样竞态机制
 
 try:
     from playwright.sync_api import sync_playwright
@@ -266,8 +266,9 @@ class StatementE2E:
                       wait_until="domcontentloaded", timeout=120000)
             page.wait_for_selector('[data-test="cat-A"]', timeout=60000)
             for cat in ("A", "B", "C", "D"):
-                cnt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-count", timeout=30000)
-                amt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-amount-fen", timeout=30000)
+                # 四类卡在详情未加载时不渲染（无占位 0），故用 READY_NONEMPTY；'0' 是合法计数（如 D 类）
+                cnt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-count", READY_NONEMPTY, timeout=30000)
+                amt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-amount-fen", READY_NONEMPTY, timeout=30000)
                 want_cnt, want_amt = self.sql_sums.get(cat, (0, 0))
                 same = (int(cnt or -1) == want_cnt) and (int(amt or -1) == want_amt)
                 detail.append("%s 页面(%s条/%s分) vs SQL(%s条/%s分)%s" % (

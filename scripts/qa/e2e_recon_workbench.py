@@ -33,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from e2e_setup import wait_for_data_attr, read_data_attr  # 取样竞态机制（见 e2e_setup 头部规则）
+from e2e_setup import wait_for_data_attr, read_data_attr, READY_NONEMPTY  # 取样竞态机制（见 e2e_setup 头部规则）
 
 try:
     from playwright.sync_api import sync_playwright
@@ -325,7 +325,7 @@ class ReconE2E:
         txt = self.read_text('[data-test="summary-diff-count"]')
         try:
             attr = wait_for_data_attr(self.page, '[data-test="summary-diff-count"]',
-                                      "data-difference-count", timeout=30000)
+                                      "data-difference-count", READY_NONEMPTY, timeout=30000)
         except Exception as e:
             attr = None
             print("  [WARN] 读取 data-difference-count 失败：%s" % str(e)[:140])
@@ -352,8 +352,9 @@ class ReconE2E:
             state = "not-ready(%s)" % str(e)[:80]
         attr = None
         try:
+            # 有就绪标记 data-amount-state=ready，按标记等（而非「非空即就绪」）
             attr = wait_for_data_attr(self.page, '[data-test="summary-diff-amount"]',
-                                      "data-diff-amount-fen", timeout=30000)
+                                      "data-diff-amount-fen", READY_NONEMPTY, timeout=30000)
         except Exception as e:
             print("  [WARN] 读取 data-diff-amount-fen 失败：%s" % str(e)[:140])
         txt = self.read_text('[data-test="summary-diff-amount"]')

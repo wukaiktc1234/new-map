@@ -30,7 +30,7 @@ E2E 前置准备（可被其它 E2E 脚本 import 复用）
                      AC-46b 反而读到正确值 104900。
 结论（硬规则）：禁止 element.inner_text() / get_attribute() 直接读带 data- 的钩子；
              必须先等就绪标记。统一走本模块的：
-               wait_for_data_attr(page, selector, attr, ready_value=None, timeout=30000)
+               wait_for_data_attr(page, selector, attr, ready_value, timeout=30000)  # ready_value 必填
                read_data_attr(page, selector, attr)   # 仅在「已确认就绪」的场景使用
              读不到就抛异常（异常信息带 selector + attr），不返回 0/空字符串糊过去。
 =====================================================================
@@ -49,26 +49,37 @@ DEFAULT_API = "http://localhost:8081/api"
 DEFAULT_ADMIN = "http://localhost:3002"
 DEFAULT_POS = "http://localhost:3001"
 DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
+
+# 哨兵：表示「属性非空即就绪」。仅当调用方确认该元素在数据未到时不会渲染 0/占位值时才可用。
+READY_NONEMPTY = "__nonempty__"
 STOCK_TARGET = 500
 STOCK_THRESHOLD = 100
 
 
-def wait_for_data_attr(page, selector, attr, ready_value=None, timeout=30000):
-    """等 [selector] 的 [attr] 就绪后返回其值。
+def wait_for_data_attr(page, selector, attr, ready_value, timeout=30000):
+    """等 [selector] 的 [attr] 达到 [ready_value] 后返回其值。**ready_value 必填（无默认值）**。
 
-    ready_value=None：只等属性**非空**（注意：'0' 也算就绪，只有 null/'' 才算未就绪）；
-    ready_value="ready" 等：等待属性**等于**该值。
-    超时抛 RuntimeError，异常信息带 selector 与 attr，便于定位是哪一处钩子没就绪。
+    【为什么必填（Owner 拍板 2026-10-25）】旧版 `ready_value=None` 的语义是「属性非空即就绪」，
+    而 '0' 也算非空 → 若某个 data-* 钩子**没有就绪标记**（如 data-amount-state），页面的占位 0
+    会被当成真实值，直接复现取样竞态。让调用方**必须写出它等的到底是什么状态**，
+    新增钩子时忘记加就绪标记会立刻在调用处暴露，而不是静默读到 0。
+    · 有就绪标记的场景：传标记值，例如 `ready_value='ready'`（配 `data-amount-state`/`data-fee-state`/`data-state`）；
+    · 数值类钩子且**确认**页面在数据未到时不渲染该元素（或渲染的是空串而非 0）：用 `READY_NONEMPTY`；
+    · 超时抛 RuntimeError，异常信息带 selector + attr + ready_value。
 
     实现说明：selector/attr 直接内联进 JS 表达式（不用 arg=），
     因为部分 Playwright 版本 wait_for_function 的 arg 传参不生效，会导致永远等不到。
     """
+    if ready_value is None or ready_value == '':
+        raise ValueError(
+            "wait_for_data_attr 必须显式传 ready_value（不允许 None/空串）；数值类钩子若要"
+            "『非空即就绪』语义，请显式传 READY_NONEMPTY，并确认该元素在数据未到时不会渲染 0")
     js = (
         "() => {const el = document.querySelector(%s); if (!el) return false;"
         " const v = el.getAttribute(%s); if (v === null) return false;"
         " return %s;}"
         % (json.dumps(selector), json.dumps(attr),
-           ("v !== ''" if ready_value is None else "v === %s" % json.dumps(ready_value)))
+           ("v !== ''" if ready_value == READY_NONEMPTY else "v === %s" % json.dumps(ready_value)))
     )
     try:
         page.wait_for_function(js, timeout=timeout)
