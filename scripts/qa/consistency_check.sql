@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A16/A17/A18/A20/A21/A22 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -80,6 +80,10 @@
 --       但 flow_no **不是 FFH 前缀** → 前缀与审计署名不一致（可能伪造 / 历史手工补账）。
 --       **A21 与 A7 分工：A7 只看 created_by + remark token（不看前缀）；前缀异常由 A21 单独报，
 --         不纳入 A7 豁免，也不会让 A7 报红。**
+--   A22 （信息性，不进 TOTAL）**FFH 前缀但无补账证据**：flow_no 是 FFH 前缀，但缺 backfill 审计名
+--       或补记账 token → 与 A21 **对称**（A21=有证据无前缀；A22=有前缀无证据）。
+--       **为什么需要**：A7 只在 balance_after 与实际余额不一致时才报，伪造 FFH 前缀且余额恰好
+--       对齐的行会**静默通过**；A22 补上这个形态盲区。A7 只看余额一致性，不替代形态观测。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -396,6 +400,29 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A22（信息性，不参与 TOTAL）：FFH 前缀但无补账证据
+--   与 A21 对称：A21 = 有证据无前缀；A22 = 有前缀无证据。
+--   A7 只看余额一致性，不替代形态观测（伪造前缀且余额恰好对齐时会静默通过）。
+-- ------------------------------------------------------------
+\if :backfill_shape_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[INFO] A22 FFH 前缀但无补账证据 rows=0'
+            ELSE '[INFO] A22 FFH 前缀但无补账证据 rows=' || count(*)
+                 || '（存在 FFH 前缀却无 backfill 审计名/补记账 token 的流水，可能为伪造前缀，请人工核对）'
+       END AS a22_line,
+       count(*) AS a22_n
+  FROM fund_flows
+ WHERE deleted = 0
+   AND flow_no LIKE 'FFH%'
+   AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
+            AND (COALESCE(remark, '') LIKE '%[cashBackfill]%' OR COALESCE(remark, '') LIKE '%[posShift=%'))
+\gset
+\else
+\set a22_line '[INFO] A22 跳过（表未创建）'
+\set a22_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -634,7 +661,11 @@ SELECT line
     SELECT 21,
            :'a21_line'
     UNION ALL
+    -- A22 信息性：FFH 前缀但无补账证据（与 A21 对称；不进 TOTAL）
     SELECT 22,
+           :'a22_line'
+    UNION ALL
+    SELECT 23,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -1057,6 +1088,28 @@ SELECT f.flow_no, f.account_id, f.amount, f.created_by,
 \else
 \echo ''
 \echo '-- A21 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A22 明细（前 20）：FFH 前缀但无补账证据（与 A21 对称）
+-- 期望为空；出现需人工核对是否伪造前缀
+-- ------------------------------------------------------------
+\if :backfill_shape_ready
+\echo ''
+\echo '-- A22 明细（前 20）--'
+SELECT f.flow_no, f.account_id, f.amount, f.balance_after, f.created_by,
+       left(COALESCE(f.remark, ''), 60) AS remark_snippet,
+       f.create_time
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.flow_no LIKE 'FFH%'
+   AND NOT (COALESCE(f.created_by, '') LIKE 'system/backfill-%'
+            AND (COALESCE(f.remark, '') LIKE '%[cashBackfill]%' OR COALESCE(f.remark, '') LIKE '%[posShift=%'))
+ ORDER BY f.create_time DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A22 明细跳过（表未创建）--'
 \endif
 
 COMMIT;
