@@ -1535,3 +1535,20 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 
 ### 51.5 回归
 `consistency_check.py` → **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**；`ui_e2e_payment.py` → **exit 0（7/7）**；`e2e_recon_workbench.py` → **exit 0（12/12）**；`e2e_store_recon.py` → **exit 0（9/9）**；`vue-tsc` 0 error、`npm run build` exit 0、`mvn compile` BUILD SUCCESS。
+---
+
+## 52. 【教训】补数据脚本的验证口径（2026-10-25，P3-3 开工前置记录）
+
+### 52.1 事件
+上一轮为补齐 `qa_*` 账号的角色绑定，我写了 `scripts/db-fix/2026-10-25-qa-user-roles-sync.sql`：从 `users.roles`（JSON，存的是**数字**角色 ID，如 `"4"`）取值并插入 `user_roles(role_id)`。
+脚本执行返回成功（`INSERT 0 1`），我据此认为「已补齐」。**实际结果**：
+- `user_roles` 与 `roles` 的关联键是 **`roles.role_id_str`**（如 `ROLE_FINANCE_DIRECTOR`），**不是数字 `role_id`**（`mapper/UserMapper.java:30`）；
+- 因此插入的 `'4'`/`'9'` 是**永不命中的死行**；
+- 更严重的是 `qa_store_b` 只有这条死行 → 按鉴权口径解析为 **`(none)`**，即「店长账号没有任何角色」，一旦调用受权限保护的接口就会 403。
+- 该缺陷是我在 P3-2 前置时发现的（`SELECT … INNER JOIN roles r ON r.role_id_str = ur.role_id` 查出来是 `(none)`），已用 `scripts/db-fix/2026-10-25-fix-qa-store-b-role.sql` 修正（删死行 + 补 `ROLE_STORE_MANAGER`）。
+
+### 52.2 教训（自本日起强制执行）
+1. **任何「补数据」脚本，提交前必须验证「补完之后实际查询结果」，不能只验证「SQL 执行成功」**——`INSERT 0 1` 只说明语句跑通，不代表数据能被业务查询命中。
+2. 验证方法固定为：**用业务真实使用的查询**（此处即鉴权 SQL `roles.role_id_str = user_roles.role_id`）回查一遍，并把结果贴进报告；能走接口的，再补一次接口调用验证。
+3. 涉及**关联键**的脚本，写之前先读一遍 JOIN 条件（不要凭列名假设：`role_id` 里存的到底是数字还是 `ROLE_*` 字符串）。
+4. 数据脚本一律**幂等**，并附「执行后回查」段落（本次两个脚本已按此补上回查 SELECT）。
