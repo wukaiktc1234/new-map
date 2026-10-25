@@ -13,6 +13,19 @@ P3 前置造数据脚本（可重复执行；默认要求库为空，非空直�
   python scripts/qa/seed_p3_fixture.py                 # 默认：库非空报错退出
   python scripts/qa/seed_p3_fixture.py --reset          # 先跑 purge 脚本再建
   python scripts/qa/seed_p3_fixture.py --force          # 库非空也继续（可能叠加，慎用）
+
+================ 验收预期（务必先读，避免把负例当缺陷） ================
+1) 支付宝批次（第 2 份 CSV / 通常 batchId=102）**预期 ok_rows=9 / error_rows=2**，
+   这 2 条是**故意造的负例**：
+     · 第 10 行 TXN_TIME_INVALID：交易时间写成 2026-10-24T16:30:00+08:00（带时区偏移，
+       当前 I1 导入不支持偏移量输入，故行级报错——这是待改进项，不是本脚本缺陷）；
+     · 第 11 行 AMOUNT_DECIMAL_INVALID：金额写成 12.345（3 位小数，分以下不可表示）。
+2) 该批次 status=**PARTIAL** 是**预期状态**（有 OK 行也有 ERROR 行），不是缺陷；
+   微信批次与银行批次预期 status=**COMMITTED**。
+3) 验收时若因这 2 条 ERROR 导致断言变红，**先检查验收预期是否写对**
+   （即是否误把 9/2 当成"应该有 11 条 OK"），**不得直接改断言或改脚本逻辑去迁就**；
+   如确需全绿样本，应另造一份"零负例"的 CSV，而不是删掉负例。
+=====================================================================
 """
 from __future__ import annotations
 
@@ -462,6 +475,15 @@ class Seeder:
         self.make_statement()
 
         print("\n--- 4) 一致性自检 ---")
+        # 每次跑都打印支付宝批次的预期值，便于验收对表（负例不是缺陷）
+        ali = next((b for b in self.batches if "支付宝" in b.get("label", "")), None)
+        actual = "(本次未导入支付宝批次)"
+        if ali:
+            actual = "batchId=%s rows=%d ok=%d error=%d errors=%s" % (
+                ali.get("batchId"), ali.get("rows"), ali.get("ok"), len(ali.get("errors") or []),
+                ali.get("errors"))
+        print("  [EXPECT] batch102 expected ok=9 error=2 (negative fixtures), status=PARTIAL"
+              " ｜ 实测: %s" % actual)
         self.consistency()
         return self.summary()
 
