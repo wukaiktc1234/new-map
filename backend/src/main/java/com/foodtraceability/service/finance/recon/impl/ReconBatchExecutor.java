@@ -3,6 +3,7 @@ package com.foodtraceability.service.finance.recon.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
+import com.foodtraceability.entity.OrderNew;
 import com.foodtraceability.entity.OrderPaymentRecordNew;
 import com.foodtraceability.entity.finance.BankAccount;
 import com.foodtraceability.entity.finance.FundFlow;
@@ -10,6 +11,7 @@ import com.foodtraceability.entity.finance.recon.BankTransaction;
 import com.foodtraceability.entity.finance.recon.ReconDifference;
 import com.foodtraceability.entity.finance.recon.ReconItem;
 import com.foodtraceability.entity.finance.recon.ReconRun;
+import com.foodtraceability.mapper.OrderNewMapper;
 import com.foodtraceability.mapper.OrderPaymentRecordNewMapper;
 import com.foodtraceability.mapper.finance.BankAccountMapper;
 import com.foodtraceability.mapper.finance.FundFlowMapper;
@@ -74,8 +76,8 @@ public class ReconBatchExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(ReconBatchExecutor.class);
 
-    /** BL-7 默认允许跨日窗上界（分钟）= 24h；实际取值见 {@link #crossDayWindowMinutes}，可用配置覆盖 */
-    private static final long DEFAULT_CROSS_DAY_WINDOW_MINUTES = 24L * 60L;
+    /** BL-7 默认允许跨日窗上界（分钟）= 6h（收口 §3：24h 过宽，易把隔日两笔独立同额交易误配）；实际取值见 {@link #crossDayWindowMinutes} */
+    private static final long DEFAULT_CROSS_DAY_WINDOW_MINUTES = 6L * 60L;
 
     private final ReconRunMapper reconRunMapper;
     private final ReconItemMapper reconItemMapper;
@@ -85,11 +87,14 @@ public class ReconBatchExecutor {
     private final BankTransactionMapper bankTransactionMapper;
     private final OrderPaymentRecordNewMapper orderPaymentRecordMapper;
 
+    /** 收口 §3：跨日匹配的身份交集需要 orders.order_number，故注入订单 Mapper（只读） */
+    private final OrderNewMapper orderNewMapper;
+
     /** 时间窗（分钟），默认 ±10 分钟（design §2.2） */
     private final long windowMinutes;
 
     /**
-     * BL-7：允许跨日窗上界（分钟），默认 1440（= 24h）。
+     * BL-7：允许跨日窗上界（分钟），默认 360（= 6h；收口 §3 从 24h 收紧）。
      *
      * <p>可配置项 {@code app.finance.recon.cross-day-window-minutes}（只在代码里给默认值，不改 application.yml）；
      * 语义与 BL-7 首次落地时一致：同账户 + 金额完全相等 + |Δt| ≤ 本值且不满足常规窗 → TIME_DIFF；
@@ -107,8 +112,9 @@ public class ReconBatchExecutor {
                               FundFlowMapper fundFlowMapper,
                               BankTransactionMapper bankTransactionMapper,
                               OrderPaymentRecordNewMapper orderPaymentRecordMapper,
+                              OrderNewMapper orderNewMapper,
                               @Value("${app.finance.recon.time-window-minutes:10}") long windowMinutes,
-                              @Value("${app.finance.recon.cross-day-window-minutes:1440}")
+                              @Value("${app.finance.recon.cross-day-window-minutes:360}")
                               long crossDayWindowMinutes,
                               @Value("${app.finance.recon.fail-inject:false}") boolean failInject) {
         this.reconRunMapper = reconRunMapper;
@@ -118,6 +124,7 @@ public class ReconBatchExecutor {
         this.fundFlowMapper = fundFlowMapper;
         this.bankTransactionMapper = bankTransactionMapper;
         this.orderPaymentRecordMapper = orderPaymentRecordMapper;
+        this.orderNewMapper = orderNewMapper;
         this.windowMinutes = windowMinutes;
         // 防御：配置成 <=0 时回落默认值，避免「跨日窗=0」把 TIME_DIFF 彻底关死而不自知
         this.crossDayWindowMinutes = crossDayWindowMinutes > 0
@@ -202,11 +209,30 @@ public class ReconBatchExecutor {
             }
         }
 
+        // 收口 §3：身份交集需要 orders.order_number —— 一次性批量查回，保持只读
+        Map<String, String> orderNumberById = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            List<OrderNew> orders = orderNewMapper.selectList(new LambdaQueryWrapper<OrderNew>()
+                    .in(OrderNew::getOrderId, orderIds)
+                    .eq(OrderNew::getDeleted, 0)
+                    .select(OrderNew::getOrderId, OrderNew::getOrderNumber));
+            if (orders != null) {
+                for (OrderNew order : orders) {
+                    if (order.getOrderId() != null && order.getOrderNumber() != null) {
+                        orderNumberById.put(order.getOrderId(), order.getOrderNumber());
+                    }
+                }
+            }
+        }
+
         List<InternalSubject> result = new ArrayList<>(flows.size());
         for (FundFlow flow : flows) {
             InternalSubject subject = new InternalSubject();
             subject.flowNo = flow.getFlowNo();
             subject.orderId = flow.getOrderId();
+            // 内部侧可比较键：order_id 本身 + orders.order_number（下面再并入 order_payment_records.transaction_no）
+            addIdentityKey(subject, flow.getOrderId());
+            addIdentityKey(subject, orderNumberById.get(flow.getOrderId()));
             subject.amount = flow.getAmount() == null ? 0L : flow.getAmount();
             subject.counterparty = flow.getCounterpartyName();
             LocalDateTime flowTime = flow.getCreateTime() != null
@@ -225,6 +251,8 @@ public class ReconBatchExecutor {
                     if (key != null && !key.isEmpty()) {
                         subject.paymentKeys.add(key);
                     }
+                    // 支付流水号同时作为身份交集键（去前缀后）
+                    addIdentityKey(subject, payment.getTransactionNo());
                     if (payment.getPaymentTime() != null
                             && (earliestPayment == null || payment.getPaymentTime().isBefore(earliestPayment))) {
                         earliestPayment = payment.getPaymentTime();
@@ -265,6 +293,9 @@ public class ReconBatchExecutor {
             subject.fee = row.getFee();
             subject.txnTime = row.getTxnTime() != null ? row.getTxnTime() : businessDate.atStartOfDay();
             subject.counterparty = row.getCounterpartyName();
+            // 外部侧可比较键：external_txn_id（去 WX:/ALI:/BANK: 前缀） + merchant_order_no
+            addIdentityKey(subject, row.getExternalTxnId());
+            addIdentityKey(subject, row.getMerchantOrderNo());
             result.add(subject);
         }
         return result;
@@ -324,18 +355,21 @@ public class ReconBatchExecutor {
             }
         }
 
-        // ---- TIME_DIFF（BL-7）：同账户同额，但「跨自然日」或「超常规窗口、仍在允许跨日窗内」 ----
+        // ---- TIME_DIFF（BL-7 + 收口 §3）：同账户同额 + 时间内落跨日窗 + **身份交集** ----
         // 口径（同时写入类注释与 WORKER_LOG）：
         //   · 常规窗 = 同一自然日 且 |内部入账时间 − 外部 txn_time| ≤ windowMinutes（默认 10 分钟）→ 由 L2 自动匹配；
-        //   · 允许跨日窗 = 同账户 + 金额完全相等 + |差| ≤ 24h（1440 分钟）；
-        //   · 命中「跨自然日」或「同日内超常规窗但 ≤24h」的 1:1 对 → 两侧 MATCHED + TIME_DIFF（金额差 0），
+        //   · 允许跨日窗 = 同账户 + 金额完全相等 + |差| ≤ crossDayWindowMinutes（默认 360 分钟 = 6h）；
+        //   · 命中「跨自然日」或「同日内超常规窗但 ≤ 跨日窗」的 1:1 对 → 两侧 MANUAL_MATCHED + TIME_DIFF（差 0），
         //     **不落 AMBIGUOUS / ONE_SIDED**（本条必须先于 L2 执行，否则跨零点但仅差 5 分钟的对会被 L2 直接吞掉）；
-        //   · 超过 24h → 不配对，留给 ONE_SIDED_*。
+        //   · **无身份交集 → 落 AMBIGUOUS**（判定位置就在下面 else 分支）：仅凭「同账户 + 同额 + 时间内」
+        //     不足以证明是同一笔交易，隔日两笔固定价同额流水会被误配，既掩盖真实 ONE_SIDED 又抬高勾稽率；
+        //   · 超过跨日窗 → 不配对，留给 ONE_SIDED_*。
         for (InternalSubject internal : internals) {
             if (!ReconDictionary.ITEM_UNMATCHED.equals(internal.status)) {
                 continue;
             }
             List<ExternalSubject> crossDay = new ArrayList<>();
+            List<ExternalSubject> crossDayWithIdentity = new ArrayList<>();
             for (ExternalSubject external : externals) {
                 if (!ReconDictionary.ITEM_UNMATCHED.equals(external.status)) {
                     continue;
@@ -350,18 +384,23 @@ public class ReconBatchExecutor {
                     continue; // 超出允许跨日窗 → 留给 ONE_SIDED
                 }
                 crossDay.add(external);
+                if (hasIdentityIntersection(internal, external)) {
+                    crossDayWithIdentity.add(external);
+                }
             }
-            if (crossDay.size() == 1) {
-                ExternalSubject external = crossDay.get(0);
-                internal.status = ReconDictionary.ITEM_MATCHED;
-                internal.matchLevel = ReconDictionary.LEVEL_L2;
-                internal.matchedRef = external.ref;
-                external.status = ReconDictionary.ITEM_MATCHED;
-                external.matchLevel = ReconDictionary.LEVEL_L2;
-                external.matchedRef = internal.flowNo;
+            if (crossDay.isEmpty()) {
+                continue;
+            }
+            if (crossDayWithIdentity.size() == 1) {
+                ExternalSubject external = crossDayWithIdentity.get(0);
+                markTimeDiff(internal, external);
                 differences.add(timeDiff(internal, external));
-            } else if (crossDay.size() > 1) {
-                markAmbiguous(internal, crossDay, differences); // 跨日窗内多笔同额 → 真歧义
+            } else if (crossDayWithIdentity.size() > 1) {
+                // 跨日窗内多笔「有身份交集」的同额候选 → 真歧义
+                markAmbiguous(internal, crossDayWithIdentity, differences);
+            } else {
+                // 有同额超窗候选但**无任何身份交集** → 不得自动匹配，落 AMBIGUOUS 交人工
+                markAmbiguous(internal, crossDay, differences);
             }
         }
 
@@ -447,6 +486,41 @@ public class ReconBatchExecutor {
      * 10 分钟常规窗判定，会同时判出两条 ONE_SIDED 假单边；放宽到 ±24h 既覆盖跨零点，
      * 又不会把「隔了两天的同额流水」误配（超过 24h 仍判 ONE_SIDED）。</p>
      */
+    /** 内部侧身份键归一后入集合（null/空/单字符忽略） */
+    private void addIdentityKey(InternalSubject subject, String raw) {
+        String key = ReconDictionary.normalizeRef(raw);
+        if (key != null && key.length() > 1) {
+            subject.identityKeys.add(key);
+        }
+    }
+
+    /** 外部侧身份键归一后入集合 */
+    private void addIdentityKey(ExternalSubject subject, String raw) {
+        String key = ReconDictionary.normalizeRef(raw);
+        if (key != null && key.length() > 1) {
+            subject.identityKeys.add(key);
+        }
+    }
+
+    /**
+     * 身份交集（收口 §3）：内部侧与外部侧至少有一个可比较键相等。
+     *
+     * <p><b>为什么需要它</b>：跨日窗一旦放宽（原 24h），「同账户 + 同额」不足以证明是同一笔交易——
+     * 隔日两笔固定价商品的同额流水会被配成一对，既掩盖了真实的 ONE_SIDED，又抬高了勾稽率。
+     * 因此在跨日分支上要求身份交集：有交集 → 才允许判 TIME_DIFF；无交集 → 落 AMBIGUOUS（人工二选一）。</p>
+     */
+    private boolean hasIdentityIntersection(InternalSubject internal, ExternalSubject external) {
+        if (internal.identityKeys.isEmpty() || external.identityKeys.isEmpty()) {
+            return false;
+        }
+        for (String key : internal.identityKeys) {
+            if (external.identityKeys.contains(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 常规匹配窗：同一自然日 且 |差| ≤ windowMinutes（不满足即需要走 TIME_DIFF 或单边） */
     private boolean normalWindowMatched(LocalDateTime internalTime, LocalDateTime externalTime) {
         if (internalTime == null || externalTime == null) {
@@ -488,7 +562,19 @@ public class ReconBatchExecutor {
         return diff;
     }
 
-    /** TIME_DIFF（BL-7）：同账户同额、时间超常规窗但在允许跨日窗内；金额差恒为 0 */
+    /** 跨日命中：两侧置 MANUAL_MATCHED（不计入自动勾稽率分子），级别 MANUAL */
+    private void markTimeDiff(InternalSubject internal, ExternalSubject external) {
+        internal.status = ReconDictionary.ITEM_MANUAL_MATCHED;
+        internal.matchLevel = ReconDictionary.LEVEL_MANUAL;
+        internal.confidence = new BigDecimal("0.500");
+        internal.matchedRef = external.ref;
+        external.status = ReconDictionary.ITEM_MANUAL_MATCHED;
+        external.matchLevel = ReconDictionary.LEVEL_MANUAL;
+        external.confidence = new BigDecimal("0.500");
+        external.matchedRef = internal.flowNo;
+    }
+
+    /** TIME_DIFF（BL-7）：同账户同额 + 身份交集 + 时间在跨日窗内；金额差恒为 0，需人工确认 */
     private ReconDifference timeDiff(InternalSubject internal, ExternalSubject external) {
         ReconDifference diff = baseDiff(ReconDictionary.DIFF_TIME, internal, external);
         diff.setAmountInternal(internal.amount);
@@ -496,9 +582,17 @@ public class ReconBatchExecutor {
         diff.setDiffAmount(0L);
         long minutes = internal.txnTime == null || external.txnTime == null ? 0L
                 : Math.abs(Duration.between(internal.txnTime, external.txnTime).toMinutes());
-        diff.setResolutionRemark("跨日时间差 " + minutes + " 分钟（常规窗口 " + windowMinutes
-                + " 分钟，允许跨日窗 " + crossDayWindowMinutes + " 分钟）");
-        log.info("[METRIC] recon_time_diff internal={} external={} minutes={}", internal.flowNo, external.ref, minutes);
+        String sharedKey = "";
+        for (String key : internal.identityKeys) {
+            if (external.identityKeys.contains(key)) {
+                sharedKey = key;
+                break;
+            }
+        }
+        diff.setResolutionRemark("跨日时间差，需人工确认：Δt=" + minutes + " 分钟（常规窗口 " + windowMinutes
+                + " 分钟，跨日窗 " + crossDayWindowMinutes + " 分钟）；身份交集键=" + sharedKey);
+        log.info("[METRIC] recon_time_diff internal={} external={} minutes={} sharedKey={}",
+                internal.flowNo, external.ref, minutes, sharedKey);
         return diff;
     }
 
@@ -678,6 +772,11 @@ public class ReconBatchExecutor {
         private String counterparty;
         private String paymentMethods;
         private final Set<String> paymentKeys = new HashSet<>();
+        /**
+         * 收口 §3：身份交集键 —— order_id / orders.order_number / order_payment_records.transaction_no（均去前缀）。
+         * 跨日（TIME_DIFF）判定必须与外部侧身份键至少命中一个，否则不得自动匹配。
+         */
+        private final Set<String> identityKeys = new HashSet<>();
         private String status = ReconDictionary.ITEM_UNMATCHED;
         private String matchLevel;
         private String matchedRef;
@@ -691,6 +790,8 @@ public class ReconBatchExecutor {
         private Long fee;
         private LocalDateTime txnTime;
         private String counterparty;
+        /** 收口 §3：身份交集键 —— external_txn_id（去 WX:/ALI:/BANK: 前缀） / merchant_order_no */
+        private final Set<String> identityKeys = new HashSet<>();
         private String status = ReconDictionary.ITEM_UNMATCHED;
         private String matchLevel;
         private String matchedRef;

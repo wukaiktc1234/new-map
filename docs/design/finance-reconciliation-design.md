@@ -276,7 +276,7 @@ UNMATCHED ──L1/L2唯一──▶ AUTO_MATCHED ──人工复核(可选)─�
 
 > 差异类型是**枚举 code**，中文名放前端字典，不进 DB 主字段。
 
-> **跨日时间差窗口径（BL-7）**：同账户 + 金额完全相等 + |Δt| ≤ `app.finance.recon.cross-day-window-minutes`（默认 1440 分钟 = 24h）且不满足常规 10 分钟窗 → 两侧 `MATCHED` + `TIME_DIFF`（差 0）；超窗 → `ONE_SIDED_*`；窗内多笔同额 → `AMBIGUOUS`。
+> **跨日时间差窗口径（BL-7 + 收口 §3）**：同账户 + 金额完全相等 + |Δt| ≤ `app.finance.recon.cross-day-window-minutes`（默认 **360 分钟 = 6h**）且不满足常规 10 分钟窗，**且两侧存在身份交集**（`order_id` / `orders.order_number` / `order_payment_records.transaction_no` 与 `bank_transactions.external_txn_id`（去 WX:/ALI:/BANK: 前缀）/ `merchant_order_no` 至少一个相等）→ 两侧 `subject_status=MANUAL_MATCHED`（`match_level=MANUAL`）+ `TIME_DIFF`（差 0，需人工确认）；**无身份交集 → 落 `AMBIGUOUS`**（不得自动匹配）；超窗 → `ONE_SIDED_*`；窗内多笔同额且有交集 → `AMBIGUOUS`。`MANUAL_MATCHED` **不计入自动勾稽率分子**（自动勾稽率只统计 `AUTO_MATCHED`）。
 
 ### 2.5 差异处理流程与冲正规则
 
