@@ -1486,3 +1486,52 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 - `scripts/qa/ui_e2e_payment.py` → **7 PASS / 0 FAIL**（POS 3001 由我起，`exit 0`）；
 - `consistency_check.py` → **14 PASS / 0 FAIL（判定项 14 条）、共 22 条断言含 8 条 INFO、TOTAL FAIL=0、exit 0**；
 - `frontend`: `npx vue-tsc --noEmit` 0 error、`npm run build` exit 0；`backend`: `mvn -o -B -DskipTests compile` BUILD SUCCESS。
+---
+
+## 51. P3-2 门店对账视图 + 渠道手续费 + 三问答复 + AC 补录（2026-10-25 14:36–15:00）
+
+### 51.1 三个问题的答复
+
+**Q1 路由 roles 少 FINANCE_MANAGER → 判定为技术债，已修。**
+- 后端一直有 `roles.role_id=323 / role_id_str=ROLE_FINANCE_MANAGER / role_code=finance_manager`；前端 `UserRole` 枚举缺失，且 `'财务经理'` 被错映射到 `FINANCE_DIRECTOR`。
+- 已补：`permission.ts` 新增 `FINANCE_MANAGER`，映射表补 `ROLE_FINANCE_MANAGER` / `FINANCE_MANAGER`，`'财务经理' → FINANCE_MANAGER`（原来是 DIRECTOR，属映射错误）；`PersonalCenter.vue` 的角色名表补 `[FINANCE_MANAGER]:'财务经理'`（tsc 强制，`Record<UserRole,string>` 缺键会失败）。
+- `/finance/recon` 路由 roles 恢复三值 `[FINANCE_DIRECTOR, FINANCE_MANAGER, AUDITOR]`；`/finance/store-recon` 加 `STORE_MANAGER` 共四值。`vue-tsc --noEmit` = 0 error。
+
+**Q2 摘要 vs 队列口径 → 选 B（队列默认锁当前跑批），已实现。**
+- 原状：`runIdFilter` 默认为空 → R8 不带 runId → 队列 12 行（跨批次），摘要 4 条（当前 run）→ 两个数字并列却无关系说明。
+- 现：`ReconWorkbench.loadQueue` 在「无显式 runId 且未开全部批次」时用 `currentRun.runId`（`effectiveRunId`）；新增开关 `[data-test="scope-all-batches"]`「全部批次」+ 范围提示 `[data-test="queue-scope-hint"]`：默认「范围：当前批次 #N（与摘要一致）」，勾选后「范围：全部批次（与摘要不可直接比较）」。
+- 理由：工作台的语义单元是「一次跑批」，摘要与队列必须同集合；跨批次是例外视图，必须显式开关 + 显式提示，避免读者误把两者当同一口径。
+
+**Q3 `qa_*` 的 `user_roles` 历史影响 → 鉴权早已只走 `user_roles`，无 JSON 兜底；实测证明。**
+- 解析代码：`security/service/impl/AuthenticationServiceImpl.java:128-138`（注释 P1-AUTH-CHAIN-001：「角色只来自授权权威源 user_roles → roles.role_code；users.roles 是展示字段，不参与装配」）；SQL 在 `mapper/UserMapper.java:30`：`SELECT r.ROLE_CODE FROM ROLES r INNER JOIN USER_ROLES ur ON r.role_id_str = ur.role_id WHERE ur.USER_ID::bigint=#{userId} AND ur.DELETED=0 AND r.DELETED=0 AND r.STATUS IN ('1','active')`。**关联键是 `role_id_str`**（如 `ROLE_FINANCE_DIRECTOR`），不是数字 role_id。
+- 历史实证：同步前 `qa_admin` 的 `user_roles` 里已有 `ROLE_FINANCE_DIRECTOR` / `qa_teller` 有 `ROLE_TELLER` → **AC-36/AC-44 当时就是走 `user_roles` 通过的**，不是 JSON。
+- **实验（JSON 兜底是否存在）**：把 `qa_admin` / `qa_store_b` 的 `users.roles` 临时改为 `[]`（随后已恢复 `["4"]`/`["9"]`）→ 结果：登录 200、`/auth/me` 与 `/auth/user-info` 返回 `roles=['finance_director']`、`POST /recon-runs` 与 `GET /recon-differences` 均 200（`finance:bank:view/recon` 通过）→ **证明鉴权与授权完全不依赖 `users.roles` JSON**。
+- **我自己上一轮引入的缺陷（已修）**：`2026-10-25-qa-user-roles-sync.sql` 按 `users.roles` 的**数字**插了 `user_roles.role_id='4'/'9'` → 这些行因关联键是 `role_id_str` 而**永不命中**（死行），并导致 `qa_store_b` 实际解析为 `(none)`。已删除死行并补 `ROLE_STORE_MANAGER`，脚本 `scripts/db-fix/2026-10-25-fix-qa-store-b-role.sql`；现解析结果：`qa_admin=finance_director / qa_approver=finance_manager / qa_store_b=store_manager / qa_teller(s)=teller`。
+
+### 51.2 AC 补录（设计稿 §8，AC-1 – AC-54）
+- AC-46a：摘要笔数直接取 `R3.differenceCount`（禁止前端数行数）；
+- AC-46b：摘要金额 == `SUM(diff_amount)`，**断言钩子固定**为 `data-amount-state=ready` + `data-diff-amount-fen` 原始分；未就绪显示「—」，**禁止 0.00**；
+- AC-47：中文四要素 `核销于/操作人/原因/决议` 在 `audit-timeline` 可见（认领阶段为 `认领于/认领人`）；
+- AC-48：**期间 `/resolve` 请求数 == 0**（不是被后端拒）；
+- AC-49～AC-54：占位，随 P3-2/3/4/5 逐条填入（AC-49/50 本轮已实现，文字按计划保留）。
+
+### 51.3 P3-2 实现（2 个只读接口 + 2 个页面 + seed 两店）
+| 层 | 内容 |
+|---|---|
+| 后端 | 新增 `StoreReconController` / `StoreReconService(+Impl)` / `StoreReconDailyVO` / `ChannelFeeSummaryVO`；`ReconController` 加 `GET /recon/channel-fee-summary`；`ReconDifferenceMapper` 加 `@Select`+`<script>` 三段条件聚合 |
+| 数据范围 | `StoreReconServiceImpl:107 resolveEffectiveStoreId()` —— 所有拒绝都是 **403**（无 404）：全局用户必须显式传 storeId；无归属门店 → 403；请求别店 → 403「无权访问其他门店数据（当前门店=X，请求门店=Y，dataScope=…）」 |
+| 前端 | `api/finance-store-recon.ts`、`views/finance/recon/StoreReconView.vue`、`components/ChannelFeePanel.vue`（摘要卡下方独立一行），路由 `/finance/store-recon` +1 行 |
+| seed | 改为**两店各一张**：store 1 平账 `DS202610250067` 26,000/26,000/0；store 2 短款 `DS202610250068` 15,300/14,800/**−500**（`pos_shifts` **无 store_id 列**，门店归属由班次窗口内订单 `store_id` + generate 显式 storeId 决定） |
+| seed 附 | 构造 `CHANNEL_FEE` 真实样本：`difference_id=4532 / run 36 / external_ref=ALI:2026102522009 / diff=35 / fee=35 / source_type=ALIPAY` |
+
+### 51.4 AC-49 / AC-50 与 E2E（9/9 PASS，exit 0）
+| 项 | 结果 | 实际值 |
+|---|---|---|
+| AC-49a 本店 | **PASS** | `qa_store_b` 查 store 2 → 200，`data.storeId=2` |
+| AC-49b 跨店 | **PASS** | 查 store 1 → HTTP 200 + **code=403**「无权访问其他门店数据（当前门店=2，请求门店=1，dataScope=department）」 |
+| AC-49c 页面 | **PASS** | 门店ID 填 1 → `[data-test="store-recon-forbidden"]` |
+| AC-50a 接口 | **PASS** | `total={1,35,35}`、`rows=[{ALIPAY,1,35,35}]` == SQL `count=1 / fee=35 / diff=35` |
+| AC-50b 页面 | **PASS** | `data-fee-fen=35 / data-diff-fen=35 / data-count=1` == 接口 |
+
+### 51.5 回归
+`consistency_check.py` → **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**；`ui_e2e_payment.py` → **exit 0（7/7）**；`e2e_recon_workbench.py` → **exit 0（12/12）**；`e2e_store_recon.py` → **exit 0（9/9）**；`vue-tsc` 0 error、`npm run build` exit 0、`mvn compile` BUILD SUCCESS。
