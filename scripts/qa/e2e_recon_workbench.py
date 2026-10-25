@@ -32,6 +32,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from e2e_setup import wait_for_data_attr, read_data_attr  # 取样竞态机制（见 e2e_setup 头部规则）
+
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:  # pragma: no cover
@@ -320,11 +323,12 @@ class ReconE2E:
     def ac46a(self):
         ready = self.wait_summary_ready()
         txt = self.read_text('[data-test="summary-diff-count"]')
-        attr = None
         try:
-            attr = self.page.locator('[data-test="summary-diff-count"]').first.get_attribute("data-difference-count")
-        except Exception:
+            attr = wait_for_data_attr(self.page, '[data-test="summary-diff-count"]',
+                                      "data-difference-count", timeout=30000)
+        except Exception as e:
             attr = None
+            print("  [WARN] 读取 data-difference-count 失败：%s" % str(e)[:140])
         val = to_int(txt)
         attr_val = to_int(attr)
         self.step("AC-46a 读取前等待摘要就绪（data-amount-state=ready 且 data-difference-count 非空）", ready,
@@ -348,9 +352,10 @@ class ReconE2E:
             state = "not-ready(%s)" % str(e)[:80]
         attr = None
         try:
-            attr = self.page.locator('[data-test="summary-diff-amount"]').first.get_attribute("data-diff-amount-fen")
-        except Exception:
-            attr = None
+            attr = wait_for_data_attr(self.page, '[data-test="summary-diff-amount"]',
+                                      "data-diff-amount-fen", timeout=30000)
+        except Exception as e:
+            print("  [WARN] 读取 data-diff-amount-fen 失败：%s" % str(e)[:140])
         txt = self.read_text('[data-test="summary-diff-amount"]')
         fen = None
         if attr not in (None, ""):

@@ -20,10 +20,25 @@ E2E 前置准备（可被其它 E2E 脚本 import 复用）
   from e2e_setup import ensure_ready
   if not ensure_ready(api=..., admin=..., pos=...):
       return 2
+
+取样竞态规则（2026-10-25 两次事故的机制沉淀）
+=====================================================================
+事故 1（P3-2 AC-50b）：页面 channel-fee-total 元素已可见，但 data-fee-fen 仍是渲染前的 0，
+                     脚本「元素出现即读值」→ 断言红；页面其实是对的。
+事故 2（P3-4 AC-46a）：summary-diff-count 元素已出现，但 /recon-runs/{id} 还没返回，
+                     摘要先渲染占位 0 → 读到 0；同一次运行里等过 data-amount-state=ready 的
+                     AC-46b 反而读到正确值 104900。
+结论（硬规则）：禁止 element.inner_text() / get_attribute() 直接读带 data- 的钩子；
+             必须先等就绪标记。统一走本模块的：
+               wait_for_data_attr(page, selector, attr, ready_value=None, timeout=30000)
+               read_data_attr(page, selector, attr)   # 仅在「已确认就绪」的场景使用
+             读不到就抛异常（异常信息带 selector + attr），不返回 0/空字符串糊过去。
+=====================================================================
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -36,6 +51,41 @@ DEFAULT_POS = "http://localhost:3001"
 DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
 STOCK_TARGET = 500
 STOCK_THRESHOLD = 100
+
+
+def wait_for_data_attr(page, selector, attr, ready_value=None, timeout=30000):
+    """等 [selector] 的 [attr] 就绪后返回其值。
+
+    ready_value=None：只等属性**非空**（注意：'0' 也算就绪，只有 null/'' 才算未就绪）；
+    ready_value="ready" 等：等待属性**等于**该值。
+    超时抛 RuntimeError，异常信息带 selector 与 attr，便于定位是哪一处钩子没就绪。
+
+    实现说明：selector/attr 直接内联进 JS 表达式（不用 arg=），
+    因为部分 Playwright 版本 wait_for_function 的 arg 传参不生效，会导致永远等不到。
+    """
+    js = (
+        "() => {const el = document.querySelector(%s); if (!el) return false;"
+        " const v = el.getAttribute(%s); if (v === null) return false;"
+        " return %s;}"
+        % (json.dumps(selector), json.dumps(attr),
+           ("v !== ''" if ready_value is None else "v === %s" % json.dumps(ready_value)))
+    )
+    try:
+        page.wait_for_function(js, timeout=timeout)
+    except Exception as e:
+        raise RuntimeError(
+            "wait_for_data_attr 超时：selector=%r attr=%r ready_value=%r（%ss）：%s"
+            % (selector, attr, ready_value, timeout // 1000, str(e)[:160]))
+    return read_data_attr(page, selector, attr)
+
+
+def read_data_attr(page, selector, attr):
+    """不等待，只读 [attr] 的值（优先用 wait_for_data_attr；仅限已知就绪场景）。"""
+    loc = page.locator(selector).first
+    val = loc.get_attribute(attr)
+    if val is None:
+        raise RuntimeError("read_data_attr：selector=%r 上不存在属性 %r（是否还没就绪？）" % (selector, attr))
+    return val
 
 
 def probe(url, timeout=5):

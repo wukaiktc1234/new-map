@@ -37,6 +37,9 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from e2e_setup import wait_for_data_attr  # 取样竞态机制
+
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:  # pragma: no cover
@@ -263,9 +266,8 @@ class StatementE2E:
                       wait_until="domcontentloaded", timeout=120000)
             page.wait_for_selector('[data-test="cat-A"]', timeout=60000)
             for cat in ("A", "B", "C", "D"):
-                loc = page.locator('[data-test="cat-%s"]' % cat).first
-                cnt = loc.get_attribute("data-count")
-                amt = loc.get_attribute("data-amount-fen")
+                cnt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-count", timeout=30000)
+                amt = wait_for_data_attr(page, '[data-test="cat-%s"]' % cat, "data-amount-fen", timeout=30000)
                 want_cnt, want_amt = self.sql_sums.get(cat, (0, 0))
                 same = (int(cnt or -1) == want_cnt) and (int(amt or -1) == want_amt)
                 detail.append("%s 页面(%s条/%s分) vs SQL(%s条/%s分)%s" % (
@@ -334,8 +336,19 @@ class StatementE2E:
                 page.goto("%s/finance/recon/statements/%d" % (self.a.admin, self.sid),
                           wait_until="domcontentloaded", timeout=120000)
                 page.wait_for_selector('[data-test="btn-approve"]', timeout=60000)
-                disabled = page.locator('[data-test="btn-approve"]').first.is_disabled()
-                hint = page.locator('[data-test="four-eyes-hint"]').count() > 0
+                # 先等「门禁提示」渲染（hint 只在四眼门禁生效时出现），再读按钮状态；
+                # 否则会在详情接口返回前读到「未禁用」的初始态（同 AC-46a 的占位竞态）。
+                try:
+                    page.wait_for_selector('[data-test="four-eyes-hint"]', timeout=60000)
+                    hint = True
+                except Exception:
+                    hint = False
+                disabled = False
+                for _ in range(20):
+                    disabled = page.locator('[data-test="btn-approve"]').first.is_disabled()
+                    if disabled:
+                        break
+                    time.sleep(0.5)
                 hint_txt = ""
                 if hint:
                     hint_txt = (page.locator('[data-test="four-eyes-hint"]').first.inner_text() or "").strip()[:60]
