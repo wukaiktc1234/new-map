@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A9/A16/A17/A18/A20 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A16/A17/A18/A20 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -28,8 +28,12 @@
 --   A7  （参与判定，V3）bank_accounts.balance <> 最新一笔「非补账豁免」flow.balance_after 的账户数
 --       豁免白名单（唯一口径）：flow_no LIKE 'FFH%' 或 created_by LIKE 'system/backfill-%'
 --       反例：普通流水 balance_after=0 **不豁免**；若它成为账户最新流水，A7 必须报红
---   A8  （信息性，不参与 TOTAL）普通流水（非豁免行、非已知白名单）balance_after=0 的条数 = 未知异常
---   A9  （信息性，不参与 TOTAL）已知历史 0 值项（精确 flow_no 白名单，待 P2 清理）命中数
+--   A8  （信息性，不参与 TOTAL）普通流水（非补账豁免行）balance_after=0 的**纯统计条数**（仅观测，不判定）
+--   A9  （**参与判定，进入 TOTAL FAIL**）普通流水 balance_after=0 总数（**零容忍**）
+--       → [PASS] rows=0 / [FAIL] rows=<n> —— 存在 <n> 条普通流水 balance_after=0，禁止接受
+--       **A9 零容忍：>0 即红，无白名单**。原「已知历史 0 值项（精确 flow_no 白名单）」机制已整体删除
+--       （测试数据已物理清空，白名单不再有意义）；A8 与 A9 此时数值相同是**有意设计**：
+--       A8 = 观测口径（INFO，便于看趋势），A9 = 判定口径（FAIL，用于门禁），与 A19 从 INFO 升 FAIL 同风格。
 --       口径：users.roles 里形如 '["1"]' / '[7]' / '["ROLE_ADMIN"]' 的 token 归一成 role_id
 --             （数字直接取，编码走 roles.role_id_str 映射），与 user_roles(deleted=0) 的
 --             role_id 集合作对比（数字或 ROLE_ 编码都做同样归一）。
@@ -459,26 +463,22 @@ WITH a1 AS (
        AND lf.balance_after IS NOT NULL
        AND lf.balance_after <> b.balance
 ), a8 AS (
-    -- 信息性：普通流水（非补账豁免行、且不在已知历史白名单）balance_after = 0 的条数。
-    -- 这类行若成为账户最新流水会直接把 A7 打红；此处单列以便区分「未知异常」与「已知历史项」。
-    -- ⚠️ 已知历史白名单（精确 flow_no，禁止用模糊条件放宽）：
-    --    FF202609080010  2026-09-08 付款单（account 2），写入时未维护快照
-    --    FF202609080028  2026-09-08 作废付款单退回（account 5），同上
-    --    两条均非账户最新流水，A7 不受影响；待 P2 以「补录更正流水」或「历史重述」方式处理，
-    --    在此之前仅登记为已知项（A9），**不修改历史 balance_after、不放宽 A8 判定**。
+    -- A8（信息性，仅观测）：普通流水（非补账豁免行）balance_after = 0 的纯统计条数。
+    -- 2026-10-25 起**白名单机制已整体删除**（测试数据物理清空），本口径 = 全库普通行计数。
+    -- 保留 INFO 的理由：与 A9 同源同值，一个看趋势、一个做门禁（A9 零容忍）。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
        AND balance_after = 0
        AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
-       AND flow_no NOT IN ('FF202609080010', 'FF202609080028')
 ), a9 AS (
-    -- 信息性：已知历史异常项命中数（精确 flow_no 白名单），用于确认白名单没有失效
+    -- A9（**参与判定，零容忍**）：普通流水 balance_after = 0 总数。**无白名单、无已知历史例外**，
+    -- >0 即 FAIL（文案：存在 N 条普通流水 balance_after=0，禁止接受）。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
        AND balance_after = 0
-       AND flow_no IN ('FF202609080010', 'FF202609080028')
+       AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
 )
 SELECT line
   FROM (
@@ -518,14 +518,18 @@ SELECT line
            || 'A7 V3 账户余额<>最新非补账流水快照 accounts=' || n
       FROM a7
     UNION ALL
-    -- A8 信息性：普通流水 balance_after=0 且不在已知白名单（未知异常）
+    -- A8 信息性：普通流水 balance_after=0 纯统计（不判定，便于看趋势）
     SELECT 8,
-           '[INFO] A8 普通流水 balance_after=0 未知异常 rows=' || n
+           '[INFO] A8 普通流水 balance_after=0 rows=' || n
       FROM a8
     UNION ALL
-    -- A9 信息性：已知历史白名单命中数（精确 flow_no；待 P2 清理）
+    -- A9 参与判定（零容忍）：普通流水 balance_after=0 → >0 即 FAIL，无白名单
     SELECT 9,
-           '[INFO] A9 已知历史 0 值项(精确白名单,待 P2 清理) rows=' || n
+           CASE WHEN n = 0
+                THEN '[PASS] A9 普通流水 balance_after=0(零容忍) rows=0'
+                ELSE '[FAIL] A9 普通流水 balance_after=0(零容忍) rows=' || n
+                     || ' —— 存在 ' || n || ' 条普通流水 balance_after=0，禁止接受'
+           END
       FROM a9
     UNION ALL
     -- A10 参与判定：FINALIZED 的 run 必须有 items（缺表时输出 [INFO] 跳过，不进 TOTAL）
@@ -579,6 +583,7 @@ SELECT line
              + CASE WHEN (SELECT n FROM a3) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a4) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a5) > 0 THEN 1 ELSE 0 END
+             + CASE WHEN (SELECT n FROM a9) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a7) > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a10_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a11_n > 0 THEN 1 ELSE 0 END
@@ -956,5 +961,22 @@ SELECT f.account_id,
 \echo ''
 \echo '-- A20 明细跳过（表未创建）--'
 \endif
+
+
+-- ------------------------------------------------------------
+-- A9 明细（前 20）：普通流水 balance_after = 0（零容忍判定项）
+-- 期望为空；出现即为「流水链路未维护余额快照」，且无任何白名单豁免
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A9 明细（前 20）--'
+SELECT f.flow_id, f.flow_no, f.account_id, f.flow_direction, f.flow_category,
+       f.amount, f.balance_after, f.business_date, f.create_time,
+       left(COALESCE(f.remark, ''), 60) AS remark_snippet
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.balance_after = 0
+   AND NOT (f.flow_no LIKE 'FFH%' OR COALESCE(f.created_by, '') LIKE 'system/backfill-%')
+ ORDER BY f.flow_id
+ LIMIT 20;
 
 COMMIT;
