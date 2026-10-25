@@ -62,17 +62,26 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
     private final OrderNewMapper orderNewMapper;
     private final OrderItemNewMapper orderItemNewMapper;
     private final OrderPaymentRecordNewMapper orderPaymentRecordNewMapper;
+    /**
+     * BL-5 烧号账写入器（独立事务 Bean）。
+     *
+     * <p>**必须注入调用、不得在下方 catch 里直接写 mapper**：业务事务马上回滚，
+     * 只有 REQUIRES_NEW 的独立事务才能把烧号记录留下（见 {@link FlowNoBurnLedgerRecorder}）。</p>
+     */
+    private final FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder;
 
     public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper,
                                AtomicBalanceUpdater atomicBalanceUpdater,
                                OrderNewMapper orderNewMapper, OrderItemNewMapper orderItemNewMapper,
-                               OrderPaymentRecordNewMapper orderPaymentRecordNewMapper) {
+                               OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
+                               FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder) {
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
         this.atomicBalanceUpdater = atomicBalanceUpdater;
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
+        this.flowNoBurnLedgerRecorder = flowNoBurnLedgerRecorder;
     }
 
     @Override
@@ -97,11 +106,26 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         // 创建流水
         FundFlow entity = new FundFlow();
         BeanUtils.copyProperties(dto, entity);
-        entity.setFlowNo(generateFlowNo());
+
+        // ==================================================================
+        // BL-5：取号 → 记账 → 插入 的边界处理
+        //   ① 取号失败**不写**烧号账（号没被消耗，不算烧号）——见 generateFlowNoAllocation 的兜底分支；
+        //   ② 取号成功之后，任何让本次流水无法落库的失败（唯一键冲突 / 乐观锁耗尽 / 业务校验失败）
+        //      都要在 catch 里补一条烧号账，否则号段会凭空多一个洞，A25 对不上；
+        //   ③ 写账走注入的 FlowNoBurnLedgerRecorder（REQUIRES_NEW 独立事务）：
+        //      本方法 @Transactional(rollbackFor = Exception.class)，catch 之后仍会整体回滚，
+        //      同事务写账会被一起回滚掉 —— 这是本条最关键的约束，改代码时不要把它内联成 mapper 调用。
+        //   ④ 取号（order_sequence 行级自增）与 baseMapper.insert 处在**同一个事务**内：
+        //      事务回滚时号段自增也会回滚，但因为号已对外可见（本次响应/日志），仍然按烧号记账；
+        //      号段回滚反而使该号可被下次重用，账表中的这一行正是「可能被重用」的审计痕迹。
+        // ==================================================================
+        FlowNoAllocation allocation = generateFlowNoAllocation();
+        entity.setFlowNo(allocation.getFlowNo());
         // 状态初值：默认 2=已完成。
         // 本系统资金流水全部由「钱已经动了」的路径创建（POS 销售入账 / 付款单 / 人工确认入账），
         // 不存在草稿态；历史数据已全量归一为 2（scripts/db-fix/2026-10-23-fund-flow-status-normalize.sql），
         // 新流水再写 1 会立刻造成口径分裂。调用方可显式覆盖。
+        try {
         entity.setStatus(dto.getStatus() != null ? dto.getStatus() : 2);
 
         // 审计合规：操作人必须留痕。优先用调用方显式传入的（POS 支付路径传当前收银员），
@@ -139,8 +163,58 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         entity.setBalanceAfter(snapshot.getBalanceAfter());
 
         baseMapper.insert(entity);
+        } catch (RuntimeException ex) {
+            // BL-5 ②③：号已消耗但流水没落库 —— 独立事务补烧号账，再把原异常原样抛出（不改调用方语义）
+            try {
+                // 兜底（时间戳号）路径 seqValue = null：号段没被消耗，按约束②不写烧号账
+                if (allocation.getSeqValue() != null) {
+                    flowNoBurnLedgerRecorder.recordBurn(allocation.getFlowNo(), allocation.getSeqKey(),
+                            allocation.getSeqValue(), describeFailure(ex), allocation.getCreatedBy());
+                }
+            } catch (RuntimeException burnEx) {
+                ex.addSuppressed(burnEx);
+                log.error("[A25] 烧号账写入失败，需人工补账：flowNo={} seqKey={} seqValue={}",
+                        allocation.getFlowNo(), allocation.getSeqKey(), allocation.getSeqValue(), burnEx);
+            }
+            throw ex;
+        }
 
         return getDetail(entity.getFlowId());
+    }
+
+    /**
+     * BL-5：把失败异常归类成烧号账 reason（决策用短标签 + 关键信息）。
+     */
+    private String describeFailure(RuntimeException ex) {
+        Throwable root = ex;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String msg = ex.getMessage() == null ? "" : ex.getMessage();
+        String rootMsg = root.getMessage() == null ? "" : root.getMessage();
+
+        if (ex instanceof org.springframework.dao.DuplicateKeyException
+                || root instanceof java.sql.SQLException) {
+            String constraint = "unknown";
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("(uk_fund_flows_flow_no|fund_flows_flow_no_key|\"[a-z0-9_]*flow[a-z0-9_]*\")")
+                    .matcher(msg + " " + rootMsg);
+            if (m.find()) {
+                constraint = m.group(1).replace("\"", "");
+            }
+            return "duplicate-key: " + constraint;
+        }
+        if (ex instanceof com.foodtraceability.common.exception.ConflictException) {
+            // 409 里混着两类：额度/状态类业务校验（余额不足）与版本竞争耗尽（乐观锁）
+            if (msg.contains("乐观锁")) {
+                return "optimistic-lock-exhausted: " + msg;
+            }
+            return "business-validation: " + msg;
+        }
+        if (ex instanceof com.foodtraceability.common.exception.BusinessException) {
+            return "business-validation: " + msg;
+        }
+        return ex.getClass().getSimpleName() + ": " + msg;
     }
 
     @Override
@@ -261,6 +335,18 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
      * 不再「查最后一条 +1」——高并发支付时原实现会拿到相同号并撞唯一键，导致流水写不进去。</p>
      */
     private String generateFlowNo() {
+        return generateFlowNoAllocation().getFlowNo();
+    }
+
+    /**
+     * 取号并带回号段信息（BL-5）：返回流水号 + 号段键 + 被消耗的序号，
+     * 供 {@link #create} 在「取号成功但落库失败」时写烧号账用。
+     *
+     * <p>兜底分支（号段异常 → 时间戳号）的 {@code seqValue} 为 {@code null}：
+     * 该路径**没有消耗号段**，按 Owner 约束「取号本身失败不写烧号账」，
+     * 调用方只在 {@code seqValue != null} 的语义下记账。</p>
+     */
+    private FlowNoAllocation generateFlowNoAllocation() {
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String sequenceKey = "FLOW" + datePart;
         String prefix = "FF" + datePart;
@@ -279,13 +365,39 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
             //     不会撞上本事务刚取走的下一个值。
             Integer seq = fundFlowMapper.nextFlowSequenceWithFloor(sequenceKey, prefix);
             if (seq != null && seq > 0) {
-                return String.format("%s%04d", prefix, seq);
+                // 号段真实消耗：seqValue 非空 → 后续若落库失败必须写烧号账
+                return new FlowNoAllocation(String.format("%s%04d", prefix, seq), sequenceKey,
+                        seq.longValue(), com.foodtraceability.utils.SecurityUtils.getCurrentUsername());
             }
         } catch (Exception e) {
             log.warn("流水号段分配失败，降级为时间戳流水号: {}", e.getMessage());
         }
         // 兜底：号段表异常时用时间戳保证唯一（仍满足 FF 前缀，仅序号段不再是 4 位顺序号）
-        return prefix + String.format("%04d", System.currentTimeMillis() % 10000);
+        // 该路径没有消耗号段 → seqValue = null（不写烧号账）
+        return new FlowNoAllocation(prefix + String.format("%04d", System.currentTimeMillis() % 10000),
+                sequenceKey, null, com.foodtraceability.utils.SecurityUtils.getCurrentUsername());
+    }
+
+    /**
+     * 取号结果（BL-5）：流水号 + 号段键 + 被消耗序号（兜底路径为 null）。
+     */
+    private static final class FlowNoAllocation {
+        private final String flowNo;
+        private final String seqKey;
+        private final Long seqValue;
+        private final String createdBy;
+
+        FlowNoAllocation(String flowNo, String seqKey, Long seqValue, String createdBy) {
+            this.flowNo = flowNo;
+            this.seqKey = seqKey;
+            this.seqValue = seqValue;
+            this.createdBy = createdBy;
+        }
+
+        String getFlowNo() { return flowNo; }
+        String getSeqKey() { return seqKey; }
+        Long getSeqValue() { return seqValue; }
+        String getCreatedBy() { return createdBy; }
     }
 
     /**
