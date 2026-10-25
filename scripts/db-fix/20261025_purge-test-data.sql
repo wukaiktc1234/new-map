@@ -39,6 +39,9 @@ DELETE FROM pos_shifts;
 -- 8) 号段重置（拍板 3，2026-10-25）：清库后必须重置流水号段，否则 A24「号段取值 − 落库条数」会留下恒定残差
 --    （清库前已产生的历史残差 456 即由此而来）。仅开发/测试环境适用；生产不清库，A24 残差 = 失败/软删次数，无需清零。
 DELETE FROM order_sequence WHERE sequence_key LIKE 'FLOW%';
+--    同时清空烧号账：烧号账是 fund_flows 的审计派生数据，流水已清空后这些行不再指向任何真实号，
+--    若不清理，A25「archived_flag=false AND NOT EXISTS(fund_flows.flow_no)」会把它们全判成『真号洞』而误红（实测 2 行误报）。
+DELETE FROM fund_flow_no_burn_ledger;
 --    注：缴款单号段 SLIPyyyyMMdd 不随清库重置（缴款单号对外可追溯，重置会与已导出单据重号）
 
 COMMIT;
