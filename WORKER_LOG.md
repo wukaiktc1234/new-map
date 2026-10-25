@@ -2237,3 +2237,84 @@ SELECT flow_id, flow_no, account_id, flow_direction, amount, business_date, stat
 | `seq_concurrency_check_p35.py` | **7 PASS / 0 FAIL**（号段增量 200 = 落库增量 200、余额 1,412,536 对拍一致） |
 | `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
 | `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
+---
+
+## 63. P4-4 期末结账 / 反结账（2026-10-26 00:24–01:00）
+
+### 63.1 三个追问的答复
+
+**Q1 A26 的两条 `RECON_DISPOSITION_LOST` 是什么性质？—— 测试数据，不是历史生产数据。**
+| log_id | statement_id | 时间戳 | 性质 |
+|---|---|---|---|
+| 1504 | 71 | 2026-10-25 23:09:59 | fund-500 的 P4-4 单测级夹具（验证 NEW-8 丢失路径） |
+| 1506 | 72 | 2026-10-25 23:11:28 | 同上（第二次复跑） |
+- 两条都在 **P4-4 同窗口**（23:09/23:11）产生，`operator=qa_admin`，`operation_data.subjectKey=A:flow_id=4290`；
+- **对应 statement 71/72 现已不存在**（fund-500 按 DRAFT 守卫清理，`SELECT … WHERE statement_id IN (71,72)` = 0 行；items 亦 0 行）；**审计按 append-only 保留**（这是设计，不是残留）；
+- **不会污染生产数据**：目标库为本地测试库，两条审计的 `statementId` 均指向已删除的测试表；A26 作为 **INFO** 只做观测，不参与判定。
+
+**Q2 P4-4d 的 NOT_READY：是「造数成本高」还是「造不出来」？—— 都不是，是「过滤条件写错」。**
+- 真实原因：`finance_audit_logs.target_id` 存的是 **item_id**（不是 statement_id），E2E 用 `target_id`/`LIKE` 过滤只会误读 fund-500 的两条历史审计；
+- 已给出正确过滤：`(operation_data::json ->> 'statementId') = owned_sid` 且用 `log_id > baseline` 取**新增行**；Owner 指定的做法（临时把 `item.flow_id` 改成不存在值 → force 重算 → 断言 LOST → 恢复）已在脚本里实现，最后一段实跑见 §63.5。
+
+**Q3 account 24 的 652 条流水来源？—— E2E 累积（不是 seed）。**
+实测（`business_date='2026-10-25'`）：
+```
+account_id | count | 说明
+       24  | 1392  | 全部 flow_category=5（内部转账）、created_by=qa_admin、20:39–23:34 → 每张缴款单存行产生 2 条（现金户出 / 商户户入），来自多轮 E2E 存行
+       20  |  155  | 现金户（POS 收入 + 存行出账）
+       25  |   28  | 微信商户
+       23  |    8  | 微信商户（门店2）
+```
+→ **结论：E2E 累积**。措施（本轮定）：**E2E 造数必须选「当日流水为 0」的安静 cell**（脚本已改为自动校验 + 账本按 account 分区），不采用「每次跑前清别人流水」（删流水要连带修余额，风险高于收益）。已记 backlog **NEW-11：提供 `--cleanup-account-flows`（软删 + 审计 + 余额回填）供长期治理**。
+
+### 63.2 现代化两件事的技术方案（**只确认可行性，未写代码**）
+
+**① 回调失败 / 掉单的主动补偿**
+| 项 | 结论 |
+|---|---|
+| 需要的接口 | 现有 `PosOrderPaymentServiceImpl` 已有支付回调入口与 `order_payment_records`；需要补 **渠道侧查询 API**（目前只有回调，无主动查询）—— 支付宝/微信各自 `query` 接口，加 `PaymentChannelQueryProvider` 抽象（`queryByOutTradeNo` → `{status, paidAt, amount, channelTxnId}`），**当前代码里没有，需要新建**（约 1 个接口 + 2 个实现） |
+| 订单状态查询 | 现有 `GET /v1/pos/orders/{orderId}` 与 `orders.payment_status` 可直接复用，**无需新增** |
+| 定时任务放哪 | 新建 `backend/.../job/finance/PaymentReconcileJob`（或复用现有 `@Scheduled` 所在包），**每 5–10 分钟**扫 `orders.payment_status=0(待支付) AND create_time < now()-5min`，逐单调渠道查询；成功则 **走既有 `FundFlowServiceImpl` 入账（`addBalanceGuarded` + 乐观锁）**，失败则不写 |
+| 与对账跑批冲突 | **不冲突**：R1 跑批按 `business_date` 聚合，本 job 只补写 `fund_flows`；但要注意 ① 期间封账门禁（已加 `FinancePeriodGuard`）→ 落在已结账期间必须跳过并告警；② 幂等（同一 `order_id` 只允许一条 SALE 流水，已有 A4 断言兜底）；③ 与用户手动重试并发 → 用 `order_id` 行锁或幂等键 |
+| 工作量 | **后端 3–4 人日**（Provider 抽象 + Job + 幂等 + 告警 + 单测）+ **断言 1 人日**（新增 A30「待支付超时订单仍无 SALE 流水且渠道已成功」= 0）+ E2E 1 人日 |
+
+**② T+0 未匹配预警**
+| 项 | 结论 |
+|---|---|
+| 需要的标记 | **不需要给 `fund_flows` 加 `matched_flag`**：现有 `recon_items`/`recon_differences` 已能表达「是否已匹配」，加冗余标记会引出「两处真源」问题（正是 BL-6/A19 这类事故的根源）。**建议**：新增视图/查询「当日 SALE 流水 left join recon_items 为 null」= 未匹配清单，零结构变更 |
+| 推送渠道 | 现阶段**页面通知**成本最低（新增 `GET /v1/finance/alerts/unmatched?date=yesterday` + 顶部红点）；邮件/企业微信需要新依赖与凭据，**不建议 P4 内做** |
+| 触发时点 | 次日 08:00 定时任务生成「昨日未匹配清单」（落 `finance_alert` 表或即时计算 + 缓存），财务在资金总览页看到待办数 |
+| 工作量 | **后端 2 人日**（查询 + 定时 + 接口）+ **前端 1.5 人日**（红点 + 清单页）+ 断言 0.5 人日 |
+
+**总体建议顺序**：① 主动补偿（风险更高，涉及资金写入）先做，但**必须先解决 §63.4 的期初口径问题**（否则补记流水会让结账校验更乱）；② 未匹配预警（读侧，零资金风险）可与 P5 并行。
+
+### 63.3 P4-4 实现清单
+| 层 | 内容 |
+|---|---|
+| 迁移 | `V20261026_001__finance_period_close.sql`：`accounting_periods` 加 `reopen_time/reopen_user_id/reopen_reason`、补 `uk_accounting_periods_code`、新建 `finance_period_account_balance`（PK `period_code+account_id` + 2 索引）、种子 `2026-10` |
+| 共用门禁 | `common/finance/FinancePeriodGuard#assertOpen(LocalDate)`；接入 `FundFlowServiceImpl:101`、`DepositSlipServiceImpl:352/:475`、`ReconReverseServiceImpl:80`（按原流水 `business_date`） |
+| 服务 | `FinancePeriodService(+Impl)`：`close`（RK-8 门禁 + 逐账户快照 + **V1 试算校验**）、`reopen`（≥10 字 + 只允许最后一个已结账期间）、`list`/`summary`（`fillAccounts`：已结账读快照 / 未结账现算；四个 total 由明细求和；`dirty` 与 A28 同判据） |
+| DTO | `FinancePeriodVO`：`status` 语义化 `OPEN/CLOSED/REOPENED` + `statusCode` 兼容 + `reopened`/`reopenTime`/`reopenReason` |
+| 前端 | `api/finance-period.ts` + `views/finance/recon/PeriodCloseView.vue` + 路由 `/finance/periods`；三态徽标（`period-status`+`data-status`）、结账/反结账（`reopen-reason` ≥10 字、二次确认）、逐账户明细（`period-account-row`+`data-closing-fen`，`trialBalancePassed=false`/`dirty=true` 标红 + tooltip）；**无批量** |
+| 巡检 | **A28**（判定）结账后仍写入流水 = 0；**A29**（判定）快照自洽 `closing == 期间末笔 balance_after` 且 `== opening+income−expense`；判定项 16 → **18 条** |
+
+### 63.4 实测（AC-56 候选）
+| # | 断言 | 结果 |
+|---|---|---|
+| 1 | 列表返回当前期间，`status=OPEN`，`accounts[]` 7 行、合计非 0 | PASS |
+| 2 | **RK-8 门禁**：期间内有 OPEN 差异 → 结账 **409**「仍有 1359 条未处置的对账差异」 | PASS |
+| 3 | **V1 试算拦截**：夹具账户 `income=100 / balance_after=999999` → **400**「account_id=5 计算值=100 分，快照值=999999 分，差额=-999899 分」 | PASS |
+| 4 | 正常结账（2026-09）→ `is_closed=true`、3 行快照、审计 `FINANCE_PERIOD_CLOSED`（log_id=1603） | PASS |
+| 5 | **封账门禁（TD-39）**：`POST /fund-flows(businessDate=2026-09-15)` → **409**「期间 2026-09 已结账，禁止写入；如需补录请先反结账」；`deposit` 同 | PASS |
+| 6 | **反结账**：reason 9 字 → **400**「至少 10 个字」；正常 → 200、`is_closed=false`、**快照 3 行仍在**、审计 `FINANCE_PERIOD_REOPENED`（log_id=1604）、`status=REOPENED` | PASS |
+| 7 | 前端三态徽标真机：`2026-10 data-status=OPEN` / `2026-09 data-status=REOPENED`（tooltip 含 close/reopen 时间与原因），`period-closing-fen data-fen=54490` | PASS |
+
+### 63.5 ⚠️ 未闭合项（必须报告，不隐瞒）
+**A. P4-4d（NEW-8 丢失路径）E2E 覆盖：尚未跑通。** 根因是审计过滤字段用错（`target_id` 是 item_id；应按 `operation_data::json->>'statementId'` + `log_id > baseline`），已把精确条件交给 ts-ops 做最后一跑；**在跑通前，本项按「未覆盖」披露**（后端单测级已覆盖：log_id 1504/1506 + 追溯链）。
+**B. 2026-10 无法真实结账 —— 期初余额口径缺失（需要 Owner 裁决）。** 现算显示 6 个账户 `trialBalancePassed=false`：`opening=0`（2026-10-01 前没有任何 `fund_flows`，账户初始余额不来自流水），而期间末笔 `balance_after` 是真实累计值（账户 20 = 80,760 分）→ V1 下 `closing(-46,840) ≠ 末笔(80,760)`。两条路：
+1. **补期初**（推荐）：新增「账户期间期初余额」维护（表或 `bank_accounts` 加 `opening_balance_fen` + 期初生效日），V1 口径不变；
+2. **改 V1 口径**：`closing` 与「账户当前 `balance`」比对（等于放弃「期末 = 期初+收−支」的恒等式，**不建议**）。
+**C. 2026-09 是 P4-4 验收造的测试期间**（`2026-09-01~09-30`，`status=REOPENED` + 3 行快照留档）。**生产清理时不要当真实期间删除**（清前必须确认 `period_code` 与真实财务期间无重叠）。
+
+### 63.6 最终回归
+`consistency_check` **18 PASS / 0 FAIL**（A19=0、A26=2 INFO、A27=0、**A28=0、A29=0**，TOTAL FAIL=0，exit 0）｜`schema_guard` exit 0｜`ui_e2e_payment` exit 0｜`e2e_recon_workbench` exit 0｜`e2e_statement_flow` exit 0｜`mvn compile` BUILD SUCCESS｜`vue-tsc` 0 error｜`npm run build` exit 0。
