@@ -2,7 +2,7 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29 参与 PASS/FAIL 判定，**期望 rows=0**；
 -- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
@@ -106,6 +106,12 @@
 --   A27 （**参与判定，进入 TOTAL FAIL**）DRAFT 调节表的 uncleared_* / adjusted_* 必须等于
 --       「按 cleared_flag=false 聚合的 items」；差 1 分即不一致（防绕过 service 直改表）。
 --       只查 DRAFT（SUBMITTED/APPROVED 为历史快照，允许与当前 items 不同）。
+--   A28 （**参与判定，进入 TOTAL FAIL**）结账后无写入：is_closed=true 的期间内，若存在
+--       fund_flows 活行满足 business_date ∈ [start_date, end_date] 且 create_time > close_time
+--       → 结账门禁失效。期望 0；>0 即 FAIL。
+--   A29 （**参与判定，进入 TOTAL FAIL**）结账快照自洽：finance_period_account_balance 每个
+--       (period_code, account_id) 必须满足 closing_fen = 期间内末笔 balance_after（无流水时跳过此项）
+--       且 closing_fen = opening_fen + income_fen - expense_fen。期望 0；>0 即 FAIL。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -639,6 +645,100 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A28（**参与判定**）：结账后无写入 —— 已结账期间内不得再有活流水
+--   口径：accounting_periods.is_closed = true 的期间，若有 fund_flows 活行满足
+--         business_date 落在 [start_date, end_date] 且 create_time > close_time
+--         → 结账门禁失效（结账后又写了账）。期望 0，>0 即 FAIL。
+--   守卫：任一表/列缺失 → [INFO] A28 跳过（不计入 TOTAL）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.accounting_periods') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'accounting_periods'
+                       AND column_name IN ('period_code', 'is_closed', 'close_time', 'start_date', 'end_date', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 6)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('account_id', 'business_date', 'create_time', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 4)) AS closed_write_ready
+\gset
+
+\if :closed_write_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A28 结账后仍写入流水 rows=0'
+            ELSE '[FAIL] A28 结账后仍写入流水 rows=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 条结账后写入的活流水（结账门禁失效），禁止接受'
+       END AS a28_line,
+       count(*) AS a28_n
+  FROM accounting_periods p
+  JOIN fund_flows f
+    ON f.deleted = 0
+   AND f.business_date BETWEEN p.start_date AND p.end_date
+   AND f.create_time > p.close_time
+ WHERE p.deleted = 0
+   AND p.is_closed = true
+   AND p.close_time IS NOT NULL
+   AND p.start_date IS NOT NULL
+   AND p.end_date IS NOT NULL
+\gset
+\else
+\set a28_line '[INFO] A28 跳过（表未创建）'
+\set a28_n 0
+\endif
+
+-- ------------------------------------------------------------
+-- A29（**参与判定**）：结账快照自洽
+--   对每个已结账期间 + 账户，finance_period_account_balance.closing_fen 必须：
+--     ① = 该账户期间内「最后一笔」balance_after（business_date DESC, flow_id DESC 取末笔）；
+--        期间内无流水时①跳过（无事实可比，避免误红）；
+--     ② = opening_fen + income_fen - expense_fen。
+--   任一不成立即 1 行不一致；期望 0，>0 即 FAIL。
+--   守卫：表/列缺失 → [INFO] A29 跳过（不计入 TOTAL）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.finance_period_account_balance') IS NOT NULL
+        AND to_regclass('public.accounting_periods') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'finance_period_account_balance'
+                       AND column_name IN ('period_code', 'account_id', 'opening_fen', 'income_fen', 'expense_fen', 'closing_fen')
+                     GROUP BY table_name HAVING count(*) = 6)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('account_id', 'balance_after', 'business_date', 'flow_id', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 5)) AS period_balance_ready
+\gset
+
+\if :period_balance_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A29 结账快照自洽(closing=末笔余额且=期初+收-支) rows=0'
+            ELSE '[FAIL] A29 结账快照自洽(closing=末笔余额且=期初+收-支) rows=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 个期间账户快照不自洽，禁止接受'
+       END AS a29_line,
+       count(*) AS a29_n
+  FROM finance_period_account_balance b
+  JOIN accounting_periods p
+    ON p.period_code = b.period_code
+   AND p.deleted = 0
+   AND p.is_closed = true
+  LEFT JOIN LATERAL (
+      SELECT f.balance_after
+        FROM fund_flows f
+       WHERE f.deleted = 0
+         AND f.account_id = b.account_id
+         AND f.balance_after IS NOT NULL
+         AND f.business_date BETWEEN p.start_date AND p.end_date
+       ORDER BY f.business_date DESC, f.flow_id DESC
+       LIMIT 1
+  ) last ON true
+ WHERE ( last.balance_after IS NOT NULL AND b.closing_fen <> last.balance_after )
+    OR b.closing_fen <> b.opening_fen + b.income_fen - b.expense_fen
+\gset
+\else
+\set a29_line '[INFO] A29 跳过（表未创建）'
+\set a29_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -906,7 +1006,15 @@ SELECT line
     SELECT 27,
            :'a27_line'
     UNION ALL
+    -- A28 参与判定：结账后仍写入流水（>0 进 TOTAL）
     SELECT 28,
+           :'a28_line'
+    UNION ALL
+    -- A29 参与判定：结账快照自洽（>0 进 TOTAL）
+    SELECT 29,
+           :'a29_line'
+    UNION ALL
+    SELECT 30,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -923,7 +1031,9 @@ SELECT line
              + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a19_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a25_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a27_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a27_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a28_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a29_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -1458,6 +1568,69 @@ SELECT s.statement_id, s.status,
 \else
 \echo ''
 \echo '-- A27 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A28 明细（前 20）：已结账期间内、create_time 晚于 close_time 的活流水
+-- 期望为空；出现即结账门禁失效（或反结账流程漏写）
+-- ------------------------------------------------------------
+\if :closed_write_ready
+\echo ''
+\echo '-- A28 明细（前 20）--'
+SELECT p.period_code, p.close_time,
+       f.flow_id, f.flow_no, f.account_id, f.amount, f.business_date, f.create_time,
+       f.create_time - p.close_time AS lag_after_close
+  FROM accounting_periods p
+  JOIN fund_flows f
+    ON f.deleted = 0
+   AND f.business_date BETWEEN p.start_date AND p.end_date
+   AND f.create_time > p.close_time
+ WHERE p.deleted = 0
+   AND p.is_closed = true
+   AND p.close_time IS NOT NULL
+   AND p.start_date IS NOT NULL
+   AND p.end_date IS NOT NULL
+ ORDER BY f.create_time DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A28 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A29 明细（前 20）：结账快照不自洽（closing_fen 与末笔余额或 期初+收-支 不符）
+-- 期望为空；出现即结账快照写错（或结账后流水被改动）
+-- ------------------------------------------------------------
+\if :period_balance_ready
+\echo ''
+\echo '-- A29 明细（前 20）--'
+SELECT b.period_code, b.account_id,
+       b.opening_fen, b.income_fen, b.expense_fen, b.closing_fen,
+       last.balance_after AS last_balance_after,
+       b.closing_fen - COALESCE(last.balance_after, b.closing_fen) AS diff_vs_last,
+       b.closing_fen - (b.opening_fen + b.income_fen - b.expense_fen) AS diff_rollforward
+  FROM finance_period_account_balance b
+  JOIN accounting_periods p
+    ON p.period_code = b.period_code
+   AND p.deleted = 0
+   AND p.is_closed = true
+  LEFT JOIN LATERAL (
+      SELECT f.balance_after
+        FROM fund_flows f
+       WHERE f.deleted = 0
+         AND f.account_id = b.account_id
+         AND f.balance_after IS NOT NULL
+         AND f.business_date BETWEEN p.start_date AND p.end_date
+       ORDER BY f.business_date DESC, f.flow_id DESC
+       LIMIT 1
+  ) last ON true
+ WHERE ( last.balance_after IS NOT NULL AND b.closing_fen <> last.balance_after )
+    OR b.closing_fen <> b.opening_fen + b.income_fen - b.expense_fen
+ ORDER BY b.period_code, b.account_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A29 明细跳过（表未创建）--'
 \endif
 
 COMMIT;
