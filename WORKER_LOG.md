@@ -1434,3 +1434,55 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 ```
 - 退出码逻辑未动（仍是 `1 if fails else 0`）；TOTAL FAIL 仍以 SQL 自报为准；
 - 实测：`python scripts/qa/consistency_check.py` → **exit 0**，`TOTAL FAIL=0`，输出如上。
+---
+
+## 50. P3-1 财务对账工作台（前端）+ R8 时间窗 + A25 约束（2026-10-25 13:58–14:30）
+
+### 50.1 A25 烧号账表放行约束（写入计划 §5.2，P3-5 落地）
+1. 表 `fund_flow_no_burn_ledger`，字段至少 `flow_no / reason / created_by / create_time / archived_flag`；
+2. **写入时机**：取号成功后、流水插入失败时（唯一键冲突 / 乐观锁耗尽 / 业务校验失败），在 **catch 块**写一条；**取号本身失败不写**；
+3. **归档**：>90 天定时任务置 `archived_flag = true`，不物理删除；
+4. `schema_guard.py` 白名单加该表（仅表存在性检查，不是数据白名单）；
+5. **A25 判定 SQL**：`SELECT COUNT(*) FROM fund_flow_no_burn_ledger WHERE archived_flag = false;` → **>0 即红**；
+6. A24 保持 **INFO**（只报当天号段取值 − 已落库条数）。
+
+### 50.2 两个小修正
+- **STORE_MANAGER 测试账号：原本没有**（`emp-j`/`emp-m` store 2、`vtest01` store 1 都是真实业务账号，无已知密码）→ 已建 **`qa_store_b`**（`user_id=2080170081205395464`，`roles=["9"]`=store_manager，`location_id=2`＝B 店，密码同 `qa_admin`），脚本 `scripts/db-fix/2026-10-25-create-qa-store-b.sql`（幂等）；顺带用 `2026-10-25-qa-user-roles-sync.sql` 补齐 `qa_*` 的 `user_roles`（原来为空）。
+- **时间字段确认**：`recon_runs` 用的是 **`create_time`**（不是 `created_at`；另有 `started_at`/`finished_at`/`update_time`）；`recon_differences` 有 `create_time`/`assigned_at`/`resolution_time`/`update_time`。计划 §1.6 的 SQL 已改为 `create_time`。
+
+### 50.3 P3-1 实现（前端 7 新文件 + 路由 1 行；后端 R8 小改 3 文件）
+| 层 | 内容 |
+|---|---|
+| 类型 | `frontend/src/types/finance-recon.ts`（VO 逐字对应 + 枚举 + `formatFen`/`sumFen` 整数分） |
+| API | `frontend/src/api/finance-recon.ts`（R1/R2/R3/R8/R9/R10 + `listAllReconDifferences` 逐页聚合） |
+| 页面 | `views/finance/recon/ReconWorkbench.vue` + `components/{ReconSummaryCard,ReconQueueTable,ReconDetailPanel,ReconResolveDialog}.vue` |
+| 路由 | `router/index.ts:121` 追加 `/finance/recon`（`domain:'finance'`，`roles:[FINANCE_DIRECTOR, AUDITOR]`；**仓库无 `FINANCE_MANAGER` 枚举**，故不含） |
+| 后端 | R8 加可选 `from`/`to`（半开区间 `[from,to)`，`ge/lt`），**接口签名/权限/返回结构未改**；`ReconDifferenceQueryDTO:25,27`、`ReconDifferenceServiceImpl:69-74`、`ReconController:97`（仅注解文案） |
+
+**契约校正（实测得出，已反馈各端）**：
+- R10 请求体是 `{resolution, **remark**, reverseFlowNo?}`（`remark` 必填），`resolutionRemark` 只是 VO 回显；
+- R1 返回 `{reused, run}`（`ReconRunCreateResultVO`），不是扁平 `{runId,…}`；
+- `UserRole.FINANCE_MANAGER` 在前端枚举中不存在，路由 roles 用 `FINANCE_DIRECTOR + AUDITOR`。
+
+### 50.4 4 条 AC 与 E2E 结果（12/12 PASS，exit 0）
+| # | 断言 | 结果 | 页面值 vs 接口值 |
+|---|---|---|---|
+| 1–6 | 环境就绪 / 登录 / R1 跑批 / R8 聚合 / UI 登录 / 打开页面 | PASS | runId=35，SUM=**145,700 分** |
+| 7 | **AC-46a** 笔数 | **PASS** | 页面 `'4'` == `differenceCount=4`（队列 12 行 → 证明不是数行数） |
+| 8 | **AC-46b** 金额 | **PASS** | `data-amount-state=ready`、`data-diff-amount-fen='145700'`、文本 `'1457.00'` → 145,700 == 145,700 |
+| 9 | **AC-48** 空原因提交 | **PASS** | 提交按钮 `disabled=True`；期间 `/resolve` 请求数 **0** |
+| 10 | **AC-47** 认领 | **PASS** | 「认领于 2026-10-25 14:25:12，认领人 2110437068670001200」 |
+| 11 | **AC-47** 核销 | **PASS** | 「核销于 14:25:14，操作人 …，原因 E2E 自动化核销-142514，决议 核销（只记决议）」 |
+| 12 | **AC-47** 四要素 | **PASS** | `核销于/操作人/原因/决议` 4/4；`data-field`：assignedAt=2、resolutionTime=2、resolutionBy=1、resolutionRemark=1 |
+
+### 50.5 E2E 暴露并修掉的真缺陷（AC-46b 假 0）
+- **现象**：摘要卡 `summary-diff-amount` 显示 `0.00`（后改为 `—`），而 R8 全量 `SUM(diffAmount)=145,700 分`。
+- **根因**：`ReconWorkbench.vue` 的 `diffAmountFen = ref(0)` —— R3 先返回、R8 聚合未回时卡片就把 `0` 渲染成 `0.00`；若聚合失败还会**永久显示 0.00**（假数据比空值更危险）。
+- **修法**：初值改 `ref<number|null>(null)`，加载前置 null、失败保持 null；卡片 null 显示「—」；新增 `data-amount-state`（loading/ready/idle）供 E2E 无竞态等待；`data-diff-amount-fen` 就绪后写原始分；`summary-diff-count` 未动（仍取 R3）。
+- 审计可读性顺带补：`audit-timeline` 每行/每字段加 `data-field` 标记，中文文案未改。
+
+### 50.6 回归
+- `scripts/qa/e2e_recon_workbench.py` → **12/12 PASS，exit 0**（日志 `.verify-tmp/e2e-recon-final.log`）；
+- `scripts/qa/ui_e2e_payment.py` → **7 PASS / 0 FAIL**（POS 3001 由我起，`exit 0`）；
+- `consistency_check.py` → **14 PASS / 0 FAIL（判定项 14 条）、共 22 条断言含 8 条 INFO、TOTAL FAIL=0、exit 0**；
+- `frontend`: `npx vue-tsc --noEmit` 0 error、`npm run build` exit 0；`backend`: `mvn -o -B -DskipTests compile` BUILD SUCCESS。
