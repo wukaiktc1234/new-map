@@ -387,18 +387,15 @@ def main() -> int:
     print("  证据目录=%s" % out_dir)
     print("=" * 78)
 
-    # ---- 预检：缺服务直接报错（不静默 SKIP）----
-    missing = []
-    if not probe(a.pos + "/"):
-        missing.append("POS 前端 %s（cd frontend-pos && npx vite --port 3001）" % a.pos)
-    if not probe(a.admin + "/"):
-        missing.append("管理端前端 %s（cd frontend && npx vite --port 3002）" % a.admin)
-    if not probe(a.api + "/v1/call-number/stats"):
-        missing.append("后端 API %s（mvn spring-boot:run -Dspring-boot.run.profiles=pg）" % a.api)
-    if missing:
-        print("[FATAL] 依赖服务不可用，请先启动：")
-        for m in missing:
-            print("   - %s" % m)
+    # ---- 预检 + 库存自备（复用 e2e_setup；E2E 不再依赖「别人有没有提前补库存」）----
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from e2e_setup import ensure_ready
+    except Exception as e:
+        print("[FATAL] 无法导入 e2e_setup：%s" % e)
+        return 2
+    if not ensure_ready(api=a.api, admin=a.admin, pos=a.pos):
+        print("[NOT_READY] 前置未就绪（见上），退出码 2")
         return 2
 
     prep = Prep(a)

@@ -144,6 +144,21 @@ class ReconE2E:
     def not_ready(self, name, detail):
         return self.step(name, False, detail, state="NOT_READY")
 
+    def psql_scalar(self, sql):
+        import subprocess
+        psql = getattr(self.a, "psql", None) or "P:/my-new-project/PostgreSQL/18/bin/psql.exe"
+        try:
+            o = subprocess.run([psql, "-h", "localhost", "-p", "5432", "-U", "postgres",
+                                "-d", "food_traceability", "-t", "-A", "-c", sql],
+                               capture_output=True, text=True, timeout=40, encoding="utf-8", errors="replace",
+                               env=dict(os.environ, PGPASSWORD="123456", PGCLIENTENCODING="UTF8"))
+            if o.returncode != 0:
+                print("  [WARN] psql_scalar rc=%s err=%s" % (o.returncode, (o.stderr or "")[:120]))
+            return (o.stdout or "").strip()
+        except Exception as e:
+            print("  [WARN] psql_scalar 异常: %s" % e)
+            return ""
+
     def shot(self, name):
         try:
             p = SHOT_DIR / ("%s-%s.png" % (datetime.now().strftime("%H%M%S"), name))
@@ -170,16 +185,18 @@ class ReconE2E:
                          "HTTP %s %s" % (st, "" if self.token else json.dumps(b, ensure_ascii=False)[:180]))
 
     # ---------------- R1 与差异池 ----------------
-    def run_recon(self, account_id):
-        st, b = http("POST", self.a.api + "/v1/finance/recon-runs", self.token,
-                     {"accountId": int(account_id), "businessDate": self.a.business_date})
+    def run_recon(self, account_id, force=False):
+        path = "/v1/finance/recon-runs" + ("?force=true" if force else "")
+        st, b = http("POST", self.a.api + path, self.token,
+                     {"accountId": int(account_id), "businessDate": self.a.business_date,
+                      "force": bool(force)})
         d = data_of(b) or {}
         run = d.get("run") or d
         return st, b, run
 
     def prepare(self):
         for acct in [self.a.account_id] + ([self.a.fallback_account] if self.a.fallback_account else []):
-            st, b, run = self.run_recon(acct)
+            st, b, run = self.run_recon(acct, force=True)
             if not ok(b):
                 self.step("R1 跑批 account=%s" % acct, False,
                           "HTTP %s %s" % (st, json.dumps(b, ensure_ascii=False)[:200]))
@@ -190,9 +207,22 @@ class ReconE2E:
                       "internalCount=%s externalCount=%s" % (
                           run_id, data_of(b) and data_of(b).get("reused"), dcnt,
                           run.get("internalCount"), run.get("externalCount")))
-            if run_id and dcnt > 0:
+            actionable = 0
+            if run_id:
+                try:
+                    actionable = int(self.psql_scalar(
+                        "SELECT COUNT(*) FROM recon_differences WHERE run_id=%s"
+                        " AND status NOT IN ('CLOSED','REVERSED')" % int(run_id)) or 0)
+                except Exception:
+                    actionable = 0
+            if run_id and dcnt > 0 and actionable > 0:
                 self.run_id, self.diff_count = int(run_id), dcnt
+                self.step("可操作差异就绪（未被核销）", True,
+                          "runId=%s differenceCount=%d 未关闭差异=%d" % (run_id, dcnt, actionable))
                 break
+            if run_id and dcnt > 0 and actionable == 0:
+                self.step("差异池已被核销", True,
+                          "runId=%s differenceCount=%d 但未关闭差异=0 → 继续换下一个账户/重建" % (run_id, dcnt))
             if run_id and dcnt == 0:
                 self.step("差异池非空（account=%s）" % acct, False,
                           "differenceCount=0；internalCount=%s externalCount=%s —— 不静默跳过，换下一个账户" % (
@@ -272,13 +302,39 @@ class ReconE2E:
             return None
 
     # ---------------- AC-46 ----------------
+    def wait_summary_ready(self, timeout=30000):
+        """等摘要卡数据就绪（data-amount-state=ready 且 data-difference-count 非空），
+        避免在 /recon-runs/{id} 返回前读到占位 0。"""
+        try:
+            self.page.wait_for_function(
+                """() => {const a=document.querySelector('[data-test="summary-diff-amount"]');
+                const c=document.querySelector('[data-test="summary-diff-count"]');
+                if(!a||!c) return false;
+                const st=a.getAttribute('data-amount-state');
+                const dc=c.getAttribute('data-difference-count');
+                return st==='ready' && dc!==null && dc!=='';}""", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
     def ac46a(self):
+        ready = self.wait_summary_ready()
         txt = self.read_text('[data-test="summary-diff-count"]')
+        attr = None
+        try:
+            attr = self.page.locator('[data-test="summary-diff-count"]').first.get_attribute("data-difference-count")
+        except Exception:
+            attr = None
         val = to_int(txt)
-        okk = val is not None and val == self.diff_count
-        return self.step("AC-46a 页面差异条数 == 接口 differenceCount", okk,
-                         "页面=%r 解析=%s；接口 runId=%s differenceCount=%d%s" % (
-                             txt, val, self.run_id, self.diff_count, "" if okk else "；截图=" + self.shot("ac46a")))
+        attr_val = to_int(attr)
+        self.step("AC-46a 读取前等待摘要就绪（data-amount-state=ready 且 data-difference-count 非空）", ready,
+                  "ready=%s；count 文本=%r 属性 data-difference-count=%r" % (ready, txt, attr))
+        okk = (val is not None and val == self.diff_count
+               and (attr_val is None or attr_val == self.diff_count))
+        return self.step("AC-46a 页面差异条数 == 接口 differenceCount（文本与 data-difference-count 双校验）", okk,
+                         "页面文本=%r 解析=%s；页面属性=%r 解析=%s；接口 runId=%s differenceCount=%d%s" % (
+                             txt, val, attr, attr_val, self.run_id, self.diff_count,
+                             "" if okk else "；截图=" + self.shot("ac46a")))
 
     def ac46b(self):
         # 先用 data-amount-state 消除竞态：等 ready 再读；idle/loading 期间读到的空值不算数

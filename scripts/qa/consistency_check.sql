@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -84,6 +84,9 @@
 --       或补记账 token → 与 A21 **对称**（A21=有证据无前缀；A22=有前缀无证据）。
 --       **为什么需要**：A7 只在 balance_after 与实际余额不一致时才报，伪造 FFH 前缀且余额恰好
 --       对齐的行会**静默通过**；A22 补上这个形态盲区。A7 只看余额一致性，不替代形态观测。
+--   A23 （信息性，不进 TOTAL）**未关闭调节表最长挂账天数**：status NOT IN ('APPROVED') 且 deleted=0，
+--       以 COALESCE(submitted_at, create_time) 起算挂账天数取 MAX；阈值 STALE_DAYS=7（脚本内常量），
+--       >7 时同一行追加提醒。守卫：reconciliation_statements（含 status/deleted/submitted_at/create_time）不存在 → [INFO] 跳过。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -423,6 +426,43 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A23（信息性，不参与 TOTAL）：未关闭调节表最长挂账天数
+--   口径：status NOT IN ('APPROVED') 且 deleted=0 的调节表，
+--         以 COALESCE(submitted_at, create_time) 为起点算「已挂账天数」并取最大值。
+--   阈值：**STALE_DAYS = 7**（脚本内常量；如需可配再改成 app 配置）。
+--   注：天数用 epoch/86400 取整，而非 EXTRACT(DAY ...)——后者只取 interval 的「日」分量，
+--       跨月（≥1 个月）会截断失真；两者在 <1 个月时结果一致。
+--   守卫：reconciliation_statements（含 status/deleted/submitted_at/create_time 列）不存在 → [INFO] 跳过。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
+                       AND column_name IN ('status', 'deleted', 'submitted_at', 'create_time')
+                     GROUP BY table_name HAVING count(*) = 4)) AS stmt_stale_ready
+\gset
+
+\if :stmt_stale_ready
+SELECT CASE WHEN COALESCE(MAX(t.days), 0) > 7
+            THEN '[INFO] A23 未关闭调节表最长挂账天数 days=' || COALESCE(MAX(t.days), 0)
+                 || '（存在超过 7 天未关闭的调节表，请关注）'
+            ELSE '[INFO] A23 未关闭调节表最长挂账天数 days=' || COALESCE(MAX(t.days), 0)
+       END AS a23_line,
+       COALESCE(MAX(t.days), 0) AS a23_n,
+       (COALESCE(MAX(t.days), 0) > 7) AS a23_stale
+  FROM (
+      SELECT floor(EXTRACT(EPOCH FROM (now() - COALESCE(s.submitted_at, s.create_time))) / 86400)::int AS days
+        FROM reconciliation_statements s
+       WHERE s.status NOT IN ('APPROVED')
+         AND s.deleted = 0
+  ) t
+\gset
+\else
+\set a23_line '[INFO] A23 跳过（表未创建）'
+\set a23_n 0
+\set a23_stale false
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -665,7 +705,11 @@ SELECT line
     SELECT 22,
            :'a22_line'
     UNION ALL
+    -- A23 信息性：未关闭调节表最长挂账天数（不进 TOTAL）
     SELECT 23,
+           :'a23_line'
+    UNION ALL
+    SELECT 24,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -1110,6 +1154,28 @@ SELECT f.flow_no, f.account_id, f.amount, f.balance_after, f.created_by,
 \else
 \echo ''
 \echo '-- A22 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A23 明细（前 20 行）：超过阈值的未关闭调节表（挂账天数倒序）
+-- 阈值同 A23 判定：STALE_DAYS = 7；未超阈值时不输出明细（只提示跳过）
+-- ------------------------------------------------------------
+\if :a23_stale
+\echo ''
+\echo '-- A23 明细（前 20）--'
+SELECT s.statement_id,
+       s.status,
+       s.submitted_by,
+       COALESCE(s.submitted_at, s.create_time) AS submitted_at,
+       floor(EXTRACT(EPOCH FROM (now() - COALESCE(s.submitted_at, s.create_time))) / 86400)::int AS stale_days
+  FROM reconciliation_statements s
+ WHERE s.status NOT IN ('APPROVED')
+   AND s.deleted = 0
+ ORDER BY stale_days DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A23 明细跳过（无超过阈值的未关闭调节表）--'
 \endif
 
 COMMIT;
