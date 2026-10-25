@@ -18,6 +18,7 @@ import ReconSummaryCard from './components/ReconSummaryCard.vue'
 import ReconQueueTable from './components/ReconQueueTable.vue'
 import ReconDetailPanel from './components/ReconDetailPanel.vue'
 import ReconResolveDialog from './components/ReconResolveDialog.vue'
+import ChannelFeePanel from './components/ChannelFeePanel.vue'
 import {
   claimReconDifference,
   createReconRun,
@@ -358,6 +359,12 @@ async function handleResolveSubmit(payload: { resolution: ReconResolution; remar
 }
 
 const summaryRun = computed<ReconRunVO | null>(() => currentRun.value)
+
+/**
+ * 渠道手续费卡的统计窗口（与队列默认 7 天窗同源）。
+ * 仅在 setup 时计算一次，避免每次渲染重算。
+ */
+const feeWindow = defaultWindow()
 </script>
 
 <template>
@@ -376,6 +383,13 @@ const summaryRun = computed<ReconRunVO | null>(() => currentRun.value)
       :trend="trend"
       :loading="summaryLoading"
       :amount-loading="amountLoading"
+    />
+
+    <!-- ①-b 渠道手续费卡（摘要下方、独立一行，不打乱 ②/③ 的三区网格） -->
+    <ChannelFeePanel
+      :run-id="currentRun?.runId ?? null"
+      :from="feeWindow.from"
+      :to="feeWindow.to"
     />
 
     <!-- ② 差异队列 + ③ 右侧详情（三区布局的下半部分） -->
