@@ -1839,3 +1839,88 @@ SELECT 'qa_manager_store', password, 'QA 门店经理', 1, '["9"]'::jsonb, 'stor
 INSERT INTO user_roles (user_id, role_id, deleted, create_time)
 SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='qa_manager_store';
 ```
+---
+
+## 57. 【P3 归档】细节确认 + 边界核查 + 最终回归（2026-10-25 19:31–20:00）
+
+### 57.1 三个细节的确认
+
+**① `qa_approver.location_id=1` 在 `data_scope=company` 下的语义 → 冗余（保留，但写明用途）**
+- **对可见范围完全冗余**：`FinanceOverviewServiceImpl:64-73` 与 `StoreReconServiceImpl:113-131` 都是 `if (!global) { 才读 locationId }` —— company 走全局分支，`location_id` 根本不参与判定（实测：`qa_approver` 补与不补，资金总览都返回 3 家门店）。
+- **补它的真实目的 = 让账号像「真实员工」**：① JWT 的 `locationId` claim 与门店/收银上下文在其他域（POS 班次、门店业务）会被读取；② 也为将来若把该角色改回 `department` 时不用再补数据。**不是历史遗留**。
+- **是否删掉**：可以删（对 P3 三个页面零影响）。**我的建议是保留**并加注释 `-- 仅作员工归属画像，不参与 company 全局判定`，因为删了之后若要把 finance_manager 改回 department 会立刻 403（等于把坑藏起来）。**等你一句话决定，我照办。**
+
+**② `READY_NONEMPTY` 在 D 类计数为 0 时是否安全 → 安全（四类卡有 `v-if` 守卫，未加载时不渲染）**
+- 代码事实：`StatementDetail.vue:244` 是 `<template v-if="statement">`，四类卡（`:285-299`）在 `statement` 为 null 时**整段不渲染** → 不存在「占位 0」；元素一旦出现，`data-count` 就是真实计数（`countOf` = `itemsOf(key).length`，`'0'` 是 D 类的**合法真实值**）。
+- 因此 `READY_NONEMPTY`（等属性非空）在这里**不会把占位当值**；`'0'` 就该被接受。
+- **与 AC-46b 那个坑的区别**：`diffAmountFen` 的问题是「元素先渲染、属性先写成 0」（同一元素既有占位又有真实值）；四类卡是「元素后渲染」（不存在占位阶段）。判据：**看元素是否先于数据渲染**，而不是看值是否可能为 0。
+- 已在该脚本注释写明这个前提，避免后人误用 `READY_NONEMPTY`。
+
+**③ NEW-3 时机 → 已在 P3 收口最后一条完成（不留给 P4）**
+- `e2e_store_recon.py`：`channel-fee-total` 先等 `data-fee-state=ready` 再读三属性；门店三值卡用 `READY_NONEMPTY` 等 `data-fen`；**删除自建 settle**；新增 **AC-49d**（三值卡与 SQL 对拍 15300/14800/−500）→ **10/10 PASS**。
+- `e2e_fund_overview.py`：根节点 `ov-state=ready` 先等，其余走 `read_data_attr`；**删除自建 settle 与「元文本 ×100」回退**；发现 `ov-oldest-days` 的属性是 `data-days`（非 data-count），按真实属性读 → **10/10 PASS**。
+- **机制收口状态**：`e2e_recon_workbench` / `e2e_statement_flow` / `e2e_store_recon` / `e2e_fund_overview` **全部走公共函数**；`ui_e2e_payment` 只读表格文本、无 data- 钩子，无需迁移。**取样竞态已彻底关闭。**
+
+### 57.2 两个边界的 grep 结果
+
+**① P3-3 的 V8 400→409 是否影响其他调用方 → 无影响**
+| 位置 | 内容 | 判断 |
+|---|---|---|
+| `ReconciliationStatementServiceImpl:325/330` | 本次改动点（`conflict(409)`） | — |
+| `GlobalExceptionHandler:140` | 注释「四眼/权限类 = 400/403」，**只是注释**，映射按 `BusinessException.httpStatus` 走 | 需同步注释（已记 §57.4 待办，非代码风险） |
+| `DepositSlipServiceImpl:469-471` | 缴款单 SL7 复核四眼，**独立实现**，仍是 `BusinessException(..., 400)` | **不受影响**（不同单据、不同端点，前端也没按 400 判四眼） |
+| `frontend/.../StatementDetail.vue:178` | `// 409（四眼/出纳/V5 复核失败）→ 文案原样显示` | 已是 409 语义，**对齐** |
+| 前端其他位置 | grep `code === 400` / `四眼` 无「按 400 判四眼」的分支 | 无 |
+**结论**：调接口的只有 P3-3 自己的页面（按 409 处理），**无其他消费方依赖 400**。唯一残留是 `GlobalExceptionHandler` 的一句注释，建议 P4 顺手改成「四眼/状态冲突类 = 409」。
+
+**② P3-4 的 data_scope 统一是否影响 5 个模块之外 → **有 2 个额外消费方**，需知悉**
+全项目（`backend/src/main/java`）`data_scope|getUserDataScope|isGlobal` 命中文件 20 个，去重后**真正消费「判定值」的只有 6 处**：
+| 模块 | 用途 | 是否受影响 | 回归 |
+|---|---|---|---|
+| `PermissionVerifyServiceImpl:475` | `getUserDataScope` 本体（优先级表） | 值变了（auditor/finance_manager 变 company） | 无回归（所有 E2E 登录/权限正常） |
+| `PermissionAspect:187/419` | `checkDataScopeLevel` 分级比较 | `company(80)` 更高 → 更宽松 | 无回归 |
+| `DataPermissionServiceImpl:259` | **列表查询的通用数据范围过滤**（多模块经 `DataPermissionService` 复用） | **受影响**：auditor(self→company) / finance_manager(department→company) 现在命中 `case "company": return null`（**不加过滤 = 看全公司**） | **需知悉**：这是「审计只读全量 / 财务经理统筹全店」的**预期后果**，与 §7.1 矩阵一致 |
+| `StoreReconServiceImpl:113` | 门店对账 403 语义 | 已改 | `e2e_store_recon` 10/10 |
+| `FinanceOverviewServiceImpl:64` | 资金总览范围 | 新增 | `e2e_fund_overview` 10/10 |
+| **`PurchaseRequestServiceImpl:550`** | 采购申请列表 `applyDataScopeFilter`（`case "all"/"company": break` 不加过滤） | **受影响**（同一逻辑） | **实测**：`qa_admin/qa_approver/qa_auditor` 调 `/v1/purchase/requests/page` → **403 权限不足**（无采购权限码），`qa_store_b` → 200 total=0 → **当前账号体系下该路径不可达，无实际回归风险**；若将来给财务开采购查看权限，会看到全公司数据（符合 company 语义） |
+| `OperationsDashboardDataServiceImpl:109` | 仅注释「读侧走 data_scope 聚合」 | 注释 | 无 |
+| `EmployeeDataScope*` / `PositionRoleMappingTableConfig` / `PermissionAssignmentLog` / `Role` / `SysRole` | **同名不同义**：员工数据范围（`employee_data_scope` 表）与登录分配日志，与 `roles.data_scope` 无关 | **不受影响** | 无 |
+**结论**：5 个模块之外**有 2 个真实消费方**（`DataPermissionServiceImpl` 的通用列表过滤、`PurchaseRequestServiceImpl`），二者都把 `company` 视为「不加过滤」→ 本次调整会让**审计、财务经理在两个域的可见范围扩大**。这与 Owner 拍板（审计只读全量、财务经理统筹全店）**方向一致**，属预期行为；采购域当前账号无权限码，实测不可达，**无需额外回归**。
+
+### 57.3 P3 归档（本节即归档节，回指各阶段）
+**五项功能**：P3-1 对账工作台（§50）→ P3-2 门店视图 + 渠道手续费（§51）→ P3-3 调节表闭环（§53）→ P3-4 资金总览 + data_scope 统一（§54）→ P3-5 BL-9 时区 + BL-5 烧号账（§55）。
+**三条方法学（P3 组织结论，后续阶段沿用）**：
+1. **零容忍断言**：不引入白名单/基线；A1–A25 中 15 条判定项、10 条 INFO 观测；发现某断言「空库必红」先改断言设计，不改数据；历史遗留问题要么修数据、要么显式降级为 INFO 并写清理由（A24 = INFO 即此类）。
+2. **取样竞态机制**（三次事故换来的硬规则）：**禁止** `inner_text`/`get_attribute` 直读 `data-*`；一律 `e2e_setup.wait_for_data_attr(page, sel, attr, ready_value)`，`ready_value` **必填**（`READY_NONEMPTY` 需显式且需论证「元素未加载时不渲染」）。P3-2 AC-50b、P3-4 AC-46a、P3-5 AC-52a 三次红都是「元素出现即读值」。
+3. **补数据必验证实际查询**：任何「补数据」脚本（user_roles / data_scope / 库存）提交前必须用**业务真实查询**回查并贴证据（§52 教训：`user_roles.role_id` 存的是 `role_id_str` 不是数字，`INSERT 0 1` 不代表能命中）。
+
+### 57.4 P3 backlog（8 条，按优先级，标 **P4 候选**）
+| # | 项 | 优先级 | P4 候选 | 说明 |
+|---|---|---|---|---|
+| 1 | **BL-2** 三处发号器收敛 | **P4-高** | ✅ 第一条候选 | 需 Owner 放行 call-number 文件 |
+| 2 | **BL-6b** 调节表 1:N 同额歧义前端处置 UI | **P4-中** | ✅ | 后端端点已有，前端未接；真实数据 2.2% 会走到 |
+| 3 | **NEW-1** 期末结账/反结账 | **P4-中** | ✅ | 建议 P3-3 闭环跑一个结账周期后开 |
+| 4 | **TD-31** 退款侧勾稽 | **P4-低** | ✅ | 随退款/售后域一起 |
+| 5 | **BL-10** `detail()` 自调用 7 处（readOnly 不生效） | **P4-低** | ✅ | 代码卫生 |
+| 6 | **NEW-2** `recon_runs.auto_matched_amount` 持久化 | **P4-低** | ✅ | 需加列（结构变更） |
+| 7 | **NEW-4** P3 前端权限码细化 | **P4-低** | ✅ | 当前统一复用 `finance:bank:view` |
+| 8 | **NEW-5**（新增）`GlobalExceptionHandler:140` 注释改为「四眼/状态冲突 = 409」 | **P4-极低** | ✅ | 纯注释，1 行 |
+> NEW-3（E2E 迁 `wait_for_data_attr`）**已在 P3 收口完成，不再列入 backlog**。
+
+### 57.5 编号连续性核查
+- **设计稿 §8：AC-1 … AC-54 共 54 条，连续无跳号无重复**（正则提取 `| AC-n` 全表 + `**AC-n**` 加粗行，去重后 1..54 完整）。
+- **一致性断言：A1 … A25 共 25 条，连续无重复**（从 `consistency_check.py` 实跑输出正则 `\[(PASS|FAIL|INFO)\] A(\d+)` 提取，去重后 25 个 id，缺失 = 空）。
+
+### 57.6 最终全量回归（P3 收官）
+| 套件 | 结果 |
+|---|---|
+| `consistency_check.py` | **15 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A25） |
+| `schema_guard.py` | 7/7，exit 0 |
+| `ui_e2e_payment.py` | 7/7，exit 0 |
+| `e2e_recon_workbench.py` | 14/14，exit 0 |
+| `e2e_store_recon.py` | **10/10**（新增 AC-49d），exit 0 |
+| `e2e_statement_flow.py` | 13/13，exit 0 |
+| `e2e_fund_overview.py` | 10/10，exit 0 |
+| `e2e_p35_bl9_bl5.py` | 9/9，exit 0 |
+| `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
+| `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
