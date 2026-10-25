@@ -276,6 +276,8 @@ UNMATCHED ──L1/L2唯一──▶ AUTO_MATCHED ──人工复核(可选)─�
 
 > 差异类型是**枚举 code**，中文名放前端字典，不进 DB 主字段。
 
+> **跨日时间差窗口径（BL-7）**：同账户 + 金额完全相等 + |Δt| ≤ `app.finance.recon.cross-day-window-minutes`（默认 1440 分钟 = 24h）且不满足常规 10 分钟窗 → 两侧 `MATCHED` + `TIME_DIFF`（差 0）；超窗 → `ONE_SIDED_*`；窗内多笔同额 → `AMBIGUOUS`。
+
 ### 2.5 差异处理流程与冲正规则
 
 ```

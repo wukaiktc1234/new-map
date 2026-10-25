@@ -56,7 +56,8 @@ import java.util.Set;
  * <p><b>TIME_DIFF（BL-7，激活 {@link ReconDictionary#DIFF_TIME}）</b>——三个时间窗口径：</p>
  * <ul>
  *   <li><b>常规窗</b>：|内部入账时间 − 外部 txn_time| ≤ {@code windowMinutes}（默认 10 分钟），由 L2 直接自动匹配；</li>
- *   <li><b>允许跨日窗</b>：同账户 + 金额<b>完全相等</b>（不适用手续费平账）+ 时间差 ≤ <b>24 小时（1440 分钟）</b>，
+ *   <li><b>允许跨日窗</b>：同账户 + 金额<b>完全相等</b>（不适用手续费平账）+ 时间差 ≤ 
+ *       <b>{@code app.finance.recon.cross-day-window-minutes}（默认 1440 分钟 = 24h）</b>，
  *       跨自然日也算。落在 (常规窗, 跨日窗] 的 1:1 对 → 两侧置 {@code MATCHED}、
  *       生成 {@code recon_differences.difference_type = TIME_DIFF}（{@code diff_amount = 0}），
  *       <b>不落 AMBIGUOUS / ONE_SIDED</b>；窗内多笔同额候选 → 仍按真歧义记 AMBIGUOUS；</li>
@@ -73,8 +74,8 @@ public class ReconBatchExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(ReconBatchExecutor.class);
 
-    /** BL-7：允许跨日窗上界（分钟）= 24h；超出即判单边（ONE_SIDED_*） */
-    private static final long CROSS_DAY_WINDOW_MINUTES = 24L * 60L;
+    /** BL-7 默认允许跨日窗上界（分钟）= 24h；实际取值见 {@link #crossDayWindowMinutes}，可用配置覆盖 */
+    private static final long DEFAULT_CROSS_DAY_WINDOW_MINUTES = 24L * 60L;
 
     private final ReconRunMapper reconRunMapper;
     private final ReconItemMapper reconItemMapper;
@@ -87,6 +88,15 @@ public class ReconBatchExecutor {
     /** 时间窗（分钟），默认 ±10 分钟（design §2.2） */
     private final long windowMinutes;
 
+    /**
+     * BL-7：允许跨日窗上界（分钟），默认 1440（= 24h）。
+     *
+     * <p>可配置项 {@code app.finance.recon.cross-day-window-minutes}（只在代码里给默认值，不改 application.yml）；
+     * 语义与 BL-7 首次落地时一致：同账户 + 金额完全相等 + |Δt| ≤ 本值且不满足常规窗 → TIME_DIFF；
+     * 超出本值 → ONE_SIDED_*。配成 ≤ windowMinutes 等价于关闭跨日匹配。</p>
+     */
+    private final long crossDayWindowMinutes;
+
     /** 仅验收用失败注入，默认 false */
     private final boolean failInject;
 
@@ -98,6 +108,8 @@ public class ReconBatchExecutor {
                               BankTransactionMapper bankTransactionMapper,
                               OrderPaymentRecordNewMapper orderPaymentRecordMapper,
                               @Value("${app.finance.recon.time-window-minutes:10}") long windowMinutes,
+                              @Value("${app.finance.recon.cross-day-window-minutes:1440}")
+                              long crossDayWindowMinutes,
                               @Value("${app.finance.recon.fail-inject:false}") boolean failInject) {
         this.reconRunMapper = reconRunMapper;
         this.reconItemMapper = reconItemMapper;
@@ -107,6 +119,9 @@ public class ReconBatchExecutor {
         this.bankTransactionMapper = bankTransactionMapper;
         this.orderPaymentRecordMapper = orderPaymentRecordMapper;
         this.windowMinutes = windowMinutes;
+        // 防御：配置成 <=0 时回落默认值，避免「跨日窗=0」把 TIME_DIFF 彻底关死而不自知
+        this.crossDayWindowMinutes = crossDayWindowMinutes > 0
+                ? crossDayWindowMinutes : DEFAULT_CROSS_DAY_WINDOW_MINUTES;
         this.failInject = failInject;
     }
 
@@ -446,7 +461,7 @@ public class ReconBatchExecutor {
             return false;
         }
         long minutes = Math.abs(Duration.between(internalTime, externalTime).toMinutes());
-        return minutes <= CROSS_DAY_WINDOW_MINUTES;
+        return minutes <= crossDayWindowMinutes;
     }
 
     private boolean timeWindowOk(LocalDateTime internalTime, LocalDateTime externalTime) {
@@ -482,7 +497,7 @@ public class ReconBatchExecutor {
         long minutes = internal.txnTime == null || external.txnTime == null ? 0L
                 : Math.abs(Duration.between(internal.txnTime, external.txnTime).toMinutes());
         diff.setResolutionRemark("跨日时间差 " + minutes + " 分钟（常规窗口 " + windowMinutes
-                + " 分钟，允许跨日窗 " + CROSS_DAY_WINDOW_MINUTES + " 分钟）");
+                + " 分钟，允许跨日窗 " + crossDayWindowMinutes + " 分钟）");
         log.info("[METRIC] recon_time_diff internal={} external={} minutes={}", internal.flowNo, external.ref, minutes);
         return diff;
     }
