@@ -1929,3 +1929,65 @@ SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='
 | `e2e_p35_bl9_bl5.py` | 9/9，exit 0 |
 | `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
 | `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
+---
+
+## 58. P4-1 BL-2 三处发号器收敛（2026-10-25 19:55–20:50）
+
+### 58.1 P3 收尾补验（三条命令）
+| 命令 | 结果 |
+|---|---|
+| `mvn -o -B -DskipTests compile` | **BUILD SUCCESS**，exit 0（补上上一轮只改注释未编译的缺口） |
+| `npx vue-tsc --noEmit` | exit 0，0 error |
+| `npm run build` | exit 0，`✓ built in 4.60s` |
+
+### 58.2 收敛前的三处差异盘点（Owner 要求：发现实质差异先报告）
+| # | 实现 | 技术 | floor 源表 | 正则守卫 | 语句数 | 返回 | 格式化 |
+|---|---|---|---|---|---|---|---|
+| 1 | `FundFlowMapper#nextFlowSequenceWithFloor` | MyBatis @Select | `fund_flows.flow_no` | **有** `~ '^prefix[0-9]+$'` | 1 | Integer | 调用方 `%04d` |
+| 2 | `FundFlowMapper#nextFlowSequence` | MyBatis | **无 floor** | — | 1 | Integer | — （**无调用方**，删除）|
+| 3 | `DepositSlipMapper#nextSlipSequenceWithFloor` | MyBatis | `deposit_slips.slip_no` | **无** | 1 | Integer | 调用方 `%04d` |
+| 4 | `DepositSlipMapper#nextSlipSequence` | MyBatis | 无 floor | — | 1 | Integer | — （**无调用方**，删除）|
+| 5 | `ReconCashSupport#nextFlowNo` | **JdbcTemplate** | `fund_flows.flow_no` | **无** | **2**（upsert floor → +1） | **String flow_no** | 内部 `%04d` |
+**实质差异 4 条**：① floor 源表不同（必须参数化）；② **正则守卫不一致**（#1 有、#3/#5 无 → 畸形后缀在 #3/#5 会 `CAST` 抛错）；③ 语句条数（#5 两步 vs 其他一步，结果等价）；④ 返回类型（#5 String vs 其他 Integer）。
+→ 收敛方案：参数化表/列/offset，**统一加正则守卫**（唯一有意的健壮性统一，正常数据结果不变），保留三个公开方法的签名/返回/异常。
+
+### 58.3 实现
+| 项 | 内容 |
+|---|---|
+| 唯一实现 | `common/sequence/SequenceAllocator.java`：`next(key, prefix, table, column)`；`offset = prefix.length()+1`（**不硬编码 11**）；单条 SQL「floor 抬升 + 原子 +1 + RETURNING」；表/列**白名单枚举**（`fund_flows.flow_no` / `deposit_slips.slip_no`）；`@Transactional(propagation = MANDATORY)`（必须在调用方事务内 → 保证「失败回滚号段」语义）；类注释写明「JdbcTemplate 等价于原 `flushCache=TRUE/useCache=false`」 |
+| 调用方 | `FundFlowServiceImpl:366`、`DepositSlipServiceImpl:843`（SLIP）/`:856`（FLOW）、`ReconCashSupport:77`（两段 SQL→一行，**返回仍 String**）；签名/返回/异常一字未改 |
+| 清理 | `FundFlowMapper` 删 4 个取号方法、`DepositSlipMapper` 删 4 个 → **mapper 里 0 处取号 SQL**；`order_sequence` 结构、`sequence_key` 前缀、烧号账写入路径均未动 |
+
+**grep 唯一实现证据**：`nextFlowSequenceWithFloor|nextSlipSequenceWithFloor|init*IfAbsent|max*ByPrefix` → 仅剩注释「已删除」；`nextFlowSequence(|nextSlipSequence(` → **0 命中**；`nextFlowNo(` → 仅 2 个调用方（`CashSalesBackfillServiceImpl:156`、`ReconReverseServiceImpl:102`）+ 定义。
+> 附注：`INSERT INTO order_sequence` 另有 `OrderMapper`（订单号）与 `PosCallNumberMapper`（叫号），**属其它域、未在本次收敛范围**。
+
+### 58.4 验收测试
+| 测试 | 结果 |
+|---|---|
+| ③ 并发取号 `seq_concurrency_check_p35.py`（10×20=200） | **7/7 PASS**：成功 200/200、5xx=0、`flow_no` 重复=0、号段 +200 = 落库 +200、余额 +200 分、烧号增量 0 |
+| ④ 三路径混合 `seq_mixed_paths_check.py` | **17/17 PASS，exit 0**；三条路径**各 20/20**；A1 重复=0 ｜ A2 残差不扩大 ｜ A3 号段 +100 = 落库 +100 ｜ A4 5xx=0/负余额=0 ｜ A5 烧号 0 = 100−100（进入业务 240，其中 140 条取号前被业务校验拒绝）｜ A6 空 reason=0 |
+| ⑤ 号段语义（5/5） | 构造「取号成功后插入失败」（超余额支出）→ ①烧号账 +1（`reason=business-validation`）②**号段回滚不变** ③后续成功请求**拿到同一号**（重用）④**A25 仍 0** |
+| ⑥ `ui_e2e_payment.py` | **7/7 PASS** |
+| 其它回归 | `consistency_check` **15 PASS / 0 FAIL**；`schema_guard` 7/7；`e2e_recon_workbench` 14/14；`e2e_store_recon` 10/10；`e2e_statement_flow` 13/13；`e2e_fund_overview` 10/10；`e2e_p35_bl9_bl5` 9/9；`mvn compile` BUILD SUCCESS |
+
+### 58.5 本轮暴露的 3 个问题（如实记录）
+**① A9 断言设计缺陷（需 Owner 裁决，未擅自改断言）**
+- 现象：把门店 1 现金户余额设为 0 后，缴款单存行把余额从 26,000 扣到 **0**，产生一条 `balance_after = 0` 的**合法**流水 → **A9（零容忍）打红**。
+- 根因：A9 判据是 `balance_after = 0`，**无法区分「从未维护（历史脏值）」与「账户被取空（合法）」**。
+- 建议：A9 改为 **`balance_after IS NULL`**（语义 = 未维护），`0` 视为合法值；或增加「该账户后续存在非 0 快照」的上下文判断（复杂、不推荐）。
+- 本轮的临时处置：给账户 20 一个**非零基线 100,000 分**（测试数据修复），使 A9 不触发；**断言本身未改**，等 Owner 裁决。
+**② 测试副作用：account 20 曾被混跑打到 −35,480 分**
+- 成因：混跑初版为绕开「同一日现金只能存行一次」的业务门禁，按余额截断反复存行 → 现金户被抽成负数（**A15 打红**，A4 负余额=1）。
+- 处置（脚本 `2026-10-25-repair-cash-account-negative.sql`，测试数据修复，已记录）：先删派生夹具流水 → `balance` 归 0 → 补非零基线 100,000；未走「伪造补录流水」以免污染号段/审计。
+- 正确做法（已改为脚本设计）：**路径 2 每轮自洽** —— 克隆班次 → 窗口内下一笔小额现金单（现金户 +X）→ SL1..SL6 存行正好 X（现金户 −X），净现金 0，20 轮跑满而不抽干。
+**③ 清库与烧号账的耦合缺陷（已修）**
+- 现象：`seed --reset` 后 A25 立刻 `rows=2` FAIL。
+- 根因：A25 口径是 `archived_flag=false AND NOT EXISTS(fund_flows.flow_no)`；清库把流水删了，但烧号账留着 → 那些**曾被重用**的号变成「未落库」假洞。
+- 修复：purge 脚本第 8 步追加 `DELETE FROM fund_flow_no_burn_ledger;`（烧号账是 `fund_flows` 的派生审计，必须同清），并写清原因。
+
+### 58.6 混跑脚本的一处需知悉行为
+路径 3 候选不足时，脚本会调 `POST /v1/finance/recon-runs?force=true`（账户 20/24）**重建差异**以生成带 `internal_ref` 的候选（重置后仅 5 条可用），之后再 `claim → resolve(REVERSE) → execute-reverse`。该步会清掉旧 OPEN 差异并重建——**属既有 API 行为，不是伪造数据**；如不希望混跑脚本动跑批，可改为「只读候选、不足如实报 x/20」。
+
+### 58.7 夹具与残留
+- `bank_transactions` SQL 直插 20 行（tag `MIX1025204140`，`source_type=BANK` / `fee=0` / `needs_review=false` / `match_status=UNMATCHED`）；20 个克隆班次（`handover_remark=MIX1025204140-fix-i`）与 20 张缴款单同 tag；`--cleanup` 可按 tag 收口。
+- 均已标注「测试夹具、非业务数据」。
