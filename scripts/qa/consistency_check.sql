@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31/A32/A33 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -117,7 +117,11 @@
 --        amount = refund_amount::bigint 分）；期望 0。
 --   A31 （**参与判定**）退款侧勾稽②：按日 SUM(退款流水) == SUM(订单退款额×100)。
 --       orders 无 account_id → 退化为「当日全库合计」口径。
---   ⚠️ TODO(P4-5)：REFUND_FLOW_CATEGORIES 常量等 fund-500 落盘后回填（当前为空 → A30/A31 跳过）。
+--   A32 （**参与判定**）孤儿退款流水：business_date < CURRENT_DATE-1 且「既无可配银行退款
+--       （bank_transactions is_refund=true & direction=2 & 同额同日）」又「不在未清 A/B/C/D 明细中」
+--       —— 「待匹配」是合法状态，故用时间窗兜。期望 0。
+--       A32-DIST（信息性）退款匹配状态分布 matched / pending-B / pending-D / orphan。
+--   A33 （**参与判定**）逐单对拍：orders.refund_amount::bigint vs SUM(退款流水 amount)，均按分直比。期望 0。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -375,6 +379,23 @@ SELECT CASE WHEN count(DISTINCT t.statement_id) = 0
          AND i.cleared_flag = false
          -- 兼容保留：历史数据/旧接口可能只写前缀未置 flag
          AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
+         -- 【P4-5 退款配对例外】B/D 悬空配对是本系统**已识别的配对形态**：
+         --   退款流水落 B（企业已付银行未付）、银行退款落 D（银行已付企业未付），同额两侧并存。
+         --   判定条件：同 statement、同金额、两侧（A|B vs C|D）带**同一个** [refundPair=<id>] token
+         --   → 两侧条目都不计入形态配对（配对完整性由 A32 独立校验）。
+         --   **这不是白名单/基线**，是「已知业务形态」的结构化例外，token 由后端配对逻辑写入。
+         --   注：fund_flows.refund_record_id 目前不存在（information_schema 实测），
+         --       故用 item.reason 的 [refundPair=...] 作为配对标识；日后加列可再扩展。
+         AND NOT EXISTS (
+               SELECT 1 FROM reconciliation_items j
+                WHERE j.deleted = 0
+                  AND j.statement_id = i.statement_id
+                  AND j.amount = i.amount
+                  AND j.item_id <> i.item_id
+                  AND (j.category IN ('A', 'B')) <> (i.category IN ('A', 'B'))
+                  AND substring(i.reason from '\[refundPair=([^]]+)\]') IS NOT NULL
+                  AND substring(j.reason from '\[refundPair=([^]]+)\]')
+                      = substring(i.reason from '\[refundPair=([^]]+)\]'))
        GROUP BY i.statement_id, i.amount
       HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
          AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
@@ -822,6 +843,121 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A33（**参与判定**）：逐单退款对拍 —— orders.refund_amount vs SUM(退款流水)
+--   单位：两边都是**分**（refund_amount numeric(12,2) 但按分存）→ 直比，禁止 ×100。
+--   口径：orders.deleted=0 且 refund_amount>0；流水取 deleted=0、status=2、flow_category=2（退款）。
+--   期望 0 笔不符；>0 即 FAIL。
+-- ------------------------------------------------------------
+\if :refund_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A33 逐单退款对拍(订单退款额=退款流水合计) orders=0'
+            ELSE '[FAIL] A33 逐单退款对拍(订单退款额=退款流水合计) orders=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 笔订单退款额与退款流水合计不符，禁止接受'
+       END AS a33_line,
+       count(*) AS a33_n
+  FROM orders o
+  LEFT JOIN (SELECT f.order_id, SUM(f.amount) AS amt
+               FROM fund_flows f
+              WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+              GROUP BY f.order_id) r ON r.order_id = o.order_id
+ WHERE o.deleted = 0
+   AND o.refund_amount > 0
+   AND COALESCE(r.amt, 0) <> o.refund_amount::bigint
+\gset
+\else
+\set a33_line '[INFO] A33 跳过（退款 flow_category 常量未配置 / 表未创建）'
+\set a33_n 0
+\endif
+
+-- ------------------------------------------------------------
+-- A32（**参与判定**）：孤儿退款流水
+--   口径（判据定案）：**「待匹配」是合法状态**（退款当天 CSV 尚未导入），所以只看
+--     business_date < CURRENT_DATE - 1（昨天及更早）；此时仍「既无银行退款流水可配、
+--     也不在未清 A/B/C/D 明细里」的退款流水才算孤儿。
+--   期望 0；>0 即 FAIL。
+-- ------------------------------------------------------------
+SELECT ((:'REFUND_FLOW_CATEGORIES' <> '')
+        AND to_regclass('public.bank_transactions') IS NOT NULL
+        AND to_regclass('public.reconciliation_items') IS NOT NULL
+        AND to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'bank_transactions'
+                       AND column_name IN ('is_refund', 'direction', 'amount', 'business_date', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 5)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
+                       AND column_name IN ('statement_id', 'amount', 'cleared_flag', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 4)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
+                       AND column_name IN ('statement_id', 'status', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 3)) AS refund_cross_ready
+\gset
+
+\if :refund_cross_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A32 孤儿退款流水(昨天及更早仍未匹配/未入明细) rows=0'
+            ELSE '[FAIL] A32 孤儿退款流水(昨天及更早仍未匹配/未入明细) rows=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 条退款流水既无银行退款可配、也不在未清明细中（孤儿），禁止接受'
+       END AS a32_line,
+       count(*) AS a32_n
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND f.status = 2
+   AND f.flow_category = 2
+   AND f.business_date < CURRENT_DATE - 1
+   AND NOT EXISTS (SELECT 1 FROM bank_transactions b
+                    WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
+                      AND b.amount = f.amount AND b.business_date = f.business_date)
+   AND NOT EXISTS (SELECT 1 FROM reconciliation_items i
+                    WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
+                      AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                              WHERE deleted = 0 AND status <> 'CLOSED'))
+\gset
+
+-- A32-DIST（信息性，不参与 TOTAL）：退款流水匹配状态分布
+SELECT '[INFO] A32-DIST 退款匹配状态分布 matched=' || count(*) FILTER (WHERE x.matched)
+       || ' pending-B=' || count(*) FILTER (WHERE NOT x.matched AND x.pending_b)
+       || ' pending-D=' || count(*) FILTER (WHERE NOT x.matched AND NOT x.pending_b AND x.pending_d)
+       || ' awaiting(待匹配窗口内)=' || count(*) FILTER (WHERE NOT x.matched AND NOT x.pending_b AND NOT x.pending_d AND NOT x.orphan)
+       || ' orphan=' || count(*) FILTER (WHERE x.orphan)
+       || ' total=' || count(*) AS a32d_line,
+       count(*) AS a32d_n
+  FROM (
+      SELECT f.flow_id,
+             EXISTS (SELECT 1 FROM bank_transactions b
+                      WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
+                        AND b.amount = f.amount AND b.business_date = f.business_date) AS matched,
+             EXISTS (SELECT 1 FROM reconciliation_items i
+                      WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
+                        AND i.category = 'B'
+                        AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                                WHERE deleted = 0 AND status <> 'CLOSED')) AS pending_b,
+             EXISTS (SELECT 1 FROM reconciliation_items i
+                      WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
+                        AND i.category = 'D'
+                        AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                                WHERE deleted = 0 AND status <> 'CLOSED')) AS pending_d,
+             (f.business_date < CURRENT_DATE - 1
+              AND NOT EXISTS (SELECT 1 FROM bank_transactions b
+                               WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
+                                 AND b.amount = f.amount AND b.business_date = f.business_date)
+              AND NOT EXISTS (SELECT 1 FROM reconciliation_items i
+                               WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
+                                 AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                                         WHERE deleted = 0 AND status <> 'CLOSED'))) AS orphan
+        FROM fund_flows f
+       WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+  ) x
+\gset
+\else
+\set a32_line '[INFO] A32 跳过（表未创建）'
+\set a32_n 0
+\set a32d_line '[INFO] A32-DIST 跳过（表未创建）'
+\set a32d_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1105,7 +1241,19 @@ SELECT line
     SELECT 31,
            :'a31_line'
     UNION ALL
+    -- A32 参与判定：孤儿退款流水（>0 进 TOTAL）
     SELECT 32,
+           :'a32_line'
+    UNION ALL
+    -- A33 参与判定：逐单退款对拍（>0 进 TOTAL）
+    SELECT 33,
+           :'a33_line'
+    UNION ALL
+    -- A32-DIST 信息性：退款匹配状态分布（不进 TOTAL）
+    SELECT 34,
+           :'a32d_line'
+    UNION ALL
+    SELECT 35,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -1126,7 +1274,9 @@ SELECT line
              + CASE WHEN :a28_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a29_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a30_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a31_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a31_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a32_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a33_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -1466,6 +1616,17 @@ SELECT i.statement_id,
  WHERE i.deleted = 0
    AND i.cleared_flag = false
    AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
+   -- 与判定同口径：排除「同 statement + 同额 + 两侧同 [refundPair=id]」的已识别退款配对
+   AND NOT EXISTS (
+         SELECT 1 FROM reconciliation_items j
+          WHERE j.deleted = 0
+            AND j.statement_id = i.statement_id
+            AND j.amount = i.amount
+            AND j.item_id <> i.item_id
+            AND (j.category IN ('A', 'B')) <> (i.category IN ('A', 'B'))
+            AND substring(i.reason from '\[refundPair=([^]]+)\]') IS NOT NULL
+            AND substring(j.reason from '\[refundPair=([^]]+)\]')
+                = substring(i.reason from '\[refundPair=([^]]+)\]'))
  GROUP BY i.statement_id, i.amount
 HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
    AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
@@ -1781,6 +1942,55 @@ SELECT t.d,
 \else
 \echo ''
 \echo '-- A31 明细跳过（退款 flow_category 常量未配置 / 表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A32 明细（前 20）：孤儿退款流水（昨天及更早，既无可配银行退款、也不在未清明细）
+-- ------------------------------------------------------------
+\if :refund_cross_ready
+\echo ''
+\echo '-- A32 明细（前 20）--'
+SELECT f.flow_id, f.flow_no, f.order_id, f.account_id, f.amount, f.business_date, f.create_time,
+       left(COALESCE(f.remark, ''), 60) AS remark_snippet
+  FROM fund_flows f
+ WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+   AND f.business_date < CURRENT_DATE - 1
+   AND NOT EXISTS (SELECT 1 FROM bank_transactions b
+                    WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
+                      AND b.amount = f.amount AND b.business_date = f.business_date)
+   AND NOT EXISTS (SELECT 1 FROM reconciliation_items i
+                    WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
+                      AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                              WHERE deleted = 0 AND status <> 'CLOSED'))
+ ORDER BY f.business_date DESC, f.flow_id DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A32 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A33 明细（前 20）：订单退款额 ≠ 退款流水合计（差值 = 流水合计 - 订单退款额，单位分）
+-- ------------------------------------------------------------
+\if :refund_ready
+\echo ''
+\echo '-- A33 明细（前 20）--'
+SELECT o.order_id, o.refund_amount::bigint AS order_refund_fen,
+       COALESCE(r.amt, 0) AS flow_refund_fen,
+       COALESCE(r.amt, 0) - o.refund_amount::bigint AS diff_fen,
+       COALESCE(r.cnt, 0) AS flow_rows
+  FROM orders o
+  LEFT JOIN (SELECT f.order_id, SUM(f.amount) AS amt, count(*) AS cnt
+               FROM fund_flows f
+              WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+              GROUP BY f.order_id) r ON r.order_id = o.order_id
+ WHERE o.deleted = 0 AND o.refund_amount > 0
+   AND COALESCE(r.amt, 0) <> o.refund_amount::bigint
+ ORDER BY abs(COALESCE(r.amt, 0) - o.refund_amount::bigint) DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A33 明细跳过（退款 flow_category 常量未配置 / 表未创建）--'
 \endif
 
 COMMIT;
