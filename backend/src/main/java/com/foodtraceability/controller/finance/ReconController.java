@@ -94,7 +94,7 @@ public class ReconController {
     }
 
     /** R8：差异池列表 */
-    @Operation(summary = "差异池列表（status / type / runId / assigneeId）")
+    @Operation(summary = "差异池列表（status / type / runId / assigneeId / 可选 from&to 时间窗 [from,to)）")
     @GetMapping("/recon-differences")
     @PreAuthorize("hasAuthority('finance:bank:view')")
     public Result<IPage<ReconDifferenceVO>> listDifferences(ReconDifferenceQueryDTO query) {

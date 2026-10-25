@@ -64,6 +64,14 @@ public class ReconDifferenceServiceImpl implements ReconDifferenceService {
         if (condition.getAssigneeId() != null) {
             wrapper.eq(ReconDifference::getAssigneeId, condition.getAssigneeId());
         }
+        // 可选时间窗（按 create_time）：from 含端点、to 不含端点 —— 半开区间 [from, to)，
+        // 避免相邻两天在同一时刻被重复统计；两者都不传时不追加任何条件，SQL 与历史逐字一致。
+        if (condition.getFrom() != null) {
+            wrapper.ge(ReconDifference::getCreateTime, condition.getFrom());
+        }
+        if (condition.getTo() != null) {
+            wrapper.lt(ReconDifference::getCreateTime, condition.getTo());
+        }
         wrapper.orderByDesc(ReconDifference::getDifferenceId);
 
         Page<ReconDifference> page = new Page<>(normalizeCurrent(condition.getCurrent()), normalizeSize(condition.getSize()));
