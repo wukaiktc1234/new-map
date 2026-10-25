@@ -2494,3 +2494,27 @@ SELECT count(*) FROM (
 | C2 | 期间门禁 E2E 持久化 | 现为一次性脚本手造 `P45T`；**应固化**到 `e2e_p35_bl9_bl5.py` 或新建 `e2e_period_guard.py`（结账 → 退款/存行/新增流水三入口 409 → 反结账恢复） |
 | C3 | `PosCashAccountResolver` 抽取前后对拍 | 需补「同一订单走 SALE 路径，抽取前/后的流水行、余额变动、日志」逐字段对比（fund-500 已声明行为不变，但**尚无对拍证据**） |
 | C4 | 退款入口覆盖 | **实测 3 个入口**（`PosOrderPaymentServiceImpl` / `OrderNewController:202` / `RefundController`），**当前只有 POS 路径写 `fund_flows`** → 另两个入口是缺口，纳入 R5 |
+
+### 63.12 REFUND 勾稽：4 个细节的定案（2026-10-26 02:25–02:35）
+
+**1) R1 配对键 = `order_refund_records.refund_id`（需给 `fund_flows` 新增 `refund_record_id`）**
+- 现状：`fund_flows` 只有 `order_id`，**没有退款单号列**（已核对列清单：flow_category / business_date / remark / order_id…）；
+- 为什么不能用 `order_id`：现有 `uk_fund_flows_refund_order (order_id) WHERE flow_category=2` 会让**同一订单的第二次部分退款**撞唯一索引（实测二次退款 `code=500` 即此）；
+- 为什么不能只用 `(order_id, amount)`：两笔相同金额的部分退款会冲突；
+- **定案**：迁移 `V20261026_003` 增 `fund_flows.refund_record_id bigint`，唯一索引改为 `uk_fund_flows_refund_record (refund_record_id) WHERE flow_category=2 AND deleted=0`，写流水时写入 `refund_id`；配对键 = `refund_record_id`，金额/日期作为校验而非键；
+- 多笔部分退款 + 银行合并到账：按 `refund_record_id` 逐笔配对；若银行侧只有一笔合并金额，则**按金额拆分匹配**（Σ 已配对金额 == 银行金额），拆不出来时留 B/D 并在 A32 孤儿中报出。
+
+**2) R2 A19 误判边界 —— 会命中，因此必须在 A19 判据里加例外（不是在 R2 里期望它不报）**
+- A19 口径：同一 statement 内，**同一金额同时出现在 (A|B) 与 (C|D)** 即「形态假平衡」；「退款流水落 B + 银行退款落 D」正好满足该形态 → **必命中**；
+- **定案**：A19 增加例外 —— 两侧同源于**同一退款单**（`fund_flows.refund_record_id` 相同）时不计入；例外必须带注释「已识别的配对形态，非白名单/基线」，并由 **A32 独立校验配对完整性**兜底（防止拿例外当挡箭牌）；
+- 例外插入位置：A19 内层 `GROUP BY statement_id, amount HAVING …` 之前的 WHERE/子查询（具体行号由 ts-hr-asset 贴出当前 SQL 后确定）。
+
+**3) R3 A32 判据 —— 「待匹配」是合法状态，孤儿必须带时间窗**
+- 退款当天 CSV 未导入时，退款流水「既没配对、也没落 B/D」是**正常**（当天还没跑对账）→ 不算孤儿；
+- **定案**：孤儿 = `business_date < CURRENT_DATE - 1` 且「无等额银行退款」且「不在未清 A/B/C/D 明细中」；
+- 另出 INFO：匹配状态分布 `matched / pending-B / pending-D / orphan`（只展示不判定）。
+
+**4) R5 三个退款入口 —— 当前实现待贴，收敛前必须先确认「会不会写两次」**
+- 已知入口：`PosOrderPaymentServiceImpl#refundOrder/refundNewOrder`（POS，**已写 fund_flows**）、`OrderNewController:202 POST /{orderId}/refund`、`RefundController:87 PUT /v1/refunds/{refundId}/approve`；
+- **两处后者的实现尚未读到**（正在由 fund-500 贴代码行号与落库行为）；收敛原则先定死：**只对「未写过退款流水的 refund_id」补写**，且以新唯一索引兜底 → 即使入口重复调用，也只会有一笔流水、不会重复扣余额；
+- **不回填历史退款流水**（理由同 §63.10：历史订单已不存在、补流水等于伪造业务）。
