@@ -1660,3 +1660,93 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 
 ### 54.7 回归（全绿）
 `consistency_check` **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A23；A23 days=0）；`ui_e2e_payment` **7/7**；`e2e_recon_workbench` **14/14**；`e2e_store_recon` **9/9**；`e2e_statement_flow` **13/13**；`e2e_fund_overview` **10/10**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
+---
+
+## 55. P3-5 技术债收口：BL-9 时区偏移 + BL-5 号段烧号 + P3 全部收口（2026-10-25 18:04–18:45）
+
+### 55.1 三个问题的回答
+
+**Q1 `finance_manager` 职责（建议 + 现状）**
+- **我的建议：财务经理应统筹全部门店的日常对账 → `data_scope` 应为 `company`**。依据：① 设计稿 §7.1 矩阵里「财务主管」在 `finance:bank:recon`（含 force 重算/冲正）、`finance:deposit-slip:verify` 都是全局职责，没有「本店」限定；② P3-1 的对账工作台、P3-3 的调节表闭环、P3-4 的资金总览都是**跨店统筹**的工具，若财务经理只能看本店，这些页面在其账号下基本不可用。
+- **本轮未改数据**（`roles` 是主数据，需你放行）：当前 `finance_manager.data_scope='department'`，且 `qa_approver` 无 `location_id` → 实测**直接 403**「当前用户未分配归属门店」。即当前财务经理**既看不到全公司、也看不到任何门店**（这是最坏组合）。**建议下一步：`UPDATE roles SET data_scope='company' WHERE role_code='finance_manager'`（一行），并给其账号补 `location_id`。**
+- 在拍板前，`WORKER_LOG` 明确写死一条口径：**「跨店对账由财务总监（company）与审计（company）承担；财务经理当前为 department 且无归属门店，属待修配置，不作为能力承诺。」**
+
+**Q2 `auditor=company` 的行为验证（已建账号实测）**
+- 新建 `qa_auditor`（`scripts/db-fix/2026-10-25-create-qa-auditor.sql`，幂等）→ `user_roles` 绑 **`ROLE_AUDITOR`**（注意：必须写 `role_id_str`，不是数字 13），回查解析为 `auditor(company)`；
+- 实测 `GET /v1/finance/overview/daily?date=2026-10-25`：`qa_auditor` → **code=0 / dataScope=company / storeId=null / stores=3 行 `[1,2,3]`** → **auditor=company 真实生效**；
+- 对照四账号同一端点：`qa_auditor` 3 店 ｜ `qa_admin` 3 店 ｜ `qa_store_b` 1 店（store 2）｜ `qa_approver` **403**。
+
+**Q3 `finance_manager` 删白名单后的可见范围（已补测）**
+- `AC-53e` 原先只测 store_b 与 admin，现补 `qa_approver`：**403**「当前用户未分配归属门店，无权访问资金总览（data_scope=department）」，**不是 3 行**，符合「department 且无归属门店 → 拒绝」的 fail-closed 设计；
+- 它的实际范围解析：`data_scope=department`（不满足 `GlobalDataScope.isGlobal`）→ 走门店分支 → `location_id` 为空 → `storeIdOf(null)=null` → **403**。即「看得见的范围 = 空，但以错误码表达而非空集」。
+
+### 55.2 机制落地：`wait_for_data_attr`（取样竞态规则从「纸面」变「工具」）
+- `scripts/qa/e2e_setup.py` 新增：`wait_for_data_attr(page, selector, attr, ready_value=None, timeout=30000)` 与 `read_data_attr(...)`；超时异常带 selector + attr；**`'0'` 视为就绪**（仅 `null`/空串算未就绪）；
+- 模块头部新增「取样竞态规则」注释：记录 P3-2 AC-50b、P3-4 AC-46a、P3-5 AC-52a **三次**「元素出现即读值」事故；硬规则 = 禁止 `inner_text`/`get_attribute` 直读 `data-*` 钩子；
+- 已替换：`e2e_recon_workbench`（data-difference-count / data-diff-amount-fen）、`e2e_statement_flow`（cat-A..D 的 data-count / data-amount-fen）、AC-52a 改「先等 `four-eyes-hint` 再读 disabled」；
+- 待改清单（下一轮）：`e2e_store_recon`、`e2e_fund_overview`（现为自建 settle，功能等价）。
+- **实现踩坑并修复**：首版用 `page.wait_for_function(js, arg={...})`，本机 Playwright **`arg=` 不生效** → JS 里 `args` 恒 undefined → 必然 30s 超时（AC-51b 就是这样红的）。已改为把 selector/attr 用 `json.dumps` **内联进 JS 字符串**。
+
+### 55.3 `abnormal` 判定逻辑（完整口径）
+```sql
+-- 当日净额（per account）
+SUM(CASE WHEN flow_direction = 1 THEN amount ELSE -amount END) AS net_fen
+  FROM fund_flows WHERE deleted=0 AND status=2 AND business_date = :date GROUP BY account_id
+-- 近 7 日 |净额| 日均（per account，按日先聚合再平均，除以 7.0 固定分母）
+SUM(ABS(f.net_fen)) / 7.0 AS avg_abs_fen
+  FROM ( SELECT business_date, SUM(CASE WHEN flow_direction=1 THEN amount ELSE -amount END) net_fen
+           FROM fund_flows WHERE deleted=0 AND status=2 AND business_date BETWEEN :date-7 AND :date-1
+          GROUP BY account_id, business_date ) f GROUP BY account_id
+```
+```java
+long avgAbs = Math.round(avg_abs_fen);
+long absNet = Math.abs(netChangeFen);
+row.abnormal = avgAbs > 0 ? absNet > avgAbs * 3 : absNet >= ABNORMAL_FLOOR_FEN; // FLOOR = 10_000 分 = 100 元
+```
+边界回答：
+| 场景 | 判定 |
+|---|---|
+| 近 7 日日均 = 0（新店首日） | `avgAbs = 0` → 走保底分支 `absNet >= 10000 分`；**`|净变动| > 0` 但 < 100 元不判异常**（避免新店任何小额流水都报红） |
+| 净变动 = 0 | `absNet = 0` → 恒为 `false`（保底分支 0 ≥ 10000 也不成立）→ **不异常** |
+| 刚好等于阈值 | 主分支用 **严格大于** `absNet > avgAbs*3` → **相等不算异常**；保底分支用 **大于等于** `>= 10000` → **相等算异常**。两处不等号**有意不一致**（主分支防抖、保底分支要「达到 100 元即提醒」），已在 javadoc 说明 |
+| `avgAbs > 0` 但当日 0 | `0 > avgAbs*3` 不成立 → 不异常 |
+
+### 55.4 P3-5 实现清单
+| 项 | 落点 | 验证 |
+|---|---|---|
+| **BL-9** 时区偏移 | `CsvImportParser`：新增 `STORAGE_ZONE=ZoneId.of("Asia/Shanghai")`（:112）、`parseOffsetAware()`（:400-423，ZonedDateTime → OffsetDateTime 回落，取 Instant 转固定时区）、`parseTime()` 先试偏移再回落既有 5 格式（:368） | 6 个 case + 3 写法等价组，见 55.5 |
+| **BL-5** 烧号账 | 迁移 `V20261025_003__flow_no_burn_ledger.sql`（9 列 + 2 索引，Flyway `20261025.003 success=t`）；`FlowNoBurnLedgerRecorder`（**REQUIRES_NEW** 跨 Bean，:48）；`FundFlowServiceImpl` catch 写账（:166-172），取号失败不写（`:170` 守卫 `seqValue != null`）；归档脚本 `20261025-archive-burn-ledger.sql`；`schema_guard` 纳入 | 真实烧号 1 行 + 并发 7/7 + POS 7/7 |
+| **A24（INFO）** | 当天号段取值 − 当天落库数（`order_sequence.sequence_key/value`，非 `seq_*`） | 首跑 `diff=456`，见 55.6 |
+| **A25（判定）** | `archived_flag=false AND NOT EXISTS(fund_flows.flow_no)` | `rows=0 PASS`，见 55.6 |
+
+### 55.5 AC-54 实测（E2E 9/9 PASS）
+| CSV 原值 | 落库 `txn_time` | 结果 |
+|---|---|---|
+| `2026-10-24T16:30:00Z` | **2026-10-25 00:30:00** | PASS（UTC 16:30 → 上海次日 00:30） |
+| `2026-10-24T16:30:00+08:00` | **2026-10-24 16:30:00** | PASS（本身即上海时间） |
+| `2026-10-24T16:30:00.000+08:00` | **2026-10-24 16:30:00** | PASS（毫秒忽略） |
+| `2026-10-25 08:15:00`（无偏移，回归） | **2026-10-25 08:15:00** | PASS（行为不变） |
+| `2026-10-25`（仅日期，回归） | 行级 `NEEDS_REVIEW / TIME_UNAVAILABLE` | PASS |
+| `not-a-time`（非法，回归） | 行级 `ERROR / TXN_TIME_INVALID` | PASS |
+**同一时刻三写法（AC-54c）**：`16:30Z` / `00:30+08:00` / `08:30-08:00` → **全部 2026-10-25 00:30:00**。
+> 口径更正记录：我最初在指令里误写「三条带偏移都应落 00:30」，实际 `16:30Z ≠ 16:30+08:00`（差 8 小时）；已按 ISO-8601 语义修正**预期值**（不是放宽断言），并补 AC-54c 用真正等价的三种写法证明换算正确。
+
+### 55.6 A24 / A25 与一个**重要口径发现**
+- **A24=456**：今日号段已取到 473，而 `fund_flows` 当日仅 17 行 → 差值 456 = **清库未重置 `order_sequence` 的历史残差**，不是新烧号（旁证 A25=0）。A24 注释已补「清库后需同步重置 order_sequence」，保持 INFO。
+- **A25 口径修正（关键）**：初版按 Owner 字面「`archived_flag=false` 的行数 > 0 即红」实现 → 实测 **永久 FAIL 误报**。原因：**取号与 insert 同事务，插入失败回滚会把号段自增一起回滚，该号会被后续请求重用**（实测 `FF202610250474` 已被真实流水占用，`in_flows=1`）。改为 **`archived_flag=false AND NOT EXISTS(fund_flows.flow_no)`**（=「曾交出但迄今仍未落库」= 真正的号洞）后 `rows=0 PASS`，明细增加 `in_flows` 列便于人判。
+- **由此暴露的语义选择（等你裁决）**：当前「号可重用」（同事务）vs「号绝不重用」（取号改 `REQUIRES_NEW` 独立提交，代价是失败也永久烧号）。已按你的约束 ⑥「取号与插入同事务」实现，未擅自改。
+
+### 55.7 并发取号实测（`seq_concurrency_check_p35.py`）
+10 线程 × 20 次 = **200** 次（限速 90 次/分，避免 IP+URI 100/分 限流 429）：
+| 断言 | 实测 |
+|---|---|
+| A1 全库 `flow_no` 无重复 | 重复数 **0** |
+| A2 落库行数 = 成功次数 | **200 = 200** |
+| A3 烧号账增量 = 进入业务数 − 落库数 | **0 = 200 − 200** |
+| A4 无 5xx / 无负余额 | 5xx **0**、负余额账户 **0** |
+| A5 每条烧号账都有 reason | 空 reason **0** |
+| A6 余额 = 起始 + 成功×金额 | 260,900 = 260,700 + 200 |
+| A7 号段增量 = 落库数 | 200 = 200 |
+
+### 55.8 回归（全绿）
+`consistency_check` **15 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A25）；`schema_guard` **7/7**；`ui_e2e_payment` **7/7**；`e2e_recon_workbench` **14/14**；`e2e_store_recon` **9/9**；`e2e_statement_flow` **13/13**（修 `wait_for_data_attr` 的 `arg=` 不生效 bug 后）；`e2e_fund_overview` **10/10**；`e2e_p35_bl9_bl5` **9/9**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
