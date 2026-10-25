@@ -67,6 +67,15 @@ def wait_for_data_attr(page, selector, attr, ready_value, timeout=30000):
     · 数值类钩子且**确认**页面在数据未到时不渲染该元素（或渲染的是空串而非 0）：用 `READY_NONEMPTY`；
     · 超时抛 RuntimeError，异常信息带 selector + attr + ready_value。
 
+    【READY_NONEMPTY 的适用判据（P3 归档固化，防误用）】
+    **仅适用于「元素后渲染」的钩子** —— 即整段被 `v-if` 包住（如 `StatementDetail.vue` 的
+    `<template v-if="statement">`，数据未到时**元素根本不渲染**），元素一旦出现其属性就是真值，
+    此时 `'0'` 是合法真实值（如 D 类计数）。
+    **对「元素先渲染、属性先写占位值」的钩子**（如 `ref(0)` 初值、或初始渲染就输出 `0.00` 的卡片），
+    **必须用显式就绪标记**（如 `data-amount-state='ready'` / `data-fee-state='ready'` / `data-state='ready'`），
+    **不得**用 READY_NONEMPTY —— 否则会把占位 0 当成真实值（P3-2 AC-50b、P3-4 AC-46a 两次事故即此形）。
+    判断口诀：**看元素是否先于数据渲染，而不是看值是否可能为 0。**
+
     实现说明：selector/attr 直接内联进 JS 表达式（不用 arg=），
     因为部分 Playwright 版本 wait_for_function 的 arg 传参不生效，会导致永远等不到。
     """
