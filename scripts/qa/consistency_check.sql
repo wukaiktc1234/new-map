@@ -114,7 +114,7 @@
 --       且 closing_fen = opening_fen + income_fen - expense_fen。期望 0；>0 即 FAIL。
 --   A30 （**参与判定**）退款侧勾稽①：orders.refund_amount>0 的订单必须有一条退款流水
 --       （flow_direction=2、status=2、flow_category ∈ REFUND_FLOW_CATEGORIES、同 order_id、
---        amount = round(refund_amount*100) 分）；期望 0。
+--        amount = refund_amount::bigint 分）；期望 0。
 --   A31 （**参与判定**）退款侧勾稽②：按日 SUM(退款流水) == SUM(订单退款额×100)。
 --       orders 无 account_id → 退化为「当日全库合计」口径。
 --   ⚠️ TODO(P4-5)：REFUND_FLOW_CATEGORIES 常量等 fund-500 落盘后回填（当前为空 → A30/A31 跳过）。
@@ -749,8 +749,10 @@ SELECT CASE WHEN count(*) = 0
 --   【P4-5 已定案】FLOW_CATEGORY_REFUND = **2**（fund-500 已落盘：1=SALE、2=REFUND、
 --      5=存款/内部转账）。**5 是存款内部转账，勿与退款混用**（现有 flow_direction=2 且
 --      category=5 的行是存行出账，不是退款）。常量清空则 A30/A31 一律 [INFO] 跳过（不误红）。
---   单位口径：orders.refund_amount 是 numeric(12,2) **元**；fund_flows.amount 是 bigint **分**
---            → 比较统一换成 分：round(orders.refund_amount * 100)。
+--   单位口径（2026-10-26 修正）：orders.refund_amount 虽是 numeric(12,2)，但**按「分」存**
+--            （与 paid_amount / total_amount 同尺度）；fund_flows.amount 也是分 → **直接比较，禁止 ×100**。
+--            证据（fund-500 实测）：某单 paid_amount=1800(分)、total_amount=1800(分)、
+--            refund_amount=1800.00，对应退款流水 amount=1800(分)。若当成「元」，18 元订单会退 1800 元，不合理。
 -- ------------------------------------------------------------
 \set REFUND_FLOW_CATEGORIES '2'
 
@@ -785,7 +787,7 @@ SELECT CASE WHEN count(*) = 0
             AND f.flow_direction = 2
             AND f.order_id = o.order_id
             AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
-            AND f.amount = round(o.refund_amount * 100)::bigint)
+            AND f.amount = o.refund_amount::bigint)
 \gset
 
 -- A31：按日退款流水合计 vs 订单退款合计（orders 无 account_id → 退化为「当日全库合计」口径）
@@ -805,7 +807,7 @@ SELECT CASE WHEN count(*) = 0
                  AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
                GROUP BY 1) fl
         FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
-                          SUM(round(o.refund_amount * 100))::bigint AS amt
+                          SUM(o.refund_amount)::bigint AS amt
                      FROM orders o
                     WHERE o.deleted = 0 AND o.refund_amount > 0
                     GROUP BY 1) od ON od.d = fl.d
@@ -1732,7 +1734,7 @@ SELECT b.period_code, b.account_id,
 \echo ''
 \echo '-- A30 明细（前 20）--'
 SELECT o.order_id, o.order_status, o.payment_status,
-       o.refund_amount, round(o.refund_amount * 100)::bigint AS refund_fen,
+       o.refund_amount, o.refund_amount::bigint AS refund_fen,
        o.refund_time, o.create_time
   FROM orders o
  WHERE o.deleted = 0
@@ -1742,7 +1744,7 @@ SELECT o.order_id, o.order_status, o.payment_status,
           WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
             AND f.order_id = o.order_id
             AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
-            AND f.amount = round(o.refund_amount * 100)::bigint)
+            AND f.amount = o.refund_amount::bigint)
  ORDER BY o.refund_time DESC NULLS LAST, o.order_id
  LIMIT 20;
 \else
@@ -1770,7 +1772,7 @@ SELECT t.d,
                  AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
                GROUP BY 1) fl
         FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
-                          SUM(round(o.refund_amount * 100))::bigint AS amt
+                          SUM(o.refund_amount)::bigint AS amt
                      FROM orders o WHERE o.deleted = 0 AND o.refund_amount > 0 GROUP BY 1) od ON od.d = fl.d
   ) t
  WHERE t.flow_amt IS DISTINCT FROM t.order_amt
