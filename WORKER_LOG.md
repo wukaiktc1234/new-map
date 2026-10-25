@@ -1235,3 +1235,71 @@ UPDATE bank_accounts SET balance = COALESCE(balance, 0) + #{delta},
 | 20 | 37 | 2026-10-25 01:25:09 | **2026-10-25 02:25:49** |
 小时分布：`2026-09-08 19:00=3`、`21:00=1`、`2026-10-25 01:00=9`、`02:00=28`；当库最后一条流水时间 `2026-10-25 11:00:00`。
 **结论**：account 20 的负值全部落在 **01:25–02:25**，而 BL-4 的 `addBalanceGuarded` 是 **03:40 之后**上线的 → **last_neg 早于修复时点，属历史遗留，修复后无新增**。A20 保留作兜底巡检（INFO，41 行/3 账户），不做数据修改。
+---
+
+## 45. 测试数据清空重建 + 断言零容忍化（2026-10-25 12:55–13:10）
+
+### 45.1 物理清空（DELETE，非软删）
+备份：`scripts/db-fix/backup/20261025-pre-purge.sql`（`pg_dump --data-only`，14 张表，**1.84 MB**，已入 git）。
+脚本：`scripts/db-fix/20261025_purge-test-data.sql`（单事务、子→父顺序、可重复执行）。
+| 表 | 清空前 | 清空后 |
+|---|---:|---:|
+| reconciliation_items | 2,103 | **0** |
+| reconciliation_statements | 3 | **0** |
+| recon_differences | 1,734 | **0** |
+| recon_items | 1,786 | **0** |
+| recon_runs | 12 | **0** |
+| import_rows | 218 | **0** |
+| import_batches | 60 | **0** |
+| bank_transactions | 149 | **0** |
+| deposit_slips | 51 | **0** |
+| fund_flows | 983 | **0** |
+| finance_audit_logs | 249 | **0**（只删 FIXTURE_FLOW_REVERSED / RECON_AMBIGUITY_RESOLVED / DEPOSIT_SLIP_*，因整表都是测试期数据故全清） |
+| order_payment_records / order_items / orders | 727 / 893 / 917 | **0 / 0 / 0** |
+| pos_shifts | 51 | **0** |
+| **bank_accounts（保留）** | 32 | **32** |
+roles / permissions / user_roles / users（qa_* 测试账号）：**全部保留**。
+
+### 45.2 空库上 A1–A20（零红灯）
+`python scripts/qa/consistency_check.py` → **exit 0**，**判定项全 0**：
+A1–A5 PASS(0)、A7 PASS(accounts=0)、**A9 PASS(rows=0)**、A10–A15 PASS(0)、**A19 PASS(statements=0)**；INFO：A6 users=7、A8 rows=0、A16 rows=0、A17 rows=0、A18 statements=0、A20 rows=0/accounts=0；**TOTAL FAIL=0**。
+**没有发现「空库必然红」的断言**——原设计不依赖最小行数。
+
+### 45.3 去掉的白名单/基线机制（清单）
+| 机制 | 位置 | 处置 |
+|---|---|---|
+| A8 精确白名单 `flow_no NOT IN ('FF202609080010','FF202609080028')` | `consistency_check.sql` a8 CTE | **已删除**，改纯统计 |
+| A9「已知历史 0 值项」白名单（`IN (...)`） | 同文件 a9 CTE | **已删除**；A9 升级为**零容忍判定**（`[FAIL] … 禁止接受`，计入 TOTAL FAIL） |
+| PC-7 历史补账白名单（`FFH%` / `system/backfill-%`） | `scripts/qa/pc7_balance_baseline.sql` | **已删除**，改为零容忍全量比对（V3 不再豁免任何行） |
+| A19 基线豁免 | — | **从未有过**，一直是硬判定（现为 FAIL） |
+| A20 例外 | — | **从未有过**，纯统计 |
+**唯一保留的豁免**：A7 的「补账行不维护 `balance_after`」语义豁免（`FFH%` / `system/backfill-%`）—— 它不是历史数据白名单，取消会让补账行成为账户最新流水时误报 A7。当前库无此类行，实际不生效。**是否也去掉，等 Owner 裁决**（见 45.6）。
+
+### 45.4 造数据脚本（P3 验收用，可复现）
+`scripts/qa/seed_p3_fixture.py`（509 行）：默认「库非空即报错退出」，`--reset` 先执行清空脚本再造，`--force` 强制叠加。
+首跑结果（`--reset` 模式，全绿 PASS=14/FAIL=0，exit 0）：
+| 项 | 结果 |
+|---|---|
+| 微信 CSV（UTF-8+BOM） | batch 101，11 行，OK **11**（含跨日 23:58、手续费 1.80 元、退款 REFUND） |
+| 支付宝 CSV（UTF-8） | batch 102，11 行，OK **9** + 2 条**故意负例**（`TXN_TIME_INVALID` 带 `+08:00`、`AMOUNT_DECIMAL_INVALID` 3 位小数） |
+| 银行 CSV（GB18030） | batch 103，11 行，OK **11**（借贷分列 + 次日 00:03 到账） |
+| 缴款单 A（平账） | `DS202610250063` DEPOSITED，expected=actual=**26,000** 分，difference=**0**，`business_date=2026-10-25` |
+| 缴款单 B（短款） | `DS202610250064` DEPOSITED，expected=41,300 / actual=40,800，difference=**−500**，`business_date=2026-10-25` |
+| 调节表 | statementId=**21**（DRAFT），A=(8, 41,300)｜B=(2, 66,800)｜C=(11, 174,539)｜D=(0, 0)，**is_balanced=true**（两侧 = 1,037,379 分），**AMBIGUOUS=0** |
+| 收尾自检 | `consistency_check.py` **14 PASS / 0 FAIL，exit 0** |
+**P3 验收数据由造数据脚本生成，非历史残留。**
+
+### 45.5 去掉测试夹具专用逻辑
+- **`fixture-reverse` 端点与配套代码已彻底删除**（5 个文件 + `service/finance/ops/` 目录）：`FinanceOpsController`、`FinanceOpsService(+Impl)`、`FixtureReverseRequest/VO`；`mvn clean compile` BUILD SUCCESS；全仓 grep `fixture-reverse` / `FixtureReverse*` / `FinanceOpsService` **0 命中**；`POST/GET /v1/finance/ops/fixture-reverse` → `{"code":404}`。
+- 保留 `FinanceAuditLog*`（被 deposit / 对账 / 审计查询复用，属公共设施）。
+- `[testFixture]` / `[testFixtureReverse=]` / `[duplicateOfDoubleDeduct]` 等 remark 标记语义**保留**（纯数据约定、无代码依赖），但**相关处置记录已随数据清空**。
+
+### 45.6 历史处置记录的定性改写（Owner 要求）
+> **测试数据已清空，相关处置记录仅存档，不构成生产依据。**
+具体到此前各节：
+- §40.5 的「8 行软删标记」、§42.1 的「30 条审计作证据链」、§36.x / §44.x 的「PC-7 白名单 / 历史补账豁免」等表述，**均改为存档性质**：数据已在 §45.1 物理清空，标记与审计不再指向现存业务数据；
+- 上述机制中**真正作用于运行期的部分已全部删除**（见 45.3），存档内容仅用于复盘与审计追溯。
+
+### 45.7 待 Owner 裁决（2 项）
+1. **A7 补账语义豁免**是否也去掉（去掉会让补账行成为最新流水时误报 A7；保留则严格意义上仍有 1 处豁免）；
+2. **I1 不支持带时区偏移的时间**（`+08:00` 与 `Z` 均报 `TXN_TIME_INVALID`）—— 造数据脚本的支付宝负例正是这条，**是否需要在 P3 修**（原 BL-9）。
