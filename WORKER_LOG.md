@@ -1369,3 +1369,43 @@ A7 注释新增：**A7 豁免只看 `created_by` + `remark` token，不看 `flow
 
 ### 47.4 状态
 `python scripts/qa/consistency_check.py` → **14 条断言 14 PASS / 0 FAIL、TOTAL FAIL=0、exit 0**；A1–A21 连续无重复；全文已无 `flow_no LIKE 'FFH%' OR created_by` 旧式 OR 豁免（grep 0 命中）。
+---
+
+## 48. P3 收口：A22（INFO，FFH 前缀但无补账证据）—— 决定**加**（2026-10-25 13:40–13:55）
+
+### 48.1 决策理由
+A21 只覆盖「有证据无前缀」**一个方向**；反方向「有 FFH 前缀但无审计名/token」此前只有 A7 会碰，而 **A7 只在 `balance_after` 与实际余额不一致时才报**——一条伪造 FFH 前缀且余额恰好对齐的行会**完全静默通过**。A22 补上这个形态盲区，使 A21/A22 成为对称的一对。
+
+### 48.2 实现（`consistency_check.sql`）
+- 计数块插在 A21 之后（同一 `backfill_shape_ready` 守卫，`\gset` + `\if`）：
+```sql
+SELECT count(*) FROM fund_flows
+ WHERE deleted = 0
+   AND flow_no LIKE 'FFH%'
+   AND NOT (COALESCE(created_by,'') LIKE 'system/backfill-%'
+            AND (COALESCE(remark,'') LIKE '%[cashBackfill]%' OR COALESCE(remark,'') LIKE '%[posShift=%'));
+```
+- 汇总 UNION 追加 `SELECT 22, :'a22_line'`，**TOTAL 序号 22 → 23**，求和**不含 `a22_n`**；
+- 头部补 A22 条目与 A21/A22 对称说明 + 「A7 只看余额一致性，不替代形态观测」；
+- 明细段（前 20 行）：`flow_no / account_id / amount / balance_after / created_by / remark 片段 / create_time`。
+
+### 48.3 首次执行
+`python scripts/qa/consistency_check.py` → **exit 0**：
+```
+[INFO] A21 可疑补账 flow_no 非 FFH 前缀 rows=0
+[INFO] A22 FFH 前缀但无补账证据 rows=0
+TOTAL FAIL=0   汇总: 14 条断言，14 PASS / 0 FAIL
+```
+**A22 首次 = 0**（数据已清空，符合预期）；明细 `(0 rows)`。
+
+### 48.4 谓词反证（只读，事务内合成 4 行 + ROLLBACK）
+| 合成行 | created_by | remark | A22 |
+|---|---|---|---|
+| `FFH-A22-CASE1`（FFH + 无证据） | clerk01 | A22 case1 有前缀无证据 | **HIT** ✓ |
+| `FFH-A22-CASE2`（FFH + 审计名 + token） | system/backfill-x | [posShift=1][cashBackfill] | MISS（正主） |
+| `FF20269999-CASE3`（非 FFH + 无证据） | clerk01 | A22 case3 | MISS（不在 A22 范围，属 A21 侧） |
+| `FFH-A22-CASE4`（FFH + 只有审计名） | system/backfill-x | 无 token | **HIT** ✓（缺一即算无证据） |
+结果：`a22_hits = 2`（CASE1 + CASE4）；`ROLLBACK` 后 `leftover = 0`。
+
+### 48.5 观察项（未改，供参考）
+`汇总: 14 条断言` 这个计数只统计 `[PASS]` 行（14 = A1–A5、A7、A9–A15、A19），**不含 INFO 行**；脚本输出行数实际为 A1–A22 共 22 行 + TOTAL 行。该文案历史悠久、无判定意义，本轮未改；若 Owner 希望「汇总」反映真实断言总数（含 INFO），可另开一次文案调整。
