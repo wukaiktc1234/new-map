@@ -117,6 +117,7 @@ const router = createRouter({
     { path: '/finance/fund-flow', redirect: '/finance/fund' },
     { path: '/finance/tax', name: 'FinanceTax', component: () => import('@/views/finance/FinanceTax.vue'), meta: { title: '税务管理', domain: 'finance' } },
     { path: '/finance/invoice-reimbursement', name: 'InvoiceReimbursement', component: () => import('@/views/finance/InvoiceReimbursement.vue'), meta: { title: '发票报销', domain: 'finance' } },
+    { path: '/finance/recon', name: 'FinanceReconWorkbench', component: () => import('@/views/finance/recon/ReconWorkbench.vue'), meta: { title: '对账工作台', domain: 'finance', roles: [UserRole.FINANCE_DIRECTOR, UserRole.AUDITOR] } },
     // 工作台财务快捷入口的历史 path（报销管理）补齐，防死链
     // 报销管理：暂无独立页面，落到建设中占位页（可跳转到已上线的发票报销页）
     { path: '/finance/reimbursement', name: 'ReimbursementManage', component: () => import('@/views/finance/ReimbursementManage.vue'), meta: { title: '报销管理', domain: 'finance' } },
