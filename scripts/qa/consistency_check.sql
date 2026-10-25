@@ -70,6 +70,13 @@
 --       **A18 是 BL-6 假平衡门禁的持续性保障：即使生成逻辑被改回，A18 也能巡检抓出。**
 --       守卫：reconciliation_statements / reconciliation_items（含所需列）不存在 → [INFO] 跳过。
 --   A19 （**参与判定，进入 TOTAL FAIL**）**同额两侧并存 = 形态假平衡**：
+--       口径补充（P4-3，2026-10-25 二次修正）：**排除 `cleared_flag = true` 的 item**
+--       —— cleared_flag=true 表示该条已被**人工处置**：RESOLVE（改归属，审计 RECON_AMBIGUITY_RESOLVED）
+--       或 EXEMPT（判定非歧义，审计 RECON_AMBIGUITY_EXEMPTED）；后端对两者都置 flag
+--       （category/amount 不动，规避 ck_recon_items_ref_by_category）。
+--       **不是白名单、不是基线**，是「已人工处置」的事实标记；若只排除 'EXEMPTED(' 前缀，
+--       RESOLVE 的「已处置(AMBIGUITY->…)」会被漏掉 → 处置完 113 条仍红。
+--       输出行末尾另附「其中已人工消除(cleared)条目数 = N」（count cleared_flag=true），便于看是否滥用。
 --       同一 statement 内某金额 X 同时出现在 (A|B) 与 (C|D) 两侧 → 计数即该 statement 数（不是金额对数量）。
 --       这是 BL-6 假平衡的**形态兜底**：A18 依赖 'AMBIGUOUS:' 前缀，重算把前缀冲掉就查不出来，
 --       而 A19 只看数据形态，因此**它是「禁止 APPROVED」的硬依据**：>0 即 FAIL。
@@ -323,8 +330,8 @@ SELECT CASE WHEN count(*) = 0 THEN '[INFO] ' ELSE '[INFO] ' END
 SELECT (to_regclass('public.reconciliation_items') IS NOT NULL
         AND EXISTS (SELECT 1 FROM information_schema.columns
                      WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
-                       AND column_name IN ('statement_id', 'category', 'amount', 'deleted')
-                     GROUP BY table_name HAVING count(*) = 4)) AS ambiguity_shape_ready
+                       AND column_name IN ('statement_id', 'category', 'amount', 'deleted', 'cleared_flag')
+                     GROUP BY table_name HAVING count(*) = 5)) AS ambiguity_shape_ready
 \gset
 
 \if :ambiguity_shape_ready
@@ -333,12 +340,24 @@ SELECT CASE WHEN count(DISTINCT t.statement_id) = 0
             ELSE '[FAIL] A19 同额两侧并存(形态假平衡) statements=' || count(DISTINCT t.statement_id)
                  || ' —— 存在 ' || count(DISTINCT t.statement_id)
                  || ' 张调节表同额两侧并存（形态假平衡），禁止 APPROVED'
-       END AS a19_line,
+       END
+       || '（其中已人工消除(cleared)条目数 = ' ||
+          (SELECT count(*) FROM reconciliation_items i2
+            WHERE i2.deleted = 0 AND i2.cleared_flag = true) || '）' AS a19_line,
        count(DISTINCT t.statement_id) AS a19_n
   FROM (
       SELECT i.statement_id, i.amount
         FROM reconciliation_items i
        WHERE i.deleted = 0
+         -- 人工处置后该条不再参与形态判据（2026-10-25 P4-3 第二处口径修正）：
+         --   cleared_flag = true ← RESOLVE（改归属，审计 RECON_AMBIGUITY_RESOLVED）
+         --                        或 EXEMPT（判定非歧义，审计 RECON_AMBIGUITY_EXEMPTED）。
+         --   后端对两者都置 cleared_flag=true（category/amount 不动，规避 ck_recon_items_ref_by_category）。
+         --   若只排除 'EXEMPTED(' 前缀，RESOLVE 的「已处置(AMBIGUITY->…)」会被漏掉 → 处置完仍红。
+         --   **不是白名单、不是基线**，是「已人工处置」的事实标记。
+         AND i.cleared_flag = false
+         -- 兼容保留：历史数据/旧接口可能只写前缀未置 flag
+         AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
        GROUP BY i.statement_id, i.amount
       HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
          AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
@@ -1145,6 +1164,8 @@ SELECT s.statement_id,
 -- ------------------------------------------------------------
 -- A19 明细（前 20）：同一 statement 内同一金额在 (A|B) 与 (C|D) 两侧同时存在
 -- 期望为空；出现即「同一笔钱被记成两边未达」，属未处置歧义（不依赖 AMBIGUOUS 前缀）
+-- 与判定同口径：**排除 cleared_flag=true 的 item**（人工处置：RESOLVE / EXEMPT，审计留痕
+-- RECON_AMBIGUITY_RESOLVED / RECON_AMBIGUITY_EXEMPTED）；另兼容排除 'EXEMPTED(' 前缀（旧数据）
 -- ------------------------------------------------------------
 \if :ambiguity_shape_ready
 \echo ''
@@ -1155,6 +1176,8 @@ SELECT i.statement_id,
        count(*) FILTER (WHERE i.category IN ('C', 'D')) AS cd_cnt
   FROM reconciliation_items i
  WHERE i.deleted = 0
+   AND i.cleared_flag = false
+   AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
  GROUP BY i.statement_id, i.amount
 HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
    AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0

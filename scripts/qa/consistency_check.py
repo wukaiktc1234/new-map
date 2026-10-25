@@ -29,8 +29,11 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A17 （信息性，不参与 TOTAL）近 24h 夹具余额抹平（finance_audit_logs.operation_type='FIXTURE_FLOW_REVERSED'）
   A18 （信息性，不参与 TOTAL）假平衡残留：is_balanced=true 但 adj 两侧不等或残留 AMBIGUOUS: 前缀 item
       = BL-6 假平衡门禁的持续性保障（生成逻辑被改回也能抓出）
-  A19 （信息性，不参与 TOTAL）同额两侧并存：同一 statement 内某金额同时出现在 (A|B) 与 (C|D)
-      = A18 的数据形态兜底（不依赖 AMBIGUOUS: 前缀；计「statement 数」，非金额对数量）
+  A19 （参与判定，进入 TOTAL FAIL）同额两侧并存 = 形态假平衡：同一 statement 内某金额同时出现在 (A|B) 与 (C|D)
+      = A18 的数据形态兜底（不依赖 AMBIGUOUS: 前缀；计「statement 数」）
+      P4-3（二次修正）：排除 cleared_flag=true 的 item（人工处置：RESOLVE→RECON_AMBIGUITY_RESOLVED /
+      EXEMPT→RECON_AMBIGUITY_EXEMPTED；不是白名单），并兼容排除 'EXEMPTED(' 前缀；
+      输出行附「其中已人工消除(cleared)条目数 = N」
   A20 （信息性，不参与 TOTAL）历史负 balance_after（status=2）：A15 只看当前账户余额，
       A20 看历史每一笔快照，非替代关系（当前为正不代表历史上没出现过负中间态，BL-4 修复前即存在）
   A21 （信息性，不参与 TOTAL）可疑补账：有 backfill 审计名 + 补记账 token，但 flow_no 非 FFH 前缀
