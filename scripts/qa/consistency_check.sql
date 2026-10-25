@@ -349,6 +349,8 @@ SELECT CASE WHEN count(*) = 0 THEN '[INFO] ' ELSE '[INFO] ' END
 \endif
 
 SELECT (to_regclass('public.reconciliation_items') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL
+        AND to_regclass('public.bank_transactions') IS NOT NULL
         AND EXISTS (SELECT 1 FROM information_schema.columns
                      WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
                        AND column_name IN ('statement_id', 'category', 'amount', 'deleted', 'cleared_flag')
@@ -367,38 +369,52 @@ SELECT CASE WHEN count(DISTINCT t.statement_id) = 0
             WHERE i2.deleted = 0 AND i2.cleared_flag = true) || '）' AS a19_line,
        count(DISTINCT t.statement_id) AS a19_n
   FROM (
-      SELECT i.statement_id, i.amount
-        FROM reconciliation_items i
-       WHERE i.deleted = 0
-         -- 人工处置后该条不再参与形态判据（2026-10-25 P4-3 第二处口径修正）：
-         --   cleared_flag = true ← RESOLVE（改归属，审计 RECON_AMBIGUITY_RESOLVED）
-         --                        或 EXEMPT（判定非歧义，审计 RECON_AMBIGUITY_EXEMPTED）。
-         --   后端对两者都置 cleared_flag=true（category/amount 不动，规避 ck_recon_items_ref_by_category）。
-         --   若只排除 'EXEMPTED(' 前缀，RESOLVE 的「已处置(AMBIGUITY->…)」会被漏掉 → 处置完仍红。
-         --   **不是白名单、不是基线**，是「已人工处置」的事实标记。
-         AND i.cleared_flag = false
-         -- 兼容保留：历史数据/旧接口可能只写前缀未置 flag
-         AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
-         -- 【P4-5 退款配对例外】B/D 悬空配对是本系统**已识别的配对形态**：
-         --   退款流水落 B（企业已付银行未付）、银行退款落 D（银行已付企业未付），同额两侧并存。
-         --   判定条件：同 statement、同金额、两侧（A|B vs C|D）带**同一个** [refundPair=<id>] token
-         --   → 两侧条目都不计入形态配对（配对完整性由 A32 独立校验）。
-         --   **这不是白名单/基线**，是「已知业务形态」的结构化例外，token 由后端配对逻辑写入。
-         --   注：fund_flows.refund_record_id 目前不存在（information_schema 实测），
-         --       故用 item.reason 的 [refundPair=...] 作为配对标识；日后加列可再扩展。
-         AND NOT EXISTS (
-               SELECT 1 FROM reconciliation_items j
-                WHERE j.deleted = 0
-                  AND j.statement_id = i.statement_id
-                  AND j.amount = i.amount
-                  AND j.item_id <> i.item_id
-                  AND (j.category IN ('A', 'B')) <> (i.category IN ('A', 'B'))
-                  AND substring(i.reason from '\[refundPair=([^]]+)\]') IS NOT NULL
-                  AND substring(j.reason from '\[refundPair=([^]]+)\]')
-                      = substring(i.reason from '\[refundPair=([^]]+)\]'))
-       GROUP BY i.statement_id, i.amount
-      HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
-         AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
+      /*
+       * 【P4-5 退款配对例外：token 优先、列兜底】
+       * B/D 悬空配对是**已识别的业务形态**（退款流水落 B＝企业已付银行未付；银行退款落 D＝银行已付企业未付），
+       * 同额两侧并存时会被形态判据误当「假平衡」。配对标识取法（按优先级）：
+       *   ① item.reason 里的 token  [refundPair=<refund_record_id>]        ← 迁移前只有它
+       *   ② fund_flows.refund_record_id（A/B 侧经 item.flow_id 关联；C/D 侧经
+       *      bank_transactions.matched_flow_id 关联到退款流水）            ← 迁移后有列
+       *   两种形态并存原因：后端先落 token、迁移后补列，同一批数据可能两种都有；
+       *   COALESCE 保证「有 token 用 token、无 token 用列」。
+       *   ② 用 to_jsonb(f) ->> 'refund_record_id' 读取：列**不存在时自然为 NULL**，
+       *   不会解析期报错（这是 CASE+to_regclass 方案无效的教训）。
+       * 命中：同 statement、同 amount、两侧（A|B vs C|D）pair_key 相同 → 两侧都不计入配对。
+       * **这不是白名单/基线**；**配对完整性由 A32 独立兜底**（孤儿退款）。
+       */
+      WITH item_key AS (
+          SELECT k.item_id, k.statement_id, k.amount, k.category,
+                 COALESCE(
+                     substring(k.reason from '\[refundPair=([^]]+)\]'),
+                     (SELECT to_jsonb(f) ->> 'refund_record_id'
+                        FROM fund_flows f WHERE f.flow_id = k.flow_id),
+                     (SELECT to_jsonb(f) ->> 'refund_record_id'
+                        FROM bank_transactions b
+                        JOIN fund_flows f ON f.flow_id = b.matched_flow_id
+                       WHERE b.transaction_id = k.transaction_id)
+                 ) AS pair_key
+            FROM reconciliation_items k
+           WHERE k.deleted = 0
+             -- 人工处置后该条不再参与形态判据（P4-3）：cleared_flag=true ← RESOLVE / EXEMPT
+             -- **不是白名单/基线**，是「已人工处置」的事实标记。
+             AND k.cleared_flag = false
+             -- 兼容保留：历史数据/旧接口可能只写前缀未置 flag
+             AND COALESCE(k.reason, '') NOT LIKE 'EXEMPTED(%'
+      )
+      SELECT k.statement_id, k.amount
+        FROM item_key k
+       WHERE NOT EXISTS (
+             SELECT 1 FROM item_key p
+              WHERE p.statement_id = k.statement_id
+                AND p.amount = k.amount
+                AND p.item_id <> k.item_id
+                AND (p.category IN ('A', 'B')) <> (k.category IN ('A', 'B'))
+                AND k.pair_key IS NOT NULL
+                AND p.pair_key = k.pair_key)
+       GROUP BY k.statement_id, k.amount
+      HAVING count(*) FILTER (WHERE k.category IN ('A', 'B')) > 0
+         AND count(*) FILTER (WHERE k.category IN ('C', 'D')) > 0
   ) t
 \gset
 \else
@@ -1603,34 +1619,47 @@ SELECT s.statement_id,
 -- A19 明细（前 20）：同一 statement 内同一金额在 (A|B) 与 (C|D) 两侧同时存在
 -- 期望为空；出现即「同一笔钱被记成两边未达」，属未处置歧义（不依赖 AMBIGUOUS 前缀）
 -- 与判定同口径：**排除 cleared_flag=true 的 item**（人工处置：RESOLVE / EXEMPT，审计留痕
--- RECON_AMBIGUITY_RESOLVED / RECON_AMBIGUITY_EXEMPTED）；另兼容排除 'EXEMPTED(' 前缀（旧数据）
+-- RECON_AMBIGUITY_RESOLVED / RECON_AMBIGUITY_EXEMPTED）；兼容排除 'EXEMPTED(' 前缀（旧数据）；
+-- 并排除「同 statement + 同额 + 两侧同 refundPair」的退款配对（已知业务形态，配对完整性由 A32 兜底）；
+-- refundPair 取值**token 优先、列兜底**：[refundPair=<id>] 缺失时用 fund_flows.refund_record_id
+-- （A/B 侧经 flow_id、C/D 侧经 bank_transactions.matched_flow_id 关联）。
 -- ------------------------------------------------------------
 \if :ambiguity_shape_ready
 \echo ''
 \echo '-- A19 明细（前 20）--'
-SELECT i.statement_id,
-       i.amount,
-       count(*) FILTER (WHERE i.category IN ('A', 'B')) AS ab_cnt,
-       count(*) FILTER (WHERE i.category IN ('C', 'D')) AS cd_cnt
-  FROM reconciliation_items i
- WHERE i.deleted = 0
-   AND i.cleared_flag = false
-   AND COALESCE(i.reason, '') NOT LIKE 'EXEMPTED(%'
-   -- 与判定同口径：排除「同 statement + 同额 + 两侧同 [refundPair=id]」的已识别退款配对
-   AND NOT EXISTS (
-         SELECT 1 FROM reconciliation_items j
-          WHERE j.deleted = 0
-            AND j.statement_id = i.statement_id
-            AND j.amount = i.amount
-            AND j.item_id <> i.item_id
-            AND (j.category IN ('A', 'B')) <> (i.category IN ('A', 'B'))
-            AND substring(i.reason from '\[refundPair=([^]]+)\]') IS NOT NULL
-            AND substring(j.reason from '\[refundPair=([^]]+)\]')
-                = substring(i.reason from '\[refundPair=([^]]+)\]'))
- GROUP BY i.statement_id, i.amount
-HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
-   AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
- ORDER BY i.statement_id, i.amount
+WITH item_key AS (
+    SELECT k.item_id, k.statement_id, k.amount, k.category,
+           COALESCE(
+               substring(k.reason from '\[refundPair=([^]]+)\]'),
+               (SELECT to_jsonb(f) ->> 'refund_record_id'
+                  FROM fund_flows f WHERE f.flow_id = k.flow_id),
+               (SELECT to_jsonb(f) ->> 'refund_record_id'
+                  FROM bank_transactions b
+                  JOIN fund_flows f ON f.flow_id = b.matched_flow_id
+                 WHERE b.transaction_id = k.transaction_id)
+           ) AS pair_key
+      FROM reconciliation_items k
+     WHERE k.deleted = 0
+       AND k.cleared_flag = false
+       AND COALESCE(k.reason, '') NOT LIKE 'EXEMPTED(%'
+)
+SELECT k.statement_id,
+       k.amount,
+       count(*) FILTER (WHERE k.category IN ('A', 'B')) AS ab_cnt,
+       count(*) FILTER (WHERE k.category IN ('C', 'D')) AS cd_cnt
+  FROM item_key k
+ WHERE NOT EXISTS (
+       SELECT 1 FROM item_key p
+        WHERE p.statement_id = k.statement_id
+          AND p.amount = k.amount
+          AND p.item_id <> k.item_id
+          AND (p.category IN ('A', 'B')) <> (k.category IN ('A', 'B'))
+          AND k.pair_key IS NOT NULL
+          AND p.pair_key = k.pair_key)
+ GROUP BY k.statement_id, k.amount
+HAVING count(*) FILTER (WHERE k.category IN ('A', 'B')) > 0
+   AND count(*) FILTER (WHERE k.category IN ('C', 'D')) > 0
+ ORDER BY k.statement_id, k.amount
  LIMIT 20;
 \else
 \echo ''
