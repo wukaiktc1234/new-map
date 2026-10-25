@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
+import com.foodtraceability.common.sequence.SequenceAllocator;
 import com.foodtraceability.common.util.PosPaymentMethodResolver;
 import com.foodtraceability.dto.finance.*;
 import com.foodtraceability.entity.OrderItemNew;
@@ -69,15 +70,19 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
      * 只有 REQUIRES_NEW 的独立事务才能把烧号记录留下（见 {@link FlowNoBurnLedgerRecorder}）。</p>
      */
     private final FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder;
+    /** P4-1 BL-2：全项目唯一取号实现（原 Mapper 内取号 SQL 已删除） */
+    private final SequenceAllocator sequenceAllocator;
 
     public FundFlowServiceImpl(BankAccountMapper bankAccountMapper, FundFlowMapper fundFlowMapper,
                                AtomicBalanceUpdater atomicBalanceUpdater,
                                OrderNewMapper orderNewMapper, OrderItemNewMapper orderItemNewMapper,
                                OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
-                               FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder) {
+                               FlowNoBurnLedgerRecorder flowNoBurnLedgerRecorder,
+                               SequenceAllocator sequenceAllocator) {
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
         this.atomicBalanceUpdater = atomicBalanceUpdater;
+        this.sequenceAllocator = sequenceAllocator;
         this.orderNewMapper = orderNewMapper;
         this.orderItemNewMapper = orderItemNewMapper;
         this.orderPaymentRecordNewMapper = orderPaymentRecordNewMapper;
@@ -351,7 +356,7 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
         String sequenceKey = "FLOW" + datePart;
         String prefix = "FF" + datePart;
         try {
-            // BL-2-b：改用带「下限兜底」的取号（FundFlowMapper#nextFlowSequenceWithFloor）：
+            // BL-2-b / P4-1：改用带「下限兜底」的统一取号器（SequenceAllocator#next）：
             // 单条语句 = GREATEST(号段当前值, 当天已用最大序号) + 1 并 RETURNING。
             //
             // 为什么同事务内连续取 N 个号也不会重号（三条理由，缺一不可）：
@@ -363,7 +368,7 @@ public class FundFlowServiceImpl extends ServiceImpl<FundFlowMapper, FundFlow>
             //  ③ GREATEST(..., 当天 MAX) 只做**下限兜底**：防的是「号段被调低 / 历史直写 SQL 越过号段」
             //     造成的落后（如号段 200 而当天已用到 232）；事务内它最多等于上一号，
             //     不会撞上本事务刚取走的下一个值。
-            Integer seq = fundFlowMapper.nextFlowSequenceWithFloor(sequenceKey, prefix);
+            Integer seq = sequenceAllocator.next(sequenceKey, prefix, "fund_flows", "flow_no");
             if (seq != null && seq > 0) {
                 // 号段真实消耗：seqValue 非空 → 后续若落库失败必须写烧号账
                 return new FlowNoAllocation(String.format("%s%04d", prefix, seq), sequenceKey,

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ConflictException;
+import com.foodtraceability.common.sequence.SequenceAllocator;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
 import com.foodtraceability.dto.finance.deposit.DepositSlipQueryDTO;
@@ -111,6 +112,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     private final FundFlowMapper fundFlowMapper;
     private final AtomicBalanceUpdater atomicBalanceUpdater;
     private final FinanceAuditLogService financeAuditLogService;
+    /** P4-1 BL-2：全项目唯一取号实现 */
+    private final SequenceAllocator sequenceAllocator;
 
     public DepositSlipServiceImpl(DepositSlipMapper depositSlipMapper,
                                   PosShiftMapper posShiftMapper,
@@ -120,7 +123,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                                   BankTransactionMapper bankTransactionMapper,
                                   FundFlowMapper fundFlowMapper,
                                   AtomicBalanceUpdater atomicBalanceUpdater,
-                                  FinanceAuditLogService financeAuditLogService) {
+                                  FinanceAuditLogService financeAuditLogService,
+                                  SequenceAllocator sequenceAllocator) {
         this.depositSlipMapper = depositSlipMapper;
         this.posShiftMapper = posShiftMapper;
         this.orderNewMapper = orderNewMapper;
@@ -130,6 +134,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         this.fundFlowMapper = fundFlowMapper;
         this.atomicBalanceUpdater = atomicBalanceUpdater;
         this.financeAuditLogService = financeAuditLogService;
+        this.sequenceAllocator = sequenceAllocator;
     }
 
     // ==================== SL1 生成 ====================
@@ -840,7 +845,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         String key = "SLIP" + datePart;
         String prefix = "DS" + datePart;
         // 共用 order_sequence 号段：GREATEST(当前号段, 当天 MAX) + 1 RETURNING（单条语句，非「查 MAX+1」）
-        Integer seq = depositSlipMapper.nextSlipSequenceWithFloor(key, prefix);
+        Integer seq = sequenceAllocator.next(key, prefix, "deposit_slips", "slip_no");
         if (seq == null || seq <= 0) {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "缴款单号段分配失败：key=" + key);
         }
@@ -853,7 +858,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         String key = "FLOW" + datePart;
         String prefix = "FF" + datePart;
         // 共用 order_sequence 号段：GREATEST(当前号段, 当天 MAX) + 1 RETURNING（单条语句，非「查 MAX+1」）
-        Integer seq = fundFlowMapper.nextFlowSequenceWithFloor(key, prefix);
+        Integer seq = sequenceAllocator.next(key, prefix, "fund_flows", "flow_no");
         if (seq == null || seq <= 0) {
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "流水号段分配失败：key=" + key);
         }

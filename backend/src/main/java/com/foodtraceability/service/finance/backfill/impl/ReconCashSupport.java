@@ -1,6 +1,7 @@
 package com.foodtraceability.service.finance.backfill.impl;
 
 import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.sequence.SequenceAllocator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,9 +22,12 @@ public class ReconCashSupport {
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final JdbcTemplate jdbc;
+    /** P4-1 BL-2：全项目唯一取号实现（本类不再手写两段 SQL） */
+    private final SequenceAllocator sequenceAllocator;
 
-    public ReconCashSupport(JdbcTemplate jdbc) {
+    public ReconCashSupport(JdbcTemplate jdbc, SequenceAllocator sequenceAllocator) {
         this.jdbc = jdbc;
+        this.sequenceAllocator = sequenceAllocator;
     }
 
     /** 余额原子调整结果 */
@@ -74,20 +78,9 @@ public class ReconCashSupport {
         String day = businessDate.format(DAY);
         String prefix = "FF" + day;
         String sequenceKey = "FLOW" + day;
-        Integer maxExisting = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(CAST(SUBSTRING(flow_no FROM 11) AS INTEGER)), 0) "
-                        + "  FROM fund_flows WHERE flow_no LIKE ?", Integer.class, prefix + "%");
-        int floor = maxExisting == null ? 0 : maxExisting;
-        // ① 号段对齐到当天已有最大值（GREATEST 保证只升不降，不会把并发方的号段压低）
-        jdbc.update("INSERT INTO order_sequence (sequence_key, sequence_value, create_time) VALUES (?, ?, NOW()) "
-                        + "ON CONFLICT (sequence_key) DO UPDATE "
-                        + "SET sequence_value = GREATEST(order_sequence.sequence_value, EXCLUDED.sequence_value)",
-                sequenceKey, floor);
-        // ② 原子取下一个号
-        Integer seq = jdbc.queryForObject(
-                "INSERT INTO order_sequence (sequence_key, sequence_value, create_time) VALUES (?, 1, NOW()) "
-                        + "ON CONFLICT (sequence_key) DO UPDATE SET sequence_value = order_sequence.sequence_value + 1 "
-                        + "RETURNING sequence_value", Integer.class, sequenceKey);
+        // P4-1 BL-2 收敛：原先的「① upsert floor + ② +1 RETURNING」两条 SQL 合并为 SequenceAllocator 单条语句，
+        // 语义不变（GREATEST 下限兜底 + 号段行级锁自增）；返回值仍是 String flow_no，异常类型不变（err() → 400）。
+        Integer seq = sequenceAllocator.next(sequenceKey, prefix, "fund_flows", "flow_no");
         if (seq == null || seq <= 0) {
             throw err("资金流水号段分配失败（order_sequence 返回空），已回滚");
         }
