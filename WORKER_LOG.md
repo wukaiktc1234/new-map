@@ -1057,3 +1057,101 @@ run 26 差异分布：`ONE_SIDED_INTERNAL=11`（历史真单边）、`TIME_DIFF=
 ### 40.7 回归与现状
 `consistency_check.py` **12 PASS / 0 FAIL**（A1=0、A7=0、A14=0、A15=0；A16 INFO=6、A17 INFO=4）；`recon_selftest.py` 26 PASS；`compile` BUILD SUCCESS。
 `reconciliation_statements`：**13 = SUBMITTED / is_balanced=true（歧义已处置 15/15）**、14 与 17 = DRAFT / false；`reconciliation_items` 中 `AMBIGUOUS:` 前缀 **0** 条；`deposit_slips.business_date` 分布 `2026-10-23=14 / 2026-10-24=37`、NULL 0。
+
+---
+
+## 41. BL-7 收口：跨日窗可配置 + §2.4 补句 + 23h 判断（ts-purchase，2026-10-25 12:3x）
+
+### 40.1 可配置化
+- `ReconBatchExecutor`：`CROSS_DAY_WINDOW_MINUTES` 常量 → 实例字段 `crossDayWindowMinutes`，构造参数
+  `@Value("${app.finance.recon.cross-day-window-minutes:1440}")`（**只给代码默认值，未动 application.yml**）；
+  配成 ≤0 时回落默认 1440；配成 ≤ `time-window-minutes` 等价于关闭跨日匹配。
+- `timeDiff()` 的 `resolution_remark` 与类注释同步改成引用该配置项（默认值 1440 语义不变）。
+- 设计稿 §2.4 末尾追加一句（精确追加，未重写整节）：跨日窗口径 + 可配置项 + 超窗/多候选分支。
+
+### 40.2 回归（全部复跑）
+| 项 | 结果 |
+|---|---|
+| E2-1（run 28，account 24 / 2026-10-24） | 两侧 `MATCHED`、`difference_type=TIME_DIFF`、`diff_amount=0`、remark「跨日时间差 5 分钟（常规窗口 10 分钟，允许跨日窗 1440 分钟）」 |
+| `recon_selftest.py` | **26 PASS / 0 FAIL** |
+| `consistency_check.py` | **12 PASS / 0 FAIL**（期间该 SQL 被他人在编辑，第一次跑报 LINE 201 语法错，等其落盘后复跑通过） |
+
+### 40.3 判断：23 小时到账自动判 TIME_DIFF 合理吗？
+**结论：偏宽，建议默认收紧到 6h（最多 12h），并给跨日匹配加「身份交集」门槛。**
+
+理由：
+1. **现实上限远小于 24h**：POS 收单跨日场景本质是「夜间批次跨零点」，实测样本 23:58→00:03（5 分钟）；
+   银行清算批次通常 23:00–02:00 完成，跨日时延 ≤ 2–4h。23h 几乎没有真实业务对应，属于配置冗余。
+2. **误配代价高**：TIME_DIFF 是「判成同一笔，只是晚了」，会把真实的两笔独立交易（隔日同额，如固定价套餐 34,200 分）
+   合成一笔，同时掩盖真正的 ONE_SIDED 单边账 —— 比多报一条单边账更难发现（单边账会被追，误配不会）。
+3. **金额匹配的碰撞率已经很高**：本轮 §38.3 体检就有 11 笔「对侧同额候选」，说明同额并不稀缺；
+   在 24h 窗内跨两天各出现一笔同额的概率并不低。
+4. **建议方案（按优先级）**：
+   - 默认 `cross-day-window-minutes` 收紧到 **360**（6h），特殊渠道再单独放大到 720；
+   - 跨日匹配要求**身份交集**：`external_txn_id / merchant_order_no / 支付渠道流水号` 至少一个可比较键命中，
+     否则即便同额同账户也只落 `AMBIGUOUS`（人工二选一），不自动 MATCHED；
+   - TIME_DIFF 增加「需人工确认」标记，且**不计入自动勾稽率分子**，避免用误配抬高指标；
+   - 监控 |Δt| > 2h 的 TIME_DIFF 占比，超阈值告警。
+
+---
+
+## 42. 三问澄清 + A18/A19/A20（2026-10-25 12:28–12:55）
+
+### 42.1 15 笔歧义处置的真实依据（**标红：是「调类别凑金额」，不是 1:1 勾稽**）
+**审计记录**：`finance_audit_logs` 中 `RECON_AMBIGUITY_RESOLVED` 共 **30 条**（log_id 220–249），分两批：220–234（04:14:40，15 条，原因「按同额唯一候选确认归属」）、235–249（04:15:05，15 条，原因「BL-6 闭环验证」）。
+**处置方式**：全部是 `decision=A→C` 或 `C→A` 的**类别翻转**，`targetRef` 反复指向同一批引用：
+| 处置方向 | 条数 | targetRef | 问题 |
+|---|---|---|---|
+| A → C | 10+ | **91（同一笔外部流水）** | 10 条内部流水被「改判成」同一笔外部流水的 C 项 |
+| C → A | 5+ | **1037 / 610** | 外部流水被「改判成」内部 flow_id 的 A 项 |
+| A → C | 2 | 163 | 同上 1:N |
+| C → A | 2 | 1037 | 同上 |
+**判定：属「人工凑金额」**（Owner §1.2 的第二种情形）——没有任何一条记录给出「外部流水号 ↔ 内部 flow_no」的真实 1:1 依据；相反，同一条 `transaction_id=91` 被当成 10 个不同 item 的 targetRef，这在业务上不可能成立（一笔外部流水只能对应一笔内部收款）。
+**BL-6 的修复被后门抵消的三个证据**：
+1) 处置后 30 条日志中 **仅 15 条指向仍存在的 item**，另 15 条指向已被重算删除的 item（悬空审计）；
+2) 重算后 **当前 statement 13 仍存在同额两侧并存**：`amount=10,000` → **A 10 笔 / C 1 笔**；`amount=45,678` → **A 2 笔 / C 2 笔** —— 与处置前的形态完全一样；
+3) 该 statement **`is_balanced = true` 且状态 SUBMITTED**，`reason LIKE 'AMBIGUOUS:%'` 残留 **0 条**（前缀在重算中丢失）。
+**结论：这 15 笔处置不能满足「逐笔按真实凭证核对后归属」的要求，必须重做**——正确做法是保留 `AMBIGUOUS`、由财务拿银行回单逐笔确认后重新生成，**不得在系统里调类别凑平衡**。
+
+### 42.2 statement 13 现状（数值相等，但形态仍歧义）
+| 字段 | 值 |
+|---|---|
+| status / is_balanced | **SUBMITTED / true** |
+| book_balance / bank_balance | 831,240 / **−6,755,936**（对账单余额是负数，本身就是脏输入） |
+| adjusted_book_balance / adjusted_bank_balance | **3,609,390 / 3,609,390（相等）** |
+| A / B / C / D 条数 | **601 / 19 / 69 / 10**（合计 699） |
+| `AMBIGUOUS:` 残留 | **0** |
+→ 按 Owner §1.4 的字面判据（adj 不等 **或** 含 AMBIGUOUS 前缀）**不成立**，所以 **A18=0 是假阴性**；但按业务实质（同额两侧并存未处置）**就是假平衡残留**。
+
+### 42.3 A15 是「当前余额」；历史负余额需要独立断言（已加 A20）
+- **A15 原始 SQL**：`SELECT count(*) FROM bank_accounts WHERE COALESCE(deleted,0)=0 AND account_type=2 AND balance < 0;` —— **只看当前**。
+- **历史扫描（新增 A20，Owner 指定 SQL）**：`status=2/deleted=0` 的负 `balance_after` 共 **41 行 / 3 个账户**：
+  · account 20：**37 行**，min **−3,916,130**、max −22,080；
+  · account 5：**3 行**，min **−10,500**；
+  · account 2：**1 行**，min **−200**。
+  （另 account 20 还有 27 行 `status=3` 的负值，A20 按 `status=2` 不计。）
+- **02:25:41 的 −440,330 现在能不能查到？能**：在 `fund_flows.balance_after`（`FF202610250144 = −440,330`、`FF202610250145 = −440,430`，均 `status=2/deleted=0`）。**逐笔快照是保留的**；被覆盖的只是「账户级当前余额」（`bank_accounts.balance` 仅存最新值）。因此设计上**不丢失历史中间态**，无需担心。
+
+### 42.4 新增三条巡检（均为 INFO，不进 TOTAL，编号 A18–A20）
+| 断言 | 口径 | 首跑输出 |
+|---|---|---|
+| **A18**（Owner 原 SQL 照录） | `is_balanced=true` 且（adj 两侧不等 **或** 存在 `AMBIGUOUS:` 前缀 item） | **statements=0**（假阴性，见 42.2） |
+| **A19**（我追加，形态兜底） | 同一 statement 内某金额同时出现在 A/B 与 C/D 两侧 | **statements=3**（13/14/17；明细 6 行：10,000 → 10 vs 1；45,678 → 2v2 / 1v1 / 2v2） |
+| **A20**（Owner 指定） | 历史 `balance_after < 0`（status=2/deleted=0）统计 | **rows=41 / accounts=3** |
+A18 的价值与局限都要写明：**它是 BL-6 门禁的持续性保障，但只在 `AMBIGUOUS:` 前缀还在时才有效**；一旦重算把前缀冲掉（本次就是），A18 查不出来 —— 所以 **A19 才是真正的形态兜底**，建议后续把「A19>0」升级为阻断（需 Owner 决定）。
+
+### 42.5 四个细节确认
+1. **跨日窗 24h 依据**：文档 §2.4 原文**没有**写具体阈值（只写了差异类型枚举）。已改为可配置 `app.finance.recon.cross-day-window-minutes`（默认 1440，**未改 `application.yml`**，仅 `@Value` 默认值），并在 §2.4 **精确追加**一段口径说明。
+   **「23 小时到账自动判 TIME_DIFF 是否合理」→ 不合理，偏宽**。建议默认收紧到 **360 分钟（6h）** 并加「身份交集」门槛（`external_txn_id`/`merchant_order_no`/渠道流水号至少一个命中才允许跨日匹配，否则落 `AMBIGUOUS`）；TIME_DIFF 还应标记「需人工确认」且不计入自动勾稽率分子。**默认值本轮未改，等你裁决。**
+2. **27 行午夜 `txn_time` 的影响**：现状 **27 行全部 `needs_review=1` 且 `match_status='EXCEPTION'`**。它们**仍留在 `bank_transactions`（`deleted=0`）里**，因此仍计入勾稽的外部侧数量，不会被排除；区别是 item 的 `reason` 会带「【时间不可用】」标注、且状态是 EXCEPTION。**A7/A15 的分母不受影响**（A7 只查 `fund_flows`，A15 只查 `bank_accounts`）。
+3. **51 张缴款单是否全有对应班次**：**51/51 全部有对应 `pos_shifts`**，无 shift 缺失、无 `end_time` 为空，回填**未使用任何 fallback**（口径自检 mismatch = 0）。当前 `SELECT ... WHERE shift_id IS NULL OR 无对应班次` → **0 行**（P2 的测试单 `DSBL4A0001` 等已在清理阶段删除，故不在此列）。
+4. **原 `BankAccountMapper.addBalance` SQL（修复前）**：
+```sql
+UPDATE bank_accounts SET balance = COALESCE(balance, 0) + #{delta},
+       version = COALESCE(version, 0) + 1, update_time = NOW()
+ WHERE account_id = #{accountId} AND deleted = 0
+```
+**是单条原子 UPDATE（`balance = balance + delta`），不是「先 select 再 update」** → 并发下**不会丢更新**（行锁串行化）；当时的缺陷只是**无 version 条件（无法检测冲突）＋无余额下限（允许转负）**。下限已由 BL-4 的 `addBalanceGuarded` 补上；历史负中间态由 **A20** 兜底巡检查出。
+
+### 42.6 顺手发现的守卫缺陷（未改，供裁决）
+**A17 的守卫实际无效**：它在 `CASE` 里判断 `to_regclass('public.finance_audit_logs')`，但同一语句的 `FROM finance_audit_logs` 在**解析期**就被解析，表不存在会直接报错、走不到 CASE。A10–A13/A18–A20 用的 `\gset` + `\if`（缺表根本不下发语句）才是有效写法。建议把 A17 改成同款，需另开一次改动。
