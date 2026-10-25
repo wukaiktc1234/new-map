@@ -65,6 +65,7 @@ DEFAULT_SQL = Path(__file__).with_name("consistency_check.sql")
 
 FAIL_RE = re.compile(r"^\s*\[FAIL\]\s", re.MULTILINE)
 PASS_RE = re.compile(r"^\s*\[PASS\]\s", re.MULTILINE)
+INFO_RE = re.compile(r"^\s*\[INFO\]\s", re.MULTILINE)
 TOTAL_RE = re.compile(r"^\s*TOTAL FAIL=(\d+)\s*$", re.MULTILINE)
 
 
@@ -129,10 +130,14 @@ def main() -> int:
 
     fails = FAIL_RE.findall(out)
     passes = PASS_RE.findall(out)
+    infos = INFO_RE.findall(out)
     total = TOTAL_RE.search(out)
+    judged = len(passes) + len(fails)
+    all_rows = judged + len(infos)
     print()
-    print(f"汇总: {len(passes) + len(fails)} 条断言，{len(passes)} PASS / {len(fails)} FAIL"
-          + (f"（SQL 自报 TOTAL FAIL={total.group(1)}）" if total else ""))
+    print(f"汇总: {len(passes)} PASS / {len(fails)} FAIL（判定项 {judged} 条）"
+          + f"；共 {all_rows} 条断言（含 {len(infos)} 条 INFO，不计入 TOTAL）"
+          + (f"；SQL 自报 TOTAL FAIL={total.group(1)}" if total else ""))
 
     return 1 if fails else 0
 
