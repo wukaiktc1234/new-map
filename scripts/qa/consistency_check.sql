@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -87,6 +87,11 @@
 --   A23 （信息性，不进 TOTAL）**未关闭调节表最长挂账天数**：status NOT IN ('APPROVED') 且 deleted=0，
 --       以 COALESCE(submitted_at, create_time) 起算挂账天数取 MAX；阈值 STALE_DAYS=7（脚本内常量），
 --       >7 时同一行追加提醒。守卫：reconciliation_statements（含 status/deleted/submitted_at/create_time）不存在 → [INFO] 跳过。
+--   A24 （信息性，不进 TOTAL）当天 FLOW 号段「取值 − 已落库条数」差值；≠0 提示号段空洞。
+--       实际列名为 order_sequence.sequence_key / sequence_value（**不是** seq_key/seq_value），
+--       键格式 = 'FLOW' || yyyyMMdd（代码实证 FundFlowServiceImpl / DepositSlipServiceImpl / ReconCashSupport）。
+--   A25 （**参与判定，进入 TOTAL FAIL**）烧号账 fund_flow_no_burn_ledger 中 archived_flag=false 的行数
+--       = 已取号但未落库的流水号；期望 0，>0 即 FAIL。守卫：缺表 → [INFO] 跳过（不计入 TOTAL）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -463,6 +468,77 @@ SELECT CASE WHEN COALESCE(MAX(t.days), 0) > 7
 \endif
 
 -- ------------------------------------------------------------
+-- A24（信息性，不参与 TOTAL）：当天 FLOW 号段「已取值 − 已落库条数」差值
+--   ⚠️ 实际列名与键格式（2026-10-25 information_schema 实测）：
+--      order_sequence 的列是 **sequence_key / sequence_value**（不是 seq_key / seq_value）；
+--      号段键格式为 **'FLOW' || yyyyMMdd**（代码实证：FundFlowServiceImpl:347、
+--      DepositSlipServiceImpl:853、ReconCashSupport:76 均为 "FLOW" + datePart）。
+--   差值 ≠ 0 说明号段取过号但 fund_flows 没有对应行（号段空洞），详见 A25 烧号账。
+--   ⚠️ 已知基线：**清库后需同步重置 order_sequence**（见 purge 脚本）；
+--      数据清空但号段保留会产生一个恒定的历史差额（当前为 456），属已知残差、不是新烧号。
+--   守卫：order_sequence 或 fund_flows 不存在 → [INFO] 跳过。
+--   注：号段行不存在时按 0 计（先 COALESCE 再相减），避免 NULL 把整式吞成 0 而掩盖负差。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.order_sequence') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL) AS flow_seq_ready
+\gset
+
+\if :flow_seq_ready
+SELECT CASE WHEN COALESCE((SELECT sequence_value FROM order_sequence
+                            WHERE sequence_key = 'FLOW' || to_char(current_date, 'YYYYMMDD')), 0)
+                 - (SELECT count(*) FROM fund_flows
+                     WHERE business_date = current_date AND deleted = 0) = 0
+            THEN '[INFO] A24 当天号段取值-已落库条数 diff=0'
+            ELSE '[INFO] A24 当天号段取值-已落库条数 diff=' ||
+                 (COALESCE((SELECT sequence_value FROM order_sequence
+                             WHERE sequence_key = 'FLOW' || to_char(current_date, 'YYYYMMDD')), 0)
+                  - (SELECT count(*) FROM fund_flows
+                      WHERE business_date = current_date AND deleted = 0))
+                 || '（存在号段空洞，见 A25 烧号账）'
+       END AS a24_line,
+       (COALESCE((SELECT sequence_value FROM order_sequence
+                   WHERE sequence_key = 'FLOW' || to_char(current_date, 'YYYYMMDD')), 0)
+        - (SELECT count(*) FROM fund_flows
+            WHERE business_date = current_date AND deleted = 0))::bigint AS a24_n
+\gset
+\else
+\set a24_line '[INFO] A24 跳过（表未创建）'
+\set a24_n 0
+\endif
+
+-- ------------------------------------------------------------
+-- A25（**参与判定，进入 TOTAL FAIL**）：烧号账「已取号但迄今仍未落库」行数
+--   口径（2026-10-25 修正）：archived_flag = false **AND NOT EXISTS(fund_flows 同 flow_no)**。
+--   **为何必须 NOT EXISTS**：取号与 insert 在同一事务时，失败回滚会把**号段本身也回滚**，
+--   该号会被后续请求重新取到并成功落库；若只数 archived_flag=false，这一行会永久留在账上，
+--   A25 就会**永久误报**（实测：FF202610250474 已被后续请求重用并存在于 fund_flows）。
+--   → 语义 = 「曾经交出、迄今仍未落库」= 真正的号洞；已被重用的号不算。
+--   期望 0；>0 即 FAIL（文案：存在 N 个已取号但仍未落库的流水号，禁止接受）。
+--   守卫：表或 archived_flag 列不存在 → [INFO] A25 跳过（表未创建），不计入 TOTAL。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.fund_flow_no_burn_ledger') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flow_no_burn_ledger'
+                       AND column_name = 'archived_flag')) AS burn_ledger_ready
+\gset
+
+\if :burn_ledger_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A25 烧号账未落库行数 rows=0'
+            ELSE '[FAIL] A25 烧号账未落库行数 rows=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 个已取号但仍未落库的流水号，禁止接受'
+       END AS a25_line,
+       count(*) AS a25_n
+  FROM fund_flow_no_burn_ledger b
+ WHERE b.archived_flag = false
+   AND NOT EXISTS (SELECT 1 FROM fund_flows f WHERE f.flow_no = b.flow_no)
+\gset
+\else
+\set a25_line '[INFO] A25 跳过（表未创建）'
+\set a25_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -709,7 +785,15 @@ SELECT line
     SELECT 23,
            :'a23_line'
     UNION ALL
+    -- A24 信息性：当天号段取值-已落库条数（不进 TOTAL）
     SELECT 24,
+           :'a24_line'
+    UNION ALL
+    -- A25 参与判定：烧号账未归档行数（缺表时 [INFO] 跳过；>0 进 TOTAL）
+    SELECT 25,
+           :'a25_line'
+    UNION ALL
+    SELECT 26,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -724,7 +808,8 @@ SELECT line
              + CASE WHEN :a13_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a14_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a19_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a19_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a25_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -1176,6 +1261,26 @@ SELECT s.statement_id,
 \else
 \echo ''
 \echo '-- A23 明细跳过（无超过阈值的未关闭调节表）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A25 明细（前 20）：烧号账中「已取号且仍未落库」的行（archived_flag=false 且 fund_flows 无同号）
+-- in_flows 列 = 该 flow_no 当前在 fund_flows 的条数（0=真空洞；>0 说明号已被重用，正常不在此列表）
+-- 期望为空；出现即需人工核对（重复键 / 乐观锁耗尽 / 业务校验失败）
+-- ------------------------------------------------------------
+\if :burn_ledger_ready
+\echo ''
+\echo '-- A25 明细（前 20）--'
+SELECT b.ledger_id, b.flow_no, b.seq_key, b.seq_value, b.reason, b.created_by, b.create_time, b.archived_flag,
+       (SELECT count(*) FROM fund_flows f WHERE f.flow_no = b.flow_no) AS in_flows
+  FROM fund_flow_no_burn_ledger b
+ WHERE b.archived_flag = false
+   AND NOT EXISTS (SELECT 1 FROM fund_flows f WHERE f.flow_no = b.flow_no)
+ ORDER BY b.create_time DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A25 明细跳过（表未创建）--'
 \endif
 
 COMMIT;

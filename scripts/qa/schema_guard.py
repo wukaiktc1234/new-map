@@ -43,6 +43,13 @@ def run_psql(args, sql):
         return -1, "", str(e)
 
 
+# 期望存在的新增表清单（**只做存在性检查，不是数据白名单**）：
+#   由 P1–P3 财务对账 / 号段治理引入；缺表说明迁移未应用，需要补 Flyway。
+EXPECTED_TABLES = [
+    "fund_flow_no_burn_ledger",   # BL-5 烧号账（V20261025_003，A25 依赖）
+]
+
+
 class Guard:
     def __init__(self, args):
         self.a = args
@@ -86,6 +93,15 @@ class Guard:
         return self.step("S2 FK %s.%s → locations(location_id)" % (table, column), ok,
                          defs or "未找到指向 locations 的外键")
 
+    def check_table_exists(self, table, label):
+        rc, out, err = run_psql(self.a, "SELECT to_regclass('public.%s')" % table)
+        if rc != 0:
+            return self.step("S%d 表存在 %s" % (label, table), False,
+                             "psql rc=%s %s" % (rc, (err or out)[:160]))
+        exists = bool((out or "").strip()) and (out or "").strip().lower() != "null"
+        return self.step("S%d 表存在 %s" % (label, table), exists,
+                         "存在" if exists else "缺失（迁移未应用？）")
+
     def check_nulls(self, table, label):
         rc, out, err = run_psql(
             self.a,
@@ -97,6 +113,28 @@ class Guard:
         return self.step("S%d %s.location_id 无 NULL" % (label, table), cnt == 0,
                          "NULL 行数=%d（期望 0）" % cnt)
 
+    # ------------------------------------------------------------------
+    # S5（BL-5）：烧号账表存在且关键列齐全（A25 的落账载体）
+    # ------------------------------------------------------------------
+    BURN_LEDGER_COLUMNS = ["ledger_id", "flow_no", "seq_key", "seq_value", "reason",
+                           "archived_flag", "archived_time", "create_time"]
+
+    def check_burn_ledger(self, label):
+        rc, out, err = run_psql(
+            self.a,
+            "SELECT string_agg(column_name, ',' ORDER BY column_name) FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='fund_flow_no_burn_ledger'")
+        if rc != 0:
+            return self.step("S%d fund_flow_no_burn_ledger 表存在" % label, False,
+                             "psql rc=%s %s" % (rc, (err or out)[:160]))
+        cols = set((out or "").split(",")) if out else set()
+        if not cols:
+            return self.step("S%d fund_flow_no_burn_ledger 表存在" % label, False,
+                             "表不存在或没有列（期望 BL-5 迁移 V20261025_003 已应用）")
+        missing = [c for c in self.BURN_LEDGER_COLUMNS if c not in cols]
+        return self.step("S%d fund_flow_no_burn_ledger 表存在" % label, not missing,
+                         "%d 列齐全" % len(cols) if not missing else "缺列：%s" % ",".join(missing))
+
     def run(self):
         print("=" * 78)
         print("入库明细 location_id 强约束巡检   db=%s@%s:%s" % (self.a.database, self.a.host, self.a.port))
@@ -106,6 +144,11 @@ class Guard:
         self.check_fk("purchase_stockins", "location_id")
         self.check_nulls("purchase_stockin_items", 3)
         self.check_nulls("purchase_stockins", 4)
+        # 新增表的存活性检查（清单见模块级 EXPECTED_TABLES；只判存在，不校验数据）
+        for idx, table in enumerate(EXPECTED_TABLES, start=10):
+            self.check_table_exists(table, idx)
+        # BL-5：烧号账表（A25 载体）—— 除存在性（见 EXPECTED_TABLES）外，再校验关键列齐全
+        self.check_burn_ledger(6)
         fails = [r for r in self.results if r[1] == "FAIL"]
         print("\n" + "=" * 78)
         print("汇总: %d 条断言，%d PASS / %d FAIL" % (
