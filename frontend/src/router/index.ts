@@ -123,6 +123,8 @@ const router = createRouter({
     { path: '/finance/recon/statements', name: 'FinanceStatementList', component: () => import('@/views/finance/recon/StatementList.vue'), meta: { title: '调节表', domain: 'finance', roles: [UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
     { path: '/finance/recon/statements/:id', name: 'FinanceStatementDetail', component: () => import('@/views/finance/recon/StatementDetail.vue'), meta: { title: '调节表详情', domain: 'finance', roles: [UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
     { path: '/finance/recon/statements/:id/print', name: 'FinanceStatementPrint', component: () => import('@/views/finance/recon/StatementPrintView.vue'), meta: { title: '调节表打印', domain: 'finance', roles: [UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
+    // P3-4 总部资金总览看板
+    { path: '/finance/overview', name: 'FinanceFundOverview', component: () => import('@/views/finance/recon/FundOverview.vue'), meta: { title: '资金总览', domain: 'finance', roles: [UserRole.STORE_MANAGER, UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
     // 工作台财务快捷入口的历史 path（报销管理）补齐，防死链
     // 报销管理：暂无独立页面，落到建设中占位页（可跳转到已上线的发票报销页）
     { path: '/finance/reimbursement', name: 'ReimbursementManage', component: () => import('@/views/finance/ReimbursementManage.vue'), meta: { title: '报销管理', domain: 'finance' } },

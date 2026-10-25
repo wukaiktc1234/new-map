@@ -367,16 +367,22 @@ const summaryRun = computed<ReconRunVO | null>(() => currentRun.value)
  */
 const feeWindow = defaultWindow()
 
-/** 调节表入口（P3-3）：跳转 /finance/recon/statements */
+/** 路由实例（P3-3 调节表入口 / P3-4 资金总览入口） */
 const router = useRouter()
 function goStatements(): void {
   void router.push({ name: 'FinanceStatementList' })
+}
+
+/** 资金总览入口（P3-4）：跳转 /finance/overview */
+function goOverview(): void {
+  void router.push({ name: 'FinanceFundOverview' })
 }
 </script>
 
 <template>
   <div class="modern-page recon-workbench">
     <PageHeader title="对账工作台" description="银行流水与业务单据勾稽 · 差异池认领与核销">
+      <el-button data-test="link-overview" @click="goOverview">资金总览</el-button>
       <el-button data-test="link-statements" @click="goStatements">调节表</el-button>
       <el-button :loading="rerunning" @click="handleRerun">重跑当前批次</el-button>
       <el-button type="primary" @click="handleRefresh">刷新</el-button>
