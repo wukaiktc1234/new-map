@@ -18,6 +18,8 @@ AC-50（渠道手续费汇总对拍）
   python scripts/qa/e2e_store_recon.py
   python scripts/qa/e2e_store_recon.py --store-b 2 --other-store 1
 退出码：0 全绿 / 1 断言失败 / 2 环境未就绪（前端·后端·端点未落地）
+取样竞态规则见 scripts/qa/e2e_setup.py 头部：禁止 inner_text/get_attribute 直读 data- 钩子，
+一律先用 wait_for_data_attr 等就绪标记（有标记传标记值，无标记传 READY_NONEMPTY）。
 """
 from __future__ import annotations
 
@@ -42,6 +44,9 @@ except ImportError:  # pragma: no cover
 DEFAULT_ADMIN = "http://localhost:3002"
 DEFAULT_API = "http://localhost:8081/api"
 DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from e2e_setup import wait_for_data_attr, read_data_attr, READY_NONEMPTY  # 取样竞态机制
+
 SHOT_DIR = Path(r"P:\my-new-project\.verify-tmp\e2e-store")
 
 
@@ -328,6 +333,35 @@ class StoreReconE2E:
                       "填入店铺=%s 查询已点=%s；forbidden 文案=%r；URL=%s%s" % (
                           filled, clicked, txt, self.page.url,
                           "" if okk else "；截图=" + self.shot("ac49c")))
+            # 三值卡：切回本店（store_b）后读 expected/actual/difference 的 data-fen
+            # 说明：该页面在数据未加载时不渲染这三块（data-fen 输出空串），故用 READY_NONEMPTY
+            for sel in ('input[placeholder*="门店ID"]', 'input[placeholder*="门店"]'):
+                try:
+                    loc = self.page.locator(sel)
+                    if loc.count() > 0:
+                        loc.first.fill(str(self.a.store_b), timeout=8000)
+                        break
+                except Exception:
+                    continue
+            try:
+                self.page.locator('button:has-text("查询")').first.click(timeout=8000)
+                exp = wait_for_data_attr(self.page, '[data-test="store-recon-expected"]', "data-fen", READY_NONEMPTY, timeout=45000)
+                act = wait_for_data_attr(self.page, '[data-test="store-recon-actual"]', "data-fen", READY_NONEMPTY, timeout=45000)
+                dif = wait_for_data_attr(self.page, '[data-test="store-recon-difference"]', "data-fen", READY_NONEMPTY, timeout=45000)
+                rows = self.rows("SELECT expected_amount, actual_amount, difference_amount FROM deposit_slips"
+                                 " WHERE store_id=%d AND business_date='%s' AND deleted=0 AND status='DEPOSITED'"
+                                 " ORDER BY slip_id DESC LIMIT 1" % (self.a.store_b, self.a.business_date))
+                if not rows:
+                    self.not_ready("AC-49d 门店三值卡 == SQL", "库里没有 store %d 当天 DEPOSITED 的缴款单" % self.a.store_b)
+                else:
+                    we, wa, wd = (int(rows[0][0]), int(rows[0][1]), int(rows[0][2]))
+                    okd = (int(exp) == we and int(act) == wa and int(dif) == wd)
+                    self.step("AC-49d 门店三值卡 data-fen == SQL（store %d）" % self.a.store_b, okd,
+                              "页面 expected=%s actual=%s difference=%s；SQL=%s/%s/%s%s" % (
+                                  exp, act, dif, we, wa, wd, "" if okd else "；截图=" + self.shot("ac49d")))
+            except Exception as e:
+                self.step("AC-49d 门店三值卡 data-fen == SQL（store %d）" % self.a.store_b, False,
+                          "异常：%s；截图=%s" % (str(e)[:150], self.shot("ac49d")))
         except Exception as e:
             self.step("AC-49c 页面选店铺 1 → 显示 store-recon-forbidden", False,
                       "异常：%s；截图=%s" % (str(e)[:150], self.shot("ac49c")))
@@ -343,17 +377,11 @@ class StoreReconE2E:
         try:
             self.page.goto(self.a.admin + "/finance/recon", wait_until="domcontentloaded", timeout=120000)
             self.page.wait_for_selector('[data-test="channel-fee-total"]', timeout=45000)
-            loc = self.page.locator('[data-test="channel-fee-total"]').first
-            prev, stable = None, False
-            for _ in range(40):
-                cur = (loc.get_attribute("data-fee-fen"), loc.get_attribute("data-diff-fen"),
-                       loc.get_attribute("data-count"))
-                if cur == prev and cur[0] not in (None, ""):
-                    stable = True
-                    break
-                prev = cur
-                time.sleep(0.4)
-            fee, diff, cnt = prev if prev else (None, None, None)
+            # 就绪标记：面板 idle/loading 时三个属性输出空串，data-fee-state 供等待
+            wait_for_data_attr(self.page, '[data-test="channel-fee-total"]', "data-fee-state", "ready", timeout=45000)
+            fee = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-fee-fen")
+            diff = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-diff-fen")
+            cnt = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-count")
             api_count, api_fee, api_diff = api_vals
             def same(a, b):
                 try:
@@ -362,8 +390,7 @@ class StoreReconE2E:
                     return False
             okk = same(fee, api_fee) and same(diff, api_diff) and same(cnt, api_count)
             self.step("AC-50b 页面 channel-fee-total 属性 == 接口", okk,
-                      "属性稳定=%s；页面 data-fee-fen=%r data-diff-fen=%r data-count=%r；接口 fee=%s diff=%s count=%s%s" % (
-                          stable, 
+                      "data-fee-state=ready；页面 data-fee-fen=%r data-diff-fen=%r data-count=%r；接口 fee=%s diff=%s count=%s%s" % (
                           fee, diff, cnt, api_fee, api_diff, api_count,
                           "" if okk else "；截图=" + self.shot("ac50b")))
         except Exception as e:

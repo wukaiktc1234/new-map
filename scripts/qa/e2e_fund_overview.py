@@ -25,6 +25,8 @@ P3-4 E2E：资金总览（AC-53）——接口逐字段与 SQL 对拍 + 页面 d
 
 用法：python scripts/qa/e2e_fund_overview.py [--date YYYY-MM-DD]
 退出码：0 全绿 / 1 断言失败 / 2 环境未就绪（接口/页面未落地）
+取样竞态规则见 scripts/qa/e2e_setup.py 头部：禁止 inner_text/get_attribute 直读 data- 钩子，
+先 wait_for_data_attr 等就绪标记（本页根节点 ov-state 的 data-state=ready），再 read_data_attr。
 """
 from __future__ import annotations
 
@@ -48,6 +50,9 @@ except ImportError:  # pragma: no cover
 DEFAULT_ADMIN = "http://localhost:3002"
 DEFAULT_API = "http://localhost:8081/api"
 DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from e2e_setup import wait_for_data_attr, read_data_attr, READY_NONEMPTY  # 取样竞态机制
+
 SHOT_DIR = Path(r"P:\my-new-project\.verify-tmp\e2e-overview")
 
 
@@ -332,6 +337,8 @@ class OverviewE2E:
             return self.not_ready("AC-53f 页面总览（%s）" % label, "UI 登录失败；截图=" + self.shot("ac53-login"))
         try:
             page.goto(self.a.admin + "/finance/overview", wait_until="domcontentloaded", timeout=120000)
+            # 页面级就绪标记：根节点 data-test=ov-state 的 data-state = loading | ready | idle
+            wait_for_data_attr(page, '[data-test="ov-state"]', "data-state", "ready", timeout=60000)
             page.wait_for_selector('[data-test="ov-store-row"]', timeout=60000)
             rows = page.locator('[data-test="ov-store-row"]')
             n = rows.count()
@@ -339,9 +346,10 @@ class OverviewE2E:
             api_stores = {int(s.get("storeId") or 0): s for s in (payload.get("stores") or [])}
             bad = []
             for i in range(n):
-                sid = rows.nth(i).get_attribute("data-store-id")
-                bal = rows.nth(i).get_attribute("data-balance-fen")
-                net = rows.nth(i).get_attribute("data-net-fen")
+                row_sel = '[data-test="ov-store-row"] >> nth=%d' % i
+                sid = read_data_attr(page, row_sel, "data-store-id")
+                bal = read_data_attr(page, row_sel, "data-balance-fen")
+                net = read_data_attr(page, row_sel, "data-net-fen")
                 want = api_stores.get(int(sid or 0))
                 if want is None:
                     continue   # 页面存在但接口未返回的门店（如未配置现金户），单独记录不判失败
@@ -351,55 +359,37 @@ class OverviewE2E:
                     bad.append("store%s net 页面=%s 接口=%s" % (sid, net, want.get("netChangeFen")))
             ch = payload.get("channels") or {}
             sm = payload.get("statements") or {}
-            def attr(sel):
-                try:
-                    return page.locator(sel).first.get_attribute("data-fen") or page.locator(sel).first.inner_text()
-                except Exception:
-                    return None
             pairs = [("ov-channel-internal-fen", ch.get("internalSaleFen")),
                      ("ov-channel-external-fen", ch.get("externalReceivedFen")),
-                     ("ov-channel-diff-fen", ch.get("diffFen") if ch.get("diffFen") is not None else ch.get("diffAmountFen"))]
+                     ("ov-channel-diff-fen", ch.get("diffFen") if ch.get("diffFen") is not None else ch.get("diffAmountFen")),
+                     ("ov-channel-unexplained", ch.get("unexplainedCount"))]
             for sel, want in pairs:
-                attr_val, text_val = None, ""
                 try:
-                    loc = page.locator('[data-test="%s"]' % sel).first
-                    attr_val = loc.get_attribute("data-fen")
-                    text_val = loc.inner_text() or ""
+                    num = int(str(read_data_attr(page, '[data-test="%s"]' % sel, "data-fen")).replace(",", "").strip())
                 except Exception:
-                    pass
-                num = None
-                try:
-                    import re as _re
-                    if attr_val not in (None, ""):
-                        num = int(str(attr_val).replace(",", "").strip())   # data-fen 已是分
-                    else:
-                        s2 = str(text_val).replace(",", "")
-                        m = _re.search(r"-?\d+(?:\.\d+)?", s2)
-                        if m:
-                            val = float(m.group(0))
-                            num = int(round(val * 100)) if ("元" in s2 or "." in m.group(0)) else int(round(val))
-                except Exception:
-                    num = None
-                if want is not None and num is not None and num != int(want):
+                    # 个别计数类钩子没有 data-fen，退化为 data-count
+                    try:
+                        num = int(str(read_data_attr(page, '[data-test="%s"]' % sel, "data-count")).strip())
+                    except Exception as e:
+                        bad.append("%s 读取失败：%s" % (sel, str(e)[:80]))
+                        continue
+                if want is not None and num != int(want):
                     bad.append("%s 页面=%s 接口=%s" % (sel, num, want))
-            for sel, want in (("ov-channel-unexplained", ch.get("unexplainedCount")),
-                              ("ov-open-count", sm.get("openCount")),
-                              ("ov-oldest-days", sm.get("oldestPendingDays"))):
-                got = None
+            # 注意：ov-open-count 用 data-count，ov-oldest-days 用 data-days（见 FundOverview.vue:226/236）
+            for sel, attr_name, want in (("ov-open-count", "data-count", sm.get("openCount")),
+                                         ("ov-oldest-days", "data-days", sm.get("oldestPendingDays"))):
                 try:
-                    text = page.locator('[data-test="%s"]' % sel).first.inner_text()
-                    import re as _re
-                    m = _re.search(r"-?\d+", str(text).replace(",", ""))
-                    got = int(m.group(0)) if m else None
-                except Exception:
-                    got = None
-                if want is not None and got is not None and got != int(want):
+                    got = int(str(read_data_attr(page, '[data-test="%s"]' % sel, attr_name)).strip())
+                except Exception as e:
+                    bad.append("%s 读取 %s 失败：%s" % (sel, attr_name, str(e)[:80]))
+                    continue
+                if want is not None and got != int(want):
                     bad.append("%s 页面=%s 接口=%s" % (sel, got, want))
             if label == "qa_store_b":
                 if n != 1:
                     bad.append("store_b 应只看到 1 行，实际 %d 行" % n)
                 else:
-                    sid = rows.nth(0).get_attribute("data-store-id")
+                    sid = read_data_attr(page, '[data-test="ov-store-row"] >> nth=0', "data-store-id")
                     if int(sid or 0) != self.a.store_b:
                         bad.append("store_b 页面首行 storeId=%s，应为 %d" % (sid, self.a.store_b))
             self.step("AC-53f 页面 /finance/overview data-test == 接口（%s）" % label, not bad,
