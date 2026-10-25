@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -101,6 +101,11 @@
 --       键格式 = 'FLOW' || yyyyMMdd（代码实证 FundFlowServiceImpl / DepositSlipServiceImpl / ReconCashSupport）。
 --   A25 （**参与判定，进入 TOTAL FAIL**）烧号账 fund_flow_no_burn_ledger 中 archived_flag=false 的行数
 --       = 已取号但未落库的流水号；期望 0，>0 即 FAIL。守卫：缺表 → [INFO] 跳过（不计入 TOTAL）。
+--   A26 （信息性，不进 TOTAL）finance_audit_logs.operation_type='RECON_DISPOSITION_LOST' 的行数
+--       = 重算把人工处置（RESOLVE/EXEMPT）吃掉，需人工复核。只展示不判定。
+--   A27 （**参与判定，进入 TOTAL FAIL**）DRAFT 调节表的 uncleared_* / adjusted_* 必须等于
+--       「按 cleared_flag=false 聚合的 items」；差 1 分即不一致（防绕过 service 直改表）。
+--       只查 DRAFT（SUBMITTED/APPROVED 为历史快照，允许与当前 items 不同）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -563,6 +568,77 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A26（信息性，不参与 TOTAL）：重算吃掉人工处置的次数
+--   口径：finance_audit_logs.operation_type = 'RECON_DISPOSITION_LOST'
+--   语义：重算把此前的人工处置（RESOLVE/EXEMPT）覆盖掉了，需要人工复核。只展示、不判定。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.finance_audit_logs') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'finance_audit_logs'
+                       AND column_name = 'operation_type'
+                     GROUP BY table_name HAVING count(*) = 1)) AS audit_log_ready
+\gset
+
+\if :audit_log_ready
+SELECT '[INFO] A26 重算吃掉人工处置 RECON_DISPOSITION_LOST rows=' || count(*) AS a26_line,
+       count(*) AS a26_n
+  FROM finance_audit_logs l
+ WHERE l.operation_type = 'RECON_DISPOSITION_LOST'
+\gset
+\else
+\set a26_line '[INFO] A26 跳过（表未创建）'
+\set a26_n 0
+\endif
+
+-- ------------------------------------------------------------
+-- A27（**参与判定，零容忍**）：DRAFT 调节表汇总字段必须等于「按 cleared_flag=false 聚合的 items」
+--   目的：防有人绕过 service 直接改表（汇总与明细脱钩）。
+--   口径：**只查 DRAFT**；SUBMITTED/APPROVED 是历史快照，允许与当前 items 不同。
+--   差 1 分都算不一致；期望 0，>0 即 FAIL。
+--   守卫：两表及所需列不存在 → [INFO] 跳过，不计入 TOTAL。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND to_regclass('public.reconciliation_items') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
+                       AND column_name IN ('book_balance', 'bank_balance', 'uncleared_in_credit', 'uncleared_in_debit',
+                                           'uncleared_out_credit', 'uncleared_out_debit',
+                                           'adjusted_book_balance', 'adjusted_bank_balance', 'status', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 10)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
+                       AND column_name IN ('statement_id', 'category', 'amount', 'deleted', 'cleared_flag')
+                     GROUP BY table_name HAVING count(*) = 5)) AS stmt_sum_ready
+\gset
+
+\if :stmt_sum_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A27 DRAFT 汇总与未清 items 聚合一致 rows=0'
+            ELSE '[FAIL] A27 DRAFT 汇总与未清 items 聚合一致 rows=' || count(*)
+                 || ' —— 存在 ' || count(*) || ' 张 DRAFT 调节表汇总与明细不一致（疑绕过 service 直改表），禁止接受'
+       END AS a27_line,
+       count(*) AS a27_n
+  FROM reconciliation_statements s
+ WHERE s.deleted = 0
+   AND s.status = 'DRAFT'
+   AND ( s.uncleared_in_credit  <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'A') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      OR s.uncleared_in_debit   <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'B') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      OR s.uncleared_out_credit <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'C') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      OR s.uncleared_out_debit  <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'D') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      OR s.adjusted_book_balance <> s.book_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'C') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'D') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      OR s.adjusted_bank_balance <> s.bank_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'A') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category = 'B') FROM reconciliation_items i WHERE i.statement_id = s.statement_id AND i.deleted = 0 AND i.cleared_flag = false), 0)
+      )
+\gset
+\else
+\set a27_line '[INFO] A27 跳过（表未创建）'
+\set a27_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -822,7 +898,15 @@ SELECT line
     SELECT 25,
            :'a25_line'
     UNION ALL
+    -- A26 信息性：重算吃掉人工处置（不进 TOTAL）
     SELECT 26,
+           :'a26_line'
+    UNION ALL
+    -- A27 参与判定：DRAFT 汇总 vs 未清 items 聚合（>0 进 TOTAL）
+    SELECT 27,
+           :'a27_line'
+    UNION ALL
+    SELECT 28,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -838,7 +922,8 @@ SELECT line
              + CASE WHEN :a14_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a19_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a25_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a25_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a27_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
@@ -1316,6 +1401,63 @@ SELECT b.ledger_id, b.flow_no, b.seq_key, b.seq_value, b.reason, b.created_by, b
 \else
 \echo ''
 \echo '-- A25 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A26 明细（前 20）：重算吃掉人工处置（需人工复核）
+-- ------------------------------------------------------------
+\if :audit_log_ready
+\echo ''
+\echo '-- A26 明细（前 20）--'
+SELECT l.log_id, l.operation_type, l.module, l.target_type, l.target_id,
+       l.operator_name, l.create_time,
+       left(COALESCE(l.operation_desc, ''), 80) AS desc_snippet
+  FROM finance_audit_logs l
+ WHERE l.operation_type = 'RECON_DISPOSITION_LOST'
+ ORDER BY l.create_time DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A26 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A27 明细（前 20）：DRAFT 调节表的汇总字段与「按 cleared_flag=false 聚合」的差值
+-- 期望为空；出现即存在绕过 service 直改表（或重算后未回写汇总）
+-- ------------------------------------------------------------
+\if :stmt_sum_ready
+\echo ''
+\echo '-- A27 明细（前 20）--'
+SELECT s.statement_id, s.status,
+       s.uncleared_in_credit  - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='A') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0) AS diff_in_credit,
+       s.uncleared_in_debit   - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='B') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0) AS diff_in_debit,
+       s.uncleared_out_credit - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='C') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0) AS diff_out_credit,
+       s.uncleared_out_debit  - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='D') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0) AS diff_out_debit,
+       s.adjusted_book_balance - (s.book_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='C') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='D') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)) AS diff_adj_book,
+       s.adjusted_bank_balance - (s.bank_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='A') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='B') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)) AS diff_adj_bank
+  FROM reconciliation_statements s
+ WHERE s.deleted = 0
+   AND s.status = 'DRAFT'
+   AND ( s.uncleared_in_credit  <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='A') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      OR s.uncleared_in_debit   <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='B') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      OR s.uncleared_out_credit <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='C') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      OR s.uncleared_out_debit  <> COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='D') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      OR s.adjusted_book_balance <> s.book_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='C') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='D') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      OR s.adjusted_bank_balance <> s.bank_balance
+           + COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='A') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+           - COALESCE((SELECT SUM(i.amount) FILTER (WHERE i.category='B') FROM reconciliation_items i WHERE i.statement_id=s.statement_id AND i.deleted=0 AND i.cleared_flag=false),0)
+      )
+ ORDER BY s.statement_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A27 明细跳过（表未创建）--'
 \endif
 
 COMMIT;

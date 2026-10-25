@@ -114,6 +114,8 @@ class Ambiguity:
         self.item_id = None
         self.tag = "AMB" + datetime.now().strftime("%m%d%H%M%S")
         self.skipped_items = set()
+        self.run_started_at = datetime.now()
+        self.owned_flow_nos = set()      # 本次造数自建的流水白名单（flow_no）
         self.owned_sid = None          # 只读护栏：本脚本只允许操作自己新建的这张表
         SHOT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -136,38 +138,47 @@ class Ambiguity:
         except Exception as e:
             return "(截图失败: %s)" % e
 
-    # ---------- 所有权账本（cell 所有权） ----------
+    # ---------- 所有权账本（cell 所有权，按 account 分区） ----------
     LEDGER = SHOT_DIR / "owned_statements.json"
 
     def load_ledger(self):
+        """返回 {account_id(str): [statement_id, ...]}；兼容旧的 list 结构并迁移"""
         try:
-            return json.loads(self.LEDGER.read_text(encoding="utf-8"))
+            raw = json.loads(self.LEDGER.read_text(encoding="utf-8"))
         except Exception:
-            return []
+            return {}
+        if isinstance(raw, list):          # 旧结构 → 迁移
+            out = {}
+            for r in raw:
+                acc = str(r.get("account_id") or "")
+                if acc:
+                    out.setdefault(acc, []).append(int(r.get("statement_id") or 0))
+            return out
+        return {str(k): [int(x) for x in v] for k, v in (raw or {}).items()}
 
-    def save_ledger(self, rows):
+    def save_ledger(self, data):
         try:
-            self.LEDGER.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.LEDGER.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         except Exception as e:
             print("  [WARN] 账本写入失败：%s" % e)
 
-    def ledger_ids(self):
-        return {int(r["statement_id"]) for r in self.load_ledger() if r.get("statement_id")}
+    def ledger_ids(self, account=None):
+        acc = str(account if account is not None else self.a.account)
+        return set(self.load_ledger().get(acc, []))
 
     def register_owned(self, sid):
-        rows = [r for r in self.load_ledger() if int(r.get("statement_id") or 0) != int(sid)]
-        rows.append({"statement_id": int(sid), "account_id": int(self.a.account),
-                     "period_start": self.a.business_date, "period_end": self.a.business_date,
-                     "tag": self.tag, "created_at": datetime.now().isoformat(timespec="seconds"),
-                     "cleaned": False})
-        self.save_ledger(rows)
+        data = self.load_ledger()
+        acc = str(self.a.account)
+        ids = set(data.get(acc, []))
+        ids.add(int(sid))
+        data[acc] = sorted(ids)
+        self.save_ledger(data)
 
     def mark_cleaned(self, sid):
-        rows = self.load_ledger()
-        for r in rows:
-            if int(r.get("statement_id") or 0) == int(sid):
-                r["cleaned"] = True
-        self.save_ledger(rows)
+        data = self.load_ledger()
+        acc = str(self.a.account)
+        data[acc] = [x for x in data.get(acc, []) if int(x) != int(sid)]
+        self.save_ledger(data)
 
     def guard_cell(self):
         """cell 所有权守卫：account+period 上已有的表，只有在我自己的账本里才允许清掉重建"""
@@ -245,7 +256,7 @@ class Ambiguity:
 
         batch = self.num("SELECT COALESCE(MAX(batch_id),0) FROM bank_transactions")
         uid = self.num("SELECT user_id FROM users WHERE username='%s' LIMIT 1" % self.a.user)
-        for i in range(2):   # 两条等额银行流水 → 多候选
+        for i in range(2):   # 两条等额银行流水 → 多候选（777）
             self.psql("INSERT INTO bank_transactions (batch_id, account_id, source_type, external_txn_id,"
                       " direction, is_refund, amount, fee, txn_time, business_date, balance_snapshot,"
                       " counterparty_name, summary, dedupe_basis, raw_hash, match_status, needs_review,"
@@ -254,6 +265,16 @@ class Ambiguity:
                       " 'amb-fixture','amb-fixture','%s','%s','UNMATCHED',false,%d, now(), now(), 0, 0)"
                       % (batch, int(self.a.account), self.tag, i, amt, self.a.business_date,
                          ("AMB" + self.tag[-8:])[:16], ("amb%s%d" % (amt, i))[:64], uid))
+
+        # 白名单：本次造数创建的内部流水（remark 带 tag 精确匹配）
+        try:
+            for r in self.rows("SELECT flow_no FROM fund_flows WHERE remark LIKE '%%%s%%'" % self.tag):
+                self.owned_flow_nos.add(r[0])
+            self.step("流水白名单登记", len(self.owned_flow_nos) > 0,
+                      "本次自建流水 %d 条：%s" % (len(self.owned_flow_nos),
+                                              sorted(self.owned_flow_nos)[:5]))
+        except Exception as e:
+            self.step("流水白名单登记", False, "异常：%s" % str(e)[:120])
 
         st2, b2 = http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
                        {"accountId": int(self.a.account), "businessDate": self.a.business_date, "force": True})
@@ -286,23 +307,32 @@ class Ambiguity:
 
         a = int(vo.get("unclearedInCredit") or 0)
         bb = int(vo.get("unclearedInDebit") or 0)
-        adj_book = int(vo.get("adjustedBookBalance") or 0)
-        need = adj_book - a + bb            # ② 精确配平：adjustedBank = bank + a − b == adjustedBook
-        st1, b1 = gen(need)
+        c = int(vo.get("unclearedOutCredit") or 0)
+        d = int(vo.get("unclearedOutDebit") or 0)
+        book = int(vo.get("bookBalance") or 0)
+        # 新语义：只剩未处置（cleared_flag=false）的条目参与合计。
+        # 夹具策略：把银行对账单余额设成 == bookBalance → 全部条目处置（cleared）后
+        # a=b=c=d=0 ⇒ adjBook=bookBalance=adjBank，段 B 自然 is_balanced=true。
+        st1, b1 = gen(book)
         if ok(b1):
             vo = data_of(b1) or vo
-        adj_book2 = int(vo.get("adjustedBookBalance") or 0)
-        adj_bank2 = int(vo.get("adjustedBankBalance") or 0)
-        self.step("造数：按精确公式配平（bank=adjBook−a+b）", adj_book2 == adj_bank2,
-                  "a=%d b=%d adjBook=%d adjBank=%d bankStatementBalanceFen=%d%s" % (
-                      a, bb, adj_book2, adj_bank2, need,
-                      "" if adj_book2 == adj_bank2 else "；两侧不等，停止"))
-        if adj_book2 != adj_bank2:
-            return False
+        self.step("造数：夹具银行余额 = bookBalance（清空全部条目前提下两侧自然配平）", ok(b1),
+                  "a=%d b=%d c=%d d=%d book=%d → 处置后 adjBook=adjBank=%d；当前 adjBook=%s adjBank=%s"
+                  % (a, bb, c, d, book, book, vo.get("adjustedBookBalance"), vo.get("adjustedBankBalance")))
 
         self.sid = int(vo.get("statementId") or 0)
         self.owned_sid = self.sid       # 从这一刻起，只允许动这张表
         self.register_owned(self.sid)   # 记入所有权账本
+
+        # 888 也造一条银行流水，保证两侧都存在（否则遗留单边条目，合计无法归 0）
+        self.psql("INSERT INTO bank_transactions (batch_id, account_id, source_type, external_txn_id,"
+                  " direction, is_refund, amount, fee, txn_time, business_date, balance_snapshot,"
+                  " counterparty_name, summary, dedupe_basis, raw_hash, match_status, needs_review,"
+                  " create_user_id, create_time, update_time, deleted, version)"
+                  " VALUES (%d,%d,'BANK','%s-BANK888',1,false,%d,0, now(), '%s', 0,"
+                  " 'amb-fixture','amb-fixture','%s','%s','UNMATCHED',false,%d, now(), now(), 0, 0)"
+                  % (batch, int(self.a.account), self.tag, amt2, self.a.business_date,
+                     ("AMB" + self.tag[-8:])[:16], ("amb%d" % amt2)[:64], uid))
 
         # 多候选形态：把 777 的 A 条标成 AMBIGUOUS（对侧 C 有 2 条 → A×1 + C×2）
         self.psql("UPDATE reconciliation_items SET reason = 'AMBIGUOUS: amount %d fen, 2 opposite candidates'"
@@ -312,8 +342,7 @@ class Ambiguity:
         # 悬空形态：把 888 那条 item 的 reason 指向不存在的 flow_id（只改 reason）
         # 注意：psql 命令行传中文会因控制台编码报「无效的 UTF8 编码字节顺序」，这里用纯 ASCII 的 reason 文本
         self.psql("UPDATE reconciliation_items SET reason = 'AMBIGUOUS: amount %d fen, opposite candidate flow_id=999999'"
-                  " WHERE item_id = (SELECT item_id FROM reconciliation_items WHERE statement_id=%d"
-                  "   AND deleted=0 AND amount=%d ORDER BY item_id LIMIT 1)" % (amt2, self.sid, amt2))
+                  " WHERE statement_id=%d AND deleted=0 AND amount=%d" % (amt2, self.sid, amt2))
         # 777 那对也标成歧义（若后端未自动标）
         amb = int(vo.get("ambiguousItemCount") or 0)
         return self.step("造歧义：statementId=%s ambiguousItemCount=%d（期间=%s 单日）" % (self.sid, amb, ps),
@@ -560,6 +589,13 @@ class Ambiguity:
             self.step("AC-55c 下拉只含同额候选且无自由输入框", False,
                       "异常：%s；截图=%s" % (str(e)[:150], self.shot("ac55c")))
 
+        # 3c) 处置前后合计对照（P4-4 新增）：先抓基线
+        try:
+            st_v0, b_v0 = http("GET", self.a.api + "/v1/finance/recon/statements/%d" % self.sid, self.token)
+            self.vo_pre_dispose = data_of(b_v0) or {}
+        except Exception:
+            self.vo_pre_dispose = {}
+
         # 4) reason + 二次确认文案（用例前重新加载页面）
         try:
             self.page.goto("%s/finance/recon/statements/%d" % (self.a.admin, self.sid),
@@ -590,9 +626,17 @@ class Ambiguity:
             self.page.locator('[data-test="ambiguity-submit"]').first.click(timeout=15000)
             self.page.wait_for_selector('[data-test="ambiguity-confirm"]', timeout=30000)
             confirm_text = (self.page.locator('[data-test="ambiguity-confirm"]').first.inner_text() or "").strip()
-            matched = bool(re.search(r"将\s*[A-D]\s*类改为\s*[A-D]\s*类，涉及金额\s*\d+\s*分，确认？", confirm_text))
-            okall &= self.step("AC-55d 二次确认文案符合「将 X 类改为 Y 类，涉及金额 N 分，确认？」", matched,
-                               "文案=%r%s" % (confirm_text[:90], "" if matched else "；截图=" + self.shot("ac55d")))
+            m = re.match(r"^确认本条归属 ([A-D]) 类，从当前 ([A-D]) 类未达账项合计中移除，"
+                         r"涉及金额 (\d+) 分，确认？$", confirm_text.strip())
+            pair = {"A": "C", "C": "A", "B": "D", "D": "B"}
+            matched = bool(m) and pair.get(m.group(2)) == m.group(1)
+            if m:
+                self.confirm_detail = "归属=%s 侧=%s 金额=%s 分 对侧=%s" % (
+                    m.group(1), m.group(2), m.group(3), pair.get(m.group(2)) == m.group(1))
+            okall &= self.step("AC-55d 二次确认文案符合新文案（归属 X 类 / 从 Y 类合计移除 / N 分 / 类别互为对侧）", matched,
+                               "文案=%r；解析=%s%s" % (confirm_text[:110],
+                                                     getattr(self, "confirm_detail", "未解析"),
+                                                     "" if matched else "；截图=" + self.shot("ac55d")))
             self.page.locator('[data-test="ambiguity-confirm-ok"]').first.click(timeout=15000)
             time.sleep(2.0)
         except Exception as e:
@@ -621,6 +665,30 @@ class Ambiguity:
                                backend_bal is not None and (backend_amb is None or int(backend_amb) < self.amb_before),
                                "HTTP %s isBalanced=%s ambiguousItemCount=%s（处置前 %d）" % (
                                    resp.get("http"), backend_bal, backend_amb, self.amb_before))
+            # P4-4：处置后本侧合计真的减少（A 侧 → unclearedInCredit 减少 == 该条金额）
+            vo0 = getattr(self, "vo_pre_dispose", {}) or {}
+            vo1 = data_of(http("GET", self.a.api + "/v1/finance/recon/statements/%d" % self.sid, self.token)[1]) or {}
+            it0 = next((x for x in (vo0.get("items") or []) if int(x.get("itemId") or 0) == int(self.item_id or 0)), {})
+            amt_item = int(it0.get("amount") or 0)
+            cat_item = it0.get("category")
+            f0 = {k: int(vo0.get(k) or 0) for k in ("unclearedInCredit", "unclearedInDebit",
+                                                    "unclearedOutCredit", "unclearedOutDebit",
+                                                    "adjustedBankBalance", "adjustedBookBalance")}
+            f1 = {k: int(vo1.get(k) or 0) for k in f0}
+            key = {"A": "unclearedInCredit", "B": "unclearedInDebit",
+                   "C": "unclearedOutCredit", "D": "unclearedOutDebit"}.get(cat_item or "A")
+            ok_sum = (f0[key] - f1[key]) == amt_item
+            ok_bal_consistent = (bool(vo1.get("isBalanced")) ==
+                                 (f1["adjustedBookBalance"] == f1["adjustedBankBalance"]))
+            okall &= self.step("P4-4a 处置后本侧合计减少 == 该条金额", ok_sum,
+                               "类别=%s 金额=%d；%s: %d→%d（差 %d）；adjBank %d→%d；adjBook %d→%d" % (
+                                   cat_item, amt_item, key, f0[key], f1[key], f0[key] - f1[key],
+                                   f0["adjustedBankBalance"], f1["adjustedBankBalance"],
+                                   f0["adjustedBookBalance"], f1["adjustedBookBalance"]))
+            okall &= self.step("P4-4a is_balanced == (adjBook==adjBank)（方向性，不强求 true）", ok_bal_consistent,
+                               "isBalanced=%s；adjBook=%d adjBank=%d；单条处置后可能由 true 变 false 属正常" % (
+                                   vo1.get("isBalanced"), f1["adjustedBookBalance"], f1["adjustedBankBalance"]))
+
             # RESOLVE 后：该项 clearedFlag=true 且 reason 以「已处置(AMBIGUITY->」开头
             it_r, vo_r = self.item_state(self.item_id) if self.item_id else (None, {})
             if it_r:
@@ -648,6 +716,41 @@ class Ambiguity:
         except Exception:
             pass
         return okall
+
+    # ---------- 清掉所有未处置条目（合计只算 cleared_flag=false，必须全清才能配平） ----------
+    def clear_all_uncleared(self, max_rounds=400):
+        self.guard_sid()
+        done, exempted = 0, []
+        for _ in range(max_rounds):
+            rows = self.rows(
+                "SELECT i.item_id, i.category, i.amount FROM reconciliation_items i"
+                " WHERE i.statement_id=%d AND i.deleted=0 AND i.cleared_flag = false"
+                " ORDER BY i.item_id LIMIT 1" % self.sid)
+            if not rows:
+                break
+            item_id, cat, amount = int(rows[0][0]), rows[0][1], int(rows[0][2])
+            pair = {"A": "C", "C": "A", "B": "D", "D": "B"}
+            cand = self.rows(
+                "SELECT COALESCE(i.transaction_id,0), COALESCE(i.flow_id,0), i.category"
+                " FROM reconciliation_items i WHERE i.statement_id=%d AND i.deleted=0"
+                " AND i.amount=%d AND i.item_id<>%d AND i.category='%s'"
+                " ORDER BY i.item_id LIMIT 1" % (self.sid, amount, item_id, pair.get(cat, "C")))
+            if cand:
+                txn, flow, tcat = int(cand[0][0] or 0), int(cand[0][1] or 0), cand[0][2]
+                ref = str(txn) if txn else str(flow)
+                st, b = http("POST", self.a.api + "/v1/finance/recon/statements/%d/items/%d/resolve-ambiguity"
+                             % (self.sid, item_id), self.token,
+                             {"decision": tcat, "targetRef": ref, "reason": "%s 清未处置" % self.tag})
+                if not ok(b):
+                    return done, ["item %d RESOLVE HTTP %s code=%s" % (item_id, st, (b or {}).get("code"))]
+            else:
+                st, b = self.exempt(item_id, "无对侧同额候选，经核对判定非歧义（清未处置）")
+                if not ok(b):
+                    return done, ["item %d EXEMPT HTTP %s code=%s" % (item_id, st, (b or {}).get("code"))]
+                exempted.append(item_id)
+            done += 1
+        self.exempted_items.extend(exempted)
+        return done, []
 
     # ---------- 剩余歧义批量处置（保证最终 isBalanced=true） ----------
     def resolve_remaining(self, max_rounds=400):
@@ -805,6 +908,9 @@ class Ambiguity:
         self.ui_checks()
         # 本表内还有大量同额歧义（造数期间的历史数据也会进同一张表），逐条清掉后整表才可能平衡
         done, failed = self.resolve_remaining()
+        done2, failed2 = self.clear_all_uncleared()
+        self.step("清掉所有未处置条目（cleared_flag=false → 全部处置，合计才会归 0）",
+                  not failed2, "处置 %d 条；失败=%s" % (done2, failed2[:2] if failed2 else "无"))
         self.step("清理本表剩余歧义（逐条 API 处置）", not failed and done > 0,
                   "处置 %d 条；跳过/失败 %d 条：%s（清理前歧义=%s）" % (
                       done, len(failed), failed[:3] if failed else "无", self.amb_before))
@@ -867,6 +973,37 @@ class Ambiguity:
             except Exception:
                 pass
 
+        # ---- P4-4c NEW-8：重算后处置状态不复活（只在本 cell 内、收尾阶段调一次）----
+        before_items = {int(x.get("itemId") or 0): x for x in (vo_pre.get("items") or [])}
+        st_n8, b_n8 = http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
+                           {"accountId": int(self.a.account), "businessDate": self.a.business_date,
+                            "force": True})
+        st_n8b, b_n8b = http("GET", self.a.api + "/v1/finance/recon/statements/%d" % self.sid, self.token)
+        vo_n8 = data_of(b_n8b) or {}
+        amb_n8 = int(vo_n8.get("ambiguousItemCount") or 0)
+        alive = []
+        for it in (vo_n8.get("items") or []):
+            key = (it.get("category"), it.get("flowId"), it.get("transactionId"), it.get("amount"))
+            for old in before_items.values():
+                if (old.get("category"), old.get("flowId"), old.get("transactionId"), old.get("amount")) == key:
+                    if old.get("clearedFlag") is True:
+                        alive.append((it.get("itemId"), key[0],
+                                      bool(it.get("clearedFlag")), str(it.get("reason") or "")[:22]))
+        ok_n8 = (amb_n8 == 0)
+        lost = [a for a in alive if not a[2] or not (a[3].startswith("已处置(") or a[3].startswith("EXEMPTED("))]
+        self.step("P4-4c NEW-8：force 重算后 ambiguousItemCount 仍为 0", ok_n8,
+                  "force HTTP %s → ambiguousItemCount=%d（重算前 0）" % (st_n8, amb_n8))
+        self.step("P4-4c NEW-8：同主体键的处置条目 clearedFlag/reason 仍保持（不复活）",
+                  len(alive) > 0 and not lost,
+                  "同主体键命中 %d 条；丢失处置状态 %d 条：%s" % (len(alive), len(lost), lost[:3]))
+
+        # ---- P4-4d 丢失审计（可选，默认不覆盖）----
+        if getattr(self.a, "lost_audit", False):
+            self._lost_audit()
+        else:
+            self.step("P4-4d 丢失审计（可选）", True,
+                      "**未覆盖**：默认不执行（需 --lost-audit）；未伪造结论")
+
         rc2, a19_final, tail2 = self.run_consistency()
         # 本表必须从 A19 消失；若仍有红行但只涉及**其它** statement（如 lead 手工处置过的 38），如实列出
         mine = [l for l in a19_final if str(self.sid) in l]
@@ -880,6 +1017,73 @@ class Ambiguity:
             self.step("说明：A19 仍红且**不属于本表**（按 lead 要求保留待其清理）", True,
                       "剩余红行 %d 条，例如：%s" % (len(others), others[0][:160]))
         return self.summary()
+
+    def _lost_audit(self):
+        """把**本次自建**的某条流水移出期间 → force 重算 → 断言 RECON_DISPOSITION_LOST（含原 reason 快照）"""
+        flow_id = flow_no = None
+        orig_bd = None
+        try:
+            rows = self.rows(
+                "SELECT i.item_id, f.flow_id, f.flow_no, f.business_date::text, f.create_time::text,"
+                " COALESCE(i.reason,'') FROM reconciliation_items i"
+                " JOIN fund_flows f ON f.flow_id = i.flow_id"
+                " WHERE i.statement_id=%d AND i.cleared_flag = true AND i.flow_id IS NOT NULL"
+                " LIMIT 5" % self.sid)
+            cand = None
+            for r in rows:
+                if r[2] in self.owned_flow_nos:
+                    cand = r
+                    break
+            if not cand:
+                self.not_ready("P4-4d 丢失审计", "找不到「已处置且属于本次白名单」的流水条目 → 未覆盖（不动历史流水）")
+                return
+            item_id_l, flow_id, flow_no, orig_bd, ct, reason_snapshot = (
+                int(cand[0]), int(cand[1]), cand[2], cand[3], cand[4], cand[5])
+            created = datetime.strptime(ct[:19], "%Y-%m-%d %H:%M:%S")
+            if flow_no not in self.owned_flow_nos or created < self.run_started_at.replace(microsecond=0):
+                self.not_ready("P4-4d 丢失审计",
+                               "流水 flow_no=%s create_time=%s 不在本次白名单/早于运行开始 %s → 拒绝执行（未覆盖）"
+                               % (flow_no, ct, self.run_started_at.isoformat(timespec="seconds")))
+                return
+            self.step("P4-4d 前置：仅改本次自建流水", True,
+                      "flow_id=%d flow_no=%s create_time=%s（晚于运行开始）；原 business_date=%s；"
+                      "该条 item=%d 原 reason 前缀=%r" % (
+                          flow_id, flow_no, ct, orig_bd, item_id_l, reason_snapshot[:40]))
+            try:
+                self.psql("UPDATE fund_flows SET business_date = business_date - 400 WHERE flow_id=%d AND flow_no='%s'"
+                          % (flow_id, flow_no))
+                http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
+                     {"accountId": int(self.a.account), "businessDate": self.a.business_date, "force": True})
+                # 只认**本次这张表**产生的 LOST（target_id = 我的 statement），避免读到别人的行
+                log_rows = self.rows(
+                    "SELECT log_id, COALESCE(operation_desc,''), COALESCE(operation_data,'') FROM finance_audit_logs"
+                    " WHERE operation_type='RECON_DISPOSITION_LOST' AND target_id=%d"
+                    " ORDER BY log_id DESC LIMIT 1" % self.sid)
+                if log_rows:
+                    desc = log_rows[0][1]
+                    snap = (reason_snapshot or "").strip()
+                    ok_desc = bool(snap) and (snap[:20] in desc)
+                    if not ok_desc and snap:
+                        ok_desc = ("已处置(" in desc or "EXEMPTED(" in desc) and (str(flow_no) in desc)
+                    self.step("P4-4d 丢失审计：RECON_DISPOSITION_LOST 且 operation_desc 含原 reason 快照",
+                              ok_desc, "log_id=%s；operation_desc=%r" % (log_rows[0][0], desc[:200]))
+                else:
+                    self.step("P4-4d 丢失审计：RECON_DISPOSITION_LOST 出现", False,
+                              "重算后未产生 RECON_DISPOSITION_LOST（如实 FAIL，转 fund-500）")
+            finally:
+                before = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % flow_id)
+                self.psql("UPDATE fund_flows SET business_date = '%s' WHERE flow_id=%d AND flow_no='%s'"
+                          % (orig_bd, flow_id, flow_no))
+                after = self.rows("SELECT business_date::text FROM fund_flows WHERE flow_id=%d" % flow_id)
+                restored = bool(after) and after[0][0] == orig_bd
+                self.step("P4-4d 恢复 business_date（finally）", restored,
+                          "flow_no=%s 受影响行=1；恢复前=%s 恢复后=%s；原值=%s%s" % (
+                              flow_no, before[0][0] if before else "?", after[0][0] if after else "?",
+                              orig_bd,
+                              "" if restored else
+                              "；手工修复：UPDATE fund_flows SET business_date='%s' WHERE flow_id=%d" % (orig_bd, flow_id)))
+        except Exception as e:
+            self.step("P4-4d 丢失审计", False, "异常：%s" % str(e)[:160])
 
     def _exempt_evidence(self):
         logs = self.rows(
@@ -970,10 +1174,11 @@ def main():
     p.add_argument("--pos", default=DEFAULT_POS)
     p.add_argument("--user", default="qa_admin")
     p.add_argument("--password", default="Admin@123456")
-    p.add_argument("--account", type=int, default=25)   # 门店1微信商户账户：cell 干净
+    p.add_argument("--account", type=int, default=24)   # 门店1微信商户账户：cell 干净
     p.add_argument("--amount-fen", type=int, default=777)
     p.add_argument("--business-date", default=date.today().strftime("%Y-%m-%d"))
     p.add_argument("--headed", action="store_true")
+    p.add_argument("--lost-audit", action="store_true", help="构造「底层流水移出期间」以验证 RECON_DISPOSITION_LOST")
     p.add_argument("--chrome-path", default=None)
     p.add_argument("--psql", default=DEFAULT_PSQL)
     p.add_argument("--pg-host", default="localhost")
