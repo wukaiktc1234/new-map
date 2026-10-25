@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A9/A16/A17/A18/A19/A20 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A9/A16/A17/A18/A20 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -63,8 +63,11 @@
 --       或该 statement 下仍残留 reason LIKE 'AMBIGUOUS:%' 的 item。
 --       **A18 是 BL-6 假平衡门禁的持续性保障：即使生成逻辑被改回，A18 也能巡检抓出。**
 --       守卫：reconciliation_statements / reconciliation_items（含所需列）不存在 → [INFO] 跳过。
---   A19 （信息性，不进 TOTAL）**同额两侧并存**：同一 statement 内某金额 X 同时出现在 (A|B) 与 (C|D) 两侧。
---       A18 依赖 'AMBIGUOUS:' 前缀，重算若把前缀冲掉就查不出来；A19 不看前缀、用数据形态兜底。
+--   A19 （**参与判定，进入 TOTAL FAIL**）**同额两侧并存 = 形态假平衡**：
+--       同一 statement 内某金额 X 同时出现在 (A|B) 与 (C|D) 两侧 → 计数即该 statement 数（不是金额对数量）。
+--       这是 BL-6 假平衡的**形态兜底**：A18 依赖 'AMBIGUOUS:' 前缀，重算把前缀冲掉就查不出来，
+--       而 A19 只看数据形态，因此**它是「禁止 APPROVED」的硬依据**：>0 即 FAIL。
+--       FAIL 文案固定为「存在 N 张调节表同额两侧并存（形态假平衡），禁止 APPROVED」。
 --   A20 （信息性，不进 TOTAL）**历史负 balance_after**：status=2 且 deleted=0 的 fund_flows 中 balance_after<0 的行数与账户数。
 --       A15 只看**当前** bank_accounts.balance；A20 看**历史每一笔** fund_flows.balance_after，
 --       两者不是替代关系 —— 当前为正不代表历史上没出现过负中间态（BL-4 修复前即存在）。
@@ -232,20 +235,31 @@ SELECT CASE WHEN count(*) = 0
 --      纯 INFO，不进 TOTAL；与 A8/A9/A16 同级。
 --      意义：该动作只应出现在测试/迁移期（生产 profile 不加载 FinanceOpsController），
 --      生产巡检看到 >0 就是「生产上启用了 ops profile」的强信号，需要排查。
---      守卫：finance_audit_logs 不存在时输出 [INFO] 跳过，不计入 TOTAL。
-SELECT CASE
-         WHEN to_regclass('public.finance_audit_logs') IS NULL
-           THEN '[INFO] A17 跳过（finance_audit_logs 未创建）'
-         WHEN count(*) = 0
-           THEN '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=0'
-         ELSE '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=' || count(*)
-              || '（生产 profile 下出现即为异常：ops 端点不该启用）'
+--      守卫修复（2026-10-25）：原写法在 CASE 里判 to_regclass，但 FROM finance_audit_logs
+--      在**解析期**就会被解析 → 表不存在时直接报错，CASE 根本不会执行（守卫无效）。
+--      现改为与 A10–A13/A18–A20 同款：先 \gset 探测表/列，再 \if 分支（缺表时该语句不发送）。
+SELECT (to_regclass('public.finance_audit_logs') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'finance_audit_logs'
+                       AND column_name IN ('operation_type', 'create_time')
+                     GROUP BY table_name HAVING count(*) = 2)) AS fixture_audit_ready
+\gset
+
+\if :fixture_audit_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=0'
+            ELSE '[INFO] A17 近24h 夹具余额抹平 FIXTURE_FLOW_REVERSED rows=' || count(*)
+                 || '（生产 profile 下出现即为异常：ops 端点不该启用）'
        END AS a17_line,
-       CASE WHEN to_regclass('public.finance_audit_logs') IS NULL THEN 0 ELSE count(*) END AS a17_n
+       count(*) AS a17_n
   FROM finance_audit_logs l
  WHERE l.operation_type = 'FIXTURE_FLOW_REVERSED'
    AND l.create_time >= now() - interval '24 hours'
 \gset
+\else
+\set a17_line '[INFO] A17 跳过（表未创建）'
+\set a17_n 0
+\endif
 
 -- ------------------------------------------------------------
 -- A18 / A19 前置守卫（P3 收口）
@@ -292,7 +306,12 @@ SELECT (to_regclass('public.reconciliation_items') IS NOT NULL
 \gset
 
 \if :ambiguity_shape_ready
-SELECT '[INFO] A19 同额两侧并存(疑似未处置歧义) statements=' || count(DISTINCT t.statement_id) AS a19_line,
+SELECT CASE WHEN count(DISTINCT t.statement_id) = 0
+            THEN '[PASS] A19 同额两侧并存(形态假平衡) statements=0'
+            ELSE '[FAIL] A19 同额两侧并存(形态假平衡) statements=' || count(DISTINCT t.statement_id)
+                 || ' —— 存在 ' || count(DISTINCT t.statement_id)
+                 || ' 张调节表同额两侧并存（形态假平衡），禁止 APPROVED'
+       END AS a19_line,
        count(DISTINCT t.statement_id) AS a19_n
   FROM (
       SELECT i.statement_id, i.amount
@@ -545,7 +564,7 @@ SELECT line
     SELECT 18,
            :'a18_line'
     UNION ALL
-    -- A19 信息性：同额两侧并存（不看 AMBIGUOUS 前缀的形态兜底；不进 TOTAL）
+    -- A19 参与判定：同额两侧并存（BL-6 形态兜底；进入 TOTAL FAIL）
     SELECT 19,
            :'a19_line'
     UNION ALL
@@ -566,7 +585,8 @@ SELECT line
              + CASE WHEN :a12_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a13_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a14_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a15_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a19_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
