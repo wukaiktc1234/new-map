@@ -1335,3 +1335,37 @@ NOT (COALESCE(created_by,'') LIKE 'system/backfill-%'
 ### 46.3 两处待 Owner 裁决（收口过程中发现，未擅自改）
 1. **A7 的 `FFH%` 前缀现在是「不必要条件」**：按 Owner 给的公式，场景 D（无 FFH 前缀、但有 backfill 审计名 + 补记 token）会被豁免。若本意是「三条必须同时满足」，需改为 `... AND (backfill 名 AND token) AND flow_no LIKE 'FFH%'`。当前严格按 Owner 原文实现。
 2. **A8/A9 仍用旧豁免式**（`NOT (flow_no LIKE 'FFH%' OR created_by LIKE 'system/backfill-%')`）：一条只有 `FFH` 前缀、无审计名/备注的行，A7 会纳入比对（正确），但 A8/A9 会把它排除在计数外（仍有「靠前缀绕过零容忍」的缝隙）。本轮按指令「不要动 A8–A20」未改，**建议下一轮统一为同一三条件表达式**。
+---
+
+## 47. P3 收口：A8/A9 豁免口径统一 + A21 可疑补账（2026-10-25 13:20–13:40）
+
+### 47.1 A8/A9 与 A7 同口径（三条件 AND）
+- `consistency_check.sql` 481–483（a8 CTE）/ 491–493（a9 CTE）：`NOT (flow_no LIKE 'FFH%' OR created_by LIKE 'system/backfill-%')` → **`NOT (created_by LIKE 'system/backfill-%' AND (remark LIKE '%[cashBackfill]%' OR remark LIKE '%[posShift=%'))`**；注释补「与 A7 完全统一」「前缀不再单独构成豁免」「前缀异常由 A21 单独监控」。
+- **改前/改后行数（当前种子数据）**：A7 accounts=0 / A8 rows=0 / A9 rows=0 **前后一致**（数据本身干净）；语义变化由合成行证明。
+- **回归验证（事务内临时插入 + ROLLBACK，未落库）**：
+| 断言 | 新口径 | 旧口径（对照） |
+|---|---|---|
+| A7 | **1**（把 `FFH-ONLY-TEST` 纳入比对：account 20 余额 ≠ balance_after=0） | 0（被 FFH 前缀豁免） |
+| A8 | **1** | 0 |
+| A9 | **1** | 0 |
+控制行 `FFH-CTRL-TEST`（`created_by=system/backfill-test` + `[posShift=1][cashBackfill]`）仍被豁免 → 计数为 1 而非 2；`ROLLBACK` 后 `leftover=0`，正式跑回到 0。
+- 踩坑：`fund_flows.flow_id` 是 **GENERATED ALWAYS identity**，回归脚本不能显式写 flow_id（否则 `cannot insert a non-DEFAULT value`）。
+
+### 47.2 新增 A21（INFO，不进 TOTAL）
+```sql
+SELECT count(*) FROM fund_flows
+ WHERE deleted = 0
+   AND COALESCE(created_by,'') LIKE 'system/backfill-%'
+   AND (COALESCE(remark,'') LIKE '%[cashBackfill]%' OR COALESCE(remark,'') LIKE '%[posShift=%')
+   AND flow_no NOT LIKE 'FFH%';
+```
+- 输出：`[INFO] A21 可疑补账 flow_no 非 FFH 前缀 rows=<n>`，n>0 时同行追加「（存在非 FFH 前缀的补账流水，可能为伪造或历史手工补账，请人工核对）」；明细 20 行（flow_no / account_id / amount / created_by / remark / create_time）。
+- **首次执行：`rows=0`**（数据已清空，符合预期），明细 `(0 rows)`。
+- 谓词反证（只读合成 4 行，未落库）：审计名+token+非 FFH → **HIT**；审计名+token+FFH → MISS（正主，归 A7 豁免）；只有 token → MISS；只有审计名 → MISS。
+
+### 47.3 A7 注释补分工（逻辑未动）
+A7 注释新增：**A7 豁免只看 `created_by` + `remark` token，不看 `flow_no` 前缀；前缀不一致的可疑补账由 A21 单独报出，既不被 A7 豁免、也不会让 A7 报红。**
+分工定论：**A7 = 余额一致性（豁免带审计名+token）**；**A21 = 前缀异常观测（只报不阻断）**；**A8/A9 = 零容忍 0 值检测（同 A7 口径）**。
+
+### 47.4 状态
+`python scripts/qa/consistency_check.py` → **14 条断言 14 PASS / 0 FAIL、TOTAL FAIL=0、exit 0**；A1–A21 连续无重复；全文已无 `flow_no LIKE 'FFH%' OR created_by` 旧式 OR 豁免（grep 0 命中）。
