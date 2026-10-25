@@ -2058,3 +2058,90 @@ SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='
 ### 59.7 清理与回归
 - 清理 P4-2 测试调节表（38/39 及其 513 条 items，`scripts/db-fix/2026-10-25-clean-p42-test-statements.sql`，测试数据）；保留 3 张真实表。
 - 回归：`consistency_check` **15 PASS / 0 FAIL**（A7=0、A8=0、A9=0、A19=0、TOTAL FAIL=0）；`ui_e2e_payment` exit 0；`e2e_statement_flow` exit 0；`vue-tsc` 0 error；`npm run build` exit 0。
+---
+
+## 60. 物理 DELETE 留痕披露 + 测试数据修复规则（2026-10-25 21:40）
+
+### 60.1 披露事项（如实记录）
+> **`scripts/db-fix/2026-10-25-repair-cash-account-negative.sql` 物理删除 25 行 `fund_flows`（`FFP42%` 夹具、`[reconReverseOf=` 反向流水、`MIX%` 混跑流水），未写 `finance_audit_logs`，属测试数据修复，已在此披露。**
+- 影响范围：仅 `fund_flows` 中带测试 tag 的行；`bank_accounts` 余额随后由 V3 快照回填（`2026-10-25-v3-backfill-balance-from-snapshot.sql`）修正，`A7 accounts=0` 已复核。
+- 为什么当时用物理删：这些是**同日重复造数产生的重复夹具**，软删会留下大量 `deleted=1` 的噪声行，且 A19/A7 的判据只看活行，软删不改变口径反而增加排查成本。**但这不构成默认做法**，见 60.2。
+
+### 60.2 规则（本轮定，后续脚本一律遵守）
+| 场景 | 删除方式 | 审计 |
+|---|---|---|
+| **测试/修复脚本**（清洗、回填、去重、夹具回收） | **默认软删 `deleted=1`** | **必须写 `finance_audit_logs`**（`operation_type=<脚本用途>`、`target_id`、`operation_data` 含筛选条件与行数） |
+| **purge（清空全表重建）** | **物理删** | 允许不写逐行审计，但必须在脚本头写明「物理清空 + 表清单 + 备份路径」，并把每张表影响行数打印进日志（现有 `20261025_purge-test-data.sql` 即此模式，附 `backup/20261025-pre-purge.sql`） |
+| 生产数据修正 | 走业务接口/账务补录，**禁止直接在库上删** | 必须有审批 + 审计 |
+**软删的连带影响（实测结论，写清以免踩坑）**：A14（存行成对，`deleted=0`）与 A15（只看 `bank_accounts`）**不会**因 `deleted=1` 误报；**A7 会**——软删行若仍是最新「活行」会参与余额比对，因此软删后必须同步按 V3 方向回填 `bank_accounts.balance`。
+
+### 60.3 相关 backlog 编号
+- **NEW-6**：为现有测试数据修复脚本补「软删 + 审计」版本（`repair-cash-account-negative.sql` 已是历史执行，仅新脚本适用本规则）。
+- **NEW-7**：`finance_audit_logs` 增加 `script_name` 维度，便于把「脚本修复」与「业务操作」分开统计。
+---
+
+## 61. P4-3 EXEMPT 排除路径 + 歧义处置语义修正（2026-10-25 21:40–23:00）
+
+### 61.1 语义裁决（本轮最重要的一条）
+「改类别」在数据模型上**不能真的改 `category`**：`ck_recon_items_ref_by_category` 要求 A/B 必须有 `flow_id`、C/D 必须有 `transaction_id`，而对侧那条的 `transaction_id` 属**另一条 item**，硬搬会撞 `uk_recon_items_statement_subject`。
+**因此定案**：RESOLVE 与 EXEMPT 都是「**人工消除该条歧义**」→ 统一 `cleared_flag = true`，`category/amount/ref` 一律不动：
+| 动作 | 落库 | reason 前缀 | 审计 |
+|---|---|---|---|
+| RESOLVE（改归属） | `cleared_flag=true` | `已处置(AMBIGUITY->X:ref)：原因=…；<原>` | `RECON_AMBIGUITY_RESOLVED` |
+| EXEMPT（判定非歧义） | `cleared_flag=true` | `EXEMPTED(<op>)：原因=…；<原>` | `RECON_AMBIGUITY_EXEMPTED`（**写失败即抛错回滚**，不允许静默排除） |
+三处统计（`markAmbiguities` / `hasSameAmountOnBothSides` / `reconcileStatementFlags`）全部加 `cleared_flag = false`；`ambiguousItemCount` = `cleared_flag=false` 且（`AMBIGUOUS:%` ∪ 同额两侧并存）**并集**；`detail().items[]` 新增 `clearedFlag` 字段。
+
+### 61.2 EXEMPT 实现（后端）
+`ReconciliationStatementServiceImpl`：`:548-570` decision 归一化 + `EXEMPT|EXEMPTED` + reason≥5 字；`:586-589` 幂等（`cleared_flag=true` 且前缀匹配 → 直接返回、不重复写审计）；`:595-612` EXEMPT 跳过对侧类别校验、传了 targetRef 仍校验同额候选存在；`:654` 两分支统一 `UPDATE … SET cleared_flag=true, reason=?`；`:636-660` 审计含 **`originalReason` 快照**，写失败抛错回滚。
+前端：`ResolveAmbiguityDialog.vue` 增加 `ambiguity-mode`（默认 RESOLVE / 可选 EXEMPT）；EXEMPT 下隐藏候选与类别下拉、原因文案改「请说明为什么判定此条非歧义」、确认文案「确认将此条歧义标记为排除？此操作会写审计记录，且不可撤销」、请求体**不带 targetRef**；`StatementDetail.vue` 时间线用 `data-field="exempted"`。
+巡检：A19 改为按 **`cleared_flag = false`** 排除（`EXEMPTED(` 前缀仅作旧数据兼容），输出行附「已人工消除(cleared)条目数 = N」；**A18 不改**（其判据 `reason LIKE 'AMBIGUOUS:%'` 表示「未处置」线索，RESOLVE/EXEMPT 都会重写 reason 去掉该前缀，天然不进 A18）。
+
+### 61.3 两个问题的回答
+
+**Q1 多个同额对侧候选时的行为**
+- **前端**：下拉**列出全部**同额对侧候选（不是拒绝处置），E2E 实测 `option` 数 >1、全部同额同类别、**逐个可选中**（`A×1 + C×2` 场景通过）；
+- **后端已校验 targetRef ∈ 候选集合**，位置 `ReconciliationStatementServiceImpl:591-599`：
+```java
+Integer cand = jdbc.queryForObject(
+  "SELECT count(*) FROM reconciliation_items WHERE statement_id = ? AND deleted = 0 "
+  + " AND category = ? AND amount = ? "
+  + " AND (CASE WHEN ? IN ('C','D') THEN transaction_id ELSE flow_id END)::text = ?",
+  Integer.class, statementId, dec, amount, dec, targetRef.trim());
+if (cand == null || cand == 0) throw err("对侧候选不存在或金额不一致：…");
+```
+→ **不存在「选一个不在候选列表里的 targetRef 也能过」的漏洞**：候选集合的定义就是「同 statement、`deleted=0`、`category=decision`、`amount` 相同、且对应 ref 列等于 targetRef」，与前端下拉口径一致。
+
+**Q2 造数脚本窗口收窄**
+- E2E 造数已改为 **`periodStart = periodEnd = business_date`（当天单日）**，并把原则写进脚本头注释：「只造当天，绝不跨日 —— 否则历史同额对会被卷进同一张表，歧义数虚高且永远清不完」；
+- 配套手势：悬空歧义靠**真实形态**构造（只改 `reason` 指向不存在的 flow_id/txn_id，不改类别金额）；清理整表时**有候选走 RESOLVE、无候选走 EXEMPT、不允许跳过**。
+
+### 61.4 P4-2 遗留 3 条 FAIL 的处置结果
+原 FAIL 全部来自「整表清零」：`resolve_remaining()` 里原本 `if not cand: skip` → 改为 `EXEMPT`，且**只有 EXEMPT 也失败才中断**。加上本轮 RESOLVE/EXEMPT 都置 `cleared_flag`，逐条处置后 `ambiguousItemCount` **单调递减到 0**，3 条 FAIL 全部转 PASS。
+
+### 61.5 P4-3 收口 E2E（29/29 PASS，EXIT=0）
+| 段 | 断言 | 结果 |
+|---|---|---|
+| — | cell 守卫 / A19 基线（15 PASS·0 FAIL） / 构建新鲜度守卫 | PASS |
+| A | 造歧义（statement 67、歧义 39） / **精确公式配平 `bank = adjBook − a + b`**（`a=21645 b=0 adjBook=adjBank=107207 bank=85562`） | PASS |
+| A | A19 变红 / 行级按钮有·**批量按钮 0** / **多候选逐个可选中** / **AC-55c 下拉只含同额且无自由输入** | PASS |
+| A | 二次确认「将 A 类改为 C 类，涉及金额 777 分，确认？」 / 请求体三字段 | PASS |
+| A | **RESOLVE 后 `clearedFlag=True` + `已处置(AMBIGUITY->C:714)`** / 逐条 39 条全 `cleared_flag=t` 且 **40→0 单调递减** | PASS |
+| A | **EXEMPT-1（DB 为准）** `cleared_flag=true` + `EXEMPTED(qa_admin)…` / **EXEMPT-2** 审计含 `originalReason` / **EXEMPT-3** 时间线含记录 | PASS |
+| B | 前置 `ambiguousItemCount=0` → **`isBalanced=True`** → 页面 `data-balanced=true` → **A19 该表消失** | PASS |
+| — | 清理（statement_id 级确认）/ **finally 残留=0** / exit 0 | PASS |
+
+### 61.6 本轮发现并记入 backlog 的产品缺陷
+**NEW-8（P4 候选，中）**：`POST /recon-runs?force=true` 与 S3 重算会 `DELETE` 重插 `reconciliation_items`，**人工处置的 `cleared_flag` 与处置 reason 全部丢失** → 重算后同额歧义「复活」（实测：清到 0 后重算立刻回到 39 条）。正确做法：重算时按「`(statement_id, category, flow_id, transaction_id)` 主体」保留处置状态（或把处置记录独立成表，items 重建时回灌）。
+**NEW-9（低）**：`bankStatementBalanceFen` 只作入参、VO 不回显，E2E 无法自校验配平输入；建议 `ReconciliationStatementVO` 增加该字段（只读回显）。
+**NEW-10（低）**：`ResolveAmbiguityDialog` 的二次确认用同组件第二个 `el-dialog`（因 `ElMessageBox` 无法挂 `data-test`）；后续可给 `ElMessageBox` 增加 `confirmButtonDataTest` 封装。
+
+### 61.7 最终回归（P4-3 收口）
+| 套件 | 结果 |
+|---|---|
+| `consistency_check.py` | **15 PASS / 0 FAIL**，exit 0（A19 按 cleared 口径、A25=0） |
+| `schema_guard.py` | exit 0 |
+| `ui_e2e_payment.py` / `e2e_recon_workbench.py` / `e2e_store_recon.py` | exit 0 |
+| `e2e_statement_flow.py` / `e2e_fund_overview.py` / `e2e_p35_bl9_bl5.py` | exit 0 |
+| **`e2e_ambiguity_resolve.py`** | **29/29 PASS，exit 0** |
+| `mvn -o -B -DskipTests compile` | BUILD SUCCESS |
+| `vue-tsc --noEmit` / `npm run build` | 0 error / exit 0 |
