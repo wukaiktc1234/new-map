@@ -1155,3 +1155,83 @@ UPDATE bank_accounts SET balance = COALESCE(balance, 0) + #{delta},
 
 ### 42.6 顺手发现的守卫缺陷（未改，供裁决）
 **A17 的守卫实际无效**：它在 `CASE` 里判断 `to_regclass('public.finance_audit_logs')`，但同一语句的 `FROM finance_audit_logs` 在**解析期**就被解析，表不存在会直接报错、走不到 CASE。A10–A13/A18–A20 用的 `\gset` + `\if`（缺表根本不下发语句）才是有效写法。建议把 A17 改成同款，需另开一次改动。
+
+---
+
+## 43. 收口 §3：跨日窗 6h + 身份交集 + TIME_DIFF→MANUAL_MATCHED（ts-purchase，2026-10-25 12:5x）
+
+### 41.1 代码
+- `@Value("${app.finance.recon.cross-day-window-minutes:360}")`（默认 6h；`DEFAULT_CROSS_DAY_WINDOW_MINUTES = 6*60` 兜底；未动 application.yml；配 ≤0 回落 360）。
+- 身份交集键：内部 = `order_id`（fund_flows）/ `orders.order_number` / `order_payment_records.transaction_no`（去前缀）；外部 = `external_txn_id`（去 WX:/ALI:/BANK:）/ `merchant_order_no`。
+  新增 `OrderNewMapper` 批量取 `order_number`（只读）、`addIdentityKey(...)`、`hasIdentityIntersection(...)`。
+- 判定顺序（`match()`，TIME_DIFF 分支仍在 L2 之前）：同额 + 不在常规窗 + 在跨日窗内 → 再分三种：
+  - 有交集且唯一 → `markTimeDiff()`：两侧 `subject_status=MANUAL_MATCHED`、`match_level=MANUAL`、confidence 0.500 + `TIME_DIFF`；
+  - 有交集但多笔 → `AMBIGUOUS`；
+  - **无任何交集 → `AMBIGUOUS`**（判定位置即该 else 分支；理由：同账户+同额+时间内不足以证明同一笔，隔日同额会被误配并掩盖真实单边）。
+- `timeDiff()` 的 `resolution_remark`：`跨日时间差，需人工确认：Δt=… 分钟（常规窗口 10，跨日窗 360）；身份交集键=…`。
+- 设计稿 §2.4 引用块已同步（6h + 身份交集 + MANUAL_MATCHED + 不计入自动勾稽率）。
+
+### 41.2 三场景实测
+| 场景 | 结果 |
+|---|---|
+| E2-1（23:58→00:03，5 分钟，**有**交集，默认 360） | item 两侧 `MANUAL_MATCHED` / `match_level=MANUAL`；差异 `TIME_DIFF`（diff=0）；`matched_amount=45,678` vs **auto_matched_amount=0**（manual=45,678）→ 不计入自动勾稽率 |
+| 23h 无交集（`--app.finance.recon.cross-day-window-minutes=1440` 临时放宽以进入该分支） | 差异 `AMBIGUOUS`；两侧 `subject_status=MATCHED`（待人工）；`matched_amount=0` |
+| 25h 有交集（同上放宽到 1440，25h>1440 超窗） | `ONE_SIDED_INTERNAL` + `ONE_SIDED_EXTERNAL`；两侧 `UNMATCHED` |
+
+> 注：`recon_runs` 没有 `auto_matched_amount` 列，auto 值由 `recon_items` 聚合（`side='INTERNAL' AND subject_status='AUTO_MATCHED'`）；`matched_amount` 仍含 MANUAL_MATCHED。若要持久化 auto 指标需加列（结构变更，待裁决）。
+
+### 41.3 回归
+- `recon_selftest.py`：**26 PASS / 0 FAIL**
+- `consistency_check.py`：**12 PASS / 1 FAIL**，唯一 FAIL 是 **A19 同额两侧并存 statements=3**（lead 已说明预期失败，与本次改动无关）
+- 脚本：`scripts/qa/s3_time_diff_scenarios.py`（S3_SCENARIO=e21|noid|h25）
+
+---
+
+## 44. 阻塞项收口：statement 13 重置 + A19 升级阻断 + 跨日窗 6h + A17 守卫 + A20 时间分布（2026-10-25 12:38–13:10）
+
+### 44.1 【阻塞项已解除】statement 13 重置
+脚本 `scripts/db-fix/20261025_statement13_reset.sql`（单事务、幂等、只动 `statement_id=13` 且 `amount IN (10000,45678)`）：
+| 项 | 重置前 | 重置后 |
+|---|---|---|
+| status | SUBMITTED | **DRAFT**（未自动重新 submit） |
+| is_balanced | true | **false** |
+| A / B / C / D | 601 / 19 / 69 / 10 | **601 / 19 / 69 / 10（未调类别）** |
+| AMBIGUOUS 条数 | 0 | **15**（10,000 组 A 10 + C 1；45,678 组 A 2 + C 2） |
+幂等复跑 `UPDATE 0 / UPDATE 0`；**30 条审计（log_id 220–249）保留未删**。
+
+### 44.2 【标红】A18 仍为 0 —— 不是 SQL bug，是判据前置的结构性 0（需 Owner 裁定）
+- 现状：重置后 `reconciliation_statements` 中 **没有任何 `is_balanced = true` 的行**（13=DRAFT/false、14=DRAFT/false、17=DRAFT/false），而 A18 的判据首行就是 `WHERE s.is_balanced = true` → 必然 0。
+- **只读探针证明 SQL 正确**：`BEGIN; UPDATE ... SET is_balanced=true WHERE statement_id=13; SELECT ...A18 同款 SQL...; ROLLBACK;` → **a18_probe_hit = 1**，回滚后复核 `13|DRAFT|f` 未被改动。即 A18 能抓出「声称平衡但实际不平衡/带 AMBIGUOUS」的存量，**当前 0 是因为无人声称平衡**。
+- **按 Owner 规则仍标红**：若要求「重置后 A18 也应 >0」，需**去掉 `is_balanced=true` 前置**（改成纯统计「含 AMBIGUOUS 前缀 或 adj 不等」）。**未改，等指令。**
+- 我的判断：A18 的语义是「**残留检测**」（只在有人声称平衡时才有意义），保持现状更合理；形态兜底交给 A19（现已升级为硬 FAIL）。
+
+### 44.3 A19 升级为阻断（已生效）
+- `consistency_check.sql:310-316` 输出改为 `[PASS]/[FAIL]`：`A19 同额两侧并存(形态假平衡) statements=<n> —— 存在 <n> 张调节表同额两侧并存（形态假平衡），禁止 APPROVED`；`:576` TOTAL 求和追加 `a19_n`。
+- **实测：`[FAIL] A19 … statements=3`（13/14/17）→ TOTAL FAIL=1、python 退出码 1**（CI 阻断生效，如实上报未迁就断言）。
+- `is_balanced` 同步并入同口径（`ReconciliationStatementServiceImpl:147-148`）：`balanced = amountBalanced && ambiguousCount==0 && !hasSameAmountOnBothSides(items)`；`:639` 私有方法注释标注「与 consistency_check A19 同口径」，并说明它与 `markAmbiguities`（依赖 reason 前缀、可被重算冲掉）是「形态兜底 vs 前缀判定」关系。
+- 重算验证：statement 14 / 17 均 **is_balanced=false**（ambiguous=26）；三张表终态 `13|DRAFT|f|AMB15`、`14|DRAFT|f|AMB26`、`17|DRAFT|f|AMB26`。
+
+### 44.4 跨日窗收紧 6h + 身份交集 + TIME_DIFF→MANUAL_MATCHED
+- `ReconBatchExecutor`：默认 **360 分钟**（`DEFAULT_CROSS_DAY_WINDOW_MINUTES = 6*60`，`@Value` 默认 360，未动 yml）；**身份交集门槛**（内部 `orders.order_number` + `order_payment_records.transaction_no` vs 外部 `external_txn_id` 去前缀 + `merchant_order_no`）；跨日三分支：**有交集唯一 → TIME_DIFF + MANUAL_MATCHED**、有交集多笔 → AMBIGUOUS、**无交集 → AMBIGUOUS**。
+- 三场景实测：
+| 场景 | 结果 |
+|---|---|
+| E2-1（23:58→00:03，5 分钟，有交集） | 两侧 `MANUAL_MATCHED`/`match_level=MANUAL`，`TIME_DIFF`、diff=0；**matched_amount=45,678 而 auto_matched_amount=0**（证明不计入自动勾稽率） |
+| 23h + **无交集** | **`AMBIGUOUS`**（不是 TIME_DIFF），两侧 MATCHED(待人工)，matched_amount=0 |
+| 25h + 有交集（超 6h 窗） | `ONE_SIDED_INTERNAL` + `ONE_SIDED_EXTERNAL`，两侧 UNMATCHED |
+- 25h/23h 场景为进入分支临时用启动参数放宽窗口；**两个场景都印证默认 6h 更安全**。
+- 缺口披露：`recon_runs` **没有 `auto_matched_amount` 列**，自动勾稽率目前由 `recon_items` 聚合；若要把该指标持久化到 run 表，属**结构变更**，等 Owner 裁决。
+
+### 44.5 A17 守卫生效化
+- 原写法 `CASE WHEN to_regclass('public.finance_audit_logs')` 无效（`FROM finance_audit_logs` 解析期即解析）；改为 `\gset` 探测（表 + `operation_type`/`create_time` 列）→ `\if` 分支。
+- 双场景验证：表存在 → `[INFO] A17 … rows=4（…）`；缺表副本（临时文件、未入库）→ `[INFO] A17 跳过（表未创建）`、psql 退出码 0、TOTAL 不受污染。
+- 自查清单（只列未改）：全脚本已无 CASE 型守卫；**A8/A9/A16 与 A1–A7 属「无守卫」**（直接 `FROM fund_flows` 等核心表），若要「任何表缺失都不炸」需统一加 `_ready`，等指令。
+
+### 44.6 A20 的 41 行时间分布（结论：**全部发生在 BL-4 修复之前，修复后零新增**）
+| account | cnt | first_neg | last_neg |
+|---|---:|---|---|
+| 2 | 1 | 2026-09-08 19:29:12 | 2026-09-08 19:29:12 |
+| 5 | 3 | 2026-09-08 19:28:22 | 2026-09-08 21:01:38 |
+| 20 | 37 | 2026-10-25 01:25:09 | **2026-10-25 02:25:49** |
+小时分布：`2026-09-08 19:00=3`、`21:00=1`、`2026-10-25 01:00=9`、`02:00=28`；当库最后一条流水时间 `2026-10-25 11:00:00`。
+**结论**：account 20 的负值全部落在 **01:25–02:25**，而 BL-4 的 `addBalanceGuarded` 是 **03:40 之后**上线的 → **last_neg 早于修复时点，属历史遗留，修复后无新增**。A20 保留作兜底巡检（INFO，41 行/3 账户），不做数据修改。
