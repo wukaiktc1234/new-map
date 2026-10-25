@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A16/A17/A18/A20/A21 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -76,6 +76,10 @@
 --       A15 只看**当前** bank_accounts.balance；A20 看**历史每一笔** fund_flows.balance_after，
 --       两者不是替代关系 —— 当前为正不代表历史上没出现过负中间态（BL-4 修复前即存在）。
 --       守卫：fund_flows（含 balance_after/status/deleted/account_id 列）不存在 → [INFO] 跳过。
+--   A21 （信息性，不进 TOTAL）**可疑补账**：created_by 是 backfill 署名且 remark 含补记账 token，
+--       但 flow_no **不是 FFH 前缀** → 前缀与审计署名不一致（可能伪造 / 历史手工补账）。
+--       **A21 与 A7 分工：A7 只看 created_by + remark token（不看前缀）；前缀异常由 A21 单独报，
+--         不纳入 A7 豁免，也不会让 A7 报红。**
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -360,6 +364,38 @@ SELECT '[INFO] A20 历史负 balance_after rows=' || COALESCE(sum(cnt), 0)
 \endif
 
 -- ------------------------------------------------------------
+-- A21 可疑补账（纯 INFO，不进 TOTAL）
+--   口径：created_by LIKE 'system/backfill-%' AND remark 含 [cashBackfill] / [posShift=)
+--         **但 flow_no 不是 FFH 前缀** → 前缀与审计署名不一致的可疑补账。
+--   与 A7 分工：A7 的豁免只看 created_by + remark token（不看 flow_no 前缀）；
+--              前缀异常由 A21 单独报出，既不纳入 A7 豁免、也不会让 A7 报红。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('created_by', 'remark', 'flow_no', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 4)) AS backfill_shape_ready
+\gset
+
+\if :backfill_shape_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[INFO] A21 可疑补账 flow_no 非 FFH 前缀 rows=0'
+            ELSE '[INFO] A21 可疑补账 flow_no 非 FFH 前缀 rows=' || count(*)
+                 || '（存在非 FFH 前缀的补账流水，可能为伪造或历史手工补账，请人工核对）'
+       END AS a21_line,
+       count(*) AS a21_n
+  FROM fund_flows
+ WHERE deleted = 0
+   AND COALESCE(created_by, '') LIKE 'system/backfill-%'
+   AND (COALESCE(remark, '') LIKE '%[cashBackfill]%' OR COALESCE(remark, '') LIKE '%[posShift=%')
+   AND flow_no NOT LIKE 'FFH%'
+\gset
+\else
+\set a21_line '[INFO] A21 跳过（表未创建）'
+\set a21_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -456,6 +492,8 @@ WITH a1 AS (
     -- 原因：补账行不维护 balance_after → 若把它们当作账户最新流水会误报；
     --       但豁免不能只看 flow_no 前缀，必须同时有「backfill 审计名 + 补记账备注 token」，二者缺一不免。
     -- 反例（不得豁免）：普通流水 balance_after=0 仍参与比对 —— 若它是某账户最新一笔，就会在这里报红。
+    -- 与 A21 分工：A7 豁免**只看 created_by + remark token，不看 flow_no 前缀**；前缀不一致的可疑补账
+    --   由 A21 单独报出，既不被 A7 豁免、也不会让 A7 报红。
     SELECT count(*) AS n
       FROM bank_accounts b
       LEFT JOIN (
@@ -472,21 +510,29 @@ WITH a1 AS (
        AND lf.balance_after <> b.balance
 ), a8 AS (
     -- A8（信息性，仅观测）：普通流水（非补账豁免行）balance_after = 0 的纯统计条数。
-    -- 2026-10-25 起**白名单机制已整体删除**（测试数据物理清空），本口径 = 全库普通行计数。
+    -- 2026-10-25 起**白名单机制已整体删除**；豁免口径与 A7 **完全统一**（三条件 AND）：
+    --   created_by LIKE 'system/backfill-%' AND (remark 含 [cashBackfill] 或 [posShift=)
+    --   —— flow_no LIKE 'FFH%' **不再单独构成豁免**（前缀可被伪造），防止靠前缀绕过零容忍。
     -- 保留 INFO 的理由：与 A9 同源同值，一个看趋势、一个做门禁（A9 零容忍）。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
        AND balance_after = 0
-       AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
+       AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
+                AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
+                     OR COALESCE(remark, '') LIKE '%[posShift=%'))
 ), a9 AS (
     -- A9（**参与判定，零容忍**）：普通流水 balance_after = 0 总数。**无白名单、无已知历史例外**，
     -- >0 即 FAIL（文案：存在 N 条普通流水 balance_after=0，禁止接受）。
+    -- 豁免口径与 A7/A8 统一（三条件 AND）：backfill 审计名 + 补记账备注 token；
+    --   flow_no 前缀不作为豁免依据（前缀异常由 A21 单独监控）。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
        AND balance_after = 0
-       AND NOT (flow_no LIKE 'FFH%' OR COALESCE(created_by, '') LIKE 'system/backfill-%')
+       AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
+                AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
+                     OR COALESCE(remark, '') LIKE '%[posShift=%'))
 )
 SELECT line
   FROM (
@@ -584,7 +630,11 @@ SELECT line
     SELECT 20,
            :'a20_line'
     UNION ALL
+    -- A21 信息性：可疑补账（flow_no 非 FFH 前缀；不进 TOTAL）
     SELECT 21,
+           :'a21_line'
+    UNION ALL
+    SELECT 22,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -986,5 +1036,27 @@ SELECT f.flow_id, f.flow_no, f.account_id, f.flow_direction, f.flow_category,
    AND NOT (f.flow_no LIKE 'FFH%' OR COALESCE(f.created_by, '') LIKE 'system/backfill-%')
  ORDER BY f.flow_id
  LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A21 明细（前 20）：可疑补账（审计署名/备注 token 齐全但 flow_no 非 FFH 前缀）
+-- 期望为空；出现需人工核对来源（伪造 / 历史手工补账）
+-- ------------------------------------------------------------
+\if :backfill_shape_ready
+\echo ''
+\echo '-- A21 明细（前 20）--'
+SELECT f.flow_no, f.account_id, f.amount, f.created_by,
+       left(COALESCE(f.remark, ''), 60) AS remark_snippet,
+       f.create_time
+  FROM fund_flows f
+ WHERE f.deleted = 0
+   AND COALESCE(f.created_by, '') LIKE 'system/backfill-%'
+   AND (COALESCE(f.remark, '') LIKE '%[cashBackfill]%' OR COALESCE(f.remark, '') LIKE '%[posShift=%')
+   AND f.flow_no NOT LIKE 'FFH%'
+ ORDER BY f.create_time DESC
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A21 明细跳过（表未创建）--'
+\endif
 
 COMMIT;
