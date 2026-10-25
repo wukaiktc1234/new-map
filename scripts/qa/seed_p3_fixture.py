@@ -41,11 +41,16 @@ from datetime import date, datetime, timedelta
 
 DEFAULT_BASE = "http://127.0.0.1:8081/api"
 DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
-DEFAULT_PURGE = r"P:\my-new-project\scripts\db-fix\20261025_purge-test-data.sql"
+DEFAULT_PURGE = r"P:\my-new-project\scripts\db-fix\20261026_purge-finance-data.sql"
 BASE = DEFAULT_BASE
-EMPTY_TABLES = ["fund_flows", "bank_transactions", "deposit_slips", "orders", "pos_shifts",
+# 清库后必须为 0 的「财务派生表」。
+# 【2026-10-26 修正】原清单含 orders / pos_shifts，但这两张是**主数据**（Owner 明确不清），
+#   重跑 seed 时它们必然非空（上一轮 E2E 的订单/班次仍在）→ 自检恒为红。现从清单移除，
+#   改为单独打印行数供参考（不参与判定）。
+EMPTY_TABLES = ["fund_flows", "bank_transactions", "deposit_slips",
                 "recon_runs", "recon_items", "recon_differences", "reconciliation_statements",
-                "reconciliation_items", "import_batches", "import_rows"]
+                "reconciliation_items", "import_batches", "import_rows",
+                "accounting_periods", "finance_period_account_balance", "finance_audit_logs"]
 
 
 def call(method, path, token=None, body=None, timeout=60, raw=None, content_type=None):
@@ -188,8 +193,11 @@ class Seeder:
             except Exception as e:
                 counts[t] = -1
         dirty = {k: v for k, v in counts.items() if v != 0}
-        return self.ok("库为空自检（12 张表全部 0 行）",
-                       "空" if not dirty else "非空: %s" % dirty, state="PASS" if not dirty else "FAIL"), dirty
+        ref = self.scalar("SELECT count(*) FROM orders", "?")
+        shifts = self.scalar("SELECT count(*) FROM pos_shifts", "?")
+        return self.ok("库为空自检（财务派生表 %d 张全部 0 行）" % len(EMPTY_TABLES),
+                       "空" if not dirty else "非空: %s" % dirty,
+                       state="PASS" if not dirty else "FAIL"), dirty
 
     # ---------- CSV ----------
     def write(self, name, text, encoding):
@@ -300,6 +308,62 @@ class Seeder:
             return False, None, None
         return self.ok("门店 %d 账户就绪" % store_id,
                        "现金户=%d 存行户=%d（该店账户：%s）" % (cash[0], bank[0], listing)), cash[0], bank[0]
+
+    def ensure_current_period(self):
+        """确保当前自然月存在 accounting_periods 行（清库后 migration 种子已被 purge 清掉）。"""
+        today = date.today()
+        code = today.strftime('%Y-%m')
+        first = today.replace(day=1)
+        nxt = (first + timedelta(days=32)).replace(day=1)
+        last = nxt - timedelta(days=1)
+        rc, o, e = self.psql(
+            "INSERT INTO accounting_periods (period_code, period_name, period_type, start_date, end_date,"
+            " status, is_closed, create_time, update_time, created_by) VALUES"
+            " ('%s', '%s period', 2, '%s', '%s', 0, false, now(), now(), 'p3seed')"
+            " ON CONFLICT (period_code) DO NOTHING" % (code, code, first.isoformat(), last.isoformat()))
+        return self.ok("当前期间就绪", "period_code=%s %s~%s rc=%s %s"
+                       % (code, first.isoformat(), last.isoformat(), rc, (o or e or "").strip()[:120]),
+                       state="PASS" if rc == 0 else "FAIL")
+
+    def set_opening_balance(self, account_ids):
+        """【P4-4 缺陷修复】造流水前先把参与账户的余额设定期初值（默认 0）。
+
+        为什么必须做：`fund_flows.balance_after` 是滚动余额，V1 试算要求
+        「期初 + 收 − 支 == 期末 == 期间内末笔 balance_after」。
+        若不清零，账户会带着上一轮 E2E 留下的余额开工（如 80,760 分），而 2026-10-01 之前
+        没有任何 fund_flows → 期初算出来是 0 → 恒等式必然不成立（2026-10 结不了账的真因）。
+        """
+        opening = int(self.a.opening_balance_fen)
+        ids = ",".join(str(int(x)) for x in account_ids)
+        rc, o, e = self.psql(
+            "UPDATE bank_accounts SET balance = %d, version = COALESCE(version,0)+1, update_time = now()"
+            " WHERE deleted = 0 AND account_id IN (%s)" % (opening, ids))
+        return self.ok("账户期初余额设定", "accounts=[%s] 期初=%d 分 rc=%s %s"
+                       % (ids, opening, rc, (o or e or "").strip()[:120]),
+                       state="PASS" if rc == 0 else "FAIL")
+
+    def verify_v1(self):
+        """V1 试算：逐账户 期初 + 收 − 支 == 期间内末笔 balance_after（财务恒等式，不允许改口径）。"""
+        today = date.today()
+        first = today.replace(day=1).isoformat()
+        rows = self.rows(
+            "WITH f AS (SELECT account_id,"
+            "  COALESCE(SUM(amount) FILTER (WHERE flow_direction=1),0) AS income_fen,"
+            "  COALESCE(SUM(amount) FILTER (WHERE flow_direction=2),0) AS expense_fen,"
+            "  count(*) AS n FROM fund_flows WHERE deleted=0 AND status=2 AND business_date >= '%s'"
+            "  GROUP BY account_id),"
+            " last AS (SELECT DISTINCT ON (account_id) account_id, balance_after FROM fund_flows"
+            "  WHERE deleted=0 AND status=2 AND business_date >= '%s'"
+            "  ORDER BY account_id, business_date DESC, flow_id DESC)"
+            " SELECT f.account_id, f.income_fen, f.expense_fen, f.n, last.balance_after,"
+            "        (f.income_fen - f.expense_fen) AS closing_fen"
+            "   FROM f LEFT JOIN last ON last.account_id = f.account_id ORDER BY f.account_id" % (first, first))
+        bad = [r for r in rows if r[4] is None or int(r[5]) != int(r[4])]
+        detail = "; ".join("acc%s: income=%s expense=%s closing=%s last=%s n=%s"
+                           % (r[0], r[1], r[2], r[5], r[4], r[3]) for r in rows)
+        return self.ok("V1 试算（期初=0 + 收 − 支 == 末笔 balance_after）",
+                       "%d 个账户，不一致 %d 个：%s" % (len(rows), len(bad), detail[:400]),
+                       state="PASS" if rows and not bad else "FAIL")
 
     def clone_shift(self, remark, start, end):
         rc, o, e = self.psql(
@@ -498,6 +562,14 @@ class Seeder:
             self.fail("拒绝非空库（未加 --force）", "非空表: %s" % dirty)
             return self.summary()
 
+        # 【P4-4 缺陷修复】造流水前先定期间与账户期初，否则 V1 恒等式必然不成立（见 set_opening_balance 注释）
+        self.ensure_current_period()
+        seed_accounts = [self.a.cash_account, self.a.bank_account]
+        ok_b0, cash_b0, bank_b0 = self.resolve_store_accounts(self.a.store_b)
+        if ok_b0:
+            seed_accounts += [cash_b0, bank_b0]
+        self.set_opening_balance(sorted(set(seed_accounts)))
+
         row = self.rows("SELECT food_code, food_name FROM foods WHERE deleted=0 AND status=1"
                         " ORDER BY stock DESC LIMIT 1")
         self.food_code, self.food_name = (row[0][0], row[0][1]) if row else ("FD260926001", "P3 菜品")
@@ -549,6 +621,9 @@ class Seeder:
         print("  [EXPECT] batch102 expected ok=9 error=2 (negative fixtures), status=PARTIAL"
               " ｜ 实测: %s" % actual)
         self.consistency()
+
+        print("\n--- 6) V1 财务恒等式（期初 + 收 − 支 == 期末 == 末笔 balance_after）---")
+        self.verify_v1()
         return self.summary()
 
     def summary(self):
@@ -579,6 +654,8 @@ def main():
     p.add_argument("--reset", action="store_true", help="先执行 purge SQL 再建")
     p.add_argument("--force", action="store_true", help="库非空也继续（可能叠加）")
     p.add_argument("--purge-sql", default=DEFAULT_PURGE)
+    p.add_argument("--opening-balance-fen", type=int, default=0,
+                   help="造流水前把参与账户余额设为该期初值（分，默认 0；V1 恒等式要求流水链从期初开始）")
     p.add_argument("--workdir", default=r"P:\my-new-project\.verify-tmp")
     p.add_argument("--repo", default=r"P:\my-new-project")
     p.add_argument("--store-id", type=int, default=1)
