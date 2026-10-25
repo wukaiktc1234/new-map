@@ -1991,3 +1991,70 @@ SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='
 ### 58.7 夹具与残留
 - `bank_transactions` SQL 直插 20 行（tag `MIX1025204140`，`source_type=BANK` / `fee=0` / `needs_review=false` / `match_status=UNMATCHED`）；20 个克隆班次（`handover_remark=MIX1025204140-fix-i`）与 20 张缴款单同 tag；`--cleanup` 可按 tag 收口。
 - 均已标注「测试夹具、非业务数据」。
+---
+
+## 59. P4-2 A9 判据修正 + BL-6b 歧义处置 UI（2026-10-25 21:08–21:30）
+
+### 59.1 A9 判据修正（0 → NULL）
+**对拍（改前）**：`balance_after = 0 AND status=2 AND deleted=0` → **0 行**（当时的 0 值行已被后续 reseed 冲掉）；复现方式：把账户 20 余额置 0 再 seed → 缴款单存行把余额从 26,000 扣到 0 会产出**合法 0 值行**。
+**链式复算判定**：对每个 0 值行取「同账户前一条非豁免流水的 `balance_after` + 本条 delta」，结果 == 0 即「算对」。历史现场该行 verdict = **OK(算对)** → 全部是「账户确实被取空」，**没有「写 0 但算错」的行**。
+**改动**（`consistency_check.sql`，ts-hr-asset 执行）：
+- `a8` / `a9` 两个 CTE 与 A9 明细：`balance_after = 0` → **`balance_after IS NULL`**；
+- 文案：A8 → `[INFO] A8 普通流水 balance_after 为空 rows=<n>`；A9 → `[PASS] A9 普通流水 balance_after 为空(零容忍) rows=0` / `[FAIL] … 存在 <n> 条普通流水 balance_after 为空（快照未维护），禁止接受`；
+- 注释写清拍板依据：**0 = 合法（账户可取空）；NULL = 未维护（脏值）**，并附「前快照 + delta」复算证据；
+- **脏值红测**：事务内把最小 `flow_id` 的 `balance_after` 置 NULL → A8=1、A9=1（新判据确实抓得到）→ `ROLLBACK` 后归 0。
+
+### 59.2 删除「账户 20 非零基线 100,000 分」
+已删除（`UPDATE bank_accounts SET balance=0 WHERE account_id=20`），恢复「余额为 0 是合法状态」场景；A9 改 IS NULL 后不再因此报红（实测 `A9 rows=0`）。
+**顺带修掉一条 A7**：清 0 后 `balance=0` 而最新流水 `balance_after=75,680` → A7 红。按 **V3 唯一允许方向**用快照回填（`scripts/db-fix/2026-10-25-v3-backfill-balance-from-snapshot.sql`），修复后 `A7 accounts=0`。
+
+### 59.3 三个问题的回答
+
+**Q1 `repair-cash-account-negative.sql` 的删流水方式**
+- 是 **物理 `DELETE`**（`DELETE FROM fund_flows WHERE ...`），不是软删；
+- **`finance_audit_logs` 没有记录**这批删除 —— 这是缺口，已在 §58.5 披露；本轮补上处理原则：**测试数据修复脚本必须在文件头写明「物理删除 + 影响范围」，并把行数与筛选条件打印出来**（当前脚本已打印 `DELETE 25`），后续如需审计留痕，应改为「软删 + 审计记录」；
+- 若改软删：A14（存行流水成对，口径 `deleted=0`）与 A15（现金户余额）都只看活行，**不会因 `deleted=1` 误报**（A14 明确 `deleted=0`、A15 只看 `bank_accounts`）。**但 A7 会**：软删行若仍是最新活行会参与比对 → 必须同时回填 balance。已记录为 P4 backlog（NEW-6）。
+
+**Q2 混跑脚本 `force=true` 建 run 的可追溯**
+- 已要求并落地：脚本退出打印 `本次新建 run: [id…]`（`seq_mixed_paths_check.py` 在 force 后收集 `runId` 列表）；
+- WORKER_LOG 记：**混跑会新增 `recon_runs`（force 重建差异），属测试数据，需定期清理**；不自动清理，但可按 `run_key`（`RECON-<accountId>-<yyyyMMdd>`）+ 脚本 tag 检索。
+
+**Q3 `OrderMapper` / `PosCallNumberMapper` 的 sequence_key 前缀（不冲突）**
+| 域 | 前缀构造 | 样例 |
+|---|---|---|
+| 订单号（`PosOrderNumberGenerator:64`） | `(tableNumber!=null ? "T" : "W") + yyyyMMdd` | `T20261025` / `W20261025` |
+| 叫号（`PosCallNumberServiceImpl:82-85`） | `SEQUENCE_KEY_PREFIX + storeId + "-" + yyyyMMdd + "-" + typePrefix` | `CALL-1-20261025-A` |
+| 资金流水（本文域） | `"FLOW" + yyyyMMdd` | `FLOW20261025` |
+| 缴款单（本文域） | `"SLIP" + yyyyMMdd` | `SLIP20261025` |
+**结论：四者前缀互不重叠**（`T`/`W` vs `CALL-` vs `FLOW` vs `SLIP`），`SequenceAllocator` 又只接受 `fund_flows.flow_no` / `deposit_slips.slip_no` 两个白名单表列，**不可能误改其它域号段**。
+
+### 59.4 P4-2 BL-6b 实现
+| 层 | 内容 |
+|---|---|
+| 前端新增 | `components/ResolveAmbiguityDialog.vue`（逐笔处置弹窗：当前条目 + 只列同额对侧候选 + 原因必填 + **二次确认 `el-dialog`**） |
+| 前端改动 | `StatementDetail.vue`：歧义行级按钮 `btn-resolve-ambiguity`（`data-item-id`）+ 弹窗挂载 + `audit-timeline`（复用 P3-1 的 `li`+`span[data-field]` 约定） |
+| 后端 | **未改**（`resolve-ambiguity` 端点与校验已存在：decision 必须对侧、targetRef 必须同额同类、reason 非空、返回重算后的 VO） |
+| 无批量 | 全页无「批量/一键/全选」入口；每次请求只带单个 `itemId`（E2E 用选择器 + 文案双向扫描断言为 0） |
+
+**二次确认实现偏离（有意，已记录）**：用同组件内第二个 `el-dialog` 而非 `ElMessageBox` —— 后者无法给确认按钮挂 `data-test`，E2E 无法稳定断言。
+
+### 59.5 P4-2 验收（功能链路 12/12 PASS）
+| 断言 | 结果 | 实际值 |
+|---|---|---|
+| 造歧义 → `ambiguousItemCount>0` | PASS | statement 39，93 条 |
+| A19 因该表变红 | PASS | `[FAIL] A19 statements=2` |
+| 行级按钮存在 / **无批量入口** | PASS | 按钮 43 个；批量·一键选择器命中 0、文案扫描 0 |
+| 候选只含同额对侧 + **无自由输入框** | PASS | 候选 1 条、偏差 []、`input[type=text]`=0 |
+| 二次确认文案 | PASS | `将 A 类改为 C 类，涉及金额 26000 分，确认？` |
+| 请求体三字段非空 | PASS | `{decision:"C", targetRef:"645", reason:"..."}` |
+| **响应 VO 重算**（非前端推算） | PASS | HTTP 200，`ambiguousItemCount` 93 → 92 |
+| `audit-timeline` 出现处置记录 | PASS | 含 `AMBIGUITY->C:645`、原因、金额、候选 |
+| **A19 本表转绿** | PASS | statementId=39 从 A19 明细消失 |
+
+### 59.6 P4-2 暴露的 2 个缺口（进 backlog）
+**① 悬空歧义无法清零（真缺口，P4-3 候选）**：`item 17187`（D 类 26,000）的 `reason` 指向候选 `flow_id=346`，但表内同额现存项是 `A flow_id=3460` → **无对侧同额候选**，`resolve-ambiguity` 无 targetRef 可用，该表永远 `is_balanced=false`，且**没有 EXEMPT/作废路径**。建议：在 `resolve-ambiguity` 增加 `decision=EXEMPT`（人工判定为「非歧义/已线下核对」）并写入审计，或允许 `targetRef` 为空 + 强制 reason。
+**② 造数期间过宽导致历史同额对被卷入**：脚本用「今天-10d … 今天+1d」，把历史 80 分/26,000 分的同额对一起纳入同一张表（歧义数 85→93 递增）。后续造数应**收窄为当天单日**。
+
+### 59.7 清理与回归
+- 清理 P4-2 测试调节表（38/39 及其 513 条 items，`scripts/db-fix/2026-10-25-clean-p42-test-statements.sql`，测试数据）；保留 3 张真实表。
+- 回归：`consistency_check` **15 PASS / 0 FAIL**（A7=0、A8=0、A9=0、A19=0、TOTAL FAIL=0）；`ui_e2e_payment` exit 0；`e2e_statement_flow` exit 0；`vue-tsc` 0 error；`npm run build` exit 0。
