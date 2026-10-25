@@ -1303,3 +1303,35 @@ A1–A5 PASS(0)、A7 PASS(accounts=0)、**A9 PASS(rows=0)**、A10–A15 PASS(0)�
 ### 45.7 待 Owner 裁决（2 项）
 1. **A7 补账语义豁免**是否也去掉（去掉会让补账行成为最新流水时误报 A7；保留则严格意义上仍有 1 处豁免）；
 2. **I1 不支持带时区偏移的时间**（`+08:00` 与 `Z` 均报 `TXN_TIME_INVALID`）—— 造数据脚本的支付宝负例正是这条，**是否需要在 P3 修**（原 BL-9）。
+---
+
+## 46. P3 开工前两项收口：A7 豁免三条件 + 造数据验收预期（2026-10-25 13:09–13:25）
+
+### 46.1 A7 补账豁免加约束（`consistency_check.sql` A7 CTE，449–472 行）
+豁免从「`FFH%` **或** `system/backfill-%`」改为**必须同时满足**：
+```sql
+NOT (COALESCE(created_by,'') LIKE 'system/backfill-%'
+     AND (COALESCE(remark,'') LIKE '%[cashBackfill]%'
+          OR COALESCE(remark,'') LIKE '%[posShift=%'))
+```
+- **`flow_no LIKE 'FFH%'` 单独不再构成豁免依据**（防用前缀绕过 A7）；
+- 注释写明三条约束与原因：补账行不维护 `balance_after` → 若当作账户最新流水会误报，但豁免不能只看前缀，必须「backfill 审计名 + 补记账备注 token」同时具备。
+- **语义反证（只读合成 5 行，未落库）**：
+| 场景 | created_by | remark | 判定 |
+|---|---|---|---|
+| A 三条齐全 | system/backfill-2026 | [posShift=9][cashBackfill] | **EXEMPT** |
+| B 仅前缀+token（无审计名） | clerk01 | [posShift=9][cashBackfill] | **NOT EXEMPT** ← 前缀绕过已堵死 |
+| C 前缀+审计名（无 token） | system/backfill-2026 | POS sale W1 | **NOT EXEMPT** ← 缺一不免 |
+| D 无前缀+审计名+token | system/backfill-2026 | [posShift=9][cashBackfill] | **EXEMPT** |
+| E 普通流水 | clerk01 | POS sale W2 | **NOT EXEMPT** |
+- 回归：`consistency_check.py` **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A7 accounts=0）。
+
+### 46.2 造数据脚本验收预期写清（`scripts/qa/seed_p3_fixture.py` 仅注释 + 一行打印）
+- 头部新增「验收预期」块：支付宝批次**预期 `ok_rows=9 / error_rows=2`**，两条为**故意负例**（第 10 行 `TXN_TIME_INVALID` 带 `+08:00` 偏移、第 11 行 `AMOUNT_DECIMAL_INVALID` 3 位小数）；该批 `status=PARTIAL` 是**预期状态**；微信/银行预期 `COMMITTED`。
+- 明确写「若因这 2 条 ERROR 变红，先查验收预期是否写对，**不得改断言或脚本逻辑迁就**；需要全绿样本应另造零负例 CSV」。
+- 自检段新增一行打印：`[EXPECT] batch102 expected ok=9 error=2 (negative fixtures), status=PARTIAL ｜ 实测: …`。
+- 实跑验证：默认模式（库非空）**按设计拒绝**（`[FAIL] 拒绝非空库`，exit 1）；`--reset` 模式 **PASS=14 / FAIL=0，exit 0**（batch 107 实测 `ok=9 error=2`，与预期一致；缴款单 `DS202610250065` 平账 diff=0、`DS202610250066` 短款 diff=−500、`business_date` 均 2026-10-25；调节表 statementId=22，A(8/41,300) B(2/66,800) C(11/174,539) D(0/0)、`is_balanced=true`、AMBIGUOUS=0）。
+
+### 46.3 两处待 Owner 裁决（收口过程中发现，未擅自改）
+1. **A7 的 `FFH%` 前缀现在是「不必要条件」**：按 Owner 给的公式，场景 D（无 FFH 前缀、但有 backfill 审计名 + 补记 token）会被豁免。若本意是「三条必须同时满足」，需改为 `... AND (backfill 名 AND token) AND flow_no LIKE 'FFH%'`。当前严格按 Owner 原文实现。
+2. **A8/A9 仍用旧豁免式**（`NOT (flow_no LIKE 'FFH%' OR created_by LIKE 'system/backfill-%')`）：一条只有 `FFH` 前缀、无审计名/备注的行，A7 会纳入比对（正确），但 A8/A9 会把它排除在计数外（仍有「靠前缀绕过零容忍」的缝隙）。本轮按指令「不要动 A8–A20」未改，**建议下一轮统一为同一三条件表达式**。
