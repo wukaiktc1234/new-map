@@ -8,6 +8,17 @@
 --   bank_accounts 32（**只重置 balance，不删行**）
 -- ===== 保留（主数据）===== bank_accounts / roles / permissions / users / orders / pos_shifts
 -- ===== 依据 ===== Owner 拍板：2026-09 是 P4-4 验收造的测试期间；测试数据不干净导致期初口径问题，一律清空后由 seed 重新生成
+--
+-- ===== 执行顺序（**必须按此顺序，否则 A1 会恒红**）=====
+--   ① 财务派生表（子→父）：finance_period_account_balance → accounting_periods →
+--      reconciliation_items → reconciliation_statements → recon_items → recon_differences → recon_runs →
+--      finance_audit_logs → fund_flows → deposit_slips → import_rows → import_batches → bank_transactions；
+--   ② **然后**软删「已支付但已无 SALE 流水」的历史测试订单（deleted=1，不物理删，备份 orders 见 backup/README.md）；
+--   ③ **最后**重置 bank_accounts.balance=0 与 FLOW/SLIP 号段（必须在流水清空之后重置，否则 A24 留残差）。
+--   为什么 ② 必须在 ① 之后：② 的判定条件是「该订单没有任何 SALE 流水」——只有在 fund_flows 清空后，
+--     所有历史已支付订单才会同时满足该条件并被一次性识别；若在 ① 之前跑，新近订单仍有流水而漏网，
+--     清库后它们立刻变成「已支付无流水」→ A1（零容忍）恒红。
+--   为什么 ② 必须在 ③ 之前：③ 只影响余额与号段，与 ② 的判定无关，但放最后可保证「余额归零」是终态。
 \set ON_ERROR_STOP on
 SET client_encoding = 'UTF8';
 BEGIN;
