@@ -46,6 +46,18 @@ export interface ChannelFeeSummaryVO {
 }
 
 /**
+ * 后端原始响应（`ChannelFeeSummaryVO` 是 public field：`rows` / `total`）。
+ *
+ * 【契约实测校正 2026-10-25】文档里写的 `groups` 与实际字段名不符，
+ * 后端真实字段是 **`rows`**；这里两种都接，避免再次因字段名错位导致整卡为 0。
+ */
+interface ChannelFeeSummaryRaw {
+  rows?: ChannelFeeGroupVO[] | null
+  groups?: ChannelFeeGroupVO[] | null
+  total?: ChannelFeeGroupVO | null
+}
+
+/**
  * 接口错误（带 HTTP 语义分类）。
  *
  * 403 需要与普通错误区分：店长访问其他门店时后端返回 403，
@@ -123,12 +135,13 @@ export async function getChannelFeeSummary(params: {
   to?: string | null
 } = {}): Promise<ChannelFeeSummaryVO> {
   try {
-    const data = await get<ChannelFeeSummaryVO | null>('/v1/finance/recon/channel-fee-summary', compactParams({
+    const data = await get<ChannelFeeSummaryRaw | null>('/v1/finance/recon/channel-fee-summary', compactParams({
       runId: params.runId,
       from: params.from,
       to: params.to,
     }))
-    const groups = Array.isArray(data?.groups) ? data!.groups : []
+    const rawGroups = Array.isArray(data?.rows) ? data!.rows : (Array.isArray(data?.groups) ? data!.groups : [])
+    const groups = rawGroups
     return {
       groups: groups.map((group) => ({
         sourceType: group.sourceType ?? null,

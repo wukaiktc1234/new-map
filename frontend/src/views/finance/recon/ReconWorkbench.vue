@@ -12,6 +12,7 @@
  * - 所有金额断言/比较使用分（fen），展示才 /100 toFixed(2)。
  */
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/core/PageHeader.vue'
 import ReconSummaryCard from './components/ReconSummaryCard.vue'
@@ -365,11 +366,18 @@ const summaryRun = computed<ReconRunVO | null>(() => currentRun.value)
  * 仅在 setup 时计算一次，避免每次渲染重算。
  */
 const feeWindow = defaultWindow()
+
+/** 调节表入口（P3-3）：跳转 /finance/recon/statements */
+const router = useRouter()
+function goStatements(): void {
+  void router.push({ name: 'FinanceStatementList' })
+}
 </script>
 
 <template>
   <div class="modern-page recon-workbench">
     <PageHeader title="对账工作台" description="银行流水与业务单据勾稽 · 差异池认领与核销">
+      <el-button data-test="link-statements" @click="goStatements">调节表</el-button>
       <el-button :loading="rerunning" @click="handleRerun">重跑当前批次</el-button>
       <el-button type="primary" @click="handleRefresh">刷新</el-button>
     </PageHeader>
