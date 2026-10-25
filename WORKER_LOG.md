@@ -2441,3 +2441,56 @@ SELECT count(*) FROM recon_differences
 1. **seed 增加自检**（不是补造流水，因为链路本来就对）：`verify_no_orphan_paid_orders()` 在 POS 造单后立刻校验「已支付但无 SALE 流水 = 0」，seed 输出 `[PASS] 已支付订单的 SALE 流水完整（A1 口径） -> 0`；`seed --reset` 现 **21/21 全绿**（不再靠软删补救）。
 2. **追根结论写入 WORKER_LOG**（本节）；catch 吞异常的删除作为 P4-5 实现内容（fund-500 落盘）。
 3. **NEW-14 处置**：purge 脚本增加孤儿退款记录清理（守卫为「订单不存在」），本次 `--reset` 已执行。
+
+### 63.11 REFUND 归类定性（Owner 追问后修正）：固定 B 类是权宜之计，且是错的
+
+**结论先说：REFUND 固定归 B 类 = 权宜之计，不是设计决策。Owner 的判断成立。**
+
+为什么错（四类语义）：
+- 退款是**企业内部侧出账**（`flow_direction=2`），在银行侧退款到账前它确实是 B（企业已付、银行未付）；
+- 但银行次日退款 CSV 到账后，该笔应变成 **D（银行已付、企业未付）**——若退款流水又被固定成 B，B 与 D 会**对称抵消**，调节表里「未达账项」被两边同一事件占满，等于「放弃匹配」，退款会**永久挂账**；
+- 正确模型：退款流水与银行退款记录是**同一事件的两侧**，应 **1:1 配对**（`order_id`/退款单号 + 金额），配对成功后**双方都退出未达账项集合**；未配对时才临时落 B（企业已退未到账）或 D（银行已退企业未记）。
+
+**本轮实现（`autoDetectItems: switch(flowCategory)` 把 `case 2 -> 固定 B`）的定性**：权宜之计，用于让 P4-5 的写入链路先落地；**必须在 P5 前改为参与勾稽**（见下方实现清单）。
+
+**实现清单（待落，不属本轮）**
+| # | 项 | 验收标准 |
+|---|---|---|
+| R1 | `autoDetectItems` 去掉 `case 2 -> 固定 B`：退款流水与 SALE 一样进入勾稽池，按 `(order_id, amount)` 与银行侧退款记录（`bank_transactions.direction=2 AND is_refund=true`）1:1 配对 | 构造「退款流水 + 等额银行退款」→ 两者都**不出现**在 A/B/C/D 明细；未配对时才落 B/D |
+| R2 | 配对失败/悬空：退款流水落 B、银行退款落 D，且**不得被 A19「同额两侧并存」误判为假平衡**（需与 A19 口径对齐，同 `cleared_flag` 那套） | A19 在有配对/未配对两种形态下都 = 0 |
+| R3 | 新增 **A32（判定）**：`fund_flows(flow_category=2)` 中「既未配对、也不在未达账项」的孤儿数 = 0；并输出匹配状态分布（matched / pending-B / pending-D）作 INFO | 现有 1 笔退款流水：`matched=1` 或 `pending-B=1`，孤儿=0 |
+| R4 | 逐单断言（补 A31 的盲区）：按单聚合退款流水合计 ≠ `orders.refund_amount::bigint` → 行数 = 0 | 造 2 单部分退款（金额不同）→ 0 行 |
+| R5 | 退款入口收敛：`POST /v1/pos/orders/{id}/refund`（POS）、`POST /v1/order-new/{orderId}/refund`、`/v1/refunds/{id}/approve` 三个入口**都必须**走同一个写流水方法 | grep 证明只有一处写 `flow_category=2` |
+
+**必须确认的 2 点**
+
+**① `orders.refund_amount` 的「×100」排查**
+- 后端读取点（34 个文件命中，重点 6 处）：`PosOrderPaymentServiceImpl`（11 处，本次已按分处理）、`OrderNewServiceImpl`（4）、`RefundServiceImpl`（3）、`DailySettlementServiceImpl`（3）、`SalesAnalysisServiceImpl`（2）、`OrderResponse/OrderVO/OrderDetailDTO`（各 10/6/10，多为 DTO 透出）。
+- 前端：`api/refund.ts:71` 明确注释「refundAmount 单位为**分**（整数），由调用方 `yuanToFen` 转换」→ 退款域**统一用分**，显示层 `formatFen`。
+- **唯一疑似「当元处理」的地方**：`RechargeManage.vue`（充值退款域）用 `parseFloat(principalAmount)` + `toFixed(2)` 传 `requestedAmount`（元）—— 与订单退款域**不是同一字段**（`recharge_records` 的 `principal_amount`），**需单独确认是否一致**；本轮记为待确认项 T1（不属 P4-5）。
+- 结论：A30/A31 的 ×100 是**唯一**已知的尺度错误，已修（`f.amount = o.refund_amount::bigint`）；其余读取点未见 ×100。
+
+**② A31 是日汇总，缺逐单对拍 —— 确认需要补**
+A31 现为「按日全库合计」FULL OUTER JOIN（因为 `orders` 没有 `account_id`，无法按账户对齐）。**盲区**：两笔退款同日、一多一少可以对冲成 0，掩盖单笔错账。
+→ 采纳 Owner 的建议，新增 **A33（判定）逐单对拍**：
+```sql
+-- 逐单：退款流水合计 vs 订单 refund_amount（均按分）
+SELECT count(*) FROM (
+  SELECT o.order_id, o.refund_amount::bigint AS order_fen,
+         COALESCE(SUM(f.amount),0) AS flow_fen
+    FROM orders o
+    LEFT JOIN fund_flows f ON f.order_id = o.order_id AND f.flow_category = 2
+                          AND f.status = 2 AND f.deleted = 0
+   WHERE o.deleted = 0 AND o.refund_amount > 0
+   GROUP BY o.order_id, o.refund_amount
+) t WHERE t.order_fen <> t.flow_fen;
+```
+期望 0；A31 保留（日汇总仍能抓「整日缺失」这类粗错）。
+
+**需要确认的 4 点（记录，不阻塞）**
+| # | 项 | 结论/处置 |
+|---|---|---|
+| C1 | 二次退款返回 500 还是 409 | **500 是 catch 兜底语义错位**：业务拒绝（已全额退款）应 `409 Conflict`；当前 `code=500` 来自「业务异常被包成 500」，**待改为 409**（随 R1 一并改） |
+| C2 | 期间门禁 E2E 持久化 | 现为一次性脚本手造 `P45T`；**应固化**到 `e2e_p35_bl9_bl5.py` 或新建 `e2e_period_guard.py`（结账 → 退款/存行/新增流水三入口 409 → 反结账恢复） |
+| C3 | `PosCashAccountResolver` 抽取前后对拍 | 需补「同一订单走 SALE 路径，抽取前/后的流水行、余额变动、日志」逐字段对比（fund-500 已声明行为不变，但**尚无对拍证据**） |
+| C4 | 退款入口覆盖 | **实测 3 个入口**（`PosOrderPaymentServiceImpl` / `OrderNewController:202` / `RefundController`），**当前只有 POS 路径写 `fund_flows`** → 另两个入口是缺口，纳入 R5 |
