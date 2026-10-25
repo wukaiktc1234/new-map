@@ -11,8 +11,9 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A5  0 元「订单收入」财务流水残留（DATA-006 清理后必须为 0）
   A6  （信息性）users.roles 与 user_roles 角色集合不一致（不参与判定）
   A7  （参与判定）bank_accounts.balance <> 最新非补账流水快照（V3）
-  A8  （信息性）普通流水 balance_after=0 纯统计条数（仅观测，不判定）
-  A9  （参与判定，零容忍）普通流水 balance_after=0 总数：>0 即 FAIL，**无白名单**
+  A8  （信息性）普通流水 balance_after 为空（NULL）的纯统计条数（仅观测，不判定）
+  A9  （参与判定，零容忍）普通流水 balance_after 为空（NULL）总数：>0 即 FAIL，**无白名单**；
+      【2026-10-25 Owner 拍板】判据由 = 0 改为 IS NULL：0 = 合法（账户可取空），NULL = 未维护（脏值）
       （原「已知历史 0 值项白名单」机制已删除；A8/A9 同值不同用途：观测 vs 门禁）
   A10 （参与判定，P1-D）status='FINALIZED' 的 recon_runs 却没有任何 recon_items
   A11 （参与判定，P1-D）status='APPROVED' 的 reconciliation_statements 中

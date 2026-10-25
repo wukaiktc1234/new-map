@@ -27,10 +27,12 @@
 --   A6  （信息性，不参与 TOTAL）users.roles 与 user_roles 的角色集合不一致的用户数
 --   A7  （参与判定，V3）bank_accounts.balance <> 最新一笔「非补账豁免」flow.balance_after 的账户数
 --       豁免白名单（唯一口径）：flow_no LIKE 'FFH%' 或 created_by LIKE 'system/backfill-%'
---       反例：普通流水 balance_after=0 **不豁免**；若它成为账户最新流水，A7 必须报红
---   A8  （信息性，不参与 TOTAL）普通流水（非补账豁免行）balance_after=0 的**纯统计条数**（仅观测，不判定）
---   A9  （**参与判定，进入 TOTAL FAIL**）普通流水 balance_after=0 总数（**零容忍**）
---       → [PASS] rows=0 / [FAIL] rows=<n> —— 存在 <n> 条普通流水 balance_after=0，禁止接受
+--       反例：合法 0 值流水（balance_after=0）**不豁免**；若它成为账户最新流水且与账户余额不等，A7 必须报红
+--   A8  （信息性，不参与 TOTAL）普通流水（非补账豁免行）balance_after **为空（NULL）** 的纯统计条数（仅观测，不判定）
+--   A9  （**参与判定，进入 TOTAL FAIL**）普通流水 balance_after **为空（NULL）** 总数（**零容忍**）
+--       → [PASS] rows=0 / [FAIL] rows=<n> —— 存在 <n> 条普通流水 balance_after 为空（快照未维护），禁止接受
+--       【判据 2026-10-25 Owner 拍板】`= 0` → `IS NULL`：**0 = 合法（账户可取空）**，**NULL = 未维护（脏值）**；
+--       对拍证据：以「前一条同账户快照 + 本条 delta」复算，所有 0 值行均成立，故 0 不再视为脏值。
 --       **A9 零容忍：>0 即红，无白名单**。原「已知历史 0 值项（精确 flow_no 白名单）」机制已整体删除
 --       （测试数据已物理清空，白名单不再有意义）；A8 与 A9 此时数值相同是**有意设计**：
 --       A8 = 观测口径（INFO，便于看趋势），A9 = 判定口径（FAIL，用于门禁），与 A19 从 INFO 升 FAIL 同风格。
@@ -655,7 +657,9 @@ WITH a1 AS (
        AND lf.balance_after IS NOT NULL
        AND lf.balance_after <> b.balance
 ), a8 AS (
-    -- A8（信息性，仅观测）：普通流水（非补账豁免行）balance_after = 0 的纯统计条数。
+    -- A8（信息性，仅观测）：普通流水（非补账豁免行）**balance_after IS NULL** 的纯统计条数。
+    -- 【2026-10-25 修正】原判据 `balance_after = 0` 无法区分「从未维护（脏值）」与「账户被取空（合法 0）」，
+    --   实测会误报（存行把余额恰好扣到 0 时产生合法 0 值行）；改为 `IS NULL` = 未维护，0 视为合法值。
     -- 2026-10-25 起**白名单机制已整体删除**；豁免口径与 A7 **完全统一**（三条件 AND）：
     --   created_by LIKE 'system/backfill-%' AND (remark 含 [cashBackfill] 或 [posShift=)
     --   —— flow_no LIKE 'FFH%' **不再单独构成豁免**（前缀可被伪造），防止靠前缀绕过零容忍。
@@ -663,19 +667,22 @@ WITH a1 AS (
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
-       AND balance_after = 0
+       AND balance_after IS NULL
        AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
                 AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
                      OR COALESCE(remark, '') LIKE '%[posShift=%'))
 ), a9 AS (
-    -- A9（**参与判定，零容忍**）：普通流水 balance_after = 0 总数。**无白名单、无已知历史例外**，
-    -- >0 即 FAIL（文案：存在 N 条普通流水 balance_after=0，禁止接受）。
+    -- A9（**参与判定，零容忍**）：普通流水 balance_after **为空（NULL）** 的总数。**无白名单、无已知历史例外**。
+    -- 【2026-10-25 Owner 拍板】判据由 `balance_after = 0` 改为 `IS NULL`：
+    --   0 = **合法值**（账户被取空，如存行把现金户恰好扣到 0；用「前一条同账户快照 + 本条 delta」复算成立）；
+    --   NULL = **未维护（脏值）**，这才是要拦的。原判据会把合法 0 误判为脏值（A9 曾因此直接打红）。
+    -- >0 即 FAIL（文案：存在 N 条普通流水 balance_after 为空（快照未维护），禁止接受）。
     -- 豁免口径与 A7/A8 统一（三条件 AND）：backfill 审计名 + 补记账备注 token；
     --   flow_no 前缀不作为豁免依据（前缀异常由 A21 单独监控）。
     SELECT count(*) AS n
       FROM fund_flows
      WHERE deleted = 0
-       AND balance_after = 0
+       AND balance_after IS NULL
        AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
                 AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
                      OR COALESCE(remark, '') LIKE '%[posShift=%'))
@@ -718,17 +725,17 @@ SELECT line
            || 'A7 V3 账户余额<>最新非补账流水快照 accounts=' || n
       FROM a7
     UNION ALL
-    -- A8 信息性：普通流水 balance_after=0 纯统计（不判定，便于看趋势）
+    -- A8 信息性：普通流水 balance_after 为空（NULL）纯统计（不判定，便于看趋势）
     SELECT 8,
-           '[INFO] A8 普通流水 balance_after=0 rows=' || n
+           '[INFO] A8 普通流水 balance_after 为空 rows=' || n
       FROM a8
     UNION ALL
-    -- A9 参与判定（零容忍）：普通流水 balance_after=0 → >0 即 FAIL，无白名单
+    -- A9 参与判定（零容忍）：balance_after IS NULL → >0 即 FAIL，无白名单（0 值属合法）
     SELECT 9,
            CASE WHEN n = 0
-                THEN '[PASS] A9 普通流水 balance_after=0(零容忍) rows=0'
-                ELSE '[FAIL] A9 普通流水 balance_after=0(零容忍) rows=' || n
-                     || ' —— 存在 ' || n || ' 条普通流水 balance_after=0，禁止接受'
+                THEN '[PASS] A9 普通流水 balance_after 为空(零容忍) rows=0'
+                ELSE '[FAIL] A9 普通流水 balance_after 为空(零容忍) rows=' || n
+                     || ' —— 存在 ' || n || ' 条普通流水 balance_after 为空（快照未维护），禁止接受'
            END
       FROM a9
     UNION ALL
@@ -1185,8 +1192,8 @@ SELECT f.account_id,
 
 
 -- ------------------------------------------------------------
--- A9 明细（前 20）：普通流水 balance_after = 0（零容忍判定项）
--- 期望为空；出现即为「流水链路未维护余额快照」，且无任何白名单豁免
+-- A9 明细（前 20）：普通流水 balance_after 为空（NULL，零容忍判定项）
+-- 期望为空；出现即为「流水链路未维护余额快照」（0 值属合法：账户可取空）
 -- ------------------------------------------------------------
 \echo ''
 \echo '-- A9 明细（前 20）--'
@@ -1195,8 +1202,10 @@ SELECT f.flow_id, f.flow_no, f.account_id, f.flow_direction, f.flow_category,
        left(COALESCE(f.remark, ''), 60) AS remark_snippet
   FROM fund_flows f
  WHERE f.deleted = 0
-   AND f.balance_after = 0
-   AND NOT (f.flow_no LIKE 'FFH%' OR COALESCE(f.created_by, '') LIKE 'system/backfill-%')
+   AND f.balance_after IS NULL
+   AND NOT (COALESCE(f.created_by, '') LIKE 'system/backfill-%'
+            AND (COALESCE(f.remark, '') LIKE '%[cashBackfill]%'
+                 OR COALESCE(f.remark, '') LIKE '%[posShift=%'))
  ORDER BY f.flow_id
  LIMIT 20;
 
