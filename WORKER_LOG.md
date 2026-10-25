@@ -1597,3 +1597,66 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 
 ### 53.7 回归（全绿）
 `consistency_check` **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**；`ui_e2e_payment` **7/7 exit 0**；`e2e_recon_workbench` **12/12 exit 0**；`e2e_store_recon` **9/9 exit 0**；`e2e_statement_flow` **13/13 exit 0**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
+---
+
+## 54. P3-4 资金总览看板 + data_scope 拍板落地 + P3-2 验收盲区（2026-10-25 17:11–17:35）
+
+### 54.1 data_scope 拍板结果（已落地）
+| 项 | 拍板 | 落地 |
+|---|---|---|
+| `company` 语义 | **全公司**（与 `all` 同为全局视角，`all`=超管口径、`company`=业务口径） | 新增 `security/support/GlobalDataScope.isGlobal(scope)` = `all|company` |
+| `auditor` 的 data_scope | `self` → **`company`** | 脚本 `scripts/db-fix/2026-10-25-auditor-data-scope-company.sql`，执行后回查 `auditor=company` |
+| `finance_manager` | **从白名单删除**（`department`，不再享受全局视角） | 白名单整段删除；其可见范围回到「本部门/本店」 |
+| 判定逻辑 | **只认 data_scope，删硬编码白名单** | `StoreReconServiceImpl` 改用 `GlobalDataScope.isGlobal`、`hasAllScopeRole` 整段删除；P3-4 的 `FinanceOverviewServiceImpl:64` 同样只用 `GlobalDataScope` |
+
+**5 个模块回归结论**：
+| 模块 | 影响 | 回归 |
+|---|---|---|
+| `PermissionVerifyServiceImpl` | **未改**（`getUserDataScope`/优先级表原样） | 无回归（所有 E2E 登录与权限判定正常） |
+| `PermissionAspect:419` | **未改**（`company(80)` 本就高于多数 required scope） | 无回归 |
+| `DataPermissionServiceImpl` | **未改**（只消费 `getUserDataScope` 返回值，值未变） | 无回归 |
+| `StoreReconServiceImpl` | **改**（白名单→GlobalDataScope） | `e2e_store_recon` **9/9 PASS** |
+| `DashboardStoreScopeResolver` | **未改**（仍受 `app.dashboard.store-scope.enabled` 开关控制） | 无回归 |
+→ 净效果：`finance_director`/`auditor`（company）与 `admin`（all）→ 全局；`store_manager`/`finance_manager`（department）→ 仅本店。**`finance_manager` 失去全局视角这一变化需 Owner 知悉**（若要其看全局，把 `finance_manager.data_scope` 改 `company` 即可，一行数据）。
+
+### 54.2 两个问题的回答
+**Q1 `auditor=self` 的矛盾**
+- **依据**：设计稿 §7.1 角色矩阵（`:960`）对审计明确标注 `finance:bank:view` = 「**✅（只读全量）**」，`finance:deposit-slip:view` 也是「✅」无本店限定；§5 权限矩阵同口径。
+- **何时/为何设成 self**：`git log -S"auditor"` 追溯 `db/migration` 只有 **1 个提交**（`dd33ee3 init: 全项目基线`），即 `auditor=self` 是**初始基线自带值**，无独立决策记录、无迁移脚本改过 → 属基线数据与设计矩阵不一致的**数据缺陷**，不是有意设计。
+- **改动影响面**：`roles` 是配置表，改一行 `data_scope` 只影响消费 `getUserDataScope` 的读路径（同上 5 个模块）。`self→company` 是**放宽**，不会让任何既有逻辑失败（只会让审计多看数据），且当前库里**没有任何账号持有 auditor 角色**（`user_roles` 查 auditor = 0 行），所以对现有 E2E 零影响；风险集中在「未来给审计开账号时能看全量」——这正是设计矩阵要的。
+**Q2 E2E 库存消耗应在 setup 里重置**
+- **原来没有**：`ui_e2e_payment.py` 的 setup 只探测端口与登录，**没有任何库存重置**；失败时我用 `scripts/db-fix/2026-10-25-replenish-e2e-stock.sql` 手工补 → **是流程缺陷**（用例依赖库存却不自备库存，且补数据靠人记得）。
+- **已修**：新增 `scripts/qa/e2e_setup.py`（`ensure_ready()`：① 三端口就绪探测，失败 exit 2；② `UPDATE food SET stock=500 WHERE stock<100 AND deleted=0` 幂等重置；③ 打印 `[READY]` 摘要与重置条数）。`ui_e2e_payment.py` 改为 `from e2e_setup import ensure_ready` **import 复用（不 subprocess）**，断言一行未动。
+- 实测：首次重置 6 条 → 本轮 **0 条**（幂等成立）；`ui_e2e_payment` **7/7 PASS**。
+
+### 54.3 P3-2 验收盲区（记录，供后续 E2E 设计参照）
+> **P3-2 的 E2E 只测了「单批次且该批次恰好有 CHANNEL_FEE」**，没有测「**默认视图（跨批次汇总）**」。因此 `ChannelFeePanel` 固定传 `runId=currentRun.runId` 导致默认视图恒为 0 的缺陷没被发现，直到 P3-3 收尾才抓出（且是**双因**：runId 过滤 + 后端字段名 `rows` 而前端读 `groups`）。
+> **规则（此后 E2E 设计强制）**：任何带「筛选/范围」控件的页面，E2E 必须覆盖**两种形态**——① **默认视图**（不带任何筛选）；② **显式筛选**（勾上/选中某项）。只测其一不算通过。
+
+### 54.4 P3-4 实现
+| 层 | 内容 |
+|---|---|
+| 后端新增 | `FinanceOverviewController` + `FinanceOverviewService(+Impl)` + `FinanceOverviewDailyVO`（`GET /v1/finance/overview/daily`，`@PreAuthorize('finance:bank:view')`，全类 `readOnly`） |
+| SQL 规模 | **共 4 条查询，无 N+1**：stores 1 条（门店×现金户×当日净变动×近7日日均）、channels 2 条（批聚合 + `run_id IN (…)` 未解释条数）、statements 2 条（状态分布 + 最老一条） |
+| 口径 | 现金户 `account_type=2`；净变动 `fund_flows(status=2, deleted=0, business_date=:date)` 方向1加/2减；`diffFen = Σ(internal − external)` **带符号**；`abnormal` = 当日 |净变动| > 近7日日均×3，无历史退化为 ≥10000 分（javadoc 写明） |
+| 前端新增 | `api/finance-overview.ts`、`views/finance/recon/FundOverview.vue`（三卡）、路由 `/finance/overview`、工作台入口 `link-overview` |
+| 反假 0 | 未就绪时所有 `data-*` 输出空串、文本「—」，根节点 `data-test="ov-state"` = loading/ready/idle |
+| 断言 | **A23（INFO）** 未关闭调节表最长挂账天数（阈值 7 天），首跑 `days=0` |
+
+### 54.5 AC-53 与 E2E（10/10 PASS，exit 0）
+| 断言 | 结果 | 对拍 |
+|---|---|---|
+| AC-53a 门店余额/净变动 | **PASS** | 3 店逐店相等（口径=现金户+`status=2`+当日） |
+| AC-53b 渠道聚合 | **PASS** | internal 26,000 / external 104,900 / **diffFen −78,900（带符号）**；`runs[].differenceCount` 5+3=8 == SQL 8 |
+| AC-53c 未解释笔数 | **PASS** | 7 == 7 |
+| AC-53d 未关闭表/最老挂账 | **PASS** | 1 / 0 == 1 / 0 |
+| AC-53e 数据范围 | **PASS** | `qa_store_b` → `stores=[2]`（1 行）；`qa_admin` → 3 行 |
+| AC-53f 页面（admin/store_b） | **PASS** | 页面 `data-*` 与**各自**接口 payload 逐项相等 |
+
+### 54.6 本轮抓出并修掉的问题
+1. **AC-46a 回归失败（页面 '0' vs 接口 3）**：定位为 **E2E 脚本取样竞态**（元素刚出现就读，R3 未返回先渲染占位 0），**不是页面 bug**。修法：`wait_summary_ready()` 同时等 `data-amount-state=ready` 与 `data-difference-count` 非空；AC-46a 改为「文本 + 属性双校验」。回归 14/14。
+2. **E2E 取样竞态类问题第 2 次出现**（P3-2 的 AC-50b、P3-3 的 AC-46a）→ 结论：**所有 `data-*` 断言必须先等就绪态标记**，禁止「元素出现即读值」。已写进 54.3 的规则。
+3. `recon_runs` 无 `deleted` 列、`runs[]` 字段名 `differenceCount`、`diffFen` 带符号 —— 三处**脚本侧口径错误**已按实现修正（未改断言强度）。
+
+### 54.7 回归（全绿）
+`consistency_check` **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A23；A23 days=0）；`ui_e2e_payment` **7/7**；`e2e_recon_workbench` **14/14**；`e2e_store_recon` **9/9**；`e2e_statement_flow` **13/13**；`e2e_fund_overview` **10/10**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
