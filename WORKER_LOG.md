@@ -1887,6 +1887,11 @@ SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='
 | `EmployeeDataScope*` / `PositionRoleMappingTableConfig` / `PermissionAssignmentLog` / `Role` / `SysRole` | **同名不同义**：员工数据范围（`employee_data_scope` 表）与登录分配日志，与 `roles.data_scope` 无关 | **不受影响** | 无 |
 **结论**：5 个模块之外**有 2 个真实消费方**（`DataPermissionServiceImpl` 的通用列表过滤、`PurchaseRequestServiceImpl`），二者都把 `company` 视为「不加过滤」→ 本次调整会让**审计、财务经理在两个域的可见范围扩大**。这与 Owner 拍板（审计只读全量、财务经理统筹全店）**方向一致**，属预期行为；采购域当前账号无权限码，实测不可达，**无需额外回归**。
 
+
+**data_scope 行为变更记录（Owner 要求单独记一笔，2026-10-25）**：
+> `data_scope` 从 `department` 改为 `company` 后，`DataPermissionServiceImpl:259` 与 `PurchaseRequestServiceImpl:550` 的过滤行为由「加 store/department 过滤」变为「**不加过滤**（`return null` / `break`）」。
+> **当前**因财务/审计**没有采购查看权限码**，该路径不可达（实测 `/v1/purchase/requests/page`：qa_admin/qa_approver/qa_auditor 均 403），**无实际回归风险**；
+> **但当财务/审计获得采购查看权限时，必须复测其可见范围是否符合 company 语义（全公司）** —— 「当前不可达」不等于「已验证」，此处只做记录、不补回归、不改代码。
 ### 57.3 P3 归档（本节即归档节，回指各阶段）
 **五项功能**：P3-1 对账工作台（§50）→ P3-2 门店视图 + 渠道手续费（§51）→ P3-3 调节表闭环（§53）→ P3-4 资金总览 + data_scope 统一（§54）→ P3-5 BL-9 时区 + BL-5 烧号账（§55）。
 **三条方法学（P3 组织结论，后续阶段沿用）**：
@@ -1904,7 +1909,7 @@ SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='
 | 5 | **BL-10** `detail()` 自调用 7 处（readOnly 不生效） | **P4-低** | ✅ | 代码卫生 |
 | 6 | **NEW-2** `recon_runs.auto_matched_amount` 持久化 | **P4-低** | ✅ | 需加列（结构变更） |
 | 7 | **NEW-4** P3 前端权限码细化 | **P4-低** | ✅ | 当前统一复用 `finance:bank:view` |
-| 8 | **NEW-5**（新增）`GlobalExceptionHandler:140` 注释改为「四眼/状态冲突 = 409」 | **P4-极低** | ✅ | 纯注释，1 行 |
+| 8 | ~~**NEW-5** `GlobalExceptionHandler:140` 注释同步~~ | **已完成（2026-10-25 P3 收尾）** | — | 已改为「四眼/权限类按 httpStatus 字段映射：业务校验=400、状态冲突=409、权限不足=403」，不留 backlog（Owner 要求） |
 > NEW-3（E2E 迁 `wait_for_data_attr`）**已在 P3 收口完成，不再列入 backlog**。
 
 ### 57.5 编号连续性核查
