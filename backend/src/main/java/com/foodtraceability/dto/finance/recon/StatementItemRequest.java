@@ -18,6 +18,13 @@ public class StatementItemRequest {
     private Long ownerUserId;
     /** **原因**（V6 必填） */
     private String reason;
+    /**
+     * P4-3：该条是否已被人工消除（RESOLVE/EXEMPT 后 cleared_flag=true）。
+     *
+     * <p>生成期新条目恒为 false；本字段存在的意义是让 markAmbiguities / hasSameAmountOnBothSides
+     * 在**同一口径**下跳过已清理条目（否则人工处置完成后歧义计数仍不减）。</p>
+     */
+    private Boolean clearedFlag;
 
     public String getCategory() { return category; }
     public void setCategory(String v) { this.category = v; }
@@ -33,4 +40,6 @@ public class StatementItemRequest {
     public void setOwnerUserId(Long v) { this.ownerUserId = v; }
     public String getReason() { return reason; }
     public void setReason(String v) { this.reason = v; }
+    public Boolean getClearedFlag() { return clearedFlag; }
+    public void setClearedFlag(Boolean v) { this.clearedFlag = v; }
 }
