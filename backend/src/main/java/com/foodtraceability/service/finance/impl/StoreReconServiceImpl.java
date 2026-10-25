@@ -3,6 +3,7 @@ package com.foodtraceability.service.finance.impl;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.util.LocationIdBridge;
+import com.foodtraceability.security.support.GlobalDataScope;
 import com.foodtraceability.dto.finance.recon.StoreReconDailyVO;
 import com.foodtraceability.service.PermissionVerifyService;
 import com.foodtraceability.service.finance.StoreReconService;
@@ -33,19 +34,13 @@ public class StoreReconServiceImpl implements StoreReconService {
 
     private static final Logger log = LoggerFactory.getLogger(StoreReconServiceImpl.class);
 
-    /** 全局数据范围（可查任意店）——与 permissionVerifyService.getUserDataScope 的返回值口径一致 */
-    private static final String SCOPE_ALL = "all";
-
     /**
-     * 全局视角角色（AC-49 指定）：财务总监 / 财务经理 / 审计。
-     *
-     * <p>为什么不能只看 {@code roles.data_scope}：种子数据里这些角色行的 data_scope 未必是 'all'
-     * （实测 qa_admin 的 data_scope 不是 all，会把自己锁在 403 里）。按**角色白名单**兜底判定，
-     * 与 lead 的 AC-49 口径「FINANCE_DIRECTOR/FINANCE_MANAGER/AUDITOR → 任意店」一致；
-     * 角色码统一走 RoleCodeNormalizer 归一，避免 ROLE_ 前缀/大小写差异。</p>
+     * 全局判定已统一到 {@link GlobalDataScope#isGlobal(String)}（all 或 company）。
+     * **不再有硬编码角色白名单**（P3-4 拍板，2026-10-25）：白名单是反模式的——
+     * 每新增一个「全公司」角色都要回来改代码，且曾让 finance_director（company）被误判。
      */
-    private static final java.util.Set<String> ALL_SCOPE_ROLES =
-            java.util.Set.of("finance_director", "finance_manager", "auditor", "admin");
+
+
 
     private final JdbcTemplate jdbc;
     private final PermissionVerifyService permissionVerifyService;
@@ -111,9 +106,8 @@ public class StoreReconServiceImpl implements StoreReconService {
         }
         String userIdStr = String.valueOf(userId);
         String dataScope = permissionVerifyService.getUserDataScope(userIdStr);
-        boolean allScope = SCOPE_ALL.equalsIgnoreCase(dataScope)
-                || permissionVerifyService.isAdmin(userIdStr)
-                || hasAllScopeRole(userIdStr);
+        boolean allScope = GlobalDataScope.isGlobal(dataScope)
+                || permissionVerifyService.isAdmin(userIdStr);
 
         if (allScope) {
             if (requestedStoreId == null) {
@@ -136,23 +130,6 @@ public class StoreReconServiceImpl implements StoreReconService {
         return ownStoreId;
     }
 
-    /** 是否持有全局视角角色（FINANCE_DIRECTOR / FINANCE_MANAGER / AUDITOR / ADMIN） */
-    private boolean hasAllScopeRole(String userIdStr) {
-        java.util.Set<String> roles = permissionVerifyService.getUserRoles(userIdStr);
-        if (roles == null || roles.isEmpty()) {
-            return false;
-        }
-        for (String role : roles) {
-            if (role == null) {
-                continue;
-            }
-            String normalized = com.foodtraceability.security.utils.RoleCodeNormalizer.normalize(role);
-            if (normalized != null && ALL_SCOPE_ROLES.contains(normalized)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private static long num(Object v) {
         return v == null ? 0L : ((Number) v).longValue();
