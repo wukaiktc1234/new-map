@@ -46,10 +46,13 @@ public class PosCashAccountResolver {
     public Resolved resolve(Long storeId, Integer paymentMethod, String sceneRef, String scene) {
         int method = paymentMethod != null ? paymentMethod : 1;
 
+        // C3 对拍要求：SALE 场景的日志必须与抽取前**逐字节一致**（级别 ERROR、字段与顺序不变），
+        // 因此 scene=SALE 时**不**追加 scene= 前缀；只有 REFUND 等新场景才额外标注。
+        String sceneTag = "SALE".equals(scene) ? "" : "scene=" + scene + " ";
         if (storeId == null) {
             log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=order_store_missing "
-                            + "scene={} ref={} paymentMethod={} storeId=null candidates=[]",
-                    scene, sceneRef, method);
+                            + sceneTag + "orderId={} paymentMethod={} storeId=null candidates=[]",
+                    sceneRef, method);
             return null;
         }
 
@@ -60,9 +63,9 @@ public class PosCashAccountResolver {
                         .orderByAsc(BankAccount::getAccountId));
         if (candidates == null || candidates.isEmpty()) {
             log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_store_account "
-                            + "scene={} ref={} storeId={} paymentMethod={} candidates=[] "
+                            + sceneTag + "orderId={} storeId={} paymentMethod={} candidates=[] "
                             + "hint=执行 scripts/db-fix/2026-10-23-seed-store-cash-accounts.sql 补建门店现金账户",
-                    scene, sceneRef, storeId, method);
+                    sceneRef, storeId, method);
             return null;
         }
 
@@ -89,8 +92,8 @@ public class PosCashAccountResolver {
         }
 
         log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_matching_account_in_store "
-                        + "scene={} ref={} storeId={} paymentMethod={} candidates={}",
-                scene, sceneRef, storeId, method, describeCandidates(candidates));
+                        + sceneTag + "orderId={} storeId={} paymentMethod={} candidates={}",
+                sceneRef, storeId, method, describeCandidates(candidates));
         return null;
     }
 

@@ -483,16 +483,71 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
     // ==================================================================
 
     /** 自动识别四类未达账项（A/B 来自 fund_flows 未匹配，C/D 来自 bank_transactions 未匹配） */
+    /** Long 集合 → SQL IN 列表（值来自 DB 主键，无注入风险） */
+    private static String joinedIds(java.util.Collection<Long> ids) {
+        StringBuilder sb = new StringBuilder();
+        for (Long id : ids) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(id);
+        }
+        return sb.toString();
+    }
+
     private List<StatementItemRequest> autoDetectItems(Long accountId, LocalDate ps, LocalDate pe, Long excludeStatementId) {
         Long userId = currentUserId();
         String userName = currentUserName();
         List<StatementItemRequest> out = new ArrayList<>();
 
+        // ------------------------------------------------------------------
+        // P4-5 R1：退款**配对**（1:1）—— 退款流水(category=2, direction=2)
+        //                     ↔ 银行侧退款(bank_transactions.direction=2 AND is_refund=true)
+        //   配对成功：双方都**不进** A/B/C/D（钱已经在银行侧落地，不构成未达账项）
+        //   未配对：退款流水落 **B**（企业已退、银行未到账）；银行退款落 **D**（银行已退、企业未记）
+        //   配对键：退款单号退款流水侧天然唯一（uk_fund_flows_refund_record）；银行侧无退款单号列，
+        //          故按「同账户 + 同期间 + 同金额 + 方向=2 + is_refund」做 1:1 贪心配对。
+        // ------------------------------------------------------------------
+        java.util.Set<Long> pairedFlowIds = new java.util.LinkedHashSet<>();
+        java.util.Set<Long> pairedTxnIds = new java.util.LinkedHashSet<>();
+        List<Map<String, Object>> refundFlowRows = jdbc.queryForList(
+                "SELECT flow_id, amount FROM fund_flows "
+                        + " WHERE account_id = ? AND deleted = 0 AND status = 2 AND flow_category = 2"
+                        + "   AND business_date BETWEEN ? AND ? ORDER BY flow_id", accountId, ps, pe);
+        List<Map<String, Object>> bankRefundRows = jdbc.queryForList(
+                "SELECT transaction_id, amount FROM bank_transactions "
+                        + " WHERE account_id = ? AND deleted = 0 AND business_date BETWEEN ? AND ?"
+                        + "   AND direction = 2 AND is_refund = true AND matched_flow_id IS NULL"
+                        + " ORDER BY transaction_id", accountId, ps, pe);
+        for (Map<String, Object> rf : refundFlowRows) {
+            long flowId = ((Number) rf.get("flow_id")).longValue();
+            long flowAmount = ((Number) rf.get("amount")).longValue();
+            for (Map<String, Object> bt : bankRefundRows) {
+                long txnId = ((Number) bt.get("transaction_id")).longValue();
+                long txnAmount = ((Number) bt.get("amount")).longValue();
+                if (!pairedTxnIds.contains(txnId) && txnAmount == flowAmount) {
+                    pairedFlowIds.add(flowId);
+                    pairedTxnIds.add(txnId);
+                    break;
+                }
+            }
+        }
+        if (!refundFlowRows.isEmpty() || !bankRefundRows.isEmpty()) {
+            log.info("[RECON_REFUND_PAIRING] account={} period={}~{} refundFlows={} bankRefunds={} paired={} unpairedFlows(B)={} unpairedBankRefunds(D)={}",
+                    accountId, ps, pe, refundFlowRows.size(), bankRefundRows.size(), pairedFlowIds.size(),
+                    refundFlowRows.size() - pairedFlowIds.size(), bankRefundRows.size() - pairedTxnIds.size());
+        }
+        String flowExclusion = pairedFlowIds.isEmpty() ? ""
+                : "   AND ff.flow_id NOT IN (" + joinedIds(pairedFlowIds) + ") ";
+        String txnExclusion = pairedTxnIds.isEmpty() ? ""
+                : "   AND bt.transaction_id NOT IN (" + joinedIds(pairedTxnIds) + ") ";
+
         // A / B：企业侧已记账、银行侧无对应（bank_transactions.matched_flow_id 为空）
         out.addAll(jdbc.query(
-                "SELECT ff.flow_id, ff.amount, ff.business_date, ff.flow_direction, ff.flow_category FROM fund_flows ff "
+                "SELECT ff.flow_id, ff.amount, ff.business_date, ff.flow_direction, ff.flow_category, ff.refund_record_id FROM fund_flows ff "
                         + " WHERE ff.account_id = ? AND ff.deleted = 0 AND ff.status = 2 "
                         + "   AND ff.flow_category IN (1, 2) "   // P4-5：SALE=1、REFUND=2 参与勾稽；5（存款内部转账）不参与
+                        + flowExclusion                       // R1：已与银行退款配对的退款流水不进 B
                         + "   AND ff.business_date BETWEEN ? AND ? "
                         + "   AND NOT EXISTS (SELECT 1 FROM bank_transactions bt "
                         + "                    WHERE bt.matched_flow_id = ff.flow_id AND bt.deleted = 0) "
@@ -507,7 +562,9 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     // 将来新增类别若忘了改这里，会落到 default 并被日志点出来（而不是静默进 A/B）。
                     switch (flowCategory) {
                         case 1 -> it.setCategory(rs.getInt("flow_direction") == 1 ? "A" : "B");   // SALE
-                        case 2 -> it.setCategory("B");                                            // REFUND：方向恒为出账
+                        // REFUND：配对成功的行已被 flowExclusion 排除；走到这里的都是**未配对**退款，
+                        // 方向恒为出账 → 落 B（企业已退、银行未到账）。
+                        case 2 -> it.setCategory("B");
                         default -> {
                             log.warn("[RECON] 非预期流水类别进入企业侧候选：flowId={} category={}", rs.getLong("flow_id"), flowCategory);
                             it.setCategory(rs.getInt("flow_direction") == 1 ? "A" : "B");
@@ -517,8 +574,15 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                     it.setAmount(rs.getLong("amount"));
                     it.setBusinessDate(rs.getDate("business_date").toLocalDate());
                     it.setOwnerUserId(userId);
-                    it.setReason("自动识别：企业侧已" + (rs.getInt("flow_direction") == 1 ? "收款" : "付款")
-                            + "，银行侧期间内无对应到账（系统挂账，待下期核销）");
+                    String baseReason = "自动识别：企业侧已" + (rs.getInt("flow_direction") == 1 ? "收款" : "付款")
+                            + "，银行侧期间内无对应到账（系统挂账，待下期核销）";
+                    if (flowCategory == 2) {
+                        // R1：未配对的退款流水落 B，并在 reason 里带配对键 token（巡检 A19 例外判定依据）
+                        long refundRecordId = rs.getLong("refund_record_id");
+                        baseReason = baseReason + " [refundPair="
+                                + (rs.wasNull() || refundRecordId <= 0 ? "UNLINKED" : refundRecordId) + "]";
+                    }
+                    it.setReason(baseReason);
                     return it;
                 }, accountId, ps, pe));
 
@@ -528,6 +592,7 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
                         + " WHERE bt.account_id = ? AND bt.deleted = 0 "
                         + "   AND bt.business_date BETWEEN ? AND ? "
                         + "   AND bt.matched_flow_id IS NULL "
+                        + txnExclusion                        // R1：已与退款流水配对的银行退款不进 D
                         + " ORDER BY bt.business_date, bt.transaction_id",
                 (rs, i) -> {
                     StatementItemRequest it = new StatementItemRequest();

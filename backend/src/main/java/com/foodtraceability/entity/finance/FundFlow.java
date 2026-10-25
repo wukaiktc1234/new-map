@@ -71,6 +71,10 @@ public class FundFlow extends BaseEntity implements Serializable {
     @TableField("order_id")
     private String orderId;
 
+    /** P4-5 R1：退款单号（order_refund_records.refund_id），退款类别专用配对键；非退款流水为 null */
+    @TableField("refund_record_id")
+    private Long refundRecordId;
+
     /** 创建人ID */
     private Long createUserId;
 
@@ -177,6 +181,9 @@ public class FundFlow extends BaseEntity implements Serializable {
     public String getOrderId() {
         return orderId;
     }
+
+    public Long getRefundRecordId() { return refundRecordId; }
+    public void setRefundRecordId(Long refundRecordId) { this.refundRecordId = refundRecordId; }
 
     public void setOrderId(String orderId) {
         this.orderId = orderId;

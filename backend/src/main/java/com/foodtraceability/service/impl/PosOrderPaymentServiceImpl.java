@@ -611,13 +611,19 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
      * 退款按剩余可退金额（paid - refunded）一次性退完，写 order_refund_records，
      * 并把 orders.refund_amount / order_status(5=全额退款) 回写。</p>
      */
-    /** 退款流水幂等查重：同一 order_id + 退款类别 + 出账 + status=2 只允许一笔 */
-    private FundFlow findExistingRefundFlow(String orderId) {
-        if (orderId == null || orderId.isEmpty()) {
+    /**
+     * 退款流水幂等查重（P4-5 R1：**按退款单**，不按订单）。
+     *
+     * <p>同一订单可以有多笔「部分退款」，按 order_id 去重会把第二笔挡死；
+     * 退款单号 {@code order_refund_records.refund_id} 才是退款动作的天然主键。
+     * 数据库侧由 {@code uk_fund_flows_refund_record}（唯一索引，仅 category=2）兜底。</p>
+     */
+    private FundFlow findExistingRefundFlow(Long refundRecordId) {
+        if (refundRecordId == null) {
             return null;
         }
         return fundFlowMapper.selectOne(new LambdaQueryWrapper<FundFlow>()
-                .eq(FundFlow::getOrderId, orderId)
+                .eq(FundFlow::getRefundRecordId, refundRecordId)
                 .eq(FundFlow::getFlowCategory, PosSaleFinanceRecorder.FLOW_CATEGORY_REFUND)
                 .eq(FundFlow::getFlowDirection, 2)
                 .eq(FundFlow::getStatus, 2)
@@ -636,7 +642,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             return Result.error("订单退款金额异常，请联系管理员核查");
         }
         if (remaining <= 0) {
-            return Result.error("订单已全额退款");
+            // P4-5 C1：二次退款属于**业务拒绝**（409 Conflict），不是 500
+            throw new com.foodtraceability.common.exception.ConflictException("订单已全额退款");
         }
 
         String operatorName = SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "unknown";
@@ -674,7 +681,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         LocalDate refundDate = LocalDate.now();
         financePeriodGuard.assertOpen(refundDate);
 
-        FundFlow existingRefund = findExistingRefundFlow(order.getOrderId());
+        FundFlow existingRefund = findExistingRefundFlow(record.getRefundId());
         if (existingRefund != null) {
             log.warn("[METRIC] pos_refund_flow result=duplicate orderId={} flowNo={} amountFen={}",
                     order.getOrderId(), existingRefund.getFlowNo(), existingRefund.getAmount());
@@ -704,6 +711,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             refundFlow.setBusinessDate(refundDate);
             refundFlow.setStatus(2);
             refundFlow.setOrderId(order.getOrderId());
+            refundFlow.setRefundRecordId(record.getRefundId());   // R1 配对键：退款单号
             refundFlow.setCounterpartyName(order.getCustomerName());
             refundFlow.setRemark("POS退款：" + order.getOrderNumber() + " 退款单#" + record.getRefundId()
                     + " 原因=" + reason + " [refundOf=SALE]");
