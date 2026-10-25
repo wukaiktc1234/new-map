@@ -401,6 +401,23 @@ class Seeder:
                 self.fail("POS 支付 %s#%d" % (tag, i + 1), dump(b2, 160))
         return made
 
+    def verify_no_orphan_paid_orders(self):
+        """【P4-5 追根修复】造完 POS 单后立即校验「已支付但无 SALE 流水」= 0。
+
+        背景（追问得出的真因）：`pos_orders` 走的是真实 POS 链路（`/order` + `/order/pay`），
+        SALE 流水由 pay 端 `PosSaleFinanceRecorder` 写入 —— **seed 本身不造流水，也不会漏造**。
+        历史上 93/109 条「已支付无流水」订单不是 seed 造成的，而是**旧的 purge 只物理删 fund_flows、
+        保留 orders** 造成的孤儿。有了这条自检，seed 一旦出现「下单成功但入账失败」会立刻红，
+        不再靠事后软删补救（软删只是清库的收尾手段，不是验收手段）。
+        """
+        n = int(self.scalar(
+            "SELECT count(*) FROM orders o WHERE o.deleted=0 AND o.payment_status=2"
+            " AND NOT EXISTS (SELECT 1 FROM fund_flows f WHERE f.deleted=0 AND f.flow_direction=1"
+            "   AND f.flow_category=1 AND f.order_id=o.order_id)", "0"))
+        return self.ok("已支付订单的 SALE 流水完整（A1 口径）",
+                       "已支付但无 SALE 流水的订单 = %d（期望 0）" % n,
+                       state="PASS" if n == 0 else "FAIL")
+
     def make_slip(self, shift_id, label, short_fen, store_id=None, bank_account=None):
         sid = int(store_id if store_id is not None else self.a.store_id)
         bacct = int(bank_account if bank_account is not None else self.a.bank_account)
@@ -603,6 +620,9 @@ class Seeder:
         self.pos_orders(3, "B", store_id=self.a.store_b)
         if sh2:
             self.make_slip(sh2, "B", 500, store_id=self.a.store_b, bank_account=bank_b)
+
+        print("\n--- 2.5) 已支付订单的 SALE 流水完整性 ---")
+        self.verify_no_orphan_paid_orders()
 
         print("\n--- 3) CHANNEL_FEE 差异样本 ---")
         self.channel_fee_sample()

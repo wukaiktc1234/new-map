@@ -2417,3 +2417,27 @@ SELECT count(*) FROM recon_differences
 ① 财务派生表（子→父）→ ② 软删「已支付但无 SALE 流水」的历史测试订单 → ③ 重置 balance=0 与 FLOW/SLIP 号段，并写明两个「为什么」：
 - **② 必须在 ① 之后**：② 的判定条件是「订单没有任何 SALE 流水」，只有清空 fund_flows 后所有历史已支付订单才会同时满足并被一次性识别；提前跑会漏网，清库后立刻变成「已支付无流水」→ A1 恒红；
 - **③ 必须在最后**：余额归零与号段重置是终态，与 ② 的判定无关，但放最后可保证「清库后 A24 无残差」。
+
+### 63.10 P4-5 追问结论：seed 造流水链路 / 退款追根 / NEW-14 定性（2026-10-26 02:10–02:20）
+
+**追问 1：seed 的 pos_orders 怎么造 SALE 流水？**
+- `pos_orders`（seed_p3_fixture.py:380-402）**不直接写流水**：它调真实 POS 链路 `POST /v1/pos/orders/order`（下单）→ `POST /v1/pos/orders/order/pay`（支付），SALE 流水由 pay 端的 `PosSaleFinanceRecorder` 写入（P1 起的正常入账路径）。
+- 所以 seed **没有「不造流水」的缺陷**：那 93/109 条「已支付无流水」订单不是 seed 造的，而是**旧 purge 只物理删 `fund_flows`、保留 `orders`** 造成的孤儿（同一根因见 NEW-14）。
+- 当前 9 行有效订单（T20×8 + W20×1）的 SALE 流水：**本次 seed 的 pay 调用产生**（`SELECT count(*) FROM fund_flows WHERE flow_category=1` = 9，与已支付订单数一一对应）。
+
+**追问 2：退款不写流水的追根**
+- `git log --follow PosOrderPaymentServiceImpl`：退款入口由 `a6d1897`（退款前置放宽为已支付未全退）等早期 POS 阶段引入；其财务侧一直只写**遗留表 `finance_records`**（`REFUND-*`），从未接 `fund_flows`。
+- 库内实况：`fund_flows` 的 `flow_category` 只有 **1（SALE）** 与 **5（存款内部转账）**，退款类 **0 行**；`finance_records` 的 `REFUND-` 前缀 **0 行**（连遗留账都没落住 —— 因为 `:362` 那处 `catch` 把异常吞了）。
+- **catch 吞异常**：属于遗留路径「金融写入失败不影响退款主流程」的旧设计；BL-1 已在 **`/pay`** 侧改为「失败即 500 + 整体回滚」（提交 `496f2f3`），但**退款路径没同步**。本次 P4-5 **作为实现的一部分删除该 catch，改为抛错回滚**（fund-500 落盘中）。
+- **结论**：P4-5 的修法**从 P4-5 起生效，不补历史退款流水** —— 理由：① 历史 16 条退款记录的订单已不存在（物理 purge 前的测试数据），补流水等于伪造业务；② 现网 `orders.refund_amount>0` = **0 行**，没有任何「订单侧已退款」需要补；③ 补历史会破坏「余额 = 流水链」的现有基线（会引入无法验证的资金）。历史数据按 NEW-14 一并清理。
+
+**追问 3：NEW-14 的 16 条孤儿退款记录 —— 定性为「测试数据」**
+- 条数：`order_refund_records` 共 **16** 行，`order_id` 在 `orders` 中命中 **0**（全部孤儿）；
+- 时间：`create_time` 分布在 **2026-10-23 13:19 ~ 2026-10-24 02:40**，**早于 2026-10-25 的 P3 清库** → 是那之前 E2E 造的退款单，其订单已被物理 purge；
+- 定性：**测试数据**（不是设计缺陷）；但**暴露了一个真实流程缺陷**：旧 purge 物理删 `orders` 时未级联处理 `order_refund_records`，会持续产生孤儿。
+- 处置：`20261026_purge-finance-data.sql` 增加 `DELETE FROM order_refund_records r WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.order_id = r.order_id);`；P4-5 侧由「退款必须带 `order_id` 且订单存在」+ 唯一索引保证新数据不产生孤儿。
+
+**3 件事的落地**
+1. **seed 增加自检**（不是补造流水，因为链路本来就对）：`verify_no_orphan_paid_orders()` 在 POS 造单后立刻校验「已支付但无 SALE 流水 = 0」，seed 输出 `[PASS] 已支付订单的 SALE 流水完整（A1 口径） -> 0`；`seed --reset` 现 **21/21 全绿**（不再靠软删补救）。
+2. **追根结论写入 WORKER_LOG**（本节）；catch 吞异常的删除作为 P4-5 实现内容（fund-500 落盘）。
+3. **NEW-14 处置**：purge 脚本增加孤儿退款记录清理（守卫为「订单不存在」），本次 `--reset` 已执行。

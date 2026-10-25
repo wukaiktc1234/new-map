@@ -53,6 +53,12 @@ DELETE FROM import_rows;
 DELETE FROM import_batches;
 DELETE FROM bank_transactions;
 
+-- ===== NEW-14：孤儿退款记录（定性=测试数据，见 WORKER_LOG §63.10）=====
+-- 现存 16 条 order_refund_records 的 order_id 在 orders 中 0 命中，create_time 2026-10-23 13:19 ~ 2026-10-24 02:40
+-- （早于 2026-10-25 的 P3 清库）→ 是「旧 purge 物理删 orders 但没级联删退款记录」留下的测试残留，不是设计缺陷。
+-- 处置：清库时一并清掉孤儿退款记录；同时保留「新增退款写入必须带 order_id 且订单存在」的约束由 P4-5 实现保证。
+DELETE FROM order_refund_records r WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.order_id = r.order_id);
+
 -- 账户余额重置为 0（后续由 seed 设定期初；只改 balance/version，不删账户行）
 UPDATE bank_accounts SET balance = 0, version = COALESCE(version,0) + 1, update_time = now() WHERE deleted = 0;
 
