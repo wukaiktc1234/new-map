@@ -2388,3 +2388,32 @@ account_id | count | 说明
 → `status=OPEN`、`openingTotalFen=0`、`closingTotalFen=41300`；**2026-10 现在可正常结账**（V1 不再拦）。
 
 **F) 2026-09 测试期间删除确认**：`SELECT period_code FROM accounting_periods` → **仅 `2026-10`**（`2026-09` 及其实验快照 3 行已随 purge 清空）。
+### 63.9 P4-4 收口后的 3 项确认与 2 项建议（2026-10-26 02:00–02:10）
+
+**确认 1：软删订单的备份与性质**
+- 备份：scripts/db-fix/backup/20261026-pre-purge-orders.sql（pg_dump --data-only，53 KB，含 orders / order_payment_records / pos_shifts 三段 COPY）；已从 git 索引移除并加入 .gitignore（本地保留可回溯，避免仓库膨胀）。
+- 当前软删规模：SELECT count(*) FROM orders WHERE deleted=1 AND payment_status=2 = **109**（首次 purge 时 93 条；此后 seed 又重跑两次，后续产生的已支付测试订单同样因无 SALE 流水被软删，累计 109）。
+- order_number 前缀分布（软删的已支付订单）：**W20 = 85 条 / T20 = 24 条** —— 即 W|T + yyyyMMdd + 3 位序号，全是 POS/E2E 造单格式，纯测试夹具，无业务意义。
+- **结果确认（手段之外的验收）**：SELECT count(*) FROM orders o WHERE o.deleted=0 AND o.payment_status=2 AND NOT EXISTS (SALE 流水) = **0** ✅（A1 归零，consistency 的 A1 PASS）。
+
+**确认 2：AC-53c —— 改断言是对的，且必须写清原因**
+- 实现原文（FinanceOverviewServiceImpl:187-191）：
+```sql
+SELECT count(*) FROM recon_differences
+ WHERE run_id IN (<该账户当日 runIds>) AND status IN ('OPEN','ASSIGNED','RESOLVING')
+```
+- 设计稿口径（finance-reconciliation-design.md）：未解释 的含义是「本次对账产出的、尚未被解释的差异」（对账单提示语「差异 ¥X 未解释」、AC-18「仅当差额无法被 fee 完全解释时才生成 CHANNEL_FEE，金额=未被解释的差额」）——语义主体是**当日对账运行产生的差异**，不是历史所有 run 的差异。
+- 旧断言用的是 status NOT IN ('CLOSED','REVERSED') 且**不限 run**（全库全 run）→ 清库重 seed 后其他套件产生的 run 被计入（接口=6 / 断言 SQL=23）。
+- **结论：旧断言口径与设计意图不一致，本次是对齐到正确口径，不是「为了绿而改断言」。** 新断言：run 范围=当日 FINALIZED、状态集 IN (OPEN,ASSIGNED,RESOLVING)，断言注释标注口径来源行号；未放宽任何数值相等断言（AC-53a/b/d/f 仍逐字段相等）。
+
+**确认 3：有效订单 9 行的性质**
+- 有效订单（deleted=0）= **9 行**：T20 前缀 **8 行**、W20 前缀 **1 行**，payment_status **全部 = 2（已支付）**；paid_amount 5000~5400 分（T 单）与 2500 分（W 单），create_time 2026-10-26 01:44–01:46 —— 全部由 seed_p3_fixture.py 的 pos_orders(5,"A") + pos_orders(3,"B") 产生。
+- **是否存在「已支付但无流水」**：否，A1 = 0 已实测；9 行都有对应 SALE 流水。
+- **会不会干扰 P4-5**：不会 —— seed 每次 --reset 会清财务派生表并把账户余额归零，新订单号来自 SequenceAllocator（T|W + yyyyMMdd + 3 位），与这 9 行不冲突；这 9 行只是 E2E 的 POS 夹具，P4-5 造退款单在其之上或新建，跑完按 tag 清理即可。
+
+**建议 1 落地：备份不入 git** —— 新增 scripts/db-fix/backup/.gitignore（*.sql、*.dump）+ README.md（登记现有 3 份备份的文件/内容/大小/时间/用途、回滚命令、保留策略「本地保留最近 3 次，更早移 archive/」）；两份已提交的 pg_dump 已 git rm --cached。
+
+**建议 2 落地：purge 顺序文档化** —— 20261026_purge-finance-data.sql 头部新增「执行顺序」段：
+① 财务派生表（子→父）→ ② 软删「已支付但无 SALE 流水」的历史测试订单 → ③ 重置 balance=0 与 FLOW/SLIP 号段，并写明两个「为什么」：
+- **② 必须在 ① 之后**：② 的判定条件是「订单没有任何 SALE 流水」，只有清空 fund_flows 后所有历史已支付订单才会同时满足并被一次性识别；提前跑会漏网，清库后立刻变成「已支付无流水」→ A1 恒红；
+- **③ 必须在最后**：余额归零与号段重置是终态，与 ② 的判定无关，但放最后可保证「清库后 A24 无残差」。
