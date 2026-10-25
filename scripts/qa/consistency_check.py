@@ -24,6 +24,13 @@ r"""SQL 一致性巡检（阶段 2-B）薄封装
   A16 （信息性，不参与 TOTAL）近 24h POS 入账失败后补记（remark 含 [cashBackfill]）条数；
       >0 时同一行追加提示「需排查 pos_fund_flow_recorded=failed」。AC 无对应编号，
       属运维看板项，与 P3 backlog『POS 入账异常被吞』配套（与 A8/A9 同级纯 INFO）
+  A17 （信息性，不参与 TOTAL）近 24h 夹具余额抹平（finance_audit_logs.operation_type='FIXTURE_FLOW_REVERSED'）
+  A18 （信息性，不参与 TOTAL）假平衡残留：is_balanced=true 但 adj 两侧不等或残留 AMBIGUOUS: 前缀 item
+      = BL-6 假平衡门禁的持续性保障（生成逻辑被改回也能抓出）
+  A19 （信息性，不参与 TOTAL）同额两侧并存：同一 statement 内某金额同时出现在 (A|B) 与 (C|D)
+      = A18 的数据形态兜底（不依赖 AMBIGUOUS: 前缀；计「statement 数」，非金额对数量）
+  A20 （信息性，不参与 TOTAL）历史负 balance_after（status=2）：A15 只看当前账户余额，
+      A20 看历史每一笔快照，非替代关系（当前为正不代表历史上没出现过负中间态，BL-4 修复前即存在）
 
 编号对齐（P2-C）：设计稿 AC-38→A12、AC-39→A13、AC-40→A14、AC-41→A15；
 A7（V3 账户余额）与 A10/A11（P1-D）已被占用，故不复用 A7–A10。

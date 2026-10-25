@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A10/A11/A12/A13/A14/A15 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A9/A16/A17 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A9/A16/A17/A18/A19/A20 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -59,6 +59,16 @@
 --   A16 （信息性，不参与 TOTAL）近 24 小时内 fund_flows 中 remark LIKE '%[cashBackfill]%' 且 deleted=0 的条数
 --       = POS 入账失败后被「补记」的次数；>0 时同一行追加提示需排查 pos_fund_flow_recorded=failed。
 --       AC 无对应编号，属运维看板项；与 P3 backlog『POS 入账异常被吞』配套；与 A8/A9 同级，纯 INFO。
+--   A18 （信息性，不进 TOTAL）**假平衡残留**：is_balanced=true 但 adjusted_book_balance ≠ adjusted_bank_balance，
+--       或该 statement 下仍残留 reason LIKE 'AMBIGUOUS:%' 的 item。
+--       **A18 是 BL-6 假平衡门禁的持续性保障：即使生成逻辑被改回，A18 也能巡检抓出。**
+--       守卫：reconciliation_statements / reconciliation_items（含所需列）不存在 → [INFO] 跳过。
+--   A19 （信息性，不进 TOTAL）**同额两侧并存**：同一 statement 内某金额 X 同时出现在 (A|B) 与 (C|D) 两侧。
+--       A18 依赖 'AMBIGUOUS:' 前缀，重算若把前缀冲掉就查不出来；A19 不看前缀、用数据形态兜底。
+--   A20 （信息性，不进 TOTAL）**历史负 balance_after**：status=2 且 deleted=0 的 fund_flows 中 balance_after<0 的行数与账户数。
+--       A15 只看**当前** bank_accounts.balance；A20 看**历史每一笔** fund_flows.balance_after，
+--       两者不是替代关系 —— 当前为正不代表历史上没出现过负中间态（BL-4 修复前即存在）。
+--       守卫：fund_flows（含 balance_after/status/deleted/account_id 列）不存在 → [INFO] 跳过。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -236,6 +246,95 @@ SELECT CASE
  WHERE l.operation_type = 'FIXTURE_FLOW_REVERSED'
    AND l.create_time >= now() - interval '24 hours'
 \gset
+
+-- ------------------------------------------------------------
+-- A18 / A19 前置守卫（P3 收口）
+--   A18 = BL-6「假平衡」门禁的**持续性保障**：即使生成逻辑被改回，
+--         A18 也能把 is_balanced=true 但 adjusted_book ≠ adjusted_bank、或残留
+--         reason LIKE 'AMBIGUOUS:%' 的调节表巡检抓出。
+--   A19 = A18 的数据形态兜底：A18 依赖「AMBIGUOUS:」前缀，若重算把前缀冲掉就查不到；
+--         A19 不看前缀，直接找「同一 statement 内同一金额同时出现在 (A|B) 与 (C|D) 两侧」。
+--   两表（含所需列）不存在时均输出 [INFO] 跳过，计数置 0（不进 TOTAL）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND to_regclass('public.reconciliation_items') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
+                       AND column_name IN ('is_balanced', 'adjusted_book_balance', 'adjusted_bank_balance')
+                     GROUP BY table_name HAVING count(*) = 3)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
+                       AND column_name IN ('statement_id', 'reason')
+                     GROUP BY table_name HAVING count(*) = 2)) AS fake_balance_ready
+\gset
+
+\if :fake_balance_ready
+SELECT CASE WHEN count(*) = 0 THEN '[INFO] ' ELSE '[INFO] ' END
+       || 'A18 假平衡残留(adj 不等或含 AMBIGUOUS) statements=' || count(*) AS a18_line,
+       count(*) AS a18_n
+  FROM reconciliation_statements s
+ WHERE s.is_balanced = true
+   AND (s.adjusted_book_balance <> s.adjusted_bank_balance
+        OR EXISTS (SELECT 1 FROM reconciliation_items i
+                    WHERE i.statement_id = s.statement_id
+                      AND i.reason LIKE 'AMBIGUOUS:%'))
+\gset
+\else
+\set a18_line '[INFO] A18 跳过（表未创建）'
+\set a18_n 0
+\endif
+
+SELECT (to_regclass('public.reconciliation_items') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'reconciliation_items'
+                       AND column_name IN ('statement_id', 'category', 'amount', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 4)) AS ambiguity_shape_ready
+\gset
+
+\if :ambiguity_shape_ready
+SELECT '[INFO] A19 同额两侧并存(疑似未处置歧义) statements=' || count(DISTINCT t.statement_id) AS a19_line,
+       count(DISTINCT t.statement_id) AS a19_n
+  FROM (
+      SELECT i.statement_id, i.amount
+        FROM reconciliation_items i
+       WHERE i.deleted = 0
+       GROUP BY i.statement_id, i.amount
+      HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
+         AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
+  ) t
+\gset
+\else
+\set a19_line '[INFO] A19 跳过（表未创建）'
+\set a19_n 0
+\endif
+
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('balance_after', 'status', 'deleted', 'account_id')
+                     GROUP BY table_name HAVING count(*) = 4)) AS negative_history_ready
+\gset
+
+\if :negative_history_ready
+-- A20：历史负 balance_after 扫描（纯 INFO，不进 TOTAL）
+--   A15 只看**当前** bank_accounts.balance；A20 看**历史每一笔** fund_flows.balance_after，
+--   两者不是替代关系 —— 当前为正不代表历史上没出现过负中间态（BL-4 修复前即存在）。
+SELECT '[INFO] A20 历史负 balance_after rows=' || COALESCE(sum(cnt), 0)
+       || ' accounts=' || count(*) AS a20_line,
+       COALESCE(sum(cnt), 0) AS a20_n,
+       count(*) AS a20_accounts
+  FROM (SELECT f.account_id, count(*) AS cnt
+          FROM fund_flows f
+         WHERE f.balance_after < 0
+           AND f.status = 2
+           AND f.deleted = 0
+         GROUP BY f.account_id) t
+\gset
+\else
+\set a20_line '[INFO] A20 跳过（表未创建）'
+\set a20_n 0
+\set a20_accounts 0
+\endif
 
 -- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
@@ -442,7 +541,19 @@ SELECT line
     SELECT 17,
            :'a17_line'
     UNION ALL
+    -- A18 信息性：假平衡残留（BL-6 门禁的持续性保障；不进 TOTAL）
     SELECT 18,
+           :'a18_line'
+    UNION ALL
+    -- A19 信息性：同额两侧并存（不看 AMBIGUOUS 前缀的形态兜底；不进 TOTAL）
+    SELECT 19,
+           :'a19_line'
+    UNION ALL
+    -- A20 信息性：历史负 balance_after（BL-4 遗留；不进 TOTAL）
+    SELECT 20,
+           :'a20_line'
+    UNION ALL
+    SELECT 21,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -751,5 +862,79 @@ SELECT f.flow_no,
    AND f.create_time >= now() - interval '24 hours'
  ORDER BY f.create_time DESC
  LIMIT 20;
+
+-- ------------------------------------------------------------
+-- A18 明细（前 20）：is_balanced=true 但 (adj 不相等 或 含 AMBIGUOUS 前缀 item)
+-- 期望为空；>0 说明「平衡」是数值凑出来的，实际存在未处置歧义
+-- ------------------------------------------------------------
+\if :fake_balance_ready
+\echo ''
+\echo '-- A18 明细（前 20）--'
+SELECT s.statement_id,
+       s.is_balanced,
+       s.adjusted_book_balance,
+       s.adjusted_bank_balance,
+       (SELECT count(*) FROM reconciliation_items i
+         WHERE i.statement_id = s.statement_id AND i.reason LIKE 'AMBIGUOUS:%') AS ambiguous_items
+  FROM reconciliation_statements s
+ WHERE s.is_balanced = true
+   AND (s.adjusted_book_balance <> s.adjusted_bank_balance
+        OR EXISTS (SELECT 1 FROM reconciliation_items i
+                    WHERE i.statement_id = s.statement_id
+                      AND i.reason LIKE 'AMBIGUOUS:%'))
+ ORDER BY s.statement_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A18 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A19 明细（前 20）：同一 statement 内同一金额在 (A|B) 与 (C|D) 两侧同时存在
+-- 期望为空；出现即「同一笔钱被记成两边未达」，属未处置歧义（不依赖 AMBIGUOUS 前缀）
+-- ------------------------------------------------------------
+\if :ambiguity_shape_ready
+\echo ''
+\echo '-- A19 明细（前 20）--'
+SELECT i.statement_id,
+       i.amount,
+       count(*) FILTER (WHERE i.category IN ('A', 'B')) AS ab_cnt,
+       count(*) FILTER (WHERE i.category IN ('C', 'D')) AS cd_cnt
+  FROM reconciliation_items i
+ WHERE i.deleted = 0
+ GROUP BY i.statement_id, i.amount
+HAVING count(*) FILTER (WHERE i.category IN ('A', 'B')) > 0
+   AND count(*) FILTER (WHERE i.category IN ('C', 'D')) > 0
+ ORDER BY i.statement_id, i.amount
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A19 明细跳过（表未创建）--'
+\endif
+
+-- ------------------------------------------------------------
+-- A20 明细（前 20 个账户）：历史负 balance_after 分布
+-- 只统计 status=2（已完成）且 deleted=0；status=3（已取消）的负值不计入
+-- ------------------------------------------------------------
+\if :negative_history_ready
+\echo ''
+\echo '-- A20 明细（前 20 账户）--'
+SELECT f.account_id,
+       count(*)                    AS rows,
+       min(f.balance_after)        AS min_ba,
+       max(f.balance_after)        AS max_ba,
+       min(f.create_time)          AS first_seen,
+       max(f.create_time)          AS last_seen
+  FROM fund_flows f
+ WHERE f.balance_after < 0
+   AND f.status = 2
+   AND f.deleted = 0
+ GROUP BY f.account_id
+ ORDER BY f.account_id
+ LIMIT 20;
+\else
+\echo ''
+\echo '-- A20 明细跳过（表未创建）--'
+\endif
 
 COMMIT;
