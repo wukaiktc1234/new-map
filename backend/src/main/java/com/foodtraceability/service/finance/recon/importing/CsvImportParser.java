@@ -2,8 +2,12 @@ package com.foodtraceability.service.finance.recon.importing;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -99,6 +103,13 @@ public final class CsvImportParser {
             return okRows + reviewRows;
         }
     }
+
+    /**
+     * 落库时区（BL-9）：**一律 Asia/Shanghai**，绝不用 JVM 默认时区。
+     * 带偏移的输入（{@code Z} / {@code +08:00}）先换算成 Instant，再按本时区转 LocalDateTime 落库，
+     * 这样容器 TZ 变化不会让同一份文件解析出不同时间。
+     */
+    public static final ZoneId STORAGE_ZONE = ZoneId.of("Asia/Shanghai");
 
     private static final DateTimeFormatter[] TIME_FORMATS = {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
@@ -351,7 +362,15 @@ public final class CsvImportParser {
     }
 
     private LocalDateTime parseTime(String raw) {
-        String s = raw.trim().replace('T', ' ');
+        String trimmed = raw.trim();
+        // ① BL-9：带偏移的 ISO-8601（Z / +08:00 / 带毫秒）→ 换算到 Asia/Shanghai 落库。
+        //    注意：不能把 "…Z" 丢给 LocalDateTime.parse —— 它不认偏移量，会抛 DateTimeParseException。
+        LocalDateTime offsetAware = parseOffsetAware(trimmed);
+        if (offsetAware != null) {
+            return offsetAware;
+        }
+        // ② 无偏移（历史行为不变）：按 Asia/Shanghai 的字面时间解释
+        String s = trimmed.replace('T', ' ');
         for (DateTimeFormatter f : TIME_FORMATS) {
             try {
                 if (f.toString().contains("yyyyMMddHHmmss")) {
@@ -366,6 +385,44 @@ public final class CsvImportParser {
         try {
             return LocalDate.parse(s, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
         } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 解析**带时区偏移**的 ISO-8601 时间（BL-9），统一换算到 {@link #STORAGE_ZONE}。
+     *
+     * <p>支持：{@code 2026-10-24T16:30:00Z}、{@code 2026-10-24T16:30:00+08:00}、
+     * {@code 2026-10-24T16:30:00.000+08:00}（以及 {@code -05:00} 等任意偏移、{@code [Asia/Shanghai]} 带区域写法）。</p>
+     *
+     * <p>无偏移的输入在此返回 null，交给上层既有格式链处理（**行为不变**）。</p>
+     */
+    private LocalDateTime parseOffsetAware(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        // 快速判定：必须同时含时间部分与偏移标志，避免把 "2026-10-24" / "2026-10-24 16:30:00" 误送进来
+        boolean hasTime = raw.indexOf(':') >= 0;
+        boolean hasOffset = raw.endsWith("Z") || raw.endsWith("z")
+                || raw.matches(".*[+-]\\d{2}:?\\d{2}$")
+                || raw.matches(".*\\([A-Za-z_]+/[A-Za-z_]+\\)$");
+        if (!hasTime || !hasOffset) {
+            return null;
+        }
+        String iso = raw.replace(' ', 'T');
+        try {
+            // ZonedDateTime 覆盖 "…[Asia/Shanghai]" 形式；OffsetDateTime 覆盖 Z / ±HH:MM
+            try {
+                ZonedDateTime zdt = ZonedDateTime.parse(iso, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+                return ZonedDateTime.ofInstant(zdt.toInstant(), STORAGE_ZONE).toLocalDateTime();
+            } catch (Exception ignored) {
+                // fall through
+            }
+            OffsetDateTime odt = OffsetDateTime.parse(iso, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            Instant instant = odt.toInstant();
+            return LocalDateTime.ofInstant(instant, STORAGE_ZONE);
+        } catch (Exception ignored) {
+            // 带偏移标志但格式非法 → 交由上层报 TXN_TIME_INVALID（不在这里兜底成假时间）
             return null;
         }
     }
