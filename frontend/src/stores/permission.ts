@@ -40,6 +40,8 @@ export enum UserRole {
   WAREHOUSE_MANAGER = 'warehouse_manager',
   /** 财务总监 */
   FINANCE_DIRECTOR = 'finance_director',
+  /** 财务经理（后端 roles.role_id=323 / role_id_str=ROLE_FINANCE_MANAGER，此前前端枚举缺失） */
+  FINANCE_MANAGER = 'finance_manager',
   /** HR总监 */
   HR_DIRECTOR = 'hr_director',
   /** 店长/门店经理 */
@@ -712,6 +714,7 @@ export const usePermissionStore = defineStore('permission', () => {
       'ROLE_OPS_DIRECTOR': UserRole.OPS_DIRECTOR,
       'ROLE_PURCHASE_MANAGER': UserRole.PURCHASE_MANAGER,
       'ROLE_FINANCE_DIRECTOR': UserRole.FINANCE_DIRECTOR,
+      'ROLE_FINANCE_MANAGER': UserRole.FINANCE_MANAGER,
       'ROLE_HR_DIRECTOR': UserRole.HR_DIRECTOR,
       'ROLE_DEPARTMENT_MANAGER': UserRole.DEPARTMENT_MANAGER,
       'ROLE_WAREHOUSE_MANAGER': UserRole.WAREHOUSE_MANAGER,
@@ -731,6 +734,7 @@ export const usePermissionStore = defineStore('permission', () => {
       'OPS_DIRECTOR': UserRole.OPS_DIRECTOR,
       'PURCHASE_MANAGER': UserRole.PURCHASE_MANAGER,
       'FINANCE_DIRECTOR': UserRole.FINANCE_DIRECTOR,
+      'FINANCE_MANAGER': UserRole.FINANCE_MANAGER,
       'HR_DIRECTOR': UserRole.HR_DIRECTOR,
       'DEPARTMENT_MANAGER': UserRole.DEPARTMENT_MANAGER,
       'WAREHOUSE_MANAGER': UserRole.WAREHOUSE_MANAGER,
@@ -756,7 +760,7 @@ export const usePermissionStore = defineStore('permission', () => {
       '老板/超级管理员': UserRole.ADMIN,
       '运营总监': UserRole.OPS_DIRECTOR,
       '财务总监': UserRole.FINANCE_DIRECTOR,
-      '财务经理': UserRole.FINANCE_DIRECTOR,
+      '财务经理': UserRole.FINANCE_MANAGER,
       'HR总监': UserRole.HR_DIRECTOR,
       '人事总监': UserRole.HR_DIRECTOR,
       '采购部经理': UserRole.PURCHASE_MANAGER,

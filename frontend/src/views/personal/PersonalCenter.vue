@@ -22,6 +22,7 @@ const roleDisplayMap: Record<UserRole, string> = {
   [UserRole.ADMIN]: '超级管理员',
   [UserRole.OPS_DIRECTOR]: '运营总监',
   [UserRole.FINANCE_DIRECTOR]: '财务总监',
+  [UserRole.FINANCE_MANAGER]: '财务经理',
   [UserRole.HR_DIRECTOR]: 'HR总监',
   [UserRole.STORE_MANAGER]: '门店经理',
   [UserRole.TEAM_LEADER]: '组长',

@@ -24,17 +24,23 @@ interface Props {
   statusFilter: string
   typeFilter: string
   runIdFilter: string
+  /** 口径 B：默认只显示当前跑批；true 表示用户显式切到「全部批次」 */
+  scopeAllBatches?: boolean
+  currentRunId?: number | null
   selectedId: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
+  scopeAllBatches: false,
+  currentRunId: null,
 })
 
 const emit = defineEmits<{
   (e: 'update:statusFilter', value: string): void
   (e: 'update:typeFilter', value: string): void
   (e: 'update:runIdFilter', value: string): void
+  (e: 'update:scopeAllBatches', value: boolean): void
   (e: 'search'): void
   (e: 'reset'): void
   (e: 'page-change', current: number): void
@@ -125,7 +131,16 @@ function onRowClick(row: ReconDifferenceVO): void {
 
       <el-button type="primary" @click="emit('search')">查询</el-button>
       <el-button @click="emit('reset')">重置</el-button>
-      <span class="recon-queue__window">时间窗：近 7 天（服务端过滤）</span>
+      <!-- 口径开关：默认只看当前跑批（与摘要 differenceCount 同集合）；显式切到全部批次才跨 run -->
+      <el-checkbox
+        :model-value="scopeAllBatches"
+        data-test="scope-all-batches"
+        @update:model-value="(v: any) => emit('update:scopeAllBatches', Boolean(v))"
+      >全部批次</el-checkbox>
+      <span class="recon-queue__window" data-test="queue-scope-hint">
+        {{ scopeAllBatches ? '范围：全部批次（与摘要不可直接比较）' : `范围：当前批次 #${currentRunId ?? '-'}（与摘要一致）` }}
+        ｜时间窗：近 7 天（服务端过滤）
+      </span>
     </div>
 
     <!-- 表格：原生 table，便于给每行挂 data-test -->

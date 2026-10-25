@@ -65,6 +65,12 @@ const size = ref(20)
 const statusFilter = ref('')
 const typeFilter = ref('')
 const runIdFilter = ref('')
+/**
+ * 队列口径（Owner 2026-10-25 裁决，选 B）：**队列默认只看当前跑批 run**，
+ * 以保证「摘要 differenceCount」与「队列 total」指向同一集合、不会两个数字并列却关系不明。
+ * 需要跨批次查看时打开 scopeAllBatches —— 此时摘要顶部会提示「队列跨批次，与摘要不可直接比较」。
+ */
+const scopeAllBatches = ref(false)
 
 const selected = ref<ReconDifferenceVO | null>(null)
 const claiming = ref(false)
@@ -230,10 +236,14 @@ async function loadQueue(): Promise<void> {
   try {
     const { from, to } = defaultWindow()
     const runIdNum = Number(runIdFilter.value)
+    // 口径 B：未显式指定 runId 且未开启「全部批次」时，锁定当前 run（与摘要 differenceCount 同集合）
+    const effectiveRunId = Number.isFinite(runIdNum) && runIdNum > 0
+      ? runIdNum
+      : (scopeAllBatches.value ? undefined : (currentRun.value?.runId ?? undefined))
     const page = await listReconDifferences({
       status: statusFilter.value || undefined,
       type: typeFilter.value || undefined,
-      runId: Number.isFinite(runIdNum) && runIdNum > 0 ? runIdNum : undefined,
+      runId: effectiveRunId,
       from,
       to,
       current: current.value,
@@ -379,10 +389,13 @@ const summaryRun = computed<ReconRunVO | null>(() => currentRun.value)
         :status-filter="statusFilter"
         :type-filter="typeFilter"
         :run-id-filter="runIdFilter"
+        :scope-all-batches="scopeAllBatches"
+        :current-run-id="currentRun?.runId ?? null"
         :selected-id="selected?.differenceId ?? null"
         @update:status-filter="(v: string) => (statusFilter = v)"
         @update:type-filter="(v: string) => (typeFilter = v)"
         @update:run-id-filter="(v: string) => (runIdFilter = v)"
+        @update:scope-all-batches="(v: boolean) => (scopeAllBatches = v)"
         @search="handleSearch"
         @reset="handleReset"
         @page-change="handlePageChange"
