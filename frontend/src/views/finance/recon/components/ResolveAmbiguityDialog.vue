@@ -45,10 +45,16 @@ const CATEGORY_LABELS: Record<string, string> = {
 /** 对侧类别（与后端 switch 完全一致） */
 const OPPOSITE: Record<string, string> = { A: 'C', B: 'D', C: 'A', D: 'B' }
 
+/** 处置方式：RESOLVE（改类别，默认）/ EXEMPT（排除，P4-3 新增） */
+type AmbiguityMode = 'RESOLVE' | 'EXEMPT'
+const mode = ref<AmbiguityMode>('RESOLVE')
+
 const decision = ref('')
 const targetRef = ref('')
 const reason = ref('')
 const confirming = ref(false)
+
+const isExempt = computed<boolean>(() => mode.value === 'EXEMPT')
 
 const currentCategory = computed<string>(() => String(props.item?.category || '').toUpperCase())
 const oppositeCategory = computed<string>(() => OPPOSITE[currentCategory.value] || '')
@@ -116,12 +122,28 @@ const candidates = computed<Candidate[]>(() => {
 })
 
 const reasonValid = computed<boolean>(() => reason.value.trim().length >= 5)
-const canSubmit = computed<boolean>(
-  () => Boolean(oppositeCategory.value) && Boolean(targetRef.value) && reasonValid.value && !props.submitting,
+
+/** RESOLVE 需要 decision + targetRef + reason；EXEMPT 只需要 reason（≥5 字） */
+const canSubmit = computed<boolean>(() => {
+  if (props.submitting) return false
+  if (isExempt.value) return reasonValid.value
+  return Boolean(oppositeCategory.value) && Boolean(targetRef.value) && reasonValid.value
+})
+
+/** 原因字段的 label / placeholder（EXEMPT 下改成排除理由口径） */
+const reasonLabel = computed<string>(() => (isExempt.value ? '请说明为什么判定此条非歧义' : '处置原因'))
+const reasonPlaceholder = computed<string>(() =>
+  isExempt.value ? '请说明为什么判定此条非歧义（≥5 字，写入审计记录）' : '请填写处置原因（至少 5 个字）',
 )
 
-/** 二次确认文案：必须严格匹配「将 X 类改为 Y 类，涉及金额 N 分，确认？」 */
+/** 提交按钮文案 */
+const submitText = computed<string>(() => (isExempt.value ? '标记排除' : '确认处置'))
+
+/** 二次确认文案：RESOLVE 严格为「将 X 类改为 Y 类，涉及金额 N 分，确认？」；EXEMPT 为固定文案 */
 const confirmText = computed<string>(() => {
+  if (isExempt.value) {
+    return '确认将此条歧义标记为排除？此操作会写审计记录，且不可撤销'
+  }
   const amount = currentAmount.value ?? 0
   return '将 ' + currentCategory.value + ' 类改为 ' + oppositeCategory.value + ' 类，涉及金额 ' + amount + ' 分，确认？'
 })
@@ -133,6 +155,8 @@ watch(
       confirming.value = false
       return
     }
+    // 默认仍是「改类别」（EXEMPT 不是默认）
+    mode.value = 'RESOLVE'
     decision.value = oppositeCategory.value || ''
     targetRef.value = candidates.value.length === 1 ? candidates.value[0].ref : ''
     reason.value = ''
@@ -158,25 +182,34 @@ function pick(ref: string, category: string): void {
 
 /** 第一步：校验 + 打开二次确认 */
 function openConfirm(): void {
-  if (!decision.value || !oppositeCategory.value) {
-    ElMessage.warning('处置方向必须为对侧类别')
-    return
-  }
-  if (!targetRef.value) {
-    ElMessage.warning('请选择对侧同额候选')
-    return
-  }
   if (!reasonValid.value) {
-    ElMessage.warning('处置原因至少 5 个字')
+    ElMessage.warning(isExempt.value ? '请说明为什么判定此条非歧义（≥5 字）' : '处置原因至少 5 个字')
     return
+  }
+  if (!isExempt.value) {
+    if (!decision.value || !oppositeCategory.value) {
+      ElMessage.warning('处置方向必须为对侧类别')
+      return
+    }
+    if (!targetRef.value) {
+      ElMessage.warning('请选择对侧同额候选')
+      return
+    }
   }
   confirming.value = true
 }
 
-/** 第二步：确认后真正提交 */
+/**
+ * 第二步：确认后真正提交。
+ * EXEMPT 的请求体只发 { decision:'EXEMPT', reason }（targetRef 传空串，由上层/API 层剔除该键）。
+ */
 function doSubmit(): void {
   if (!canSubmit.value) return
   confirming.value = false
+  if (isExempt.value) {
+    emit('submit', { decision: 'EXEMPT', targetRef: '', reason: reason.value.trim() })
+    return
+  }
   emit('submit', { decision: oppositeCategory.value, targetRef: targetRef.value, reason: reason.value.trim() })
 }
 </script>
@@ -219,8 +252,14 @@ function doSubmit(): void {
         </div>
       </div>
 
+      <!-- P4-3：处置方式二选一（默认「改类别」，EXEMPT 不是默认） -->
+      <el-radio-group v-model="mode" data-test="ambiguity-mode" class="ambiguity__mode">
+        <el-radio value="RESOLVE">改类别（对侧同额）</el-radio>
+        <el-radio value="EXEMPT">排除（判定为非歧义）</el-radio>
+      </el-radio-group>
+
       <el-form label-width="98px" class="ambiguity__form">
-        <el-form-item label="处置方向">
+        <el-form-item v-if="!isExempt" label="处置方向">
           <el-select v-model="decision" data-test="ambiguity-decision" style="width: 100%">
             <el-option
               v-for="opt in decisionOptions"
@@ -232,8 +271,8 @@ function doSubmit(): void {
           </el-select>
         </el-form-item>
 
-        <el-form-item label="对侧同额候选">
-          <!-- 候选容器：纯点击选择，内部没有任何自由文本输入 -->
+        <el-form-item v-if="!isExempt" label="对侧同额候选">
+          <!-- 候选容器：纯点击选择，内部没有任何自由文本输入（EXEMPT 模式下整块不渲染） -->
           <div class="ambiguity__targets" data-test="ambiguity-target">
             <div
               v-for="c in candidates"
@@ -262,26 +301,29 @@ function doSubmit(): void {
           </div>
         </el-form-item>
 
-        <el-form-item label="处置原因" required>
+        <el-form-item required>
+          <template #label>
+            <span data-test="ambiguity-reason-label">{{ reasonLabel }}</span>
+          </template>
           <el-input
             v-model="reason"
             type="textarea"
             :rows="3"
             maxlength="200"
             show-word-limit
-            placeholder="请填写处置原因（至少 5 个字）"
+            :placeholder="reasonPlaceholder"
             data-test="ambiguity-reason"
           />
         </el-form-item>
       </el-form>
 
-      <p class="ambiguity__tip">逐笔处置：一次只处理当前这一条歧义，不支持批量。</p>
+      <p class="ambiguity__tip">逐笔处置：每次仅处理当前这一条歧义。</p>
     </div>
 
     <template #footer>
       <el-button @click="close">取消</el-button>
       <el-button type="primary" data-test="ambiguity-submit" :disabled="!canSubmit" @click="openConfirm">
-        确认处置
+        {{ submitText }}
       </el-button>
     </template>
   </el-dialog>
@@ -306,6 +348,10 @@ function doSubmit(): void {
 </template>
 
 <style scoped>
+.ambiguity__mode {
+  margin-bottom: 12px;
+}
+
 .ambiguity__item {
   margin-bottom: 12px;
   padding: 10px 12px;

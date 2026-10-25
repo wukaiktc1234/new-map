@@ -242,9 +242,10 @@ async function submitAmbiguity(payload: { decision: string; targetRef: string; r
   actionError.value = ''
   ambiguitySubmitting.value = true
   try {
+    // EXEMPT（排除）：请求体只发 { decision, reason }，不带 targetRef（P4-3）
     const updated = await resolveStatementAmbiguity(stmt.statementId, item.itemId, {
       decision: payload.decision,
-      targetRef: payload.targetRef,
+      ...(payload.decision === 'EXEMPT' || !payload.targetRef ? {} : { targetRef: payload.targetRef }),
       reason: payload.reason.trim(),
     })
     statement.value = updated
@@ -296,12 +297,19 @@ const auditLines = computed<AuditLine[]>(() => {
   }
   for (const item of stmt.items ?? []) {
     const reason = item.reason || ''
-    if (!reason.startsWith('已处置(AMBIGUITY->')) continue
+    const category = String(item.category || '').toUpperCase()
+    // P4-3：排除（EXEMPT）与改类别（AMBIGUITY->X）分开渲染
+    const isExempted = /EXEMPT/i.test(reason) || reason.startsWith('已排除')
+    const isResolved = reason.startsWith('已处置(AMBIGUITY->') && !isExempted
+    if (!isExempted && !isResolved) continue
     const head = reason.split('；')[0]
     lines.push({
-      field: 'ambiguityResolved',
+      field: isExempted ? 'exempted' : 'ambiguityResolved',
       segments: [
-        { field: 'ambiguityResolved', text: 'item #' + item.itemId + '（' + String(item.category || '').toUpperCase() + ' 类）' + head },
+        {
+          field: isExempted ? 'exempted' : 'ambiguityResolved',
+          text: 'item #' + item.itemId + '（' + category + ' 类）' + head,
+        },
         { field: 'resolutionRemark', text: '；' + (reason.split('；').slice(1).join('；') || '') },
       ],
     })
