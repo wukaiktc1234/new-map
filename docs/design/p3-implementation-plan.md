@@ -62,7 +62,8 @@ R1 `POST /recon-runs`、R2 `GET /recon-runs`、R3 `GET /recon-runs/{id}`、R5 `G
 - 同时在 seed 脚本加 `--with-recon` 可选开关（跑一次 R1，供手工验收用），默认不跑（E2E 自己跑，避免双重跑批数据叠加）。
 
 ### 1.6 「较上次是否收敛」的**定义**（补全）
-> **「上次」= 同账户、同期间范围内，`created_at` 早于当前 run 的最近一条 `recon_runs`（不限 status）**；比较指标为 `|SUM(diff_amount)|`。
+> **「上次」= 同账户、同期间范围内，`create_time` 早于当前 run 的最近一条 `recon_runs`（不限 status）**；比较指标为 `|SUM(diff_amount)|`。
+> 字段名已按活库核实：`recon_runs` 用的时间列是 **`create_time`**（不是 `created_at`；同表另有 `started_at` / `finished_at` / `update_time`）。
 - 无历史 run → 摘要卡显示「首次跑批（无可比基线）」，**不显示假趋势**；
 - E2E 断言：连续跑两次 R1（第二次前先把某条差异 resolve 掉），断言第二次摘要卡的 `differenceAmount` 小于第一次且趋势文案为「差异缩小」；
 - **不使用前端 localStorage**（会与后端真实状态不一致，且 E2E 不可复现）；不引入「结账周期」概念（P3 无结账模块）。
@@ -191,7 +192,13 @@ CREATE TABLE fund_flow_no_burn_ledger (
 );
 ```
 - **这是本计划唯一的 DDL 项** → **需 Owner 单独放行**；不放行则：A24 保持 INFO、**不加 A25**、历史洞不追溯（按你的裁决 2 的 fallback 分支执行）。
-- 若放行：取号与写账同事务（`nextFlowSequenceWithFloor` 调用点包在同一 `@Transactional`），失败路径写 `reason='take-then-rollback'`；A25 统计 `flow_id IS NULL AND create_time::date = current_date`。
+- **Owner 已放行（2026-10-25），执行约束如下（P3-5 落地时逐条对照）**：
+  1. 建表 `fund_flow_no_burn_ledger`，字段至少含 **`flow_no` / `reason` / `created_by` / `create_time` / `archived_flag`**（推荐再加 `seq_key`、`seq_value`、`flow_id` 便于回溯）；
+  2. **写入时机**：取号成功后、流水插入失败时（唯一键冲突 / 乐观锁耗尽 / 业务校验失败），在 **catch 块**写一条烧号账，`reason` 写明失败原因；**取号本身失败不写**（没消耗号，不算烧号）；
+  3. **归档**：超过 **90 天**可由定时任务置 `archived_flag = true`，**不物理删除**；
+  4. `schema_guard.py` 白名单加 `fund_flow_no_burn_ledger`（该白名单只用于「表存在性检查」，不是数据白名单/断言豁免）；
+  5. **A25 判定 SQL**：`SELECT COUNT(*) FROM fund_flow_no_burn_ledger WHERE archived_flag = false;` → **>0 即红**（进 TOTAL）；
+  6. A24 保持 **INFO**（只报当天号段取值 − 已落库条数，不阻断）。
 
 ## 6. 执行顺序与验收门
 
