@@ -18,11 +18,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -99,6 +101,23 @@ public class ReconController {
     @PreAuthorize("hasAuthority('finance:bank:view')")
     public Result<IPage<ReconDifferenceVO>> listDifferences(ReconDifferenceQueryDTO query) {
         return Result.success(reconDifferenceService.listDifferences(query));
+    }
+
+    /**
+     * AC-50：渠道手续费汇总（只读）。
+     *
+     * <p>并入 ReconController 而非新开类：它属于「勾稽差异池」的只读聚合视图，
+     * 与 R8 同域、同一鉴权码 {@code finance:bank:view}，没有引入新的数据范围语义，
+     * 单开一个 Controller 只会制造无意义的类膨胀。</p>
+     */
+    @Operation(summary = "渠道手续费汇总（按 bank_transactions.source_type 分组；可选 runId/from/to）")
+    @GetMapping("/recon/channel-fee-summary")
+    @PreAuthorize("hasAuthority('finance:bank:view')")
+    public Result<com.foodtraceability.dto.finance.recon.ChannelFeeSummaryVO> channelFeeSummary(
+            @RequestParam(required = false) Long runId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime to) {
+        return Result.success(reconDifferenceService.channelFeeSummary(runId, from, to));
     }
 
     /** R9：认领差异 */

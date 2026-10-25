@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.common.exception.ErrorCode;
+import com.foodtraceability.dto.finance.recon.ChannelFeeSummaryVO;
 import com.foodtraceability.dto.finance.recon.ReconDifferenceQueryDTO;
 import com.foodtraceability.dto.finance.recon.ReconDifferenceVO;
 import com.foodtraceability.dto.finance.recon.ReconResolveDTO;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -205,5 +208,28 @@ public class ReconDifferenceServiceImpl implements ReconDifferenceService {
             return 20L;
         }
         return Math.min(size, 200L);
+    }
+
+    @Override
+    public ChannelFeeSummaryVO channelFeeSummary(Long runId, LocalDateTime from, LocalDateTime to) {
+        // 只读聚合：一条 SQL 完成分组；三个条件都不传时与「无 <if> 版本」逐字相同
+        List<ChannelFeeSummaryVO.Row> rows = reconDifferenceMapper.channelFeeSummary(runId, from, to);
+        ChannelFeeSummaryVO vo = new ChannelFeeSummaryVO();
+        vo.rows = rows == null ? new ArrayList<>() : new ArrayList<>(rows);
+        ChannelFeeSummaryVO.Row total = new ChannelFeeSummaryVO.Row();
+        total.sourceType = "ALL";
+        long cnt = 0L, fee = 0L, diff = 0L;
+        for (ChannelFeeSummaryVO.Row r : vo.rows) {
+            cnt += r.diffCount == null ? 0L : r.diffCount;
+            fee += r.feeTotalFen == null ? 0L : r.feeTotalFen;
+            diff += r.diffAmountFen == null ? 0L : r.diffAmountFen;
+        }
+        total.diffCount = cnt;
+        total.feeTotalFen = fee;
+        total.diffAmountFen = diff;
+        vo.total = total;
+        log.info("[CHANNEL_FEE_SUMMARY] runId={} from={} to={} groups={} rows={} diffFen={}",
+                runId, from, to, vo.rows.size(), cnt, diff);
+        return vo;
     }
 }
