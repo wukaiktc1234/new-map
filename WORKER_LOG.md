@@ -1552,3 +1552,48 @@ SELECT (to_regclass('public.fund_flows') IS NOT NULL
 2. 验证方法固定为：**用业务真实使用的查询**（此处即鉴权 SQL `roles.role_id_str = user_roles.role_id`）回查一遍，并把结果贴进报告；能走接口的，再补一次接口调用验证。
 3. 涉及**关联键**的脚本，写之前先读一遍 JOIN 条件（不要凭列名假设：`role_id` 里存的到底是数字还是 `ROLE_*` 字符串）。
 4. 数据脚本一律**幂等**，并附「执行后回查」段落（本次两个脚本已按此补上回查 SELECT）。
+---
+
+## 53. P3-3 调节表闭环（四类下钻 + 四眼门禁 UI + 导出/打印）+ 三问答复（2026-10-25 15:00–15:22）
+
+### 53.1 data_scope 语义（Q1 答复）
+**合法值（`PermissionVerifyServiceImpl:563-570` 优先级表）**：`all(100) > company(80) > region(70) > stores(60)/departments(60) > store(40)/department(40) > self(20)`；无值时按 `self` 兜底（`:477/:494`）。DB 实际分布：`department 5 / store 5 / self 4 / all 4 / company 3 / NULL 3`。
+**关键角色实际值**：`finance_director=company`、`finance_manager=department`、`store_manager=department`、`teller=store`、`auditor=self`、`admin=all`。
+- **`qa_admin` 的 company 不是种子问题，是角色定义问题**：`finance_director` 在设计上就是 `company`（全公司），而 `StoreReconServiceImpl` 的全局判定只认 `all` → 财务总监被误判为非全局。这是**口径缺失**，不是数据脏。
+- **`department` 在门店体系里的实际含义**：门店归属由 `users.location_id`（经 `LocationIdBridge.storeIdOf()` 映射到 store）确定，`data_scope='department'` 在本系统等价于「**本部门/本店**」这一档（优先级 40，与 `store` 同级）。因此 `qa_store_b`（store_manager, department, location_id=2）能查 store 2、查 store 1 被 403 —— 行为正确。
+- **角色白名单是硬编码**：`StoreReconServiceImpl:140-149 hasAllScopeRole()`，集合 `finance_director / finance_manager / auditor / admin`，用 `RoleCodeNormalizer` 归一后比较。
+- **为什么不用「改数据」而用硬编码**：① `roles` 是主数据，Owner 本轮明确不让动；② 改数据只能救这 4 个角色，**任何新建的「全公司视角」角色仍会踩同一个坑**；③ 更根本的问题是判定只认 `all`、不认 `company`（优先级更高的语义档）。**建议**（需 Owner 放行）：把全局判定改为「`data_scope ∈ {all, company}` 或角色白名单」，然后删掉白名单，回到纯数据驱动。
+- **改数据的影响面（若要改）**：`roles.data_scope` 被这些位置消费 —— `PermissionVerifyServiceImpl:475/getUserDataScope`（含缓存 `user:data_scope:`）、`PermissionAspect:187/419-431 checkDataScopeLevel`、`DataPermissionServiceImpl:259/376/415/463`（列表查询过滤）、`StoreReconServiceImpl:113`、`DashboardStoreScopeResolver:175`。改一个角色的 data_scope 会影响所有这些模块的数据可见范围，**必须整体回归，不能单点改**。
+
+### 53.2 `pos_shifts` 门店归属（Q2 答复）
+- `pos_shifts` **没有 `store_id` 列**（列：shift_id/terminal_id/employee_id/…/end_time/closing_cash/…）。门店由「班次时间窗内订单的 `store_id`」推导（`resolveShiftStores(shift)`）。
+- **seed 的 B 店缴款单 store_id=2 是「显式传 + 代码强校验」的结果**，不是靠假设：`DepositSlipServiceImpl:148-169` —— ① 请求带了 storeId 但与班次实际门店集合不符 → **400**；② 未传且班次命中多个门店 → **400「班次无法唯一归属门店」**；③ 只有唯一命中才自动推导。**该校验已存在**，无需新增。
+
+### 53.3 教训记录（Q3）
+见 §52（本文件上一节）：补数据脚本必须验证「补完后实际查询结果」，不能只验证 SQL 执行成功；`user_roles` 关联键是 `roles.role_id_str` 而非数字 `role_id`；本次 `qa_store_b` 曾因此解析为 `(none)`，已修复。
+
+### 53.4 P3-3 实现
+| 层 | 内容 |
+|---|---|
+| 前端新增 | `api/finance-recon-statement.ts`（列表/详情/生成/提交/审核/歧义/导出）；`StatementList.vue`、`StatementDetail.vue`（四类下钻 + 四眼门禁 + 导出/打印）、`StatementPrintView.vue`（打印模板） |
+| 路由 | `/finance/recon/statements`、`/finance/recon/statements/:id`、`/finance/recon/statements/:id/print`；工作台加 `link-statements` 入口 |
+| 后端 | **只改一处**：V8 门禁（同一人 / 出纳）由 `err(400)` 改为 `conflict(409)`（新增 `conflict()` 助手），AC-52b 语义对齐 |
+| 契约校正 | 后端**没有 `/reject` 端点**（状态机 DRAFT→SUBMITTED→APPROVED），改为封装 `resolve-ambiguity`；VO 为 public field 序列化；导出返回 `ResponseEntity<byte[]>` + `Content-Disposition` |
+
+### 53.5 AC-51 / AC-52（E2E 13/13 PASS，exit 0）
+| AC | 结果 | 实测 |
+|---|---|---|
+| AC-51a 主表四列自洽 | **PASS** | 映射 A=in_credit/B=in_debit/C=out_credit/D=out_debit；`{26000,26000,174539,0}` == items `{(5,26000),(1,26000),(11,174539),(0,0)}` |
+| AC-51b 页面四类下钻 | **PASS** | `cat-A/B/C/D` 的 `data-count`/`data-amount-fen` 与 SQL 逐类相等 |
+| AC-52a 前端·提交人 | **PASS** | `btn-approve disabled=True`、`four-eyes-hint`「提交人与审核人不得为同一人」 |
+| AC-52a 后端·出纳 | **PASS** | `qa_teller` 直调 → **409**「V8 门禁失败：出纳（ROLE_TELLER）不得审核调节表」 |
+| AC-52b 后端·自审 | **PASS** | 提交人直调 → **409**「V8 门禁失败：提交人与审核人不得为同一人（四眼原则，不可配置关闭）」 |
+| AC-52c 两步流转 | **PASS** | statement 24：submit→`SUBMITTED`（submitted_by=qa_admin、approved_by=0）→ approve（qa_approver）→ `APPROVED`（approved_by=2110437068670001221） |
+| 出纳页面拦截 | 记录（设计事实） | `btn-approve` 数量=0、无财务菜单（路由 roles 不含 teller）；按裁定不计失败 |
+
+### 53.6 收尾时发现并修掉的 2 个真缺陷
+1. **AC-50b 页面手续费全 0**：`ChannelFeePanel` 固定传 `runId=currentRun.runId`（35/37），而 CHANNEL_FEE 挂在 **run 36** → 空集；**次因**是后端分组字段是 `rows` 而前端读 `groups`。已改为「默认不带 runId（跨批次）+ `fee-scope-current` 勾选才带」，并 `data.rows ?? data.groups` 兼容；未就绪属性输出空串 + `data-fee-state` 防假 0。实测默认 `35/35/1`、勾选后 `0/0/0`（精确复现原机制）。
+2. **`ui_e2e_payment` 失败**（`生菜串 库存不足`）：历次 E2E 消耗库存至 0，属测试环境数据耗尽，非代码回归；脚本 `scripts/db-fix/2026-10-25-replenish-e2e-stock.sql` 补足（`UPDATE food SET stock=500 WHERE stock<100`），复跑 **7/7 PASS**。
+
+### 53.7 回归（全绿）
+`consistency_check` **14 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**；`ui_e2e_payment` **7/7 exit 0**；`e2e_recon_workbench` **12/12 exit 0**；`e2e_store_recon` **9/9 exit 0**；`e2e_statement_flow` **13/13 exit 0**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
