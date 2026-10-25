@@ -17,10 +17,12 @@ import {
   approveStatement,
   exportStatementCsv,
   getStatement,
+  resolveStatementAmbiguity,
   submitStatement,
   type ReconciliationItemVO,
   type ReconciliationStatementVO,
 } from '@/api/finance-recon-statement'
+import ResolveAmbiguityDialog from './components/ResolveAmbiguityDialog.vue'
 import { usePermissionStore } from '@/stores/permission'
 import { formatFen } from '@/types/finance-recon'
 
@@ -212,6 +214,101 @@ function doPrint(): void {
   window.open(target.href, '_blank')
 }
 
+/* ===== P4-2 同额歧义处置（逐笔，无批量） ===== */
+const ambiguityVisible = ref(false)
+const ambiguityItem = ref<ReconciliationItemVO | null>(null)
+const ambiguitySubmitting = ref(false)
+
+/** 打开处置弹窗（只针对当前行的这一条 item） */
+function openAmbiguity(item: ReconciliationItemVO): void {
+  ambiguityItem.value = item
+  ambiguityVisible.value = true
+}
+
+/**
+ * 提交处置：POST resolve-ambiguity。
+ * 成功后**用响应里的新值**整体替换 statement（isBalanced / ambiguousItemCount / items 均由后端重算），
+ * 四类卡的 data-count / data-amount-fen 与 stmt-balanced 自动刷新。
+ * 失败（400/403/409）把后端 message 原样写进 data-test="action-error"，不吞错。
+ */
+async function submitAmbiguity(payload: { decision: string; targetRef: string; reason: string }): Promise<void> {
+  const stmt = statement.value
+  const item = ambiguityItem.value
+  if (!stmt || !item) return
+  if (payload.reason.trim().length < 5) {
+    actionError.value = '处置原因至少 5 个字'
+    return
+  }
+  actionError.value = ''
+  ambiguitySubmitting.value = true
+  try {
+    const updated = await resolveStatementAmbiguity(stmt.statementId, item.itemId, {
+      decision: payload.decision,
+      targetRef: payload.targetRef,
+      reason: payload.reason.trim(),
+    })
+    statement.value = updated
+    ambiguityVisible.value = false
+    ambiguityItem.value = null
+    ElMessage.success('歧义已处置')
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : '歧义处置失败'
+  } finally {
+    ambiguitySubmitting.value = false
+  }
+}
+
+/**
+ * 审计时间线（与 P3-1 同一渲染约定：li + span[data-field]）。
+ * 详情接口未单独返回审计列表，这里用：
+ * ① statement 的 submitted/approved 字段；
+ * ② 处置后的 item.reason 前缀「已处置(AMBIGUITY->X:ref)：…」。
+ */
+interface AuditSegment {
+  field: string
+  text: string
+}
+interface AuditLine {
+  field: string
+  segments: AuditSegment[]
+}
+const auditLines = computed<AuditLine[]>(() => {
+  const stmt = statement.value
+  if (!stmt) return []
+  const lines: AuditLine[] = []
+  if (stmt.submittedAt || stmt.submittedBy != null) {
+    lines.push({
+      field: 'submittedAt',
+      segments: [
+        { field: 'submittedAt', text: '提交于 ' + (stmt.submittedAt || '（未记录时间）') },
+        { field: 'submittedBy', text: '，提交人 ' + (stmt.submittedBy != null ? '#' + stmt.submittedBy : '（未记录）') },
+      ],
+    })
+  }
+  if (stmt.approvedAt || stmt.approvedBy != null) {
+    lines.push({
+      field: 'approvedAt',
+      segments: [
+        { field: 'approvedAt', text: '审核于 ' + (stmt.approvedAt || '（未记录时间）') },
+        { field: 'approvedBy', text: '，审核人 ' + (stmt.approvedBy != null ? '#' + stmt.approvedBy : '（未记录）') },
+      ],
+    })
+  }
+  for (const item of stmt.items ?? []) {
+    const reason = item.reason || ''
+    if (!reason.startsWith('已处置(AMBIGUITY->')) continue
+    const head = reason.split('；')[0]
+    lines.push({
+      field: 'ambiguityResolved',
+      segments: [
+        { field: 'ambiguityResolved', text: 'item #' + item.itemId + '（' + String(item.category || '').toUpperCase() + ' 类）' + head },
+        { field: 'resolutionRemark', text: '；' + (reason.split('；').slice(1).join('；') || '') },
+      ],
+    })
+  }
+  return lines
+})
+
 onMounted(load)
 </script>
 
@@ -317,6 +414,7 @@ onMounted(load)
                   <th>期间</th>
                   <th class="num">金额(元)</th>
                   <th>引用侧</th>
+                  <th style="width: 92px">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -329,16 +427,47 @@ onMounted(load)
                   <td class="mono nowrap">{{ item.periodStart || '-' }} ~ {{ item.periodEnd || '-' }}</td>
                   <td class="num" :data-amount-fen="item.amount ?? 0">{{ formatFen(item.amount) }}</td>
                   <td class="mono">{{ refSide(item) }}</td>
+                  <td>
+                    <el-button
+                      v-if="item.ambiguous"
+                      link
+                      type="warning"
+                      data-test="btn-resolve-ambiguity"
+                      :data-item-id="item.itemId"
+                      @click="openAmbiguity(item)"
+                    >处置</el-button>
+                    <span v-else class="dim">—</span>
+                  </td>
                 </tr>
                 <tr v-if="itemsOf(meta.key).length === 0">
-                  <td colspan="5" class="cat-items__empty">该类无未达账项</td>
+                  <td colspan="6" class="cat-items__empty">该类无未达账项</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
       </section>
+
+      <!-- 审计时间线（处置记录在此出现） -->
+      <section class="statement-detail__timeline" data-test="audit-timeline">
+        <h4 class="statement-detail__subtitle">审计时间线</h4>
+        <ul v-if="auditLines.length" class="timeline">
+          <li v-for="(line, idx) in auditLines" :key="idx" class="timeline__item" :data-field="line.field">
+            <span v-for="(seg, segIdx) in line.segments" :key="segIdx" :data-field="seg.field">{{ seg.text }}</span>
+          </li>
+        </ul>
+        <div v-else class="timeline__empty">暂无提交/审核/处置记录</div>
+      </section>
     </template>
+
+    <!-- 同额歧义处置（逐笔） -->
+    <ResolveAmbiguityDialog
+      v-model="ambiguityVisible"
+      :statement="statement"
+      :item="ambiguityItem"
+      :submitting="ambiguitySubmitting"
+      @submit="submitAmbiguity"
+    />
   </div>
 </template>
 
@@ -547,6 +676,41 @@ onMounted(load)
 
 .nowrap {
   white-space: nowrap;
+}
+
+.dim {
+  color: var(--fts-text-secondary, #909399);
+}
+
+.statement-detail__timeline {
+  margin-top: 4px;
+  padding: 12px 14px;
+  background: var(--fts-bg-card, #fff);
+  border: 1px solid var(--fts-border-secondary, #ebeef5);
+  border-radius: 12px;
+}
+
+.statement-detail__subtitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fts-text-secondary, #606266);
+}
+
+.timeline {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fts-text-primary, #303133);
+}
+
+.timeline__empty {
+  font-size: 12px;
+  color: var(--fts-text-secondary, #909399);
 }
 
 @media (max-width: 1400px) {
