@@ -977,7 +977,7 @@ expected_amount（分）
 
 ---
 
-## 8. 验收标准与自动化防线（AC-1 – AC-43）
+## 8. 验收标准与自动化防线（AC-1 – AC-54）
 
 > 编号统一为 **AC-n**（合并 A 稿 A1-x / A4-x 与 B 稿 V2-x / V3-x，去重后单一编号）。
 > **结论：其中 AC-1～AC-36 可作为实现期自测；AC-37 是「不许破坏既有防线」的硬门禁；AC-38～AC-41 与 AC-43 建议直接挂进 `scripts/qa/consistency_check.py`（新增 A7–A10、A12），与既有 A1–A6 并列；AC-42 为 INFO 信息性断言（A11），只输出超期条数供看板展示，不计入 TOTAL FAIL。**
@@ -1029,6 +1029,16 @@ expected_amount（分）
 | AC-43 | （建议新增 A12）调节表汇总自洽：每张 `reconciliation_statements` 的 `uncleared_in_credit/in_debit/out_credit/out_debit` = 其 `reconciliation_items` 按 `category` 的 `SUM(amount)`（`deleted=0`），差值不为 0 的行数 = 0（TD-24 裁决为其他载体时本断言作废） | 挂 `consistency_check.py` | §4.3、§5.10 |
 | AC-44 | （P1 新增）**审核人硬门禁 V8**：以出纳身份提交的调节表，用同一账号 approve → 必须被拒（业务错误码非 0）；用另一出纳账号 approve → 也必须被拒；用非出纳的其他审核人 approve → 通过。三条用例全部断言 | 接口 + SQL | §4.3 V8、§5.10.1 |
 | AC-45 | （P1 新增）**调节表不调账**：`POST /statements`（生成）→ `submit` → `approve` 全链路前后，`fund_flows` 行数与 `bank_accounts.balance` 合计**零变化**；`reconciliation_items` 只引用既有 `flow_id`/`transaction_id`，不存在指向不存在记录的悬空引用 | SQL | §4.3 硬规则一 |
+| **AC-46a**（P3-1） | 工作台摘要「差异笔数」**直接取 `GET /recon-runs/{runId}` 的 `differenceCount`**（不得由前端统计列表行数）；Playwright 断言 `[data-test="summary-diff-count"]` 数值 == 接口 `differenceCount`。实测以 `differenceCount=4` 而队列 12 行为例，证明两者口径不同、不能互相推导 | `scripts/qa/e2e_recon_workbench.py` | §9 P3-1 |
+| **AC-46b**（P3-1） | 工作台摘要「差异金额」== `SUM(recon_differences.diff_amount WHERE run_id=?)`（R8 分页全量聚合，单位**分**）。**断言钩子固定**：先等 `[data-test="summary-diff-amount"]` 的 `data-amount-state` = `ready`，再读其 **`data-diff-amount-fen` 原始分值**做整数相等比较（无千分位/无单位解析）；属性缺失才回退文本。未就绪时属性为空、卡片文案「—」，**禁止渲染 0.00**（假 0 会被误读为「无差异」） | `e2e_recon_workbench.py` | §9 P3-1 |
+| **AC-47**（P3-1） | 处置链路可走通且审计可见：「差异池 → 认领（R9）→ `ASSIGNED` → 核销（R10）→ `CLOSED`/`EXEMPT`」，且 `[data-test="audit-timeline"]` 内**中文四要素齐全**：`核销于 <时间>`、`操作人 <用户ID>`、`原因 <resolutionRemark>`、`决议 <resolution>`（认领阶段为 `认领于 <时间>` + `认领人 <用户ID>`） | `e2e_recon_workbench.py` | §9 P3-1 |
+| **AC-48**（P3-1） | 核销原因必填、**前端阻塞**：`resolutionRemark` 为空时 `[data-test="resolve-submit"]` 为 `disabled`，且**整个尝试期间发往 `/resolve` 的请求数 == 0**（Playwright `page.on('request')` 计数）。判据是「**没有发出请求**」，**不是**「被后端拒绝」；后端 400 兜底属另一层，不作本条判据 | `e2e_recon_workbench.py` | §9 P3-1 |
+| AC-49（P3-2 占位） | 门店对账数据范围：店长 A 访问本店 → 200 且仅本店数据；访问 B 店 → **403（越权，不是 404 资源不存在）** | `e2e_store_recon.py` | §9 P3-2 |
+| AC-50（P3-2 占位） | 手续费/佣金汇总 `channel-fee-summary` 的 `diff_count`/`fee_total`/`diff_amount` 逐字段 == `recon_differences(type=CHANNEL_FEE)` ⋈ `bank_transactions(source_type, fee)` 的 SQL 聚合 | `e2e_store_recon.py` | §9 P3-2 |
+| AC-51（P3-3 占位） | 调节表四类下钻：A/B/C/D 条数与金额 == `reconciliation_items` 按 `category` 聚合 | `e2e_statement_flow.py` | §9 P3-3 |
+| AC-52（P3-3 占位） | 四眼门禁双层：自审时前端审核按钮禁用，**且**后端 approve 返回 409 | `e2e_statement_flow.py` | §9 P3-3 |
+| AC-53（P3-4 占位） | 资金总览三段数字逐字段 == 对应 SQL 聚合（店长视角为本店子集） | `e2e_fund_overview.py` | §9 P3-4 |
+| AC-54（P3-5 占位） | 导入支持带时区偏移（`+08:00` / `Z`）并统一换算 Asia/Shanghai，落库 `txn_time` 为期望时刻 | 导入回归 | §9 P3-5 |
 
 ### 8.1 与现有 QA 脚本的挂载关系
 
