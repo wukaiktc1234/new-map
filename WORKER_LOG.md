@@ -1750,3 +1750,92 @@ row.abnormal = avgAbs > 0 ? absNet > avgAbs * 3 : absNet >= ABNORMAL_FLOOR_FEN; 
 
 ### 55.8 回归（全绿）
 `consistency_check` **15 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A25）；`schema_guard` **7/7**；`ui_e2e_payment` **7/7**；`e2e_recon_workbench` **14/14**；`e2e_store_recon` **9/9**；`e2e_statement_flow` **13/13**（修 `wait_for_data_attr` 的 `arg=` 不生效 bug 后）；`e2e_fund_overview` **10/10**；`e2e_p35_bl9_bl5` **9/9**；`vue-tsc` 0 error；`npm run build` exit 0；`mvn compile` BUILD SUCCESS。
+---
+
+## 56. P3 最终收口：3 项拍板落地 + 2 个问题答复（2026-10-25 19:09–19:30）
+
+### 56.1 拍板 1：`finance_manager.data_scope` → `company`（已执行）
+脚本 `scripts/db-fix/2026-10-25-finance-manager-company.sql`（幂等）：
+- `UPDATE roles SET data_scope='company' WHERE role_code='finance_manager'`；
+- `UPDATE users SET location_id=1 WHERE username='qa_approver' AND location_id IS NULL`（补归属门店，便于测「门店视角」场景；如需 department 场景另建 `qa_manager_store`，见 §56.9）。
+- 回查（按鉴权真实 JOIN）：`qa_admin=finance_director(company)`、**`qa_approver=finance_manager(company)`**、`qa_auditor=auditor(company)`、`qa_store_b=store_manager(department)`。
+- **行为验证**（`GET /v1/finance/overview/daily?date=2026-10-25`）：
+```
+qa_approver → code=0 dataScope=company storeId=null stores=3 行 [1,2,3]   ← 之前是 403，现可见全部门店
+qa_auditor  → code=0 dataScope=company stores=3 行
+qa_store_b  → code=0 dataScope=department storeId=2 stores=1 行（仍严格本店）
+```
+- **口径定论（写入本节）**：`finance_manager` 的设计职责是**统筹全部门店日常对账**，故 `data_scope=company`；此前 403 是**配置缺陷**（角色 data_scope 与职责不符 + 账号缺 location_id），已修。
+
+### 56.2 拍板 2：号段语义 = **可重用**（不改 REQUIRES_NEW）
+- **定论**：本系统流水号段**可重用** —— 取号与 `fund_flows` 插入同事务，插入失败回滚会把号段自增一起回滚，**不产生永久空洞**。
+- **A25 抓的是「曾交出但迄今未落库」的真号洞**（`archived_flag=false AND NOT EXISTS(fund_flows.flow_no)`），当前 `rows=0` 是**健康状态**，不因一次失败的业务请求变红。
+- 已把该语义写进 `consistency_check.sql` A25 注释（第 516 行起三条）：
+  > 号段语义（Owner 拍板）：可重用——取号与 insert 同事务，失败回滚连号段自增一起回滚，不产生永久空洞；烧号账是「曾经交出过」的审计痕迹，不是号洞账本。A25 健康值 = 0。
+- 代价与取舍（留档）：若改为「号绝不重用」，需把取号改 `REQUIRES_NEW` 独立提交，代价是**任何失败都永久烧号**且 A25 需重新定义；当前选择「可重用 + 审计痕迹」更符合财务可解释性。
+
+### 56.3 拍板 3：清库流程加重置 `order_sequence`（仅开发/测试）
+- `scripts/db-fix/20261025_purge-test-data.sql` 第 8 步新增：
+```sql
+DELETE FROM order_sequence WHERE sequence_key LIKE 'FLOW%';
+-- 注：缴款单号段 SLIPyyyyMMdd 不随清库重置（缴款单号对外可追溯，重置会与已导出单据重号）
+```
+- **为什么**：清库但不重置号段 → A24「号段取值 − 落库条数」留下恒定残差（本次 456 即由此而来）。
+- **生产不清库**：A24 残差由「失败次数 / 软删 / 跨日补录」决定，无需清零，也不需要人工对齐。
+
+### 56.4 问题 1：`wait_for_data_attr` 的 `'0'` 就绪边界（**已按你的建议收紧**）
+- **旧行为**：`ready_value=None` → 「属性非空即就绪」，`'0'` 也算非空。这**隐含了「所有 data-* 的 '0' 都是合法值」的假设**，错：若某个钩子**没有就绪标记**，页面在数据未到时渲染占位 `0`，就会把占位当真实值（P3-2 AC-50b、P3-4 AC-46a、P3-5 AC-52a 三次事故都是这个形状）。
+- **现已收紧**：`ready_value` **必填、无默认值**；传 `None`/`''` 直接 `ValueError`。数值类钩子若确实要「非空即就绪」，必须**显式**传哨兵 `READY_NONEMPTY`，并在调用处说明「该元素在数据未到时不会渲染 0」。
+```python
+wait_for_data_attr(page, selector, attr, ready_value, timeout=30000)   # ready_value 必填
+READY_NONEMPTY = "__nonempty__"   # 仅当确认无占位 0 时使用
+```
+- 调用处已同步：`e2e_recon_workbench`（两处传 `READY_NONEMPTY`，并在注释写明有 `data-amount-state` 门槛）、`e2e_statement_flow`（四类卡传 `READY_NONEMPTY`，注明「详情未加载时不渲染，'0' 是合法计数如 D 类」）。回归：recon 14/14、statement 13/13 均绿。
+
+### 56.5 问题 2：A24 残差是否随时间变化（**是动态的，但只受三类事件影响**）
+实测（2026-10-25 19:2x）：`sequence_value(FLOW20261025)=1917`、当日 `fund_flows` 存活 1461 行 → **A24 = 456**；软删 0 行、跨日补录 0 行。
+| 事件 | 对 A24 的影响 | 说明 |
+|---|---|---|
+| **插入失败**（余额不足/乐观锁/唯一键） | **无影响** | 同事务回滚号段 → 号被重用，sequence 与 rows 同步不减 |
+| **当日流水被软删/物理删** | **+n** | rows 减少、sequence 不变 → 残差扩大 |
+| **跨日补录**（今天创建、`business_date` 是昨天） | **+n** | sequence 增、今日行数不增 |
+| **清库未重置号段** | **+n（一次性）** | 本次 456 的主因；§56.3 已修 |
+| 每天平均新增（如 200 笔成功流水） | **不变** | sequence 与 rows 同增 200 |
+- **A24 正常值域**：`0 ≤ A24 ≤ 当日软删数 + 跨日补录数 + 历史清库残差`；**与失败率无关**（这是最容易误读的一点）。
+- 因此看板读数建议：**A24 只用于发现「异常删除/补录」**，不要当失败率指标；真正的失败观测看 A16（POS 入账失败后补记）与烧号账明细。
+
+### 56.6 P3 全部交付清单（P3-1 → P3-5）
+| 阶段 | 功能 | AC | E2E |
+|---|---|---|---|
+| **P3-1** | 财务对账工作台（三区：摘要/队列/详情 + 处置对话框 + 审计时间线）；R8 加可选 `from`/`to`（半开区间） | AC-46a 笔数取 R3、AC-46b 金额取 R8 全量 SUM、AC-47 认领→核销→时间线四要素、AC-48 空原因不发请求 | `e2e_recon_workbench` **14/14** |
+| **P3-2** | 门店对账视图（三值卡 + 短款标红 + 403 降级）+ 渠道手续费卡（按 `source_type` 分组）；2 个只读接口（含 403 越权语义）；seed 改两店 | AC-49a/b/c 本店/越权/页面、AC-50a/b 接口与页面对拍 | `e2e_store_recon` **9/9** |
+| **P3-3** | 调节表闭环：四类下钻（金额取接口原值）+ 四眼门禁 UI 前置 + CSV 导出 + 可打印模板；V8 门禁 400→409 | AC-51a/51b 四类与主表自洽、AC-52a 前端提交人/后端出纳、AC-52b 后端自审 409、AC-52c submit→approve | `e2e_statement_flow` **13/13** |
+| **P3-4** | 总部资金总览（三卡：门店现金户 / 渠道 vs SALE / 未关闭调节表）；data_scope 判定统一（`all|company`，删白名单）；A23(INFO) | AC-53a–53f 逐字段对拍 + 数据范围 | `e2e_fund_overview` **10/10** |
+| **P3-5** | BL-9 时区偏移（`+08:00`/`Z` → Asia/Shanghai）；BL-5 烧号账（表 + REQUIRES_NEW + 90 天归档 + A24/A25） | AC-54a/b/c | `e2e_p35_bl9_bl5` **9/9**；并发取号 7/7 |
+
+**回归基线**：`consistency_check` **15 PASS / 0 FAIL，TOTAL FAIL=0，exit 0**（A1–A25，10 条 INFO）；`schema_guard` 7/7；`ui_e2e_payment` 7/7；`vue-tsc` 0 error；`mvn compile` BUILD SUCCESS；P3 新增 5 个 E2E 脚本全绿。
+
+### 56.7 P3 backlog（未在 P3 做，逐条 + 优先级）
+| 编号 | 项 | 为什么没做 | 优先级 |
+|---|---|---|---|
+| BL-2 | 三处发号器收敛（`FundFlowMapper#nextFlowSequence` / `DepositSlipMapper#nextSlipSequence` / `ReconCashSupport#nextFlowNo` 统一到一处） | Owner 明确「不在 P3 范围，需单独放行 call-number」 | **P4 高**（号段语义已定，收敛前每加一个发号点都要重复一遍 GREATEST floor 逻辑） |
+| NEW-1 | 期末结账 / 反结账 | 新模块，Owner 决定「等对账工作台稳定一个结账周期后再开」 | **P4 中**（依赖 P3-3 调节表闭环已被真实使用） |
+| TD-31 | 退款侧勾稽 | 设计稿明确本期不做 | **P4 低**（P4 若做售后/退款域时一并） |
+| BL-10 | `ReconciliationStatementServiceImpl#detail` 自调用 7 处（`readOnly` 不生效） | 计划 §3.6 定为「P3 顺手，不单独决策」，实际未动 | **P4 低**（无功能影响，属代码卫生） |
+| BL-6b | 调节表 1:N 同额歧义的人工处置体验（当前靠 `resolve-ambiguity` 端点，前端未接入） | P3-3 只做了展示与门禁，未做歧义处置 UI | **P4 中**（真实数据 495 条里 2.2% 会走到） |
+| NEW-2 | `recon_runs.auto_matched_amount` 持久化（自动勾稽率指标） | 涉及加列（结构变更），P3-4 时 Owner 未放行 | **P4 低**（当前用 `recon_items` 聚合代偿） |
+| NEW-3 | `e2e_store_recon` / `e2e_fund_overview` 迁到 `wait_for_data_attr` | P3-5 只改了 recon/statement 两个脚本 | **P3 收尾后第一件事**（机制统一，防第 4 次竞态） |
+| NEW-4 | `TransactionServiceImpl` 之外的 P3 前端页面权限码细化（当前统一复用 `finance:bank:view`） | 未新增权限码（Owner 要求先报告） | **P4 低** |
+
+### 56.8 收口声明
+P3 五项功能、方法学三条（零容忍断言、取样竞态机制、补数据必验证实际查询）全部落地并通过回归；剩余项均转入 backlog，无一阻塞。
+
+### 56.9 附：如需测「department 门店视角」，用这个账号
+`qa_approver` 已补 `location_id=1` 且角色为 `company`，不再适合测门店视角。需要时执行（未建，避免无谓账号）：
+```sql
+INSERT INTO users (username,password,name,status,roles,role,deleted,location_id,need_change_password)
+SELECT 'qa_manager_store', password, 'QA 门店经理', 1, '["9"]'::jsonb, 'store_manager', 0, 1, false
+  FROM users WHERE username='qa_admin';
+INSERT INTO user_roles (user_id, role_id, deleted, create_time)
+SELECT user_id::text, 'ROLE_STORE_MANAGER', 0, now() FROM users WHERE username='qa_manager_store';
+```
