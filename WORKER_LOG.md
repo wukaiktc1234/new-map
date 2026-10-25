@@ -2310,7 +2310,12 @@ account_id | count | 说明
 | 7 | 前端三态徽标真机：`2026-10 data-status=OPEN` / `2026-09 data-status=REOPENED`（tooltip 含 close/reopen 时间与原因），`period-closing-fen data-fen=54490` | PASS |
 
 ### 63.5 ⚠️ 未闭合项（必须报告，不隐瞒）
-**A. P4-4d（NEW-8 丢失路径）E2E 覆盖：尚未跑通。** 根因是审计过滤字段用错（`target_id` 是 item_id；应按 `operation_data::json->>'statementId'` + `log_id > baseline`），已把精确条件交给 ts-ops 做最后一跑；**在跑通前，本项按「未覆盖」披露**（后端单测级已覆盖：log_id 1504/1506 + 追溯链）。
+**A. P4-4d（NEW-8 丢失路径）E2E 覆盖：已真实覆盖，全绿 20/20（`e2e-amb-lost7.log`）。**
+排查过程（两个真因，都写清以免重蹈）：
+1) **审计过滤字段用错**：`finance_audit_logs.target_id` 存的是 **item_id** 而不是 `statement_id` → 必须用 `operation_data::json->>'statementId'` + `log_id > baseline` 取新增行；
+2) **重算被 400 挡掉**：`POST /recon/statements{forceRecalc:true}` 在表仍含未处置歧义时必须带 `remark`（否则「存在 N 笔未解决的同额歧义，remark 必须填写处置说明」）→ 没有 remark 就根本没进「DRAFT 原地重算」分支，自然不会有 LOST。
+**实测结果**：statement 95（account 23 / 2026-10-26 单日 / DRAFT），处置 1 条 → 把该 flow 的 `business_date` 移出期间（行保留）→ 带 `remark` 的 force 重算 → **新增 `RECON_DISPOSITION_LOST` log_id=1646 > baseline 1644**，`operation_data` 四键齐全（`subjectKey=A:flow_id=5042` / `originalReason=已处置(AMBIGUITY->C:769)：…` / `clearedFlag=true` / `lostReason=resubject-not-detected-after-recalc`），且用 `subjectKey` 反查 `fund_flows` 命中 1 行（追溯链闭合）；`business_date` 已 finally 恢复。
+**匹配键**（代码 `:228-233`）= `(statement_id, category, COALESCE(flow_id,0), COALESCE(transaction_id,0))`，**不含 amount、不含 business_date**；LOST 分支入口 = `updated == 0`。**不满足「accountId+periodStart+periodEnd 完全等于表存储值」会新建表 → 永不产生 LOST**（已在 `:177-182` 加 WARN 诊断）。
 **B. 2026-10 无法真实结账 —— 期初余额口径缺失（需要 Owner 裁决）。** 现算显示 6 个账户 `trialBalancePassed=false`：`opening=0`（2026-10-01 前没有任何 `fund_flows`，账户初始余额不来自流水），而期间末笔 `balance_after` 是真实累计值（账户 20 = 80,760 分）→ V1 下 `closing(-46,840) ≠ 末笔(80,760)`。两条路：
 1. **补期初**（推荐）：新增「账户期间期初余额」维护（表或 `bank_accounts` 加 `opening_balance_fen` + 期初生效日），V1 口径不变；
 2. **改 V1 口径**：`closing` 与「账户当前 `balance`」比对（等于放弃「期末 = 期初+收−支」的恒等式，**不建议**）。
@@ -2318,3 +2323,12 @@ account_id | count | 说明
 
 ### 63.6 最终回归
 `consistency_check` **18 PASS / 0 FAIL**（A19=0、A26=2 INFO、A27=0、**A28=0、A29=0**，TOTAL FAIL=0，exit 0）｜`schema_guard` exit 0｜`ui_e2e_payment` exit 0｜`e2e_recon_workbench` exit 0｜`e2e_statement_flow` exit 0｜`mvn compile` BUILD SUCCESS｜`vue-tsc` 0 error｜`npm run build` exit 0。
+### 63.7 P4-4 E2E 终版证据与已知不稳定项
+| 分组 | 证据 | 结果 |
+|---|---|---|
+| 主链路（含处置全链路/多候选/无批量/EXEMPT 三条/段 B 四条/P4-4c） | `e2e-amb-p44f.log` | **36 PASS / 0 FAIL**（已接受） |
+| **P4-4d 丢失审计九条** | `e2e-amb-lost7.log` | **20/20 PASS**（log_id 1646 > 1644、四键齐全、追溯链闭合、business_date 已恢复） |
+| 合并全量（74 条歧义大树） | `e2e-amb-final-v5.log` | EXEMPT-1/3 **FAIL**：`EXEMPT 条目=[]` |
+**EXEMPT-1/3 根因（脚本顺序，不是产品/断言）**：在大表里「单条 UI 处置 + 多候选探测 + 通用清理循环」先跑，悬空（888）那条被通用 RESOLVE 循环先吃掉 → 轮到特意 EXEMPT 时已无对象。独立跑（小表、先 EXEMPT）时 20/20 全绿。**不放宽断言**，转 backlog：
+**NEW-12（P4 候选，中）**：E2E 用例顺序解耦 —— 每条断言自带独立夹具/独立 statement，避免「大表里多个用例争抢同一批 item」。
+**NEW-13（P4 候选，低）**：`resolve-ambiguity` 在表含未处置歧义时要求 `remark` 的行为，前端与脚本都应显式带上（当前 UI 已带，脚本曾漏 → 排障耗时）。

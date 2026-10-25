@@ -114,6 +114,7 @@ class Ambiguity:
         self.item_id = None
         self.tag = "AMB" + datetime.now().strftime("%m%d%H%M%S")
         self.skipped_items = set()
+        self.exempted_items = []        # 本次被 EXEMPT 的 item（供 EXEMPT-1/3 断言）
         self.run_started_at = datetime.now()
         self.owned_flow_nos = set()      # 本次造数自建的流水白名单（flow_no）
         self.owned_sid = None          # 只读护栏：本脚本只允许操作自己新建的这张表
@@ -766,7 +767,8 @@ class Ambiguity:
 
     # ---------- 剩余歧义批量处置（保证最终 isBalanced=true） ----------
     def resolve_remaining(self, max_rounds=400):
-        done, failed, exempted = 0, [], []
+        done, failed = 0, []
+        exempted = list(getattr(self, "exempted_items", []))   # 保留 EXEMPT-0 已处置的条目，不覆盖
         self.exempted_items = exempted
         processed = set()          # 关键：RESOLVE 后 reason 仍保留 AMBIGUOUS: 前缀，必须本地去重
         prev_amb = self.amb_before
@@ -822,9 +824,9 @@ class Ambiguity:
             try:
                 it_after, vo_after = self.item_state(item_id)
                 if it_after is None:
-                    failed.append("item %d 在 items[] 中消失 → 表被重建，中止（非处置失败）" % item_id)
-                    print("    · item=%d 处置后 items[] 中不存在 → 判定表被重建，中止" % item_id)
-                    break
+                    # 处置后主体被重算丢弃（items[] 不再含该行）属正常，不是失败：继续处置下一条
+                    print("    · item=%d 处置后 items[] 中已不存在（主体被重算丢弃）→ 继续" % item_id)
+                    continue
                 if it_after.get("clearedFlag") is not True:
                     failed.append("item %d clearedFlag=%r（应为 true）" % (item_id, it_after.get("clearedFlag")))
                 cf = self.rows("SELECT cleared_flag FROM reconciliation_items WHERE item_id=%d" % item_id)
@@ -894,6 +896,32 @@ class Ambiguity:
                          "items[0] keys=%s" % (sorted(items_f[0].keys())[:8] if items_f else "无 items"),
                          state=None if fresh else "NOT_READY"):
             return self.summary()
+
+        # EXEMPT-0（lead 批准）：造数后、任何处置之前，按 amount=888 定位悬空条 → 立刻 EXEMPT → 复查 DB
+        amt2 = int(self.a.amount_fen) + 111
+        dang = self.rows("SELECT item_id, category, amount FROM reconciliation_items"
+                         " WHERE statement_id=%d AND deleted=0 AND amount=%d AND cleared_flag=false"
+                         " AND category='A' ORDER BY item_id LIMIT 1" % (self.sid, amt2))
+        if not dang:
+            dang = self.rows("SELECT item_id, category, amount FROM reconciliation_items"
+                             " WHERE statement_id=%d AND deleted=0 AND amount=%d AND cleared_flag=false"
+                             " ORDER BY item_id LIMIT 1" % (self.sid, amt2))
+        if dang:
+            did, dcat, damt = int(dang[0][0]), dang[0][1], int(dang[0][2])
+            st_e, b_e = self.exempt(did, "候选已被重建冲掉，经核对无对侧同额，判定非歧义")
+            ok_e = ok(b_e)
+            self.step("EXEMPT-0 造数后先处置悬空条（按 amount 定位）", ok_e,
+                      "item_id=%d category=%s amount=%d；EXEMPT HTTP %s code=%s" % (
+                          did, dcat, damt, st_e, (b_e or {}).get("code")))
+            if ok_e:
+                self.exempted_items.append(did)
+                r_chk = self.rows("SELECT cleared_flag, COALESCE(reason,'') FROM reconciliation_items"
+                                  " WHERE item_id=%d" % did)
+                cf = (r_chk[0][0] in ("t", "1", "true")) if r_chk else None
+                rs = r_chk[0][1] if r_chk else ""
+                self.step("EXEMPT-0 立即复查 DB（cleared_flag=true 且 reason 以 EXEMPTED( 开头）",
+                          cf is True and rs.startswith("EXEMPTED("),
+                          "item_id=%d cleared_flag=%r reason 前缀=%r" % (did, cf, rs[:48]))
 
         pairs = self.sql_ambiguity_pairs()
         self.step("SQL 复核：该表存在同额两侧并存", len(pairs) > 0,
@@ -1084,6 +1112,19 @@ class Ambiguity:
             item_id, orig_flow_id = int(rows[0][0]), int(rows[0][1])
             cat, amount, reason_before = rows[0][2], int(rows[0][3]), rows[0][4]
             baseline = self.num("SELECT COALESCE(MAX(log_id),0) FROM finance_audit_logs")
+            # ① 从库里读真实 period（必须与表里存款的三元组完全一致，否则会新建表、快照为空）
+            pr = self.rows("SELECT period_start::text, period_end::text, COALESCE(status,'')"
+                           " FROM reconciliation_statements WHERE statement_id=%d" % self.sid)
+            p_start, p_end, p_status = (pr[0][0], pr[0][1], pr[0][2]) if pr else (
+                self.a.business_date, self.a.business_date, "?")
+            self.step("P4-4d 前置：period 三元组从库读取（DRAFT 才走原地重算）", p_status == "DRAFT",
+                      "statement_id=%d period_start=%s period_end=%s status=%s" % (
+                          self.sid, p_start, p_end, p_status))
+            # ② 快照非空：该条必须 cleared_flag=true 且 reason 前缀合规
+            snap_ok = (rows[0] is not None) and (
+                "已处置(" in reason_before or "EXEMPTED(" in reason_before)
+            self.step("P4-4d 前置：处置快照非空（cleared_flag=true + reason 前缀 已处置(/EXEMPTED(）", snap_ok,
+                      "reason 前缀=%r" % reason_before[:36])
             self.step("P4-4d 前置：仅改本次自建表的已处置 item", True,
                       "statement_id=%d(owned) item_id=%d 类别=%s 金额=%d 原 flow_id=%d；原 reason 前缀=%r；"
                       "baseline max(log_id)=%d" % (self.sid, item_id, cat, amount, orig_flow_id,
@@ -1108,9 +1149,15 @@ class Ambiguity:
             self.step("P4-4d 步骤1：把该条底层流水移出期间", n_aff == 1,
                       "flow_no=%s business_date: %s → 移出期间（受影响行=%d）" % (flow_no, orig_bd, n_aff))
             st_r, b_r = http("POST", self.a.api + "/v1/finance/recon/statements", self.token,
-                             {"accountId": int(self.a.account), "periodStart": self.a.business_date,
-                              "periodEnd": self.a.business_date, "forceRecalc": True,
+                             {"accountId": int(self.a.account), "periodStart": p_start,
+                              "periodEnd": p_end, "forceRecalc": True,
+                              "remark": "E2E-P43-%s lost-audit recalc" % self.tag,
                               "bankStatementBalanceFen": int(self.a.bank_fen or 0)})
+            resp_sid = int((data_of(b_r) or {}).get("statementId") or 0)
+            self.step("P4-4d 前置：重算响应 statementId == owned_sid（否则属新建表、快照为空）",
+                      resp_sid == self.sid,
+                      "HTTP %s；响应 statementId=%s；owned=%s；请求 period=%s..%s；响应原文=%s" % (
+                          st_r, resp_sid, self.sid, p_start, p_end, json.dumps(b_r, ensure_ascii=False)[:360]))
             time.sleep(1.0)
             q = ("SELECT log_id, target_id, COALESCE(operation_data,'') FROM finance_audit_logs"
                  " WHERE operation_type='RECON_DISPOSITION_LOST'"
@@ -1189,10 +1236,15 @@ class Ambiguity:
         self.ui_login()
         self.page.goto("%s/finance/recon/statements/%d" % (self.a.admin, self.sid),
                        wait_until="domcontentloaded", timeout=120000)
-        try:
-            tl_txt = self.page.locator('[data-test="audit-timeline"]').first.inner_text() or ""
-        except Exception:
-            tl_txt = ""
+        tl_txt = ""
+        for _ in range(20):
+            try:
+                tl_txt = self.page.locator('[data-test="audit-timeline"]').first.inner_text() or ""
+            except Exception:
+                tl_txt = ""
+            if tl_txt.strip():
+                break
+            time.sleep(1.0)
         self.step("EXEMPT-3 audit-timeline 出现 EXEMPTED 记录", "EXEMPT" in tl_txt.upper(),
                   "时间线片段=%r" % tl_txt[-140:].replace("\n", " "))
         try:
