@@ -1,5 +1,12 @@
 package com.foodtraceability.service.impl;
 
+import com.foodtraceability.common.finance.AtomicBalanceUpdater;
+import com.foodtraceability.common.finance.FinancePeriodGuard;
+import com.foodtraceability.common.sequence.SequenceAllocator;
+import com.foodtraceability.entity.finance.FundFlow;
+import com.foodtraceability.mapper.finance.FundFlowMapper;
+import com.foodtraceability.service.finance.PosCashAccountResolver;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.exception.BusinessException;
@@ -29,6 +36,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Random;
 
@@ -68,6 +76,18 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     /** POS 销售财务副作用：资金流水入账 + 挂账核销（独立事务，失败不影响支付） */
     private final PosSaleFinanceRecorder posSaleFinanceRecorder;
 
+    // ==================== P4-5 退款资金流水（TD-31）====================
+    /** 支付方式 → 资金账户（与 SALE 共用同一实现，门店隔离） */
+    private final PosCashAccountResolver posCashAccountResolver;
+    /** 号段唯一实现 */
+    private final SequenceAllocator sequenceAllocator;
+    /** 余额乐观锁 + 下限保护（禁止裸 UPDATE balance） */
+    private final AtomicBalanceUpdater atomicBalanceUpdater;
+    /** 期间封账门禁（已结账 → 409） */
+    private final FinancePeriodGuard financePeriodGuard;
+    /** 退款流水幂等查重 */
+    private final FundFlowMapper fundFlowMapper;
+
     public PosOrderPaymentServiceImpl(
             KitchenOrderMapper kitchenOrderMapper,
             OrderMapper orderMapper,
@@ -86,7 +106,12 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             OrderPaymentRecordNewMapper orderPaymentRecordNewMapper,
             OrderRefundRecordNewMapper orderRefundRecordNewMapper,
             PosCallNumberService posCallNumberService,
-            PosSaleFinanceRecorder posSaleFinanceRecorder) {
+            PosSaleFinanceRecorder posSaleFinanceRecorder,
+            PosCashAccountResolver posCashAccountResolver,
+            SequenceAllocator sequenceAllocator,
+            AtomicBalanceUpdater atomicBalanceUpdater,
+            FinancePeriodGuard financePeriodGuard,
+            FundFlowMapper fundFlowMapper) {
         this.kitchenOrderMapper = kitchenOrderMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
@@ -105,6 +130,11 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         this.orderRefundRecordNewMapper = orderRefundRecordNewMapper;
         this.posCallNumberService = posCallNumberService;
         this.posSaleFinanceRecorder = posSaleFinanceRecorder;
+        this.posCashAccountResolver = posCashAccountResolver;
+        this.sequenceAllocator = sequenceAllocator;
+        this.atomicBalanceUpdater = atomicBalanceUpdater;
+        this.financePeriodGuard = financePeriodGuard;
+        this.fundFlowMapper = fundFlowMapper;
     }
 
     /**
@@ -360,8 +390,11 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             financeRecordMapper.insert(refundRecord);
             log.info("已创建退款收支记录: recordNo=REFUND-{}, amount={}分", order.getOrderNumber(), refundAmount);
         } catch (Exception financeEx) {
-            log.warn("创建退款收支记录失败（不影响退款）: orderNumber={}, error={}",
-                order.getOrderNumber(), financeEx.getMessage());
+            // P4-5：写账失败**不允许静默**（原实现只 warn 继续，造成「订单已退款但账上没有」）。
+            // 抛出后由外层 @Transactional 整体回滚，退款不会半途而废。
+            log.error("创建退款收支记录失败，退款整体回滚: orderNumber={}, error={}",
+                order.getOrderNumber(), financeEx.getMessage(), financeEx);
+            throw new BusinessException(500, "退款记账失败，已回滚：" + financeEx.getMessage());
         }
 
         // 记录操作日志
@@ -578,6 +611,20 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
      * 退款按剩余可退金额（paid - refunded）一次性退完，写 order_refund_records，
      * 并把 orders.refund_amount / order_status(5=全额退款) 回写。</p>
      */
+    /** 退款流水幂等查重：同一 order_id + 退款类别 + 出账 + status=2 只允许一笔 */
+    private FundFlow findExistingRefundFlow(String orderId) {
+        if (orderId == null || orderId.isEmpty()) {
+            return null;
+        }
+        return fundFlowMapper.selectOne(new LambdaQueryWrapper<FundFlow>()
+                .eq(FundFlow::getOrderId, orderId)
+                .eq(FundFlow::getFlowCategory, PosSaleFinanceRecorder.FLOW_CATEGORY_REFUND)
+                .eq(FundFlow::getFlowDirection, 2)
+                .eq(FundFlow::getStatus, 2)
+                .eq(FundFlow::getDeleted, 0)
+                .last("LIMIT 1"));
+    }
+
     private Result<Boolean> refundNewOrder(OrderNew order, String refundReason) {
         if (order.getPaymentStatus() == null || order.getPaymentStatus() != 2) {
             return Result.error("只能退款已支付的订单");
@@ -615,6 +662,60 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         update.setOrderStatus(5);           // 5=全额退款
         update.setUpdateTime(LocalDateTime.now());
         orderNewMapper.updateById(update);
+
+        // ==================================================================
+        // P4-5（TD-31）：退款必须产生**反向资金流水**（出账 + 退款类别），并走余额下限保护。
+        //   ① 期间门禁：退款属于当期资金事件 → 已结账期间必须 409（先反结账）；
+        //   ② 幂等：同一 order_id 只允许一笔退款流水（先查后写 + uk_fund_flows_refund_order 兜底）；
+        //   ③ 余额：只走 addBalanceGuarded（乐观锁 + 下限），禁止裸 UPDATE balance；
+        //   ④ 号段：只走 SequenceAllocator（唯一实现）；
+        //   ⑤ 失败即抛 → 外层 @Transactional 整体回滚（不 catch 吞）。
+        // ==================================================================
+        LocalDate refundDate = LocalDate.now();
+        financePeriodGuard.assertOpen(refundDate);
+
+        FundFlow existingRefund = findExistingRefundFlow(order.getOrderId());
+        if (existingRefund != null) {
+            log.warn("[METRIC] pos_refund_flow result=duplicate orderId={} flowNo={} amountFen={}",
+                    order.getOrderId(), existingRefund.getFlowNo(), existingRefund.getAmount());
+        } else {
+            PosCashAccountResolver.Resolved pick = posCashAccountResolver.resolve(
+                    order.getStoreId(), order.getPaymentMethod(), order.getOrderId(), "REFUND");
+            if (pick == null) {
+                throw new BusinessException(500,
+                        "退款入账失败：门店 " + order.getStoreId() + " 没有匹配支付方式的资金账户，请先补配账户");
+            }
+            String ymd = refundDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            Integer seq = sequenceAllocator.next("FLOW" + ymd, "FF" + ymd, "fund_flows", "flow_no");
+            if (seq == null || seq <= 0) {
+                throw new BusinessException(500, "退款流水号段分配失败：FLOW" + ymd);
+            }
+            String flowNo = String.format("FF%s%04d", ymd, seq);
+            AtomicBalanceUpdater.BalanceSnapshot snapshot =
+                    atomicBalanceUpdater.addBalanceGuarded(pick.accountId(), -remaining, "POS退款", flowNo);
+
+            FundFlow refundFlow = new FundFlow();
+            refundFlow.setFlowNo(flowNo);
+            refundFlow.setAccountId(pick.accountId());
+            refundFlow.setFlowDirection(2);                                   // 出账
+            refundFlow.setFlowCategory(PosSaleFinanceRecorder.FLOW_CATEGORY_REFUND);
+            refundFlow.setAmount(remaining);
+            refundFlow.setBalanceAfter(snapshot.getBalanceAfter());           // 必须取原子更新后的值
+            refundFlow.setBusinessDate(refundDate);
+            refundFlow.setStatus(2);
+            refundFlow.setOrderId(order.getOrderId());
+            refundFlow.setCounterpartyName(order.getCustomerName());
+            refundFlow.setRemark("POS退款：" + order.getOrderNumber() + " 退款单#" + record.getRefundId()
+                    + " 原因=" + reason + " [refundOf=SALE]");
+            refundFlow.setCreateUserId(SecurityUtils.getCurrentUserId());
+            refundFlow.setCreatedBy(operatorName);
+            refundFlow.setCreateTime(LocalDateTime.now());
+            refundFlow.setUpdateTime(LocalDateTime.now());
+            refundFlow.setDeleted(0);
+            fundFlowMapper.insert(refundFlow);
+            log.info("[METRIC] pos_refund_flow result=success orderId={} flowNo={} accountId={} amountFen={} balanceAfter={}",
+                    order.getOrderId(), flowNo, pick.accountId(), remaining, snapshot.getBalanceAfter());
+        }
 
         log.info("新表订单退款完成: orderId={}, 退款 {} 分（已退 {} + 本次 {}）, 操作人={}",
                 order.getOrderId(), paid, refunded, remaining, operatorName);

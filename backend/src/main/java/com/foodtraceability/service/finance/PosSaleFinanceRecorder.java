@@ -54,9 +54,18 @@ public class PosSaleFinanceRecorder {
     /** 资金流水分类：1=销售收款（SALE） */
     public static final int FLOW_CATEGORY_SALE = 1;
 
+    /**
+     * P4-5 新增：**退款专用**资金流水类别（不复用 SALE）。
+     *
+     * <p>类别取值现状：1=SALE、2=REFUND、5=存款内部转账；2 在本轮之前全网 0 行，故可直接启用。</p>
+     */
+    public static final int FLOW_CATEGORY_REFUND = 2;
+
 
     private final FundFlowService fundFlowService;
     private final BankAccountMapper bankAccountMapper;
+    /** P4-5：账户解析抽成组件，SALE / REFUND 共用同一实现（行为与抽取前一致） */
+    private final PosCashAccountResolver posCashAccountResolver;
     private final FundFlowMapper fundFlowMapper;
     /** 应收账款服务：容器里没有该 bean 时降级为不核销（不阻塞支付） */
     private final ReceivableService receivableService;
@@ -67,7 +76,8 @@ public class PosSaleFinanceRecorder {
                                   BankAccountMapper bankAccountMapper,
                                   FundFlowMapper fundFlowMapper,
                                   @Nullable ReceivableService receivableService,
-                                  PlatformTransactionManager transactionManager) {
+                                  PlatformTransactionManager transactionManager,
+                                  PosCashAccountResolver posCashAccountResolver) {
         this.fundFlowService = fundFlowService;
         this.bankAccountMapper = bankAccountMapper;
         this.fundFlowMapper = fundFlowMapper;
@@ -75,6 +85,7 @@ public class PosSaleFinanceRecorder {
         this.requiresNewTx = new TransactionTemplate(transactionManager);
         this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.requiresNewTx.setName("pos-sale-finance-new-tx");
+        this.posCashAccountResolver = posCashAccountResolver;
     }
 
     /**
@@ -242,82 +253,12 @@ public class PosSaleFinanceRecorder {
      * </ol>
      */
     private AccountPick resolveAccount(Long storeId, Integer paymentMethod, String orderId) {
-        int method = paymentMethod != null ? paymentMethod : 1;
-
-        if (storeId == null) {
-            log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=order_store_missing "
-                            + "orderId={} paymentMethod={} storeId=null candidates=[]",
-                    orderId, method);
+        // P4-5：实现在 PosCashAccountResolver（SALE/REFUND 共用），这里只做类型适配，判据与日志口径未变。
+        PosCashAccountResolver.Resolved r = posCashAccountResolver.resolve(storeId, paymentMethod, orderId, "SALE");
+        if (r == null) {
             return null;
         }
-
-        List<BankAccount> candidates = bankAccountMapper.selectList(
-                new LambdaQueryWrapper<BankAccount>()
-                        .eq(BankAccount::getStatus, 1)
-                        .eq(BankAccount::getStoreId, storeId)
-                        .orderByAsc(BankAccount::getAccountId));
-        if (candidates == null || candidates.isEmpty()) {
-            log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_store_account "
-                            + "orderId={} storeId={} paymentMethod={} candidates=[] "
-                            + "hint=执行 scripts/db-fix/2026-10-23-seed-store-cash-accounts.sql 补建门店现金账户",
-                    orderId, storeId, method);
-            return null;
-        }
-
-        String keyword = switch (method) {
-            case 2 -> "微信";
-            case 3 -> "支付宝";
-            case 1, 5 -> "现金";
-            default -> null;
-        };
-
-        // 1) 关键字命中（本店的微信/支付宝/现金 商户账户）
-        if (keyword != null) {
-            for (BankAccount account : candidates) {
-                if (containsKeyword(account, keyword)) {
-                    return new AccountPick(account.getAccountId(), account.getAccountName(), true, "keyword:" + keyword);
-                }
-            }
-        }
-
-        // 2) 账户类型命中：现金/余额 → 现金账户(2)；微信/支付宝/银行卡 → 银行账户(1)
-        int preferType = (method == 1 || method == 5) ? 2 : 1;
-        for (BankAccount account : candidates) {
-            if (account.getAccountType() != null && account.getAccountType() == preferType) {
-                return new AccountPick(account.getAccountId(), account.getAccountName(), false,
-                        "accountType:" + preferType);
-            }
-        }
-
-        // 3) 本店有账户但没有匹配本支付方式的账户 → 跳过入账（不回退）
-        log.error("[METRIC] pos_fund_flow_recorded result=no_account reason=no_matching_account_in_store "
-                        + "orderId={} storeId={} paymentMethod={} candidates={}",
-                orderId, storeId, method, describeCandidates(candidates));
-        return null;
-    }
-
-    /** 候选账户快照（日志用）：accountId:name:type, ... */
-    private String describeCandidates(List<BankAccount> candidates) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < candidates.size(); i++) {
-            BankAccount a = candidates.get(i);
-            if (i > 0) {
-                sb.append(", ");
-            }
-            sb.append(a.getAccountId()).append(':').append(a.getAccountName())
-              .append(":type=").append(a.getAccountType());
-        }
-        return sb.append(']').toString();
-    }
-
-    private boolean containsKeyword(BankAccount account, String keyword) {
-        return contains(account.getAccountName(), keyword)
-                || contains(account.getBankName(), keyword)
-                || contains(account.getRemark(), keyword);
-    }
-
-    private boolean contains(String value, String keyword) {
-        return value != null && value.contains(keyword);
+        return new AccountPick(r.accountId(), r.accountName(), r.matchedByKeyword(), r.reason());
     }
 
     // ==================== 挂账核销 ====================

@@ -490,15 +490,29 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
 
         // A / B：企业侧已记账、银行侧无对应（bank_transactions.matched_flow_id 为空）
         out.addAll(jdbc.query(
-                "SELECT ff.flow_id, ff.amount, ff.business_date, ff.flow_direction FROM fund_flows ff "
+                "SELECT ff.flow_id, ff.amount, ff.business_date, ff.flow_direction, ff.flow_category FROM fund_flows ff "
                         + " WHERE ff.account_id = ? AND ff.deleted = 0 AND ff.status = 2 "
+                        + "   AND ff.flow_category IN (1, 2) "   // P4-5：SALE=1、REFUND=2 参与勾稽；5（存款内部转账）不参与
                         + "   AND ff.business_date BETWEEN ? AND ? "
                         + "   AND NOT EXISTS (SELECT 1 FROM bank_transactions bt "
                         + "                    WHERE bt.matched_flow_id = ff.flow_id AND bt.deleted = 0) "
                         + " ORDER BY ff.business_date, ff.flow_id",
                 (rs, i) -> {
                     StatementItemRequest it = new StatementItemRequest();
-                    it.setCategory(rs.getInt("flow_direction") == 1 ? "A" : "B");
+                    // P4-5：用 switch 显式列出参与勾稽的流水类别集合（不改既有 SALE 判据）。
+                    // SALE（1）收入 → A 项；REFUND（2）方向恒为 2（出账）→ 落 B 项；
+                    // 其余类别（如 5 存款内部转账）不进入企业侧未达账项候选。
+                    int flowCategory = rs.getInt("flow_category");
+                    // SQL 已限定 flow_category IN (1,2)；switch 在这里把「参与勾稽的类别集合」写死，
+                    // 将来新增类别若忘了改这里，会落到 default 并被日志点出来（而不是静默进 A/B）。
+                    switch (flowCategory) {
+                        case 1 -> it.setCategory(rs.getInt("flow_direction") == 1 ? "A" : "B");   // SALE
+                        case 2 -> it.setCategory("B");                                            // REFUND：方向恒为出账
+                        default -> {
+                            log.warn("[RECON] 非预期流水类别进入企业侧候选：flowId={} category={}", rs.getLong("flow_id"), flowCategory);
+                            it.setCategory(rs.getInt("flow_direction") == 1 ? "A" : "B");
+                        }
+                    }
                     it.setFlowId(rs.getLong("flow_id"));
                     it.setAmount(rs.getLong("amount"));
                     it.setBusinessDate(rs.getDate("business_date").toLocalDate());
