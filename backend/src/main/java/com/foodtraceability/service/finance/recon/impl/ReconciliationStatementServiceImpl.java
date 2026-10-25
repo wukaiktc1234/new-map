@@ -322,12 +322,12 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
 
         // ---- V8-a 四眼原则：提交人与审核人不得为同一人 ----
         if (vo.submittedBy != null && vo.submittedBy.equals(userId)) {
-            throw err("V8 门禁失败：提交人与审核人不得为同一人（四眼原则，不可配置关闭）");
+            throw conflict("V8 门禁失败：提交人与审核人不得为同一人（四眼原则，不可配置关闭）");
         }
         // ---- V8-b 角色门禁：审核人不得持有 ROLE_TELLER（出纳）----
         List<String> roles = userRoles(userId);
         if (roles.contains("ROLE_TELLER")) {
-            throw err("V8 门禁失败：出纳（ROLE_TELLER）不得审核调节表");
+            throw conflict("V8 门禁失败：出纳（ROLE_TELLER）不得审核调节表");
         }
         // ---- 复核 V5：DRAFT/SUBMITTED 期间账面数据可能已变，必须重新核对 ----
         Long bookNow = lastBookBalance(vo.accountId, vo.periodEnd);
@@ -796,6 +796,14 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
      */
     private static BusinessException err(String msg) {
         return new BusinessException(400, msg);
+    }
+
+    /**
+     * 状态冲突助手（**409**）：用于「当前状态与操作不兼容」类门禁（V8 四眼/出纳、状态机非法迁移）。
+     * 语义上 409 Conflict 比 400 更准确（AC-52b 验收要求），且与 `ConflictException` 的 409 映射一致。
+     */
+    private static BusinessException conflict(String msg) {
+        return new BusinessException(409, msg);
     }
 
     private Long currentUserId() {
