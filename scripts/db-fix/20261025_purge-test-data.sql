@@ -36,6 +36,11 @@ DELETE FROM order_items;
 DELETE FROM orders;
 DELETE FROM pos_shifts;
 
+-- 8) 号段重置（拍板 3，2026-10-25）：清库后必须重置流水号段，否则 A24「号段取值 − 落库条数」会留下恒定残差
+--    （清库前已产生的历史残差 456 即由此而来）。仅开发/测试环境适用；生产不清库，A24 残差 = 失败/软删次数，无需清零。
+DELETE FROM order_sequence WHERE sequence_key LIKE 'FLOW%';
+--    注：缴款单号段 SLIPyyyyMMdd 不随清库重置（缴款单号对外可追溯，重置会与已导出单据重号）
+
 COMMIT;
 
 -- 清空后计数
