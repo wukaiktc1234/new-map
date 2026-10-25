@@ -87,6 +87,7 @@ class RefundRecon:
         self.tag = "RFD" + datetime.now().strftime("%m%d%H%M%S")
         self.token = None
         self.pos_token = None
+        self.refund_token = None
         SHOT_DIR.mkdir(parents=True, exist_ok=True)
 
     def step(self, name, okk, detail, state=None):
@@ -124,8 +125,13 @@ class RefundRecon:
         st2, b2 = http("POST", self.a.api + "/v1/auth/login",
                        body={"username": self.a.pos_user, "password": self.a.pos_password})
         self.pos_token = (data_of(b2) or {}).get("token") if ok(b2) else None
-        self.step("登录 %s（收银）" % self.a.pos_user, bool(self.pos_token), "HTTP %s" % st2)
-        return bool(self.token and self.pos_token)
+        self.step("登录 %s（收银：下单/支付）" % self.a.pos_user, bool(self.pos_token), "HTTP %s" % st2)
+        time.sleep(1.2)
+        st3, b3 = http("POST", self.a.api + "/v1/auth/login",
+                       body={"username": self.a.refund_user, "password": self.a.refund_password})
+        self.refund_token = (data_of(b3) or {}).get("token") if ok(b3) else None
+        self.step("登录 %s（退款：店长权限）" % self.a.refund_user, bool(self.refund_token), "HTTP %s" % st3)
+        return bool(self.token and self.pos_token and self.refund_token)
 
     # ---------- 造单 + 支付 ----------
     def make_order(self, amount_hint=None):
@@ -153,7 +159,7 @@ class RefundRecon:
 
     def refund(self, order_number, reason="E2E 退款勾稽"):
         return http("POST", self.a.api + "/v1/pos/orders/order/%s/refund?refundReason=%s"
-                    % (order_number, urllib.request.quote(reason)), self.pos_token)
+                    % (order_number, urllib.request.quote(reason)), self.refund_token)
 
     def cash_balance(self):
         r = self.rows("SELECT COALESCE(balance,0) FROM bank_accounts WHERE store_id=%d AND account_type=2"
@@ -162,6 +168,7 @@ class RefundRecon:
 
     # ---------- 1) 退款流水 ----------
     def check_refund_flow(self, order, before_bal):
+        before_bal = getattr(self, "after_pay", before_bal)   # 用「支付后」余额作基线
         amt_fen = int(round(order["amount"] * 100))
         has_col = self.num("SELECT COUNT(*) FROM information_schema.columns"
                            " WHERE table_name='fund_flows' AND column_name='refund_record_id'")
@@ -190,12 +197,35 @@ class RefundRecon:
                              fid, cat, direction, amount, amt_fen, rrid, rr_amt, ba,
                              before_bal, after_bal, before_bal - after_bal))
 
+    def ensure_statement(self, account_id, tag):
+        """复用/生成该账户「period_end = 今天」的调节表，并用库里真实的 period 调 forceRecalc。
+        关键：S3 的 (account, periodStart, periodEnd) 必须与库中三元组完全一致，否则会新建表、快照为空。"""
+        rows = self.rows("SELECT statement_id, period_start::text, period_end::text"
+                         " FROM reconciliation_statements WHERE account_id=%d AND period_end='%s'"
+                         " AND deleted=0 ORDER BY statement_id DESC LIMIT 1"
+                         % (int(account_id), self.a.business_date))
+        ps = pe = self.a.business_date
+        if rows:
+            ps, pe = rows[0][1], rows[0][2]
+        bal = self.num("SELECT COALESCE(balance,0) FROM bank_accounts WHERE account_id=%d" % int(account_id))
+        st, b = http("POST", self.a.api + "/v1/finance/recon/statements", self.token,
+                     {"accountId": int(account_id), "periodStart": ps, "periodEnd": pe,
+                      "bankStatementBalanceFen": int(bal),
+                      "forceRecalc": True, "remark": "%s" % tag})
+        sid = int((data_of(b) or {}).get("statementId") or 0)
+        if not sid:
+            self.step("S3 重算（account=%d period=%s..%s）" % (account_id, ps, pe), False,
+                      "HTTP %s code=%s message=%r" % (st, (b or {}).get("code"),
+                                                      str((b or {}).get("message"))[:90]))
+        return sid
+
     # ---------- 2) 配对形态 ----------
     def paired(self, order):
         amt_fen = int(round(order["amount"] * 100))
         batch = self.num("SELECT COALESCE(MAX(batch_id),0) FROM bank_transactions")
         uid = self.num("SELECT user_id FROM users WHERE username='%s' LIMIT 1" % self.a.user)
-        acct = self.num("SELECT account_id FROM bank_accounts WHERE store_id=%d AND account_type=1"
+        # 对账按账户跑：夹具必须落在**退款流水所在账户**（cash 户）才算同一对账域
+        acct = self.num("SELECT account_id FROM bank_accounts WHERE store_id=%d AND account_type=2"
                         " AND deleted=0 ORDER BY account_id LIMIT 1" % self.a.store_id)
         ref = "%s-PAIR" % self.tag
         self.psql("INSERT INTO bank_transactions (batch_id, account_id, source_type, external_txn_id,"
@@ -210,11 +240,11 @@ class RefundRecon:
                      {"accountId": int(acct), "businessDate": self.a.business_date, "force": True})
         self.step("AC-57-2a 造等额银行退款 + force 重建", ok(b),
                   "账户=%d 金额=%d tag=%s；R1 HTTP %s" % (acct, amt_fen, ref, st))
-        n = self.num("SELECT COUNT(*) FROM reconciliation_items i JOIN reconciliation_items x ON 1=1"
-                     " WHERE i.statement_id=x.statement_id AND i.deleted=0 AND i.amount=%d" % amt_fen)
+        sid = self.ensure_statement(acct, "%s-PAIR-STMT" % self.tag)
         hit = self.rows("SELECT i.item_id, i.category FROM reconciliation_items i"
-                        " WHERE i.deleted=0 AND i.amount=%d AND i.category IN ('A','B','C','D')"
-                        " ORDER BY i.item_id DESC LIMIT 3" % amt_fen)
+                        " WHERE i.statement_id=%d AND i.deleted=0 AND i.amount=%d"
+                        " AND i.category IN ('A','B','C','D') ORDER BY i.item_id DESC LIMIT 3" % (sid, amt_fen))
+        n = len(hit)
         return self.step("AC-57-2b 配对后退款不出现在 A/B/C/D 明细", len(hit) == 0,
                          "同额条目数=%s；命中样例=%s" % (n, hit))
 
@@ -229,12 +259,15 @@ class RefundRecon:
             return self.not_ready("AC-57-3a 退款接口", "HTTP %s code=%s %s" % (
                 st, (b or {}).get("code"), str((b or {}).get("message"))[:70]))
         amt_fen = int(round(order["amount"] * 100))
+        # 未配对形态同样在**退款流水所在账户**（cash 户）的调节表里体现
         acct = self.num("SELECT account_id FROM bank_accounts WHERE store_id=%d AND account_type=2"
                         " AND deleted=0 ORDER BY account_id LIMIT 1" % self.a.store_id)
         http("POST", self.a.api + "/v1/finance/recon-runs?force=true", self.token,
              {"accountId": int(acct), "businessDate": self.a.business_date, "force": True})
+        sid2 = self.ensure_statement(acct, "%s-UNPAIR-STMT" % self.tag)
         cats = self.rows("SELECT category, COUNT(*) FROM reconciliation_items"
-                         " WHERE deleted=0 AND amount=%d GROUP BY category ORDER BY category" % amt_fen)
+                         " WHERE statement_id=%d AND deleted=0 AND amount=%d"
+                         " GROUP BY category ORDER BY category" % (sid2, amt_fen))
         cmap = {r[0]: int(r[1]) for r in cats}
         okk = cmap.get("B", 0) > 0 and cmap.get("D", 0) == 0
         return self.step("AC-57-3b 未配对退款出现在 B 类且不在 D 类", okk,
@@ -290,7 +323,8 @@ class RefundRecon:
                            " COALESCE(SUM(f.amount),0)::bigint sf FROM orders o"
                            " LEFT JOIN fund_flows f ON f.order_id=o.order_id AND f.deleted=0"
                            "   AND f.flow_category=2 AND f.flow_direction=2"
-                           " WHERE o.deleted=0 GROUP BY o.order_id, o.refund_amount HAVING sf <> rf) t")
+                           " WHERE o.deleted=0 GROUP BY o.order_id, o.refund_amount"
+                           " HAVING COALESCE(SUM(f.amount),0) <> COALESCE(o.refund_amount,0)::bigint) t")
             self.step("AC-57-5 交叉校验（脚本自算，口径同上，不作判据）", True,
                       "A32自算=%d；A33自算=%d（以巡检值为准）" % (x32, x33))
         except Exception as e:
@@ -334,6 +368,8 @@ class RefundRecon:
         if not order:
             self.not_ready("AC-57 造单", err)
             return self.summary()
+        after_pay = self.cash_balance()          # 支付后、退款前的余额（退款基线）
+        self.after_pay = after_pay
         st, b = self.refund(order["orderNumber"])
         if not ok(b):
             self.not_ready("AC-57 退款接口", "HTTP %s code=%s %s" % (
@@ -377,6 +413,8 @@ def main():
     p.add_argument("--password", default="Admin@123456")
     p.add_argument("--pos-user", default="vcashier01")
     p.add_argument("--pos-password", default="123456")
+    p.add_argument("--refund-user", default="qa_store_b")     # /refund 需要店长权限
+    p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--store-id", type=int, default=1)
     p.add_argument("--business-date", default=date.today().strftime("%Y-%m-%d"))
     p.add_argument("--psql", default=DEFAULT_PSQL)
