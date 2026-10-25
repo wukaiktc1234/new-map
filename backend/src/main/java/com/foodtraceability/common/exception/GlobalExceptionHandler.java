@@ -136,8 +136,9 @@ public class GlobalExceptionHandler {
      *
      * <p>只对「业务可识别的冲突/越权类」生效，<b>不</b>把全部 BusinessException 一刀切成 409：</p>
      * <ul>
-     *   <li>异常显式携带 {@link BusinessException#getHttpStatus()} → 用它（ConflictException=409、
-     *       四眼/权限类=400/403）；</li>
+     *   <li>异常显式携带 {@link BusinessException#getHttpStatus()} → 用它。**四眼/权限类按 httpStatus 字段映射**：
+     *       业务校验失败=400，状态冲突（如调节表 V8 四眼门禁、并发冲正）=409，权限不足=403；
+     *       具体以各 Service 抛出的 httpStatus 为准（P3-3 已把调节表 V8 四眼从 400 改为 409）；</li>
      *   <li>业务 code 恰为 409（历史写法 {@code new BusinessException(409, ...)}）→ 视为冲突 409；</li>
      *   <li>其它（400/404/业务码 …）→ 返回 null，走历史 200 + code 语义。</li>
      * </ul>
