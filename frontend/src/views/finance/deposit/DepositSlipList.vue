@@ -16,9 +16,11 @@ import PageHeader from '@/components/core/PageHeader.vue'
 import DepositSlipDetail from './components/DepositSlipDetail.vue'
 import {
   confirmAttribution,
+  getDailySummary,
   getDepositSlip,
   getPendingAttribution,
   listDepositSlips,
+  type DepositDailySummaryVO,
   type DepositSlipHints,
   type DepositSlipVO,
   type PendingAttributionPayload,
@@ -170,6 +172,73 @@ async function handleConfirm(payload: { refundRecordId: number; shiftId: number;
   }
 }
 
+/* ===== 差异 3：本日存行汇总（人工汇总模式） ===== */
+function todayString(): string {
+  const now = new Date()
+  const pad = (n: number) => (n < 10 ? '0' + n : String(n))
+  return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+}
+
+const summaryDate = ref<string>(todayString())
+const dailySummary = ref<DepositDailySummaryVO | null>(null)
+const summaryLoading = ref(false)
+const summaryError = ref('')
+
+const unmatchedCount = computed<number>(() => dailySummary.value?.unmatchedCount ?? 0)
+
+/** 「人工确认一致」可用条件：unmatchedCount=0 且 合计应存现金 === 银行当日进账 */
+const manualConfirmEnabled = computed<boolean>(() => {
+  const s = dailySummary.value
+  if (!s) return false
+  // 空日守卫：当天没有任何存行记录时不允许「确认一致」（0 === 0 属于伪一致）
+  if ((s.depositedSlips ?? []).length === 0) return false
+  if ((s.unmatchedCount ?? 0) !== 0) return false
+  if (typeof s.totalCashCountedFen !== 'number' || typeof s.bankInflowFen !== 'number') return false
+  return s.totalCashCountedFen === s.bankInflowFen
+})
+
+/** 按钮禁用原因（tooltip） */
+const manualConfirmHint = computed<string>(() => {
+  const s = dailySummary.value
+  if (!s) return '尚未加载本日存行汇总'
+  if ((s.depositedSlips ?? []).length === 0) return '本日无存行记录，无需确认一致'
+  if ((s.unmatchedCount ?? 0) > 0) {
+    return '有 ' + s.unmatchedCount + ' 笔存行未匹配银行流水（合计 ' + money(s.unmatchedFen) + ' 元），无法确认一致'
+  }
+  if (typeof s.totalCashCountedFen !== 'number' || typeof s.bankInflowFen !== 'number') {
+    return '汇总金额缺失，无法确认一致'
+  }
+  if (s.totalCashCountedFen !== s.bankInflowFen) {
+    return '合计应存现金 ' + money(s.totalCashCountedFen) + ' 元 ≠ 银行当日进账 '
+      + money(s.bankInflowFen) + ' 元，差额 ' + money(s.totalCashCountedFen - s.bankInflowFen) + ' 元'
+  }
+  return ''
+})
+
+async function loadSummary(): Promise<void> {
+  summaryLoading.value = true
+  summaryError.value = ''
+  try {
+    dailySummary.value = await getDailySummary(summaryDate.value)
+  } catch (error) {
+    dailySummary.value = null
+    summaryError.value = error instanceof Error ? error.message : '本日存行汇总加载失败'
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+/**
+ * 人工确认一致。
+ *
+ * TODO(backend)：确认接口尚未就绪（fund-500 落盘中），前端只做 UI 可用性校验，
+ * **不调用任何假接口**；接口上线后在此接入（预计 POST /v1/finance/deposit-slips/daily-summary/confirm）。
+ */
+function handleManualConfirm(): void {
+  if (!manualConfirmEnabled.value) return
+  ElMessage.info('人工确认接口尚未上线，本按钮当前仅做可用性校验')
+}
+
 function reset(): void {
   statusFilter.value = ''
   storeIdFilter.value = ''
@@ -178,7 +247,10 @@ function reset(): void {
   void load()
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadSummary()
+})
 
 const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0) / size.value)))
 </script>
@@ -188,6 +260,106 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
     <PageHeader title="现金缴款单" description="班次缴款 · 退款构成与净值 · 待确认归属">
       <el-button type="primary" :loading="loading" @click="load">刷新</el-button>
     </PageHeader>
+
+    <!-- 差异 3：本日存行汇总（人工汇总模式） -->
+    <section class="daily" v-loading="summaryLoading">
+      <header class="daily__head">
+        <h3 class="daily__title">本日存行汇总</h3>
+        <!-- el-date-picker 不落地自定义属性，这里用 span 包裹以保证 E2E 能定位 -->
+        <span data-test="daily-summary-date">
+          <el-date-picker
+            v-model="summaryDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :clearable="false"
+            style="width: 160px"
+            @change="loadSummary"
+          />
+        </span>
+        <el-tooltip :disabled="manualConfirmEnabled" :content="manualConfirmHint" placement="top">
+          <span>
+            <el-button
+              type="primary"
+              data-test="btn-manual-confirm"
+              :disabled="!manualConfirmEnabled"
+              @click="handleManualConfirm"
+            >人工确认一致</el-button>
+          </span>
+        </el-tooltip>
+      </header>
+
+      <div v-if="summaryError" class="daily__error">{{ summaryError }}</div>
+
+      <div class="daily__metrics">
+        <div class="daily__metric">
+          <div class="daily__label">合计应存现金（元）</div>
+          <div class="daily__value" data-test="daily-total-cash-fen" :data-fen="dailySummary?.totalCashCountedFen ?? ''">
+            {{ money(dailySummary?.totalCashCountedFen) }}
+          </div>
+        </div>
+        <div class="daily__metric">
+          <div class="daily__label">已绑银行流水（元）</div>
+          <div class="daily__value" data-test="daily-matched-fen" :data-fen="dailySummary?.matchedFen ?? ''">
+            {{ money(dailySummary?.matchedFen) }}
+          </div>
+        </div>
+        <div class="daily__metric">
+          <div class="daily__label">未匹配银行流水（元）</div>
+          <div
+            class="daily__value"
+            :class="{ 'text-danger': (dailySummary?.unmatchedFen ?? 0) !== 0 }"
+            data-test="daily-unmatched-fen"
+            :data-fen="dailySummary?.unmatchedFen ?? ''"
+          >{{ money(dailySummary?.unmatchedFen) }}</div>
+        </div>
+        <div class="daily__metric">
+          <div class="daily__label">银行当日进账（元）</div>
+          <div class="daily__value" data-test="daily-bank-inflow-fen" :data-fen="dailySummary?.bankInflowFen ?? ''">
+            {{ money(dailySummary?.bankInflowFen) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 有未匹配存行时不可静默：红色横幅 -->
+      <div v-if="unmatchedCount > 0" class="daily__banner" data-test="unmatched-banner">
+        本日有 {{ unmatchedCount }} 笔存行未匹配银行流水（合计 {{ money(dailySummary?.unmatchedFen) }} 元）
+      </div>
+
+      <table v-if="(dailySummary?.depositedSlips ?? []).length" class="daily__table">
+        <thead>
+          <tr>
+            <th style="width: 150px">单号</th>
+            <th class="num" style="width: 70px">门店</th>
+            <th class="num" style="width: 80px">班次</th>
+            <th class="num" style="width: 120px">应存现金(元)</th>
+            <th>银行流水号</th>
+            <th class="num" style="width: 120px">银行进账(元)</th>
+            <th style="width: 130px">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in dailySummary?.depositedSlips ?? []"
+            :key="String(row.slipId ?? row.slipNo)"
+            :data-test="row.matched ? 'daily-slip-row' : 'unmatched-row'"
+            :data-slip-id="row.slipId ?? ''"
+            :data-matched="row.matched ? 'true' : 'false'"
+            :class="{ 'is-unmatched': !row.matched }"
+          >
+            <td class="mono">{{ row.slipNo || '-' }}</td>
+            <td class="num">{{ row.storeId ?? '-' }}</td>
+            <td class="num">{{ row.shiftId ?? '-' }}</td>
+            <td class="num">{{ money(row.cashCountedFen) }}</td>
+            <td class="mono">{{ row.bankFlowNo || '—' }}</td>
+            <td class="num">{{ money(row.bankInflowFen) }}</td>
+            <td>
+              <span v-if="!row.matched" class="text-danger">未匹配银行流水</span>
+              <span v-else class="text-success">已匹配</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
     <section class="slip-list__filters">
       <el-select v-model="statusFilter" placeholder="状态" clearable style="width: 140px">
@@ -320,6 +492,107 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
   flex-direction: column;
   gap: 12px;
   padding: 12px;
+}
+
+/* 本日存行汇总 */
+.daily {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fts-bg-card, #fff);
+  border: 1px solid var(--fts-border-secondary, #ebeef5);
+  border-radius: 12px;
+}
+
+.daily__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.daily__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fts-text-primary, #303133);
+}
+
+.daily__error {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--el-color-danger-light-9, #fef0f0);
+  color: var(--el-color-danger, #f56c6c);
+  font-size: 12px;
+}
+
+.daily__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daily__metric {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fts-bg-subtle, #fafafa);
+}
+
+.daily__label {
+  font-size: 12px;
+  color: var(--fts-text-secondary, #909399);
+  margin-bottom: 6px;
+}
+
+.daily__value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fts-text-primary, #303133);
+}
+
+.daily__banner {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--el-color-danger-light-9, #fef0f0);
+  color: var(--el-color-danger, #f56c6c);
+  border: 1px solid var(--el-color-danger-light-5, #fab6b6);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.daily__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.daily__table th,
+.daily__table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--fts-border-secondary, #f0f2f5);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.daily__table th {
+  color: var(--fts-text-secondary, #606266);
+  background: var(--fts-bg-subtle, #fafafa);
+  font-weight: 600;
+}
+
+.daily__table tr.is-unmatched {
+  background: var(--el-color-danger-light-9, #fef0f0);
+  color: var(--el-color-danger, #f56c6c);
+}
+
+.text-danger {
+  color: var(--el-color-danger, #f56c6c);
+}
+
+.text-success {
+  color: var(--el-color-success, #67c23a);
 }
 
 .slip-list__filters {

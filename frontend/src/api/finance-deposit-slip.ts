@@ -326,6 +326,85 @@ function normalizeShiftCandidate(raw: Record<string, unknown>): ShiftCandidateVO
   }
 }
 
+
+/* ==========================================================================
+ * 差异 3：本日存行汇总（人工汇总模式）
+ *
+ * 端点（fund-500 落盘中）：GET /v1/finance/deposit-slips/daily-summary?date=yyyy-MM-dd
+ * 返回：{ depositedSlips: [...], totalCashCountedFen, matchedFen, unmatchedFen,
+ *         unmatchedCount, bankInflowFen }
+ * 金额单位：分。
+ * ========================================================================== */
+export interface DepositDailySlipVO {
+  slipId: number | null
+  slipNo: string | null
+  storeId: number | null
+  shiftId: number | null
+  /** 分：该单应存现金 */
+  cashCountedFen: number | null
+  /** 绑定的银行流水号（为空 = 未匹配） */
+  bankFlowNo: string | null
+  /** 分：该行对应的银行进账 */
+  bankInflowFen: number | null
+  /** 是否已绑定银行流水 */
+  matched: boolean
+  status: string | null
+}
+
+export interface DepositDailySummaryVO {
+  date: string
+  depositedSlips: DepositDailySlipVO[]
+  /** 分：合计应存现金 */
+  totalCashCountedFen: number | null
+  /** 分：已绑银行流水合计 */
+  matchedFen: number | null
+  /** 分：未匹配银行流水合计 */
+  unmatchedFen: number | null
+  unmatchedCount: number
+  /** 分：银行当日进账 */
+  bankInflowFen: number | null
+}
+
+function normalizeDailySlip(raw: Record<string, unknown>): DepositDailySlipVO {
+  const bankFlowNo = (raw.bankFlowNo as string)
+    ?? (raw.depositRefNo as string)
+    ?? (raw.bankTxnNo as string)
+    ?? (raw.bankTransactionNo as string)
+    ?? null
+  const matchedRaw = raw.matched ?? raw.bound ?? raw.bankMatched
+  const matched = typeof matchedRaw === 'boolean'
+    ? matchedRaw
+    : Boolean(bankFlowNo || raw.depositBankTxnId || raw.bankTransactionId)
+  return {
+    slipId: toNum(raw.slipId) ?? toNum(raw.id),
+    slipNo: (raw.slipNo as string) ?? null,
+    storeId: toNum(raw.storeId),
+    shiftId: toNum(raw.shiftId),
+    cashCountedFen: toNum(raw.cashCountedFen) ?? toNum(raw.totalCashFen) ?? toNum(raw.cashAmountFen) ?? toNum(raw.amountFen),
+    bankFlowNo,
+    bankInflowFen: toNum(raw.bankInflowFen) ?? toNum(raw.bankAmountFen) ?? toNum(raw.inflowFen),
+    matched,
+    status: (raw.status as string) ?? null,
+  }
+}
+
+/** 本日存行汇总（date 默认由调用方给今天） */
+export async function getDailySummary(date: string): Promise<DepositDailySummaryVO> {
+  const data = await get<Record<string, unknown> | null>('/v1/finance/deposit-slips/daily-summary', { date })
+  const rawRows = Array.isArray(data?.depositedSlips) ? data!.depositedSlips : []
+  const rows = (rawRows as Array<Record<string, unknown>>).map(normalizeDailySlip)
+  return {
+    date: (data?.date as string) ?? date,
+    depositedSlips: rows,
+    totalCashCountedFen: toNum(data?.totalCashCountedFen),
+    matchedFen: toNum(data?.matchedFen),
+    unmatchedFen: toNum(data?.unmatchedFen),
+    // 后端未给 unmatchedCount 时，按行上的 matched 兜底计数（仍是后端行数据）
+    unmatchedCount: toNum(data?.unmatchedCount) ?? rows.filter((r) => !r.matched).length,
+    bankInflowFen: toNum(data?.bankInflowFen),
+  }
+}
+
 /** 人工确认退款归属班次（成功后返回重算过的单据） */
 export async function confirmAttribution(
   slipId: number,
@@ -344,6 +423,7 @@ export const financeDepositSlipApi = {
   getDepositSlip,
   getPendingAttribution,
   confirmAttribution,
+  getDailySummary,
 }
 
 export default financeDepositSlipApi
