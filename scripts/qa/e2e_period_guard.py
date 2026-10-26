@@ -81,6 +81,7 @@ class PeriodGuard:
         self.a = a
         self.results = []
         self.token = None
+        self.refund_token = None
         self.original_closed = None
         self.changed = False
 
@@ -113,7 +114,12 @@ class PeriodGuard:
         st, b = http("POST", self.a.api + "/v1/auth/login",
                      body={"username": self.a.user, "password": self.a.password})
         self.token = (data_of(b) or {}).get("token") if ok(b) else None
-        return self.step("登录 %s" % self.a.user, bool(self.token), "HTTP %s" % st)
+        self.step("登录 %s" % self.a.user, bool(self.token), "HTTP %s" % st)
+        st2, b2 = http("POST", self.a.api + "/v1/auth/login",
+                       body={"username": self.a.refund_user, "password": self.a.refund_password})
+        self.refund_token = (data_of(b2) or {}).get("token") if ok(b2) else None
+        self.step("登录 %s（退款入口需店长权限）" % self.a.refund_user, bool(self.refund_token), "HTTP %s" % st2)
+        return bool(self.token)
 
     # ---------- 期间读写 ----------
     def get_period(self):
@@ -235,16 +241,18 @@ class PeriodGuard:
             self.assert_gate("fund-flows", st_g, b_g, expect_blocked=True)
             dep = self.rows("SELECT slip_id FROM deposit_slips WHERE deleted=0 ORDER BY slip_id DESC LIMIT 1")
             if dep:
+                btid = self.num("SELECT COALESCE(MAX(transaction_id),0) FROM bank_transactions WHERE deleted=0")
                 st_d, b_d = http("POST", self.a.api + "/v1/finance/deposit-slips/%s/deposit" % dep[0][0],
-                                 self.token, {"remark": "E2E C2 门禁探测"})
+                                 self.token, {"bankTransactionId": int(btid), "remark": "E2E C2 门禁探测"})
                 self.assert_gate("deposit", st_d, b_d, expect_blocked=True)
             else:
                 self.not_ready("C2-deposit 门禁", "没有可用缴款单夹具 → 该入口未覆盖")
             refund_order = self.rows("SELECT order_number FROM orders WHERE deleted=0 AND payment_status=2"
                                      " ORDER BY order_id DESC LIMIT 1")
             if refund_order:
+                import urllib.parse as _up
                 st_r, b_r = http("POST", self.a.api + "/v1/pos/orders/order/%s/refund?refundReason=%s"
-                                 % (refund_order[0][0], "E2E C2 门禁"), self.token)
+                                 % (refund_order[0][0], _up.quote("E2E C2 门禁探测")), self.refund_token)
                 self.assert_gate("refund", st_r, b_r, expect_blocked=True)
             else:
                 self.not_ready("C2-refund 门禁", "没有已支付订单 → 该入口未覆盖")
@@ -262,16 +270,22 @@ class PeriodGuard:
             open_db = self.num("SELECT COUNT(*) FROM accounting_periods WHERE period_code='%s'"
                                " AND is_closed=false" % self.a.period)
             self.step("C2-5 反结账后 is_closed=false", open_db == 1, "库内 is_closed=false 行数=%d" % open_db)
-            snap_kept = self.num("SELECT COUNT(*) FROM accounting_period_snapshots WHERE period_code='%s'"
+            snap_kept = self.num("SELECT COUNT(*) FROM finance_period_account_balance WHERE period_code='%s'"
                                  % self.a.period)
             self.step("C2-5 反结账后快照行仍在（历史留档）", snap_kept > 0, "快照行数=%d" % snap_kept)
+            n_log, log_hit = 0, ""
             try:
-                n_log = self.num("SELECT COUNT(*) FROM finance_audit_logs WHERE operation_type='FINANCE_PERIOD_REOPENED'"
-                                 " AND (operation_desc LIKE '%%" + ok_reason[:8] + "%%'"
-                                 " OR operation_data LIKE '%%" + ok_reason[:8] + "%%')")
-            except Exception:
-                n_log = -1
-            self.step("C2-5 审计 FINANCE_PERIOD_REOPENED 含 reason", n_log > 0, "命中行数=%s" % n_log)
+                cand = self.rows("SELECT log_id, COALESCE(operation_desc,''), COALESCE(operation_data,'')"
+                                 " FROM finance_audit_logs WHERE operation_type='FINANCE_PERIOD_REOPENED'"
+                                 " ORDER BY log_id DESC LIMIT 20")
+                for r in cand:
+                    if ok_reason[:10] in (r[1] + r[2]):
+                        n_log += 1
+                        log_hit = "log_id=%s desc=%r" % (r[0], r[1][:90])
+                        break
+            except Exception as e:
+                log_hit = "SQL 异常：%s" % str(e)[:120]
+            self.step("C2-5 审计 FINANCE_PERIOD_REOPENED 含 reason", n_log > 0, "命中=%d；%s" % (n_log, log_hit))
 
             # 4b) 反结账后写入恢复
             st_g2, b_g2 = self.probe_fund_flow()
@@ -325,6 +339,8 @@ def main():
     p.add_argument("--admin", default=DEFAULT_ADMIN)
     p.add_argument("--pos", default=DEFAULT_POS)
     p.add_argument("--user", default="qa_admin")
+    p.add_argument("--refund-user", default="qa_store_b")
+    p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--password", default="Admin@123456")
     p.add_argument("--period", default=date.today().strftime("%Y-%m"))
     p.add_argument("--period-start", default=date.today().replace(day=1).strftime("%Y-%m-%d"))
