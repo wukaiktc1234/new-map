@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31/A32/A33 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST/A35 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST/A35/A41 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -128,6 +128,9 @@
 --       常量未定前不猜值、不写空断言；落地后替换占位注释并计入判定（22 → 24）。
 --   A35 （信息性，不进 TOTAL）采购付款流水计数（flow_category=6，NEW-21 迁移进度）；
 --       当前预期 0，采购付款首次落库后 >0 属正常，故只观测不判定。
+--   A41 （信息性，不进 TOTAL）近 24h「对账跳过现金户」审计条数（operation_type='RECON_SKIP_CASH'）：
+--       现金户入口直接返回、不建 statement，每次跳过留痕；跳过是**正常设计行为**（N19-1/N19-2），
+--       故只观测不判定（>0 健康、=0 说明近 24h 无现金户对账请求）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -1059,6 +1062,33 @@ SELECT '[INFO] A35 采购付款流水(category=6) rows=' || count(*) AS a35_line
 \endif
 
 -- ------------------------------------------------------------
+-- A41（信息性，不参与 TOTAL）：近 24h「对账跳过现金户」留痕计数
+--   语义：N19-1/N19-2 定案「现金户不在调节表框架内」，入口直接返回不建 statement，
+--         但每次跳过都会写审计 RECON_SKIP_CASH（NEW-15 留痕）。
+--         本项只观测「跳过动作是否真的在发生」，不做判定（跳过是**正常设计行为**，
+--         数量随操作频率变化，>0 属健康、=0 说明近 24h 没人对现金户发起对账）。
+--   依赖：finance_audit_logs.operation_type / create_time（缺表或列 → [INFO] 跳过）
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.finance_audit_logs') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'finance_audit_logs'
+                       AND column_name IN ('operation_type', 'create_time')
+                     GROUP BY table_name HAVING count(*) = 2)) AS recon_skip_ready
+\gset
+
+\if :recon_skip_ready
+SELECT '[INFO] A41 近24h RECON_SKIP_CASH rows=' || count(*) AS a41_line,
+       count(*) AS a41_n
+  FROM finance_audit_logs
+ WHERE operation_type = 'RECON_SKIP_CASH'
+   AND create_time >= now() - interval '24 hours'
+\gset
+\else
+\set a41_line '[INFO] A41 跳过（表未创建）'
+\set a41_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1358,7 +1388,11 @@ SELECT line
     SELECT 35,
            :'a35_line'
     UNION ALL
+    -- A41 信息性：近24h RECON_SKIP_CASH（现金户跳过多，不进 TOTAL）
     SELECT 36,
+           :'a41_line'
+    UNION ALL
+    SELECT 37,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
