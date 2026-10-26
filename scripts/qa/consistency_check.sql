@@ -3,7 +3,7 @@
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
 -- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31/A32/A33 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST 为信息性输出，不影响 TOTAL）：
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST/A35 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -122,6 +122,8 @@
 --       —— 「待匹配」是合法状态，故用时间窗兜。期望 0。
 --       A32-DIST（信息性）退款匹配状态分布 matched / pending-B / pending-D / orphan。
 --   A33 （**参与判定**）逐单对拍：orders.refund_amount::bigint vs SUM(退款流水 amount)，均按分直比。期望 0。
+--   A35 （信息性，不进 TOTAL）采购付款流水计数（flow_category=6，NEW-21 迁移进度）；
+--       当前预期 0，采购付款首次落库后 >0 属正常，故只观测不判定。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -1014,6 +1016,33 @@ SELECT '[INFO] A32-DIST 退款匹配状态分布 matched=' || count(*) FILTER (W
 \endif
 
 -- ------------------------------------------------------------
+-- A35（信息性，不参与 TOTAL）：采购付款类别计数（NEW-21 迁移进度）
+--   语义：确认采购付款已从 flow_category=2 迁到 **6**（NEW-21）。
+--   **当前预期 rows=0**（扫描实测：采购付款路径从未产生流水）；
+--   **等采购付款首次落库后该值 >0 属正常** → 因此只做 INFO、绝不判定。
+--   （纵深防御保留：A30/A31/A32/A33 的 category=2 旁边都有 refund_record_id IS NOT NULL，
+--     即使 NEW-21 未落地、采购付款仍写 2，也不会污染退款侧勾稽。）
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'fund_flows'
+                       AND column_name IN ('flow_category', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 2)) AS purchase_cat_ready
+\gset
+
+\if :purchase_cat_ready
+SELECT '[INFO] A35 采购付款流水(category=6) rows=' || count(*) AS a35_line,
+       count(*) AS a35_n
+  FROM fund_flows
+ WHERE deleted = 0
+   AND flow_category = 6
+\gset
+\else
+\set a35_line '[INFO] A35 跳过（表未创建）'
+\set a35_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1309,7 +1338,11 @@ SELECT line
     SELECT 34,
            :'a32d_line'
     UNION ALL
+    -- A35 信息性：采购付款流水(category=6) 计数（NEW-21 迁移进度；不进 TOTAL）
     SELECT 35,
+           :'a35_line'
+    UNION ALL
+    SELECT 36,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
