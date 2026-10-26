@@ -2,8 +2,8 @@
 -- scripts/qa/consistency_check.sql
 -- 阶段 2-B：SQL 一致性巡检（提交前检查用）
 --
--- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31/A32/A33 参与 PASS/FAIL 判定，**期望 rows=0**；
--- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST/A35/A41 为信息性输出，不影响 TOTAL）：
+-- 断言清单（A1/A2/A3/A4/A5/A7/A9/A10/A11/A12/A13/A14/A15/A19/A25/A27/A28/A29/A30/A31/A32/A33/A36/A37/A39 参与 PASS/FAIL 判定，**期望 rows=0**；
+-- A6/A8/A16/A17/A18/A20/A21/A22/A23/A24/A26/A32-DIST/A35/A38/A41 为信息性输出，不影响 TOTAL）：
 --
 -- ⚠️ 编号对齐（P2-C，避免与既有编号冲突）：
 --    设计稿 AC-38 → 本脚本 **A12**（recon_runs.run_key 唯一）
@@ -131,6 +131,15 @@
 --   A41 （信息性，不进 TOTAL）近 24h「对账跳过现金户」审计条数（operation_type='RECON_SKIP_CASH'）：
 --       现金户入口直接返回、不建 statement，每次跳过留痕；跳过是**正常设计行为**（N19-1/N19-2），
 --       故只观测不判定（>0 健康、=0 说明近 24h 无现金户对账请求）。
+--   —— N19-2 四项（2026-10-26 落盘）——
+--   A36 （**参与判定**）现金户退款流水未被任何缴款单闭环：account_type=2 的退款流水，
+--       business_date < CURRENT_DATE-1，且无 [slipPair] token、无 refund_shift_attribution 记录、
+--       不在未清 A/B/C/D 明细中。期望 0。
+--   A37 （**参与判定**）退款流水 refund_time 落不进任何班次窗口（pos_shifts start/end 缺失或不覆盖）。期望 0。
+--   A38 （信息性）现金退款闭环率 + 近 24h RECON_SHIFT_BOUNDARY_PENDING 待人工确认笔数。只观测。
+--   A39 （**参与判定**）缴款单恒等式：difference_net_fen = actual_amount - (expected_amount - refund_component_fen)
+--       且 refund_component_fen = 该 slip 已归属退款流水合计。期望 0。
+--   ⚠️ 四条**全部带分母**：分母 = 0 时输出 `[INFO] Axx skipped_no_data 分母=0`（不输出 PASS）。
 --
 -- 安全约定：
 --   * 整个事务 SET TRANSACTION READ ONLY，全部是 SELECT，不写库（wrapper 另外用
@@ -1088,6 +1097,240 @@ SELECT '[INFO] A41 近24h RECON_SKIP_CASH rows=' || count(*) AS a41_line,
 \set a41_n 0
 \endif
 
+-- ============================================================
+-- N19-2 四项（A36 / A37 / A38 / A39）
+--   共同约定：**每条都带分母**；分母 = 0 时输出 `[INFO] Axx skipped_no_data 分母=0`，
+--   绝不在「没有可比数据」时输出 PASS（避免「空集全绿」的假安全）。
+--   A36/A37/A39 参与判定（进 TOTAL）；A38 为 INFO（闭环率/待确认只观测）。
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- A36（**参与判定**）：现金户退款流水未被任何缴款单闭环
+--   口径：account_type=2 的退款流水（category=2/direction=2/status=2/deleted=0），
+--         business_date < CURRENT_DATE-1（昨天及更早；当天仍在窗口内），且同时：
+--           · remark 无 [slipPair=…] token（缴款单配对标记；当前后端尚无该 token → 恒真）
+--           · refund_shift_attribution 无该 refund_record_id 的归属记录
+--           · 不在未清 A/B/C/D 明细中（进入明细即视为已进入核对流程）
+--   分母 = 上述「现金户退款流水」总数（不加后三个条件）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND to_regclass('public.bank_accounts') IS NOT NULL
+        AND to_regclass('public.refund_shift_attribution') IS NOT NULL
+        AND to_regclass('public.reconciliation_items') IS NOT NULL
+        AND to_regclass('public.reconciliation_statements') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='fund_flows'
+                       AND column_name IN ('account_id','flow_category','flow_direction','status','deleted','business_date','refund_record_id','remark')
+                     GROUP BY table_name HAVING count(*) = 8)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='refund_shift_attribution'
+                       AND column_name IN ('refund_record_id','shift_id','slip_id')
+                     GROUP BY table_name HAVING count(*) = 3)) AS cash_refund_ready
+\gset
+
+\if :cash_refund_ready
+WITH cash_refund AS (
+    SELECT f.flow_id, f.amount, f.business_date, f.refund_record_id, f.remark
+      FROM fund_flows f
+      JOIN bank_accounts ba ON ba.account_id = f.account_id AND ba.deleted = 0
+     WHERE f.deleted = 0
+       AND f.status = 2
+       AND f.flow_category = 2
+       AND f.flow_direction = 2
+       AND f.refund_record_id IS NOT NULL
+       AND ba.account_type = 2
+), aged AS (
+    SELECT * FROM cash_refund WHERE business_date < CURRENT_DATE - 1
+), viol AS (
+    SELECT c.flow_id
+      FROM aged c
+     WHERE COALESCE(c.remark, '') NOT LIKE '%[slipPair=%'
+       AND NOT EXISTS (SELECT 1 FROM refund_shift_attribution a
+                        WHERE a.refund_record_id = c.refund_record_id
+                          AND (a.slip_id IS NOT NULL OR a.shift_id IS NOT NULL))
+       AND NOT EXISTS (SELECT 1 FROM reconciliation_items i
+                        WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = c.amount
+                          AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                                  WHERE deleted = 0 AND status <> 'CLOSED'))
+)
+SELECT CASE WHEN (SELECT count(*) FROM aged) = 0
+            THEN '[INFO] A36 skipped_no_data 分母=0（无「超过 1 天窗口」的现金退款；现金退款总量='
+                 || (SELECT count(*) FROM cash_refund) || '）'
+            WHEN (SELECT count(*) FROM viol) = 0
+            THEN '[PASS] A36 现金退款未闭环 rows=0 分母=' || (SELECT count(*) FROM aged)
+                 || '（现金退款总量=' || (SELECT count(*) FROM cash_refund) || '）'
+            ELSE '[FAIL] A36 现金退款未闭环 rows=' || (SELECT count(*) FROM viol)
+                 || ' 分母=' || (SELECT count(*) FROM aged)
+                 || '（现金退款总量=' || (SELECT count(*) FROM cash_refund) || '）'
+                 || ' —— 存在 ' || (SELECT count(*) FROM viol) || ' 笔现金退款既无缴款单闭环、也不在未清明细中，禁止接受'
+       END AS a36_line,
+       (SELECT count(*) FROM viol) AS a36_n,
+       (SELECT count(*) FROM aged) AS a36_den
+\gset
+\else
+\set a36_line '[INFO] A36 跳过（表未创建）'
+\set a36_n 0
+\set a36_den 0
+\endif
+
+-- ------------------------------------------------------------
+-- A37（**参与判定**）：退款流水 refund_time 落不进任何班次窗口
+--   口径：退款流水 refund_time IS NOT NULL，但 pos_shifts 无
+--         start_time <= refund_time <= end_time（deleted=0）的窗口 → 班次归属断链。
+--   时区：refund_time 为 timestamptz、pos_shifts 为 timestamp；
+--         统一按 **Asia/Shanghai** 本地时间比较（写死时区，避免依赖会话 TZ）。
+--   分母 = refund_time IS NOT NULL 的退款流水数。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.fund_flows') IS NOT NULL
+        AND to_regclass('public.pos_shifts') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='fund_flows'
+                       AND column_name IN ('refund_time','flow_category','flow_direction','status','deleted')
+                     GROUP BY table_name HAVING count(*) = 5)
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='pos_shifts'
+                       AND column_name IN ('start_time','end_time','deleted')
+                     GROUP BY table_name HAVING count(*) = 3)) AS refund_window_ready
+\gset
+
+\if :refund_window_ready
+WITH rf AS (
+    SELECT f.flow_id, f.refund_time
+      FROM fund_flows f
+     WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2 AND f.flow_direction = 2
+       AND f.refund_time IS NOT NULL
+), viol AS (
+    SELECT r.flow_id
+      FROM rf r
+     WHERE NOT EXISTS (
+             SELECT 1 FROM pos_shifts s
+              WHERE s.deleted = 0
+                AND s.start_time IS NOT NULL AND s.end_time IS NOT NULL
+                AND (r.refund_time AT TIME ZONE 'Asia/Shanghai') BETWEEN s.start_time AND s.end_time)
+)
+SELECT CASE WHEN (SELECT count(*) FROM rf) = 0
+            THEN '[INFO] A37 skipped_no_data 分母=0（无 refund_time 已落的退款流水）'
+            WHEN (SELECT count(*) FROM viol) = 0
+            THEN '[PASS] A37 退款落不进班次窗口 rows=0 分母=' || (SELECT count(*) FROM rf)
+            ELSE '[FAIL] A37 退款落不进班次窗口 rows=' || (SELECT count(*) FROM viol)
+                 || ' 分母=' || (SELECT count(*) FROM rf)
+                 || ' —— 存在 ' || (SELECT count(*) FROM viol) || ' 笔退款的 refund_time 不在任何班次窗口内，禁止接受'
+       END AS a37_line,
+       (SELECT count(*) FROM viol) AS a37_n,
+       (SELECT count(*) FROM rf)   AS a37_den
+\gset
+\else
+\set a37_line '[INFO] A37 跳过（表未创建）'
+\set a37_n 0
+\set a37_den 0
+\endif
+
+-- ------------------------------------------------------------
+-- A38（信息性，不参与 TOTAL）：现金退款闭环率 + 待人工确认笔数
+--   闭环率 = 已闭环现金退款数 / 现金退款流水总数
+--     已闭环 = 有 [slipPair] token / 有 attribution 记录 / 在未清明细中
+--   待人工确认 = 近 24h 审计 RECON_SHIFT_BOUNDARY_PENDING 条数（班次边界待确认）
+--   分母 0 → [INFO] skipped_no_data
+-- ------------------------------------------------------------
+\if :cash_refund_ready
+WITH cash_refund AS (
+    SELECT f.flow_id, f.amount, f.refund_record_id, f.remark, f.business_date
+      FROM fund_flows f
+      JOIN bank_accounts ba ON ba.account_id = f.account_id AND ba.deleted = 0
+     WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2 AND f.flow_direction = 2
+       AND f.refund_record_id IS NOT NULL
+       AND ba.account_type = 2
+), closed AS (
+    SELECT c.flow_id
+      FROM cash_refund c
+     WHERE COALESCE(c.remark, '') LIKE '%[slipPair=%'
+        OR EXISTS (SELECT 1 FROM refund_shift_attribution a
+                    WHERE a.refund_record_id = c.refund_record_id
+                      AND (a.slip_id IS NOT NULL OR a.shift_id IS NOT NULL))
+        OR EXISTS (SELECT 1 FROM reconciliation_items i
+                    WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = c.amount
+                      AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
+                                              WHERE deleted = 0 AND status <> 'CLOSED'))
+)
+SELECT CASE WHEN (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT_DATE - 1) = 0
+            THEN '[INFO] A38 skipped_no_data 分母=0（无「超过 1 天窗口」的现金退款；全量='
+                 || (SELECT count(*) FROM cash_refund) || '）'
+            ELSE '[INFO] A38 现金退款闭环率='
+                 || round(100.0 * (SELECT count(*) FROM closed WHERE flow_id IN (SELECT flow_id FROM cash_refund WHERE business_date < CURRENT_DATE - 1))
+                          / (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT_DATE - 1), 1)
+                 || '% (' || (SELECT count(*) FROM closed WHERE flow_id IN (SELECT flow_id FROM cash_refund WHERE business_date < CURRENT_DATE - 1))
+                 || '/' || (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT_DATE - 1) || '；全量现金退款='
+                 || (SELECT count(*) FROM cash_refund) || ')'
+       END
+       || ' 待人工确认(近24h RECON_SHIFT_BOUNDARY_PENDING)=' ||
+          (SELECT count(*) FROM finance_audit_logs
+            WHERE operation_type = 'RECON_SHIFT_BOUNDARY_PENDING'
+              AND create_time >= now() - interval '24 hours') AS a38_line,
+       (SELECT count(*) FROM cash_refund) AS a38_den
+\gset
+\else
+\set a38_line '[INFO] A38 跳过（表未创建）'
+\set a38_den 0
+\endif
+
+-- ------------------------------------------------------------
+-- A39（**参与判定**）：缴款单恒等式
+--   对 deleted=0 的缴款单：
+--     ① difference_net_fen = actual_amount - (expected_amount - refund_component_fen)
+--     ② refund_component_fen = 该缴款单（slip_id）已归属退款流水合计（分）
+--   分母 = difference_net_fen IS NOT NULL 的缴款单（N19-2 新口径）；
+--          N19-2 之前的老单该列为 NULL → 单独报 `legacy_null=<k>`，不计入分母（避免误红）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.deposit_slips') IS NOT NULL
+        AND to_regclass('public.refund_shift_attribution') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='deposit_slips'
+                       AND column_name IN ('expected_amount','actual_amount','refund_component_fen','difference_net_fen','shift_id','deleted')
+                     GROUP BY table_name HAVING count(*) = 6)) AS slip_identity_ready
+\gset
+
+\if :slip_identity_ready
+WITH slip AS (
+    SELECT s.slip_id, s.shift_id, s.expected_amount, s.actual_amount,
+           COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen
+      FROM deposit_slips s
+     WHERE s.deleted = 0
+), attr_sum AS (
+    SELECT a.slip_id, SUM(f.amount) AS amt
+      FROM refund_shift_attribution a
+      JOIN fund_flows f ON f.refund_record_id = a.refund_record_id
+                       AND f.deleted = 0 AND f.flow_category = 2 AND f.flow_direction = 2
+     WHERE a.slip_id IS NOT NULL
+     GROUP BY a.slip_id
+), viol AS (
+    SELECT s.slip_id
+      FROM slip s
+      LEFT JOIN attr_sum su ON su.slip_id = s.slip_id
+     WHERE s.difference_net_fen IS NOT NULL
+       AND ( s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
+             OR s.rcf <> COALESCE(su.amt, 0) )
+)
+SELECT CASE WHEN (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL) = 0
+            THEN '[INFO] A39 skipped_no_data 分母=0（无 N19-2 新口径缴款单；legacy_null='
+                 || (SELECT count(*) FROM slip) || '）'
+            WHEN (SELECT count(*) FROM viol) = 0
+            THEN '[PASS] A39 缴款单恒等式 rows=0 分母=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL)
+                 || '（legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL) || '）'
+            ELSE '[FAIL] A39 缴款单恒等式 rows=' || (SELECT count(*) FROM viol)
+                 || ' 分母=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL)
+                 || '（legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL) || '）'
+                 || ' —— 存在 ' || (SELECT count(*) FROM viol) || ' 张缴款单恒等式不成立，禁止接受'
+       END AS a39_line,
+       (SELECT count(*) FROM viol) AS a39_n,
+       (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL) AS a39_den
+\gset
+\else
+\set a39_line '[INFO] A39 跳过（表未创建）'
+\set a39_n 0
+\set a39_den 0
+\endif
+
 -- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
@@ -1392,7 +1635,23 @@ SELECT line
     SELECT 36,
            :'a41_line'
     UNION ALL
-    SELECT 37,
+    -- A36 参与判定：现金退款未闭环（>0 进 TOTAL）
+    SELECT 38,
+           :'a36_line'
+    UNION ALL
+    -- A37 参与判定：退款落不进班次窗口（>0 进 TOTAL）
+    SELECT 39,
+           :'a37_line'
+    UNION ALL
+    -- A38 信息性：现金退款闭环率 + 待人工确认（不进 TOTAL）
+    SELECT 40,
+           :'a38_line'
+    UNION ALL
+    -- A39 参与判定：缴款单恒等式（>0 进 TOTAL）
+    SELECT 41,
+           :'a39_line'
+    UNION ALL
+    SELECT 42,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
              + CASE WHEN (SELECT n FROM a2) > 0 THEN 1 ELSE 0 END
@@ -1415,7 +1674,10 @@ SELECT line
              + CASE WHEN :a30_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a31_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a32_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a33_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a33_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a36_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a37_n > 0 THEN 1 ELSE 0 END
+             + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
