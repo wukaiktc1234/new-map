@@ -832,6 +832,11 @@ __pycache__/
 # --- test/ scratch dir (experiment scripts, all untracked) ---
 /test/
 
+# --- verify artifacts (E2E logs/screens/temp scripts; may contain local debug keys, never commit) ---
+/.verify-tmp/
+*.err
+*.err.log
+
 # --- APK / device feature cluster (Owner 裁决 2026-10-13) ---
 /frontend/apk-download/
 /frontend/certs/
