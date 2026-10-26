@@ -641,7 +641,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         record.setRefundAmount(remaining);
         record.setRefundReason(reason);
         record.setRefundMethod(1);          // 原路退回
-        record.setRefundStatus(2);          // 2=已完成
+        record.setRefundStatus(3);          // 3=已退款（NEW-28：原写 2=已拒绝，语义错误）
         record.setApproveUserId(SecurityUtils.getCurrentUserId());
         record.setCreateTime(LocalDateTime.now());
         record.setCompleteTime(LocalDateTime.now());
