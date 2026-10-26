@@ -127,6 +127,8 @@ const router = createRouter({
     { path: '/finance/overview', name: 'FinanceFundOverview', component: () => import('@/views/finance/recon/FundOverview.vue'), meta: { title: '资金总览', domain: 'finance', roles: [UserRole.STORE_MANAGER, UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
     // P4-4 期末结账（会计期间结账/反结账；不新增权限码，沿用 finance:bank:view）
     { path: '/finance/periods', name: 'FinancePeriodClose', component: () => import('@/views/finance/recon/PeriodCloseView.vue'), meta: { title: '期末结账', domain: 'finance', roles: [UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
+    // N19-3b 现金缴款单（退款构成 / 净值 / 待确认归属；权限沿用 finance:deposit-slip:view）
+    { path: '/finance/deposit-slips', name: 'FinanceDepositSlipList', component: () => import('@/views/finance/deposit/DepositSlipList.vue'), meta: { title: '现金缴款单', domain: 'finance', roles: [UserRole.STORE_MANAGER, UserRole.FINANCE_DIRECTOR, UserRole.FINANCE_MANAGER, UserRole.AUDITOR] } },
     // 工作台财务快捷入口的历史 path（报销管理）补齐，防死链
     // 报销管理：暂无独立页面，落到建设中占位页（可跳转到已上线的发票报销页）
     { path: '/finance/reimbursement', name: 'ReimbursementManage', component: () => import('@/views/finance/ReimbursementManage.vue'), meta: { title: '报销管理', domain: 'finance' } },
