@@ -209,10 +209,18 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // ==================================================================
         RefundComponent component = sumShiftRefundComponent(shift, storeId);
         slip.setRefundComponentFen(component.fen);
+        // 守卫（N19-2②）：退款构成超过应交额时**照常写入**（允许为负），但必须打点
+        if (component.fen > expected) {
+            log.warn("[METRIC] refund_component_exceeds_expected slipNo={} expected={} refundComponent={}",
+                    slip.getSlipNo(), expected, component.fen);
+        }
         slip.setActualAmount(0L);
         // AC-21 口径：difference_amount = actual_amount − expected_amount；
         // DRAFT 阶段 actual=0，故为 −expected（未收款即全额未交，符号与后续收款一致）
         slip.setDifferenceAmount(0L - expected);
+        // N19-2②：difference_net = actual − (expected − refund_component)
+        //   generate 阶段 actual=0 → difference_net = refund_component − expected
+        slip.setDifferenceNetFen(differenceNetOf(0L, expected, component.fen));
         slip.setStatus(ST_DRAFT);
         Long operatorId = currentOperatorId();
         slip.setCreateUserId(operatorId == null ? 0L : operatorId);
@@ -333,6 +341,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 .set(DepositSlip::getStatus, ST_RECEIVED)
                 .set(DepositSlip::getActualAmount, received)
                 .set(DepositSlip::getDifferenceAmount, difference)
+                // N19-2②：difference_net = actual − (expected − refund_component)
+                .set(DepositSlip::getDifferenceNetFen, differenceNetOf(received, expected,
+                        slip.getRefundComponentFen() == null ? 0L : slip.getRefundComponentFen()))
                 .set(DepositSlip::getReceivedAt, now)
                 .set(DepositSlip::getCollectorUserId, operatorId)
                 .set(DepositSlip::getCollectorName, currentOperatorName())
@@ -809,6 +820,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 shift.getShiftId(), cashAccountId, fen, flows == null ? 0 : flows.size());
         log.info("[METRIC] refund_component_fallback_by_date count={}", fallbackByDate);
         return new RefundComponent(fen, fallbackByDate);
+    }
+
+    /**
+     * N19-2②：净差异 = 实收 − (应交 − 退款构成)。
+     *
+     * <p>退款构成（refund_component_fen）是「本次存行里本就不该交的退款部分」，
+     * 因此先从应交额里扣掉，再与实收比较。允许为负（多退少缴），不做截断。</p>
+     */
+    private static long differenceNetOf(long actualFen, long expectedFen, long refundComponentFen) {
+        return actualFen - (expectedFen - refundComponentFen);
     }
 
     private long sumCashPayments(PosShift shift, long storeId) {
