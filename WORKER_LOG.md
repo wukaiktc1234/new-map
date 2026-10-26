@@ -2518,3 +2518,31 @@ SELECT count(*) FROM (
 - 已知入口：`PosOrderPaymentServiceImpl#refundOrder/refundNewOrder`（POS，**已写 fund_flows**）、`OrderNewController:202 POST /{orderId}/refund`、`RefundController:87 PUT /v1/refunds/{refundId}/approve`；
 - **两处后者的实现尚未读到**（正在由 fund-500 贴代码行号与落库行为）；收敛原则先定死：**只对「未写过退款流水的 refund_id」补写**，且以新唯一索引兜底 → 即使入口重复调用，也只会有一笔流水、不会重复扣余额；
 - **不回填历史退款流水**（理由同 §63.10：历史订单已不存在、补流水等于伪造业务）。
+
+### 63.13 P5 开工：NEW-21 收尾与 NEW-19 设计（2026-10-26 12:40–12:55）
+
+**A34 编号：预留，不是遗漏**
+- A34 预留给 **NEW-23 储值充值双向断言**（A34-入：已支付充值无 `flow_category=3` 等额流水；A34-退：`refund_amount>0` 无 `flow_category=4` 等额流水）。
+- 阻塞原因：充值功能未启用（`recharge_records` = 0 行、充值类流水 = 0），且 3/4 类别与字段需 NEW-23 落盘时由后端定义；常量未定前不猜值、不写空断言。
+- 落地后：判定项计数 22 → **24**。
+
+**A35 定位：过渡观测，不是终态判定**
+- 当前判据：`SELECT count(*) FROM fund_flows WHERE deleted=0 AND flow_category=6`（INFO，不参与 TOTAL）。
+- 定位：确认采购付款已从 2 迁到 6。**采购付款功能启用后，应升级为对拍判定**：`fund_flows.flow_category=6` 且金额 ≠ 对应采购单/付款单金额 的条数 → 期望 0。
+- 现状：rows=**0**（采购付款路径从未产生流水，与迁移前扫描一致）。
+
+**采购付款退回 `flow_category=7` 的语义（已读码确认）**
+- `PaymentServiceImpl:276-284`：红冲凭证生成后创建**反向资金流水**，`flowDirection=1`（收入）、`flowCategory=7`、金额 = 原付款金额、对方 = 供应商。
+- 语义 = **付款单红冲/作废后，钱回到账户**（付款失败退回），**不是**采购退货退款（采购退货属应付/发票域，另有流程）。
+- 已在 `FundFlowCategory` 中定义 `PURCHASE_PAYMENT_RETURN = 7` 并在注释里写清该语义；本轮把 `PaymentServiceImpl:59` 的私有常量与 `:284` 引用统一到该常量。
+
+**两处 `setFlowCategory(1)` 字面量收尾**
+- `ReceiptServiceImpl:139`（销售收款）、`OrderNewServiceImpl:327`（销售收款）→ 改为 `FundFlowCategory.SALE`；值与语义不变，编译通过即可，不单独跑 E2E。
+
+**NEW-19 设计稿已出**：`docs/design/cash-account-reconciliation.md`（待 Owner 评审，未写实现）
+- 核心结论：**现金退款不能与 `difference_amount` 按金额配对**（聚合差含多种成因，按金额碰配 = 假核销）；配对维度改为「门店 + 班次时间窗」的**缴款单 ↔ 现金退款流水集合**。
+- 新增字段 `deposit_slips.refund_component_fen` / `difference_net_fen`（**不动旧 `difference_amount`**，净值 = actual − (expected − refund_component)）。
+- 配对结果复用 P4-5 真源：`reconciliation_items.cleared_flag=true` + `reason` 追加 `[slipPair=<slip_no>]`；A19 配对例外扩展为 `[refundPair=…]` ∪ `[slipPair=…]`。
+- 新增 A36（超期未闭环）、A37（落不进班次窗口）、A38（INFO 闭环率）、A39（缴款单恒等式）；A32 的 `account_type=1` **分两步移除**（先并行观察一周 → 再撤条件并删 `cash-B` 桶）。
+- 3 个待评审决策点：配对维度、是否改 `expected` 语义、跨班次是否允许 ±1 天。
+- 工作量：**5 人日**。
