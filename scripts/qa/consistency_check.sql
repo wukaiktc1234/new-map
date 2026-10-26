@@ -1282,7 +1282,11 @@ SELECT CASE WHEN (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT
 -- ------------------------------------------------------------
 -- A39（**参与判定**）：缴款单恒等式
 --   对 deleted=0 的缴款单，两条恒等式都要成立：
---     ① difference_net_fen = actual_amount - (expected_amount - refund_component_fen)   ← 口径不变
+--     ① difference_net_fen = (actual_amount − reserve_fen) − (expected_amount − refund_component_fen)
+--        差异1 裁定（Owner）：**备用金 reserve_fen 必须从计现额里扣掉**（交班显示「应交 = 抽屉总额 − 备用金」），
+--        因此净差异按上式判定；若沿用旧式 actual − (expected − rcf)，1000 元备用金会以假长款回到净差异里。
+--        difference_amount（actual_amount − expected_amount）**保持旧口径不动**（兼容历史报表），
+--        两者差值 = reserve_fen + refund_component_fen，可作交叉校验。
 --     ② refund_component_fen = **期望退款合计**，期望值 = Σ 满足以下**任一**条件的现金退款流水
 --        （**且退款的账户门店 = 缴款单门店**：bank_accounts.store_id IS NOT DISTINCT FROM deposit_slips.store_id；
 --          不加这条，整日班次窗口会把其它门店的退款也算进来 —— 实测 slip 232(store=2) 曾因此误红）：
