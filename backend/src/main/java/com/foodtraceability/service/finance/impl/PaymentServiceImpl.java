@@ -154,7 +154,7 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentMapper, Payment>
         FundFlowCreateDTO flowDTO = new FundFlowCreateDTO();
         flowDTO.setAccountId(bankAccount.getAccountId());
         flowDTO.setFlowDirection(2); // 支出
-        flowDTO.setFlowCategory(2); // 采购付款
+        flowDTO.setFlowCategory(com.foodtraceability.common.finance.FundFlowCategory.PURCHASE_PAYMENT); // 6=采购付款（NEW-21：不再复用 2/退款）
         flowDTO.setAmount(dto.getPaymentAmount());
         flowDTO.setCounterpartyName(payable.getSupplierName());
         flowDTO.setBusinessDate(dto.getPaymentDate());
