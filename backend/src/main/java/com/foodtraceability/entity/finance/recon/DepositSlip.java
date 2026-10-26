@@ -53,6 +53,12 @@ public class DepositSlip {
     @TableField("expected_amount")
     private Long expectedAmount;
 
+    /** N19-2：本次存行中属于退款/冲回的金额（分，DB 列 refund_component_fen，默认 0） */
+    private Long refundComponentFen;
+
+    /** N19-2：扣除退款构成后的净差异（分，DB 列 difference_net_fen，未确认时为 null） */
+    private Long differenceNetFen;
+
     @TableField("actual_amount")
     private Long actualAmount;
 
@@ -142,6 +148,12 @@ public class DepositSlip {
 
     public Long getExpectedAmount() { return expectedAmount; }
     public void setExpectedAmount(Long expectedAmount) { this.expectedAmount = expectedAmount; }
+
+    public Long getRefundComponentFen() { return refundComponentFen; }
+    public void setRefundComponentFen(Long refundComponentFen) { this.refundComponentFen = refundComponentFen; }
+
+    public Long getDifferenceNetFen() { return differenceNetFen; }
+    public void setDifferenceNetFen(Long differenceNetFen) { this.differenceNetFen = differenceNetFen; }
 
     public Long getActualAmount() { return actualAmount; }
     public void setActualAmount(Long actualAmount) { this.actualAmount = actualAmount; }

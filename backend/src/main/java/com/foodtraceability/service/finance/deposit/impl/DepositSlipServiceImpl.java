@@ -201,6 +201,14 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         slip.setCashierName(shift.getEmployeeName());
         // TD-03：应交额以 order_payment_records 现金支付重算为权威；closing_cash 只展示，不参与计算
         slip.setExpectedAmount(expected);
+        // ==================================================================
+        // N19-2②：班次内「退款构成」金额（只写 refund_component_fen，**不动 expected/difference**）
+        //   口径：Σ 该门店现金户在班次窗口内的现金退款流水（flow_category=2 且 direction=2）
+        //   时间判定：refund_time 有值 → 落在 [shift.start, shift.end]；refund_time 为空的历史行
+        //   → 退化为「business_date 的日期落在班次日期区间」，并单独计数 fallbackByDate 便于回填。
+        // ==================================================================
+        RefundComponent component = sumShiftRefundComponent(shift, storeId);
+        slip.setRefundComponentFen(component.fen);
         slip.setActualAmount(0L);
         // AC-21 口径：difference_amount = actual_amount − expected_amount；
         // DRAFT 阶段 actual=0，故为 −expected（未收款即全额未交，符号与后续收款一致）
@@ -734,6 +742,75 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /** TD-03：应交额 = 该班次该门店 order_payment_records 中现金支付（payment_method=1）的合计（分） */
+    /** N19-2：退款构成计算结果 */
+    private static final class RefundComponent {
+        private final long fen;
+        private final int fallbackByDate;
+
+        private RefundComponent(long fen, int fallbackByDate) {
+            this.fen = fen;
+            this.fallbackByDate = fallbackByDate;
+        }
+    }
+
+    /**
+     * 计算班次窗口内的「退款构成」金额（分）。
+     *
+     * <p>口径（N19-2 第二步①，暂不含人工归属表）：</p>
+     * <ul>
+     *   <li>账户：该门店的现金户（account_type=2 / status=1 / deleted=0）；无现金户 → 0（不抛，避免影响出单）</li>
+     *   <li>流水：flow_category=2（退款）且 flow_direction=2（出账）且 status=2 且 deleted=0</li>
+     *   <li>时间：refund_time 有值 → 必须落在 [shift.start_time, shift.end_time]；
+     *       refund_time 为 NULL（历史 36 条）→ 退化为 business_date 的**日期**落在班次日期区间，计入 fallbackByDate</li>
+     * </ul>
+     */
+    private RefundComponent sumShiftRefundComponent(PosShift shift, long storeId) {
+        List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                .eq(BankAccount::getStoreId, storeId)
+                .eq(BankAccount::getAccountType, 2)
+                .eq(BankAccount::getStatus, 1)
+                .eq(BankAccount::getDeleted, 0));
+        if (cashAccounts == null || cashAccounts.isEmpty() || shift.getStartTime() == null || shift.getEndTime() == null) {
+            log.info("[METRIC] refund_component_fallback_by_date count=0 (no cash account or shift window missing)");
+            return new RefundComponent(0L, 0);
+        }
+        Long cashAccountId = cashAccounts.get(0).getAccountId();
+        List<FundFlow> flows = fundFlowMapper.selectList(new LambdaQueryWrapper<FundFlow>()
+                .eq(FundFlow::getAccountId, cashAccountId)
+                .eq(FundFlow::getFlowCategory, 2)
+                .eq(FundFlow::getFlowDirection, 2)
+                .eq(FundFlow::getStatus, 2)
+                .eq(FundFlow::getDeleted, 0)
+                .ge(FundFlow::getBusinessDate, shift.getStartTime().toLocalDate().minusDays(1))
+                .le(FundFlow::getBusinessDate, shift.getEndTime().toLocalDate().plusDays(1)));
+        long fen = 0L;
+        int fallbackByDate = 0;
+        if (flows != null) {
+            for (FundFlow flow : flows) {
+                long amount = flow.getAmount() == null ? 0L : flow.getAmount();
+                if (flow.getRefundTime() != null) {
+                    LocalDateTime rt = LocalDateTime.ofInstant(flow.getRefundTime().toInstant(), java.time.ZoneId.systemDefault());
+                    if (!rt.isBefore(shift.getStartTime()) && !rt.isAfter(shift.getEndTime())) {
+                        fen += amount;
+                    }
+                } else if (flow.getBusinessDate() != null) {
+                    // 历史行无 refund_time：按「天」判断是否落在班次日期区间
+                    LocalDate d = flow.getBusinessDate();
+                    LocalDate sd = shift.getStartTime().toLocalDate();
+                    LocalDate ed = shift.getEndTime().toLocalDate();
+                    if (!d.isBefore(sd) && !d.isAfter(ed)) {
+                        fen += amount;
+                        fallbackByDate++;
+                    }
+                }
+            }
+        }
+        log.info("[METRIC] refund_component_computed shiftId={} cashAccountId={} refundComponentFen={} flows={}",
+                shift.getShiftId(), cashAccountId, fen, flows == null ? 0 : flows.size());
+        log.info("[METRIC] refund_component_fallback_by_date count={}", fallbackByDate);
+        return new RefundComponent(fen, fallbackByDate);
+    }
+
     private long sumCashPayments(PosShift shift, long storeId) {
         List<OrderNew> orders = orderNewMapper.selectList(new LambdaQueryWrapper<OrderNew>()
                 .eq(OrderNew::getDeleted, 0)

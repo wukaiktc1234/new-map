@@ -75,6 +75,10 @@ public class FundFlow extends BaseEntity implements Serializable {
     @TableField("refund_record_id")
     private Long refundRecordId;
 
+    /** N19-2：退款时间戳（仅 flow_category=2 有意义，用于班次归属/配对判定） */
+    @TableField("refund_time")
+    private java.time.OffsetDateTime refundTime;
+
     /** 创建人ID */
     private Long createUserId;
 
@@ -184,6 +188,9 @@ public class FundFlow extends BaseEntity implements Serializable {
 
     public Long getRefundRecordId() { return refundRecordId; }
     public void setRefundRecordId(Long refundRecordId) { this.refundRecordId = refundRecordId; }
+
+    public java.time.OffsetDateTime getRefundTime() { return refundTime; }
+    public void setRefundTime(java.time.OffsetDateTime refundTime) { this.refundTime = refundTime; }
 
     public void setOrderId(String orderId) {
         this.orderId = orderId;
