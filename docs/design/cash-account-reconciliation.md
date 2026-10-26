@@ -232,3 +232,58 @@ UPDATE fund_flows f SET refund_time = r.refund_time
 - 写入位置：退款入口（`PosOrderPaymentServiceImpl#refundNewOrder` / `OrderNewServiceImpl#approveRefund`）在插入 `order_refund_records` 时写入；
 - **语义判定未完成**：需确认它是「POS 端退款操作时刻」还是「退款单创建时刻」（两者在异步审批场景会差数分钟到数天）；
 - **NULL 率未取到**（本轮 SQL 未返回，疑该表无 `refund_time` 列或列名不同）→ **列为阻塞**：进实现前必须贴出 `\d order_refund_records` 与写入行号。
+
+---
+
+## 13. v4：两个立场确认 + `refund_time` 取证更正（2026-10-26 13:55）
+
+### 13.1 立场一：**现金户不参与银行式调节表（同意 Owner 建议）**
+
+**结论：现金户不生成 `recon_items`，走缴款单闭环。** 由此三条设计定案：
+
+1. **A32 的 `account_type=1` 从「过渡条件」改为「长期设计」** —— 不是临时屏蔽，而是「现金户本就不在调节表框架内」的表达；注释需改写为长期语义，不再写「P5 移除」。
+2. **§12.2 假设 A（`refund_component > expected`）移出调节表讨论**：该场景由**缴款单短款/长款机制**处置（`difference_amount` / `difference_net_fen` 为负即「长款」），**不新增 A40**（A40 作废）。
+3. **实现影响（必须同步做的）**：
+   - 对账运行需**跳过现金户**：`autoDetectItems` / statement 生成按 `bank_accounts.account_type=2` 直接返回空，并在日志写 `[RECON] skip cash account=<id> (out of scope by design)`；
+   - **历史现金户 statement 的处置**：已存在的现金户 statement（含 OPEN items）需一次性「归档/关闭」并在 reason 写 `[cashScopeRetired]`，避免 A19/A32 与新的口径打架；
+   - 断言 A36/A37 仍保留（它们查现金户，但基于缴款单闭环，不依赖 `recon_items`）。
+
+### 13.2 立场二：退款发起权限与订单状态分级（新增节）
+
+| 订单状态 | 收银员能否发起 | 是否需要店长确认 | 权限码 | 备注 |
+|---|---|---|---|---|
+| **未制作（已支付 / 待接单）** | **可直接退** | 否 | `order:refund:initiate`（新增，绑 CASHIER/STORE_MANAGER/FINANCE_DIRECTOR） | 钱未进厨房，无损耗 |
+| **制作中** | 可发起 | **必须店长确认** | `order:refund:initiate` + `order:refund:approve` | 退款单 `refund_status=待审`，店长审批后才写流水 |
+| **已出餐 / 已完成** | **不能退** | 店长审批 + **必填原因** | 仅 `order:refund:approve`（店长） | 收银员无发起权；原因必填≥10 字，写审计 |
+
+**实现要点**：
+- 权限码层面「能发起」与「能审批」分离：`order:refund:initiate`（收银员有）/ `order:refund:approve`（店长/财务有）；**当前 POS `/refund` 直接退+写流水，等价于「发起即审批」**，需按状态拆分：未制作状态可直接退（保持现行为），制作中/已出餐转「退款申请 → 审批」链路（复用 `/v1/orders/{id}/refund` + `/v1/orders/refunds/{id}/approve`）；
+- **业务层必须做状态校验**（不能只靠权限）：`refundNewOrder` 入口增加 `order_status` 判定，制作中/已出餐一律拒绝即时退款，返回 400 并提示走申请审批；
+- 权限矩阵文档（NEW-20）新增三行（initiate / approve / confirm-attribution）。
+
+### 13.3 `refund_time` 取证更正（**上一轮设计假设错误，已实测推翻**）
+
+`information_schema` 实测 `order_refund_records` 共 **15 列**，**没有 `refund_time`**：
+
+```
+refund_id, order_id, refund_type, refund_amount, refund_reason, refund_method,
+approve_user_id, refund_status, create_time, complete_time, update_time, deleted,
+payment_channel_status, payment_channel_submit_time, refund_item_ids
+```
+
+→ **§11.1 的「迁移从 `order_refund_records.refund_time` 回填」不成立**。更正为：
+
+| 场景 | 配对用时间列 | 语义 |
+|---|---|---|
+| POS 即时退款（发起即完成） | **`complete_time`**，为 NULL 时用 `create_time` | 钱实际离开抽屉的时刻 |
+| 后台申请→审批退款 | **`complete_time`** | 审批通过、资金流出的时刻（`create_time` 是**申请**时刻，不能用于归属） |
+
+`fund_flows.refund_time` 迁移改为：
+```sql
+UPDATE fund_flows f SET refund_time = COALESCE(r.complete_time, r.create_time)
+  FROM order_refund_records r
+ WHERE f.refund_record_id = r.refund_id AND f.refund_time IS NULL AND f.flow_category = 2;
+```
+**回填守卫**：① 仅 `flow_category=2 AND refund_record_id IS NOT NULL AND refund_time IS NULL`；② `COALESCE(complete_time, create_time)` 仍为 NULL → **不写、计入 `unbackfillable` 计数并在报告列出**；③ 写后复核「`refund_time` 仍为 NULL 且 `refund_record_id` 非空」= 0，否则回滚；④ 与 `create_time` 不一致的行**以列值为准**，并把差值 > 1 分钟的行数打印（观测时钟/时区问题）。
+
+写入侧：`PosRefundFlowRecorder` 写 `refund_time = COALESCE(record.getCompleteTime(), record.getCreateTime())`，两者皆空则 **400 拒绝**（不允许回落 `now()`）。
