@@ -89,6 +89,15 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         }
         Long storeId = acc.get("store_id") == null ? null : ((Number) acc.get("store_id")).longValue();
 
+        // ---- N19-1：对账只看银行账户（account_type=1）；现金户(2) 不在范围内 ----
+        // 现金户没有银行对账单可比，硬做只会产生「全是单边差异」的噪声调节表；
+        // 因此**入口直接返回、不建 statement**（避免留下空表）。
+        Integer accountType = cashOrBankType(accountId);
+        if (accountType != null && accountType == 2) {
+            log.info("[RECON] skip cash account={} (out of scope by design)", accountId);
+            return null;
+        }
+
         // ---- book_balance：期间末最后一笔「非豁免」balance_after，取不到直接抛错（不默认 0）----
         Long bookBalance = lastBookBalance(accountId, pe);
         if (bookBalance == null) {
@@ -495,7 +504,23 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         return sb.toString();
     }
 
+    /** 账户类型（1=银行 2=现金；查不到返回 null，调用方按「不跳过」处理以免误伤） */
+    private Integer cashOrBankType(Long accountId) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT account_type FROM bank_accounts WHERE account_id = ? AND deleted = 0", accountId);
+        if (rows.isEmpty() || rows.get(0).get("account_type") == null) {
+            return null;
+        }
+        return ((Number) rows.get(0).get("account_type")).intValue();
+    }
+
     private List<StatementItemRequest> autoDetectItems(Long accountId, LocalDate ps, LocalDate pe, Long excludeStatementId) {
+        // N19-1：现金户(account_type=2) 不参与自动识别（银行户=1 才处理）
+        Integer acctType = cashOrBankType(accountId);
+        if (acctType != null && acctType == 2) {
+            log.info("[RECON] skip cash account={} (out of scope by design)", accountId);
+            return new ArrayList<>();
+        }
         Long userId = currentUserId();
         String userName = currentUserName();
         List<StatementItemRequest> out = new ArrayList<>();

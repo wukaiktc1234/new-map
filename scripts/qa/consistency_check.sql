@@ -908,11 +908,11 @@ SELECT CASE WHEN count(*) = 0
 --   口径（判据定案）：**「待匹配」是合法状态**（退款当天 CSV 尚未导入），所以只看
 --     business_date < CURRENT_DATE - 1（昨天及更早）；此时仍「既无银行退款流水可配、
 --     也不在未清 A/B/C/D 明细里」的退款流水才算孤儿。
---   【2026-10-26 方案 B 过渡】只看 **account_type = 1（银行/商户户）** 的退款流水：
---     **过渡措施**：现金退款没有银行侧对应，B 项由**缴款单短款 / 现金盘点**闭环
---     （缴款单 difference_amount 是「应存−实存」总额差，无法与单笔 B 逐条配对，硬配会造成
---      「金额碰巧相等就核销」的假配对）。**P5 设计现金户对账逻辑时移除本条件，改为按缴款单配对。**
---     现金户（account_type=2）的 B 类不进孤儿统计，改由 A32-DIST 的 cash-B 桶单独展示。
+--   【2026-10-26 N19-1 定案】A32 **只查银行户（account_type = 1）**。这是**长期设计**：
+--     现金户不在调节表框架内 —— 现金户的差异由缴款单 expected_amount / actual_amount /
+--     difference_amount（短款/长款）闭环，**不产生 recon_items**；现金退款由 NEW-19 的
+--     缴款单配对闭环（A36/A37 另判）。**不设移除计划。**
+--     现金户（account_type=2）的 B 类因此不进孤儿统计，改由 A32-DIST 的 cash-B 桶单独展示。
 --   期望 0；>0 即 FAIL。
 -- ------------------------------------------------------------
 SELECT ((:'REFUND_FLOW_CATEGORIES' <> '')
@@ -952,7 +952,8 @@ SELECT CASE WHEN count(*) = 0
    -- 收窄到「真退款」：category=2 也被采购付款复用（NEW-21 前），真退款必有 refund_record_id
    AND f.refund_record_id IS NOT NULL
    AND f.business_date < CURRENT_DATE - 1
-   -- 方案 B 过渡：只查银行/商户户（account_type=1）；现金户 B 项由缴款单/盘点闭环（P5 移除本条件）
+   -- 长期设计（N19-1 定案）：只查银行户（account_type=1）；现金户不在调节表框架内，
+   --   其差异由缴款单 expected/actual/difference 闭环，**不产生 recon_items**；不设移除计划
    AND COALESCE((SELECT ba.account_type FROM bank_accounts ba
                   WHERE ba.account_id = f.account_id AND ba.deleted = 0), 1) = 1
    AND NOT EXISTS (SELECT 1 FROM bank_transactions b
@@ -967,7 +968,7 @@ SELECT CASE WHEN count(*) = 0
 -- A32-DIST（信息性，不参与 TOTAL）：退款流水匹配状态分布
 --   六个桶互斥、合计 = total：
 --     matched   = 银行有「同额同日」的退款流水可配
---     cash-B    = **现金户**（account_type=2）且未匹配 → 待缴款单短款/现金盘点闭环（方案 B 过渡；**不计孤儿**）
+--     cash-B    = **现金户**（account_type=2）且未匹配 → 由缴款单短款/长款闭环（**长期设计，不计孤儿**）
 --     pending-B = 银行户、未匹配、同额 B 项在未清明细中
 --     pending-D = 银行户、未匹配、同额 D 项在未清明细中
 --     awaiting  = 银行户、未匹配、仍在时间窗内（今天/昨天，CSV 未导入 —— 合法「待匹配」）
