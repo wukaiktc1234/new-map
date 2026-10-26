@@ -1293,8 +1293,16 @@ SELECT CASE WHEN (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT
 --           attribution 行数=0）。若②只看归属表会恒红，故按「自动 ∪ 人工」取期望值。
 --   为什么剔除边界带：班次边界的退款归属到哪个班次本身不确定，后端同样排除边界带（待人工确认，
 --   对应审计 RECON_SHIFT_BOUNDARY_PENDING / A38 的待确认计数）。
---   分母 = difference_net_fen IS NOT NULL 的缴款单（N19-2 新口径）；
---          N19-2 之前的老单该列为 NULL → 单独报 `legacy_null=<k>`，不计入分母（避免误红）。
+--   **as-of-create 语义**：② 的期望合计只累加 `refund_time <= slip.create_time` 的退款
+--     （自动计入与人工归属**两条路同一时点截断**）—— 因为 rcf 是缴款单**生成时刻的快照**，
+--     A39 校验的是「生成逻辑算得对不对」，不是「缴款单是否已过时」。
+--   分母 = difference_net_fen IS NOT NULL **且班次窗口已结束**（pos_shifts.end_time < now()）的缴款单。
+--   **三项排除各自含义（全部显式输出，不隐藏）**：
+--     · still_open=<k>  ：班次窗口未结束 → 快照必滞后于 live 合计，不判（E2E：slip 231/shift 291 全天窗）。
+--     · legacy_null=<n> ：N19-2 之前的老单 difference_net_fen 为 NULL（该列未落盘），不判。
+--     · stale=<m>       ：窗口内有 **create_time 之后**才发生的退款（store 一致、非边界带）→
+--                         缴款单「已过时」的业务信号；**只观测不判定**（E2E：slip 249 的 flow 5636）。
+--   输出串统一：`分母=<d>（still_open=<k>；legacy_null=<n>；stale=<m>）`。
 -- ------------------------------------------------------------
 SELECT (to_regclass('public.deposit_slips') IS NOT NULL
         AND to_regclass('public.refund_shift_attribution') IS NOT NULL
@@ -1308,8 +1316,11 @@ SELECT (to_regclass('public.deposit_slips') IS NOT NULL
 \if :slip_identity_ready
 WITH slip AS (
     SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount,
-           COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen
+           COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen,
+           s.create_time,             -- **快照时点**：rcf 是这一时刻算出来的
+           sh.end_time AS shift_end   -- 班次窗口结束时间（判定集要用：窗口已结束才判）
       FROM deposit_slips s
+      LEFT JOIN pos_shifts sh ON sh.shift_id = s.shift_id AND sh.deleted = 0
      WHERE s.deleted = 0
 ), cash_refund AS (
     -- 现金户退款流水（与 A36/A38 同口径），并带出账户所属门店用于「门店归属」约束
@@ -1329,41 +1340,77 @@ WITH slip AS (
       FROM slip s
       JOIN cash_refund f
         ON (f.store_id IS NOT DISTINCT FROM s.store_id)
+       -- **as-of-create 截断**：rcf 是缴款单生成时刻的快照，只算生成前已发生的退款。
+       --   生成后、窗口结束前到达的退款不计入期望值（否则「快照 vs 实时」必然红，249 即此例）；
+       --   这类「已过时」的业务信号不判红，但通过 stale=<k> 显式输出。
+       AND f.refund_time IS NOT NULL
+       AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') <= s.create_time
        AND (
              EXISTS (SELECT 1 FROM pos_shifts ps
                       WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
                         AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
-                        AND f.refund_time IS NOT NULL
                         AND (f.refund_time AT TIME ZONE 'Asia/Shanghai')
                             BETWEEN ps.start_time + make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int)
                                 AND ps.end_time   - make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int))
              OR
+             -- 人工归属同一时点语义：归属记录必须存在，且该退款也发生在生成之前
              EXISTS (SELECT 1 FROM refund_shift_attribution a
                       WHERE a.refund_record_id = f.refund_record_id
                         AND a.shift_id = s.shift_id)
            )
      GROUP BY s.slip_id
+), stale AS (
+    -- INFO 用：窗口内有「生成之后」才发生的退款（store 一致、非边界带）→ 缴款单已过时（只观测不判定）
+    SELECT DISTINCT s.slip_id
+      FROM slip s
+      JOIN cash_refund f
+        ON (f.store_id IS NOT DISTINCT FROM s.store_id)
+       AND f.refund_time IS NOT NULL
+       AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') > s.create_time
+       AND EXISTS (SELECT 1 FROM pos_shifts ps
+                    WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
+                      AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
+                      AND (f.refund_time AT TIME ZONE 'Asia/Shanghai')
+                          BETWEEN ps.start_time + make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int)
+                              AND ps.end_time   - make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int))
+), judged AS (
+    -- 判定集：N19-2 新口径（difference_net_fen 非 NULL）**且班次窗口已结束**
+    --   窗口未结束时 refund_component_fen 是「生成时快照」，必然滞后于按窗口现算的 live 合计，
+    --   不属于错误 → 不进分母，但以 still_open 计数显式输出（不隐藏）。
+    SELECT s.*
+      FROM slip s
+     WHERE s.difference_net_fen IS NOT NULL
+       AND s.shift_end IS NOT NULL
+       AND s.shift_end < (now() AT TIME ZONE 'Asia/Shanghai')
 ), viol AS (
     SELECT s.slip_id
-      FROM slip s
+      FROM judged s
       LEFT JOIN expected e ON e.slip_id = s.slip_id
-     WHERE s.difference_net_fen IS NOT NULL
-       AND ( s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
-             OR s.rcf <> COALESCE(e.amt, 0) )
+     WHERE s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
+        OR s.rcf <> COALESCE(e.amt, 0)
 )
-SELECT CASE WHEN (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL) = 0
-            THEN '[INFO] A39 skipped_no_data 分母=0（无 N19-2 新口径缴款单；legacy_null='
-                 || (SELECT count(*) FROM slip) || '）'
+SELECT CASE WHEN (SELECT count(*) FROM judged) = 0
+            THEN '[INFO] A39 skipped_no_data 分母=0（无「窗口已结束」的 N19-2 缴款单；still_open='
+                 || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL
+                      AND (shift_end IS NULL OR shift_end >= (now() AT TIME ZONE 'Asia/Shanghai')))
+                 || '；legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL)
+                 || '；stale=' || (SELECT count(*) FROM stale) || '）'
             WHEN (SELECT count(*) FROM viol) = 0
-            THEN '[PASS] A39 缴款单恒等式 rows=0 分母=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL)
-                 || '（legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL) || '）'
+            THEN '[PASS] A39 缴款单恒等式 rows=0 分母=' || (SELECT count(*) FROM judged)
+                 || '（still_open=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL
+                      AND (shift_end IS NULL OR shift_end >= (now() AT TIME ZONE 'Asia/Shanghai')))
+                 || '；legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL)
+                 || '；stale=' || (SELECT count(*) FROM stale) || '）'
             ELSE '[FAIL] A39 缴款单恒等式 rows=' || (SELECT count(*) FROM viol)
-                 || ' 分母=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL)
-                 || '（legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL) || '）'
+                 || ' 分母=' || (SELECT count(*) FROM judged)
+                 || '（still_open=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL
+                      AND (shift_end IS NULL OR shift_end >= (now() AT TIME ZONE 'Asia/Shanghai')))
+                 || '；legacy_null=' || (SELECT count(*) FROM slip WHERE difference_net_fen IS NULL)
+                 || '；stale=' || (SELECT count(*) FROM stale) || '）'
                  || ' —— 存在 ' || (SELECT count(*) FROM viol) || ' 张缴款单恒等式不成立，禁止接受'
        END AS a39_line,
        (SELECT count(*) FROM viol) AS a39_n,
-       (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL) AS a39_den
+       (SELECT count(*) FROM judged) AS a39_den
 \gset
 \else
 \set a39_line '[INFO] A39 跳过（表未创建）'
