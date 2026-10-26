@@ -130,3 +130,49 @@ difference_net_fen - difference_amount = refund_component_fen          -- 两者
 | A36/A37/A38/A39 + A19 例外扩展 | 1.0 |
 | E2E（`e2e_cash_recon.py`：窗口内自动归属 / 边界待确认 / 人工选择后闭环 / A36/A37=0） | 1.5 |
 | **合计** | **6.5 人日** |
+---
+
+## 11. v3 修正（2026-10-26，审计补齐后）
+
+### 11.1 配对时间字段：改为 `fund_flows.refund_time`（原 §3.1/§3.2 修正）
+
+v2 说「以 POS 端 `refund_time` 为准」，但 `fund_flows` 当时只有 `business_date`（**天**）与 `create_time`（时刻，非业务时间），`order_refund_records.refund_time` **未写入流水** → 配对键无字段可落。**v3 定案：给流水加列**。
+
+```sql
+-- 迁移 V20261026_005__fund_flows_refund_time.sql
+ALTER TABLE fund_flows ADD COLUMN IF NOT EXISTS refund_time timestamptz;
+COMMENT ON COLUMN fund_flows.refund_time IS 
+'退款发生时刻（来自 order_refund_records.refund_time，POS 端时间）；仅 flow_category=2 写入，NEW-19 配对键'
+CREATE INDEX IF NOT EXISTS idx_fund_flows_refund_time 
+    ON fund_flows (account_id, refund_time) WHERE flow_category = 2 AND deleted = 0;
+-- 回填：
+UPDATE fund_flows f SET refund_time = r.refund_time
+  FROM order_refund_records r
+ WHERE f.refund_record_id = r.refund_id AND f.refund_time IS NULL AND f.flow_category = 2;
+```
+
+写入侧：`PosRefundFlowRecorder` 写流水时 `setRefundTime(record.getRefundTime())`（**不是** `now()`）；`refund_time` 为空时**拒绝写入**（`BusinessException(400)`「退款发生时刻缺失」），不允许回落到 `now()`。
+
+**配对口径（替换 v2 §3.1）**：一律用 `fund_flows.refund_time`（= POS 端退款时刻）与班次 `[start_time, end_time]` 比较；`business_date` 只用于报表分日，`create_time` 只用于审计，**两者都不参与归属判定**。
+
+### 11.2 A32 / A36 互斥（原 §6 补充）
+
+- `A32`：**只查银行户**（`account_type = 1`），判「无等额银行退款且不在未清明细」的孤儿；
+- `A36`：**只查现金户**（`account_type = 2`），判「超期未被缴款单闭环」；
+- 两者**列集合互斥**（按 `account_type` 分流），任何一条流水只可能被其中一条判；
+- **撤 `account_type=1` 时**：A32 恢复全账户口径的同时，必须把 A36 改为「现金户 + 未被缴款单闭环」并**在 A32 中排除现金户**（等价于把 `account_type` 分流写进两条 SQL，而不是让两条都覆盖全部账户），否则同一笔现金退款会被两条同时报出。
+
+### 11.3 断言「分母」字段（回应「无数据即 PASS」）
+
+每条判定断言必须输出**分母**（被检查行数）；**分母 = 0 时输出 `[INFO]`（`skipped_no_data`），不得输出 `[PASS]`**，避免「没数据」被当成「都对」。
+
+| 编号 | 判据 | 分母定义 | 分母=0 时 |
+|---|---|---|---|
+| A30 | 有退款额但无退款流水 | `count(orders WHERE refund_amount>0 AND deleted=0)` | `[INFO] A30 skipped_no_data denom=0` |
+| A32 | 银行户孤儿退款 | `count(现金退款流水 account_type=1)` | 同上 |
+| A33 | 逐单退款对拍 | 同上（`refund_amount>0` 订单数） | 同上 |
+| A36 | 现金户超期未闭环 | `count(现金退款流水 account_type=2)` | 同上 |
+| A37 | 落不进班次窗口 | 同上 | 同上 |
+| A39 | 缴款单恒等式 | `count(现金户且非 DRAFT 的 deposit_slips)` | 同上 |
+
+> 实现要求：判定行格式统一为 `[PASS]/[FAIL]/[INFO skipped_no_data]`，且**分母列随行输出**（如 `denom=12`），便于审计回溯。

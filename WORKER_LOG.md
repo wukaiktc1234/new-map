@@ -2546,3 +2546,33 @@ SELECT count(*) FROM (
 - 新增 A36（超期未闭环）、A37（落不进班次窗口）、A38（INFO 闭环率）、A39（缴款单恒等式）；A32 的 `account_type=1` **分两步移除**（先并行观察一周 → 再撤条件并删 `cash-B` 桶）。
 - 3 个待评审决策点：配对维度、是否改 `expected` 语义、跨班次是否允许 ±1 天。
 - 工作量：**5 人日**。
+
+### 63.14 审计补齐（第二轮）：186 处单位核对、P2-7 落地核查、P1-1/P1-2 处置（2026-10-26 13:30）
+
+**P1-3 全量核完（186 处，不是 171）**
+- 与金额相关 50 处：**展示层元转换 40 处**（`String.format("%.2f", fen/100.0)` / `String.valueOf(x/100.0)`，返回 String，仅展示）、**输入侧元→分 2 处**（`FinanceSystemServiceImpl:58`、`RefundServiceImpl:248`，方向正确）、**比率 8 处**（与金额无关）、**SQL 内 /100.00 2 处**（`DatabaseFixConfig:787/845`，仅 SELECT 表达式）；其余 136 处为毫秒/阈值。
+- **结论：无元/分混算错误 → P1-3 降级为「已澄清」，无 P0**；遗留 P3 建议：2 处元→分转换改用 `MoneyYuanToFen`（该类 `:17` 明确要求）。
+- 你点名的两处：`RecruitmentApprovalDataServiceImpl:153`、`DailySettlementDataServiceImpl:192` 均为 `String.valueOf(fen / 100.0)` 的**展示辅助方法**，不参与计算。
+
+**P2-7「仍用 order_id 判断退款」：实测这些表没有 order_id 列**
+- `information_schema` 查 `recon_runs / recon_items / recon_differences / reconciliation_statements / reconciliation_items / finance_audit_logs`：只存在 `item_id`、`flow_id`、`target_id`；**无 `order_id`、无 `refund_record_id`**。
+- 退款唯一真源 = `fund_flows.refund_record_id`；其余表经 `flow_id`（`reconciliation_items`）或 `item_id`（`recon_items`、`finance_audit_logs.target_id`）间接引用。**→ P2-7 降级为「已澄清」**。
+- 新增 P2：`reconciliation_items` 无 `refund_record_id` 冗余列，A19 例外需经 `flow_id` 二次查询（已用 `to_jsonb(f)->>` 实现），非错算。
+
+**P2-8 权限对表：部分完成**
+- `permissions` 共 **429** 码，`finance%` 相关 **100** 个（含 `finance:bank:import/recon/reconcile/query`、`finance:deposit-slip:*`、`finance:audit-log:view`、`finance:auto-voucher:*`）。
+- 「码↔角色绑定」查询返回空：`LEFT JOIN role_permissions rp ON rp.permission_id = p.permission_id` 无结果 → **绑定表名/主键结构与假设不符**，需按实际结构重查；**P2-8 保持待确认**，范围已收敛到 100 个 finance 码。
+
+**P1-1 `closing_cash` 定性：元**
+- 依据：`SchemaFixMigration:101` 建列 `DECIMAL(10,2)`（元尺度），实体 `PosShift:70`/`ShiftRecord:49` 为 `BigDecimal`。
+- **规则：`closing_cash` 是「元」，仅展示，不参与任何「分」计算；NEW-19 的 `difference_net_fen` 是「分」，两者不得混算；若必须用，先显式 ×100 转分并注明。**
+- NEW-19 设计 v3 明确「一律不引用该字段」。
+
+**P1-2 配对时间列：给 `fund_flows` 加 `refund_time`**
+- 迁移思路（设计 v3 §11.1）：`ALTER TABLE fund_flows ADD COLUMN refund_time timestamptz` + 索引 `(account_id, refund_time) WHERE flow_category=2 AND deleted=0` + 从 `order_refund_records.refund_time` 回填。
+- 写入侧：`PosRefundFlowRecorder` 写 `refund_time`（**不是 `now()`**）；缺失时拒绝写入（400），**不允许回落 `now()`**。
+- 配对口径改为「`fund_flows.refund_time` vs 班次 `[start_time, end_time]`」；`business_date` 仅报表分日、`create_time` 仅审计，均不参与归属。
+
+**NEW-19 设计 v3 另两处修正**
+- A32 只查银行户（`account_type=1`）、A36 只查现金户（`account_type=2`），**列集合互斥**；撤 `account_type=1` 时必须把分流写进两条 SQL，不能两条都覆盖全部账户。
+- 断言增加「分母」：A30/A32/A33/A36/A37/A39 必须输出被检查行数，**分母=0 时输出 `[INFO] skipped_no_data`，不得输出 `[PASS]`**。

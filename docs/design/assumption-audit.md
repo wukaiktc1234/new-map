@@ -106,3 +106,51 @@
 - 已落地部分（类别定义、退款写流水与配对、A30/A31/A32/A33/A35、A34 占位、NEW-21）**均有 SQL 级或代码级证据**；
 - **无 P0**；**P1 = 3 条**，其中 2 条必须在 NEW-19 实现前澄清；
 - NEW-19 v2 已把「`expected_amount` 含不含退款」从推测升级为**代码证据**，但 `total_amount`、`start/end` 边界语义仍是推测。
+## 11. 审计补齐（第二轮，2026-10-26 13:30）
+
+### 11.1 P1-3 全量核完：186 处（不是 171）
+
+`grep "(\* 100|/ 100|\*100|/100|toFixed|parseFloat)" backend/src/main/java` → **186 处**；其中**与金额相关 50 处**，逐条判定结果：
+
+| 类别 | 数量 | 判定 | 样例 |
+|---|---|---|---|
+| **展示层元转换**（返回 `String`/格式化） | **40** | **正确**（分→元仅用于展示） | `String.format("%.2f", fen / 100.0)`：`CustomerAnalysisServiceImpl:282`、`InvoiceReimbursementServiceImpl:624`、`PaymentServiceImpl:527`、`ReceiptServiceImpl:314`、`InventoryAnalysisServiceImpl:280`、`MarketingMemberServiceImpl:353`、`MarketingAnalysisServiceImpl:366`、`RechargeFinanceServiceImpl:116/123/125`、`AnomalyAlertServiceImpl:111`、`RechargePlanServiceImpl:211`、`RechargeRecordServiceImpl:413`、`RechargeStatsServiceImpl:138`、`RefundServiceImpl:257`、`FoodServiceImpl:1010`、`PointsController:68`；`String.valueOf(x / 100.0)`：`RecruitmentApprovalDataServiceImpl:153`、`DailySettlementDataServiceImpl:192`、`CostRecordServiceImpl:312`、`FinanceRecordServiceImpl:209`、`PayableServiceImpl:472`、`ReceivableServiceImpl:335`、`VoucherServiceImpl:549` |
+| **输入侧元→分转换**（参与计算，但方向是元→分） | **2** | **正确**（`Math.round(元 * 100)` 得“分”），但**未走 `MoneyYuanToFen` 工具类**（该类 `:17` 明确「任何新代码要做元↔分换算都必须调用本类」）→ 记为 **P3 一致性建议**，非错算 | `FinanceSystemServiceImpl:58 long amountInCents = Math.round(expense.getAmount() * 100.0);`（金融支出单金额=元）；`RefundServiceImpl:248 return Math.round(value * 100);`（`parseYuanToFen(String 元)`） |
+| **比率/百分比**（与金额单位无关） | **8** | 正确（*100 得百分数） | `ComboServiceImpl:399/412/416`、`CostAnalysisServiceImpl:307/500/511`、`DishCostServiceImpl:317`、`FoodServiceImpl:738`、`FinancialReportServiceImpl:207`、`InvoiceReimbursementServiceImpl:549` |
+| **SQL 内 ` / 100.00`**（数据库修复脚本里把分转元展示/写报表） | **2** | 正确（仅 SELECT 表达式，不写回金额字段） | `DatabaseFixConfig:787`（`f.sale_price / 100.00`）、`:845`（`dc.combo_price / 100.00`） |
+| 其余非金额（毫秒/超时/百分比阈值） | 136 | 正确（与金额无关） | `PerformanceMonitorAspect:140`、`RateLimitAspect:75`、`PrintTaskQueueManager:455`、`DeviceConnectionPool:31` |
+
+**结论：186 处中，参与金额计算的仅 2 处，且方向均为「元→分」（正确）；`RecruitmentApprovalDataServiceImpl:153` 与 `DailySettlementDataServiceImpl:192` 经上下文确认是 `String.valueOf(fen / 100.0)` 的展示辅助方法，不参与计算。→ P1-3 降级为「已澄清」，无 P0。**
+**遗留 P3 建议**：2 处元→分转换改用 `MoneyYuanToFen`，与项目约定一致。
+
+### 11.2 P2-7 具体位置：**这些表根本没有 `order_id`，无残留**
+
+`information_schema` 实测（`recon_runs` / `recon_items` / `recon_differences` / `reconciliation_statements` / `reconciliation_items` / `finance_audit_logs` 六张表）：
+
+| 表 | 存在的关联列 | 有无 `order_id` | 有无 `refund_record_id` | 退款关联方式 |
+|---|---|---|---|---|
+| `reconciliation_items` | `item_id`、`flow_id` | **无** | **无** | 经 `flow_id` 反查 `fund_flows.refund_record_id`（A19 例外即此路径） |
+| `recon_items` | `item_id` | **无** | **无** | 经 `item_id` 与 `reconciliation_items` 对应 |
+| `finance_audit_logs` | `target_id` | **无** | **无** | `target_id` = `item_id`；退款/配对信息在 `operation_data::json`（如 `statementId`） |
+| `recon_runs` / `recon_differences` / `reconciliation_statements` | 无上述列 | **无** | **无** | 经 `run_id` / `statement_id` 关联 |
+
+**结论：P2-7 不存在「仍用 `order_id` 判断退款」的残留位置**（这些表连 `order_id` 列都没有）；退款链路的唯一真源是 `fund_flows.refund_record_id`，其余表经 `flow_id` / `item_id` 间接引用。→ P2-7 降级为「已澄清」。
+**但新增一条 P2（11.3）**：`reconciliation_items` **无 `refund_record_id` 冗余列**，A19 例外必须经 `flow_id` 二次查询（已实现，用 `to_jsonb(f)->>`），性能与可读性上可考虑后续加冗余列 —— 非错算。
+
+### 11.3 P2-8 权限对表（P3/P4 相关，不是全量 1659 处）
+
+- `permissions` 表共 **429** 个码，其中 `finance%` 相关 **100 个**（如 `finance:bank:import`、`finance:bank:recon`、`finance:bank:reconcile`、`finance:bank:query`、`finance:deposit-slip:*`、`finance:audit-log:view`、`finance:auto-voucher:*`）；
+- **「权限码 ↔ 角色绑定」查询未取到结果**：`LEFT JOIN role_permissions rp ON rp.permission_id = p.permission_id` 返回空且无数据 → **`role_permissions` 表名或主键结构与本假设不符**（需按实际表结构重查）；
+- 因此 **P2-8 保持「待确认」**，但已把范围收敛到「100 个 finance 码 × 绑定表结构」；
+- **POS 退款仅店长**：代码级已验证（`order:manage`），**权限矩阵文档仍未落地**（NEW-20，P3）。
+
+## 12. 第二轮结论汇总
+
+| 原编号 | 原级别 | 结论 |
+|---|---|---|
+| P1-1 `closing_cash` 尺度 | P1 | **已处置**：定性为「元」，NEW-19 不引用（见 §13） |
+| P1-2 配对时间列 | P1 | **已处置**：`fund_flows` 新增 `refund_time` 列（见 §13 与设计 v3） |
+| P1-3 单位全量核对 | P1 | **降级为已澄清**（186 处，参与计算的 2 处方向正确） |
+| P2-7 order_id 残留 | P2 | **降级为已澄清**（相关表无 `order_id` 列） |
+| P2-8 权限对表 | P2 | **仍待确认**（绑定表结构不符，范围已收敛到 100 个 finance 码） |
+| P2-5/2-6 断言分母与互斥 | P2 | **已写入设计 v3**（见 §13） |
