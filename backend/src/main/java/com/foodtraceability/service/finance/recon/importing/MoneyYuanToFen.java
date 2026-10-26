@@ -30,6 +30,23 @@ public final class MoneyYuanToFen {
     private MoneyYuanToFen() {
     }
 
+    /**
+     * 元 → 分（BigDecimal 版；DB numeric(10,2) 直接换算，禁止调用方自行 ×100）。
+     *
+     * @param yuan 元值（可空 → 返回 null）
+     * @return 分；元值小数位超过 2 位时抛 IllegalArgumentException（数据问题不得静默四舍五入）
+     */
+    public static Long toFen(BigDecimal yuan) {
+        if (yuan == null) {
+            return null;
+        }
+        BigDecimal fen = yuan.movePointRight(2);
+        if (fen.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("元值小数位超过 2 位，无法精确换算为分: " + yuan.toPlainString());
+        }
+        return fen.setScale(0, RoundingMode.UNNECESSARY).longValueExact();
+    }
+
     /** 换算结果：成功给 fen，失败给 errorCode（两者互斥） */
     public record Result(Long fen, String errorCode) {
         public boolean ok() {

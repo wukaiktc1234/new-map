@@ -56,6 +56,12 @@ public class DepositSlip {
     /** N19-2：本次存行中属于退款/冲回的金额（分，DB 列 refund_component_fen，默认 0） */
     private Long refundComponentFen;
 
+    /** 差异1：班次备用金（分，= pos_shifts.opening_cash 元×100） */
+    private Long reserveFen;
+
+    /** 差异1：计现额（分）= actual_amount − reserve_fen */
+    private Long cashCountedFen;
+
     /** N19-2：扣除退款构成后的净差异（分，DB 列 difference_net_fen，未确认时为 null） */
     private Long differenceNetFen;
 
@@ -148,6 +154,12 @@ public class DepositSlip {
 
     public Long getExpectedAmount() { return expectedAmount; }
     public void setExpectedAmount(Long expectedAmount) { this.expectedAmount = expectedAmount; }
+
+    public Long getReserveFen() { return reserveFen; }
+    public void setReserveFen(Long reserveFen) { this.reserveFen = reserveFen; }
+
+    public Long getCashCountedFen() { return cashCountedFen; }
+    public void setCashCountedFen(Long cashCountedFen) { this.cashCountedFen = cashCountedFen; }
 
     public Long getRefundComponentFen() { return refundComponentFen; }
     public void setRefundComponentFen(Long refundComponentFen) { this.refundComponentFen = refundComponentFen; }

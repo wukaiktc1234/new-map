@@ -1316,7 +1316,7 @@ SELECT (to_regclass('public.deposit_slips') IS NOT NULL
 \if :slip_identity_ready
 WITH slip AS (
     SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount,
-           COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen,
+           COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen, COALESCE(s.reserve_fen, 0) AS reserve_fen,
            s.create_time,             -- **快照时点**：rcf 是这一时刻算出来的
            sh.end_time AS shift_end   -- 班次窗口结束时间（判定集要用：窗口已结束才判）
       FROM deposit_slips s
@@ -1386,7 +1386,7 @@ WITH slip AS (
     SELECT s.slip_id
       FROM judged s
       LEFT JOIN expected e ON e.slip_id = s.slip_id
-     WHERE s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
+ WHERE s.difference_net_fen <> (s.actual_amount - s.reserve_fen) - (s.expected_amount - s.rcf)
         OR s.rcf <> COALESCE(e.amt, 0)
 )
 SELECT CASE WHEN (SELECT count(*) FROM judged) = 0
@@ -1416,6 +1416,38 @@ SELECT CASE WHEN (SELECT count(*) FROM judged) = 0
 \set a39_line '[INFO] A39 跳过（表未创建）'
 \set a39_n 0
 \set a39_den 0
+\endif
+
+-- ------------------------------------------------------------
+-- A42（**参与判定**）：差异1 备用金换算一致
+--   reserve_fen 必须等于 ROUND(pos_shifts.opening_cash * 100)（opening_cash 单位=元，numeric(10,2)）
+--   守卫：opening_cash 非空；列/表缺失 → INFO 跳过（不计入 TOTAL）
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.deposit_slips') IS NOT NULL
+        AND to_regclass('public.pos_shifts') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='deposit_slips'
+                       AND column_name='reserve_fen')
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name='pos_shifts'
+                       AND column_name='opening_cash')) AS reserve_ready
+\gset
+\if :reserve_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A42 备用金换算一致 rows=0'
+            ELSE '[FAIL] A42 备用金换算不一致 rows=' || count(*)
+                 || ' —— 存在 reserve_fen <> ROUND(opening_cash*100) 的缴款单，禁止接受'
+       END AS a42_line,
+       count(*) AS a42_n
+  FROM deposit_slips s
+  JOIN pos_shifts ps ON ps.shift_id = s.shift_id
+ WHERE s.deleted = 0
+   AND ps.opening_cash IS NOT NULL
+   AND COALESCE(s.reserve_fen, 0) <> ROUND(ps.opening_cash * 100)::bigint
+\gset
+\else
+\set a42_line '[INFO] A42 跳过（reserve_fen / opening_cash 不存在）'
+\set a42_n 0
 \endif
 
 -- ------------------------------------------------------------
@@ -1738,6 +1770,10 @@ SELECT line
     SELECT 41,
            :'a39_line'
     UNION ALL
+    -- A42 参与判定：备用金换算一致（>0 进 TOTAL）
+    SELECT 43,
+           :'a42_line'
+    UNION ALL
     SELECT 42,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
@@ -1764,7 +1800,8 @@ SELECT line
              + CASE WHEN :a33_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a36_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a37_n > 0 THEN 1 ELSE 0 END
-             + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END)
+             + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END
+              + CASE WHEN :a42_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 

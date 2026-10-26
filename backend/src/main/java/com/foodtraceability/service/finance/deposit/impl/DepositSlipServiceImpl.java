@@ -226,6 +226,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // AC-21 口径：difference_amount = actual_amount − expected_amount；
         // DRAFT 阶段 actual=0，故为 −expected（未收款即全额未交，符号与后续收款一致）
         slip.setDifferenceAmount(0L - expected);
+        // 差异1（备用金）：reserve_fen = opening_cash 元 → 分（MoneyYuanToFen 唯一换算，禁止裸 ×100）
+        //   cash_counted_fen = actual − reserve（generate 阶段 actual=0 → −reserve）
+        long reserveFen = 0L;
+        if (shift.getOpeningCash() != null) {
+            Long converted = com.foodtraceability.service.finance.recon.importing.MoneyYuanToFen
+                    .toFen(shift.getOpeningCash());
+            reserveFen = converted == null ? 0L : converted;
+        }
+        slip.setReserveFen(reserveFen);
+        slip.setCashCountedFen(0L - reserveFen);
         // N19-2②：difference_net = actual − (expected − refund_component)
         //   generate 阶段 actual=0 → difference_net = refund_component − expected
         slip.setDifferenceNetFen(differenceNetOf(0L, expected, component.fen));
@@ -342,16 +352,29 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // AC-21（design §5.7 / 第 1005 行）：difference_amount = actual − expected
         //   > 0 → 长款（待查溢余）；< 0 → 短款（待查损溢）；= 0 → 平账
         long difference = received - expected;
+        // 差异1（备用金）：允许 body 传 reserveFen 覆盖快照；缺省用单据上的 reserve_fen
+        long reserveFen = slip.getReserveFen() == null ? 0L : slip.getReserveFen();
+        if (dto.getReserveFen() != null) {
+            if (dto.getReserveFen() < 0) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "reserveFen 不能为负：" + dto.getReserveFen());
+            }
+            reserveFen = dto.getReserveFen();
+        }
+        long cashCounted = received - reserveFen;
+        long refundComponent = slip.getRefundComponentFen() == null ? 0L : slip.getRefundComponentFen();
+        // difference_amount 口径不变（actual − expected）；difference_net 口径改为「计现额 − (应交 − 退款构成)」
+        long differenceNet = cashCounted - (expected - refundComponent);
 
         LocalDateTime now = LocalDateTime.now();
         depositSlipMapper.update(null, new LambdaUpdateWrapper<DepositSlip>()
                 .eq(DepositSlip::getSlipId, slipId)
                 .set(DepositSlip::getStatus, ST_RECEIVED)
                 .set(DepositSlip::getActualAmount, received)
-                .set(DepositSlip::getDifferenceAmount, difference)
-                // N19-2②：difference_net = actual − (expected − refund_component)
-                .set(DepositSlip::getDifferenceNetFen, differenceNetOf(received, expected,
-                        slip.getRefundComponentFen() == null ? 0L : slip.getRefundComponentFen()))
+                .set(DepositSlip::getDifferenceAmount, difference)   // actual − expected（口径不变）
+                .set(DepositSlip::getReserveFen, reserveFen)
+                .set(DepositSlip::getCashCountedFen, cashCounted)
+                // 差异1：difference_net = 计现额 − (expected − refund_component)
+                .set(DepositSlip::getDifferenceNetFen, differenceNet)
                 .set(DepositSlip::getReceivedAt, now)
                 .set(DepositSlip::getCollectorUserId, operatorId)
                 .set(DepositSlip::getCollectorName, currentOperatorName())
@@ -1504,6 +1527,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         vo.setExpectedAmount(slip.getExpectedAmount());
         vo.setActualAmount(slip.getActualAmount());
         vo.setRefundComponentFen(slip.getRefundComponentFen());
+        vo.setReserveFen(slip.getReserveFen());
+        vo.setCashCountedFen(slip.getCashCountedFen());
         vo.setDifferenceNetFen(slip.getDifferenceNetFen());
         PosShift voShift = slip.getShiftId() == null ? null : posShiftMapper.selectById(slip.getShiftId());
         vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId(), voShift));

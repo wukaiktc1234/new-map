@@ -19,6 +19,10 @@ public class DepositSlipVO {
     private Long actualAmount;
     /** 应交 − 实收：正=短款，负=长款（只记录在单据上，绝不改 pos_shifts.closing_cash） */
     private Long differenceAmount;
+    /** 差异1：班次备用金（分） */
+    private Long reserveFen;
+    /** 差异1：计现额（分）= actual − reserve */
+    private Long cashCountedFen;
     /** N19-2：本次存行中属于退款/冲回的金额（分） */
     private Long refundComponentFen;
     /** N19-2：净差异 = actual − (expected − refund_component) */
@@ -83,6 +87,12 @@ public class DepositSlipVO {
 
     public Long getDifferenceAmount() { return differenceAmount; }
     public void setDifferenceAmount(Long differenceAmount) { this.differenceAmount = differenceAmount; }
+
+    public Long getReserveFen() { return reserveFen; }
+    public void setReserveFen(Long reserveFen) { this.reserveFen = reserveFen; }
+
+    public Long getCashCountedFen() { return cashCountedFen; }
+    public void setCashCountedFen(Long cashCountedFen) { this.cashCountedFen = cashCountedFen; }
 
     public Long getRefundComponentFen() { return refundComponentFen; }
     public void setRefundComponentFen(Long refundComponentFen) { this.refundComponentFen = refundComponentFen; }
