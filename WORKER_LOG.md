@@ -2659,3 +2659,46 @@ SELECT count(*) FROM (
 - **同一 POS 终端不能并存两个进行中的班次**（第二次开班返回 `code=500 该终端已有进行中的班次`）→ 造夹具必须用不同 `terminalId`（`T-<tag>`）。
 
 **脚本修正**：`POST /deposit-slips/generate` 的响应形态是 `{reused:false, slip:{slipId:...}}`，断言必须兼容 `data.slipId` / `data.slip.slipId` 两种（原按 `data.slipId` 取到 0 → ①③④⑤ 全部 NOT_READY）。
+
+### 63.20 N19-2 收口：AC-58 28 PASS / 0 FAIL（2026-10-26 17:55）
+
+**E2E 全绿证据（`e2e-hik-7.log`，EXIT=0）**
+| 段 | 断言 | 实测 |
+|---|---|---|
+| ② | 边界内退款不计入 rcf | `slip 256 shift=322 exp=2500 rcf=0 dnet=-2500` |
+| ② | `RECON_SHIFT_BOUNDARY_PENDING` | 命中 1 行（累计 14） |
+| ① | 班次内自动计入（距 start/关班各 11 分钟） | `slip 257 rcf=5000 dnet=2500` |
+| ③ | 归属确认后 rcf/dnet 重算 + `CONFIRMED` 审计 | 累计审计 8 |
+| ④a | 同班次幂等 | 归属 1 行、version 不变 |
+| ④b | 改归属 `CHANGED` 审计 + 归属行 version+1 | 0→1（累计 11） |
+| **④c** | **改归属后两侧缴款单双向重算** | 旧单 258: 2500→**0**；新单 259: 2500→**5000** |
+| ⑤ | 越权 | `vcashier01 → 403` |
+| ⑥ | A36 / A37 / A39 | `A36 skipped_no_data 分母=0`、`A37 rows=0 分母=52`、`A39 rows=0 分母=10（still_open=2；legacy_null=0；stale=2）` |
+| ⑦ | 清理 | 仅 tag 清理，不裸 UPDATE |
+
+**四张缴款单五列对拍**
+| slip | shift | expected | actual | difference | rcf | dnet |
+|---|---|---|---|---|---|---|
+| 256 | 322 | 2500 | 0 | -2500 | 0 | -2500 |
+| 257 | 323 | 2500 | 0 | -2500 | 5000 | 2500 |
+| 258 | 324 | 2500 | 0 | -2500 | 0 | -2500 |
+| 259 | 325 | 2500 | 0 | -2500 | 5000 | 2500 |
+
+**A39 最终口径（三次演进后定稿）**
+1. 期望 = **窗口内非边界带 ∪ 人工归属**（`start+10min ~ end−10min`，`SHIFT_BOUNDARY_MINUTES=10`；与后端 `finance.cash.shift-boundary-minutes` 同步）；
+2. **同门店**：`fund_flows.account_id → bank_accounts.store_id = slip.store_id`（`pos_shifts` 无 `store_id` 列）；
+3. **as-of-create 截断**：`refund_time <= slip.create_time`（校验「生成逻辑算得对不对」，不是「单是否过时」）；
+4. 分母只判「窗口已结束」；三项可见性计数 `still_open` / `legacy_null` / `stale` **不判绿**。
+
+**N19-2 修掉的 4 个真缺陷**
+1. **产品**：`confirmAttribution` CHANGED 分支增量 ± 且只刷一侧 → 抽唯一重算入口、两侧全量重算；
+2. 断言：A39② 只认「已归属」→ 与自动计入互斥；
+3. 断言：A39 缺门店约束 → 整日窗口把别店退款算入；
+4. 断言：A39 用 live 合计对比快照 → 改 as-of-create。
+
+**环境事实（长期记住）**
+- `pos_shifts.status` 为 varchar：`CLOSED`/`completed`/`active`；
+- `pos_shifts` **无 `store_id` 列**，门店只能经 `bank_accounts.store_id`；
+- 同一 `terminalId` 不可并存两个进行中班次（`code=500`）；
+- `POST /deposit-slips/generate` 响应形态 `{reused, slip:{slipId}}`；
+- 边界容差默认 10 分钟，配置键 `finance.cash.shift-boundary-minutes`。

@@ -402,20 +402,43 @@ class CashRecon:
                   n_after == 1 and str(v_after) == str(v_before),
                   "HTTP %s code=%s；归属行 %d → %d；version %s → %s" % (
                       st, (b or {}).get("code"), n_before, n_after, v_before, v_after))
-        other = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND shift_id<>%d"
-                          " ORDER BY shift_id DESC LIMIT 1" % shift_id)
+        # 改归属目标必须「窗口已结束且已有缴款单」，否则新退款会落进它的窗口，
+        # 让该班次旧单的 rcf 变成 live 滞后 → A39 变红（环境里存在 00:00~23:59 的长窗口班次）
+        other = self.rows("SELECT p.shift_id FROM pos_shifts p"
+                          "  JOIN deposit_slips s ON s.shift_id = p.shift_id AND s.deleted = 0"
+                          " WHERE p.deleted = 0 AND p.shift_id <> %d"
+                          "   AND p.end_time IS NOT NULL AND p.end_time < now()"
+                          " ORDER BY p.shift_id DESC LIMIT 1" % shift_id)
         if not other:
-            return self.not_ready("AC-58-④ 改归属", "没有第二个班次可改")
+            return self.not_ready("AC-58-④ 改归属", "没有「窗口已结束且有缴款单」的第二个班次可改")
         other_id = int(other[0][0])
-        v0 = self.slip_row(sid)[7]
+        # version 属于 refund_shift_attribution（不是 deposit_slips）
+        av0 = self.num("SELECT COALESCE(MAX(version),0) FROM refund_shift_attribution"
+                       " WHERE refund_record_id=%d" % rf["refundRecordId"])
+        old_shift_slip = sid
+        new_shift_slip = self.num("SELECT COALESCE(slip_id,0) FROM deposit_slips"
+                                  " WHERE shift_id=%d AND deleted=0 ORDER BY slip_id DESC LIMIT 1" % other_id)
+        rcf_old_before = int(self.slip_row(old_shift_slip)[5])
+        rcf_new_before = int(self.slip_row(new_shift_slip)[5]) if new_shift_slip else 0
         st2, b2 = self.confirm_attribution(sid, rf["refundRecordId"], other_id, "AC-58 改归属 %s" % self.tag)
-        v1 = self.slip_row(sid)[7]
+        av1 = self.num("SELECT COALESCE(MAX(version),0) FROM refund_shift_attribution"
+                       " WHERE refund_record_id=%d" % rf["refundRecordId"])
         changed = self.num("SELECT COUNT(*) FROM finance_audit_logs"
                            " WHERE operation_type='REFUND_SHIFT_ATTRIBUTION_CHANGED' AND target_id=%d" % sid)
-        self.step("AC-58-④ 改归属 → CHANGED 审计 + version+1",
-                  ok(b2) and changed > 0 and int(v1) == int(v0) + 1,
-                  "HTTP %s code=%s；CHANGED 审计=%d；version %s → %s；新 shift=%d" % (
-                      st2, (b2 or {}).get("code"), changed, v0, v1, other_id))
+        self.step("AC-58-④ 改归属 → CHANGED 审计 + 归属行 version+1",
+                  ok(b2) and changed > 0 and av1 == av0 + 1,
+                  "HTTP %s code=%s；CHANGED 审计=%d；归属 version %s → %s；新 shift=%d" % (
+                      st2, (b2 or {}).get("code"), changed, av0, av1, other_id))
+        # 改归属后两侧缴款单的 refund_component_fen 必须按新归属重算（旧单减、新单增）
+        rcf_old_after = int(self.slip_row(old_shift_slip)[5])
+        rcf_new_after = int(self.slip_row(new_shift_slip)[5]) if new_shift_slip else 0
+        want_old = rcf_old_before - rf["amountFen"]
+        want_new = rcf_new_before + rf["amountFen"]
+        self.step("AC-58-④ 改归属后两侧 refund_component 重算（旧单减该笔、新单加该笔）",
+                  new_shift_slip > 0 and rcf_old_after == want_old and rcf_new_after == want_new,
+                  "旧单 slip=%s rcf %d → %d（期望 %d）；新单 slip=%s rcf %d → %d（期望 %d）" % (
+                      old_shift_slip, rcf_old_before, rcf_old_after, want_old,
+                      new_shift_slip, rcf_new_before, rcf_new_after, want_new))
         return True
 
     # ---------- ⑤ 越权 ----------
@@ -439,12 +462,17 @@ class CashRecon:
                                capture_output=True, text=True, timeout=900,
                                encoding="utf-8", errors="replace", cwd=str(HERE.parent.parent))
             text = (o.stdout or "") + (o.stderr or "")
+            self.insp_lines = {}
             for code in ("A36", "A37", "A39"):
-                for line in text.splitlines():
-                    if code in line and ("[PASS]" in line or "[FAIL]" in line or "[INFO]" in line):
-                        m = re.search(r"(?:rows|count|slips|diff)=(\d+)", line) or re.search(r"=(\d+)", line)
-                        vals[code] = (int(m.group(1)) if m else None, line.strip()[:140])
-                        break
+                cand = [l.strip() for l in text.splitlines()
+                        if code in l and ("[PASS]" in l or "[FAIL]" in l or "[INFO]" in l)]
+                # A39 的判定行必须优先取 [PASS]/[FAIL]；[INFO] 行（still_open / stale / legacy_null）只作可见性
+                judged = [l for l in cand if "[PASS]" in l or "[FAIL]" in l]
+                pick = judged[0] if judged else (cand[0] if cand else None)
+                self.insp_lines[code] = cand[:6]
+                if pick:
+                    m = re.search(r"(?:rows|count|slips|diff)=(\d+)", pick) or re.search(r"=(\d+)", pick)
+                    vals[code] = (int(m.group(1)) if m else None, pick[:160])
         except Exception as e:
             return self.not_ready("AC-58-⑥ 巡检", "consistency_check 执行失败：%s" % str(e)[:120])
         for code in ("A36", "A37", "A39"):
@@ -453,6 +481,14 @@ class CashRecon:
                 continue
             n, line = vals[code]
             self.step("AC-58-⑥ 巡检 %s == 0" % code, n == 0, "rows=%s；原文=%s" % (n, line))
+        # 可见性计数（不进判定）：still_open / stale / legacy_null
+        vis = []
+        for l in getattr(self, "insp_lines", {}).get("A39", []):
+            if "still_open" in l or "stale" in l or "legacy_null" in l:
+                vis.append(l[:150])
+        if vis:
+            self.step("AC-58-⑥ A39 可见性计数（still_open/stale/legacy_null，不进判定）", True,
+                      " | ".join(vis[:3]))
 
     # ---------- ⑦ 清理 ----------
     def cleanup(self):
