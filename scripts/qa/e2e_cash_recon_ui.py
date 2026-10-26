@@ -421,13 +421,22 @@ class SlipUi:
             finally:
                 browser.close()
 
-            # ⑤ 收银员视角
-            browser2, page2, logged2 = self.browser_login(pw, self.a.pos_user, self.a.pos_password)
+            # ⑤ 无 confirm-attribution 但有**查看权**的账号（qa_auditor / ROLE_AUDITOR）
+            #    说明：vcashier01 属 CASHIER，路由守卫即拒绝（缴款单是财务/店长域，设计如此）→ 见 ⑥
+            browser2, page2, logged2 = self.browser_login(pw, self.a.auditor_user, self.a.auditor_password)
             if not logged2:
-                self.not_ready("⑤ 收银员视角", "浏览器登录失败（localStorage 无 token）")
+                self.not_ready("⑤ 无权限账号视角", "浏览器登录失败（localStorage 无 token）")
             try:
-                page2.goto(self.a.admin + "/finance/deposit-slips/%d" % slip_id,
+                # 缴款单详情是列表页里的**抽屉**（没有独立详情路由）→ 必须走「列表 → 详情」
+                page2.goto(self.a.admin + "/finance/deposit-slips",
                            wait_until="domcontentloaded", timeout=120000)
+                try:
+                    row2sel = '[data-test="slip-row"][data-slip-id="%d"]' % slip_id
+                    page2.wait_for_selector(row2sel, timeout=20000)
+                    page2.locator(row2sel + ' [data-test="slip-detail"]').first.click(timeout=8000)
+                    page2.wait_for_selector('.el-drawer[aria-label="缴款单详情"]', timeout=15000)
+                except Exception as e2:
+                    print("    · ⑤ 打开详情失败：%s" % str(e2)[:100])
                 # ⑤ 口径（lead 定案·方式1变体）：无权限时渲染**占位块** + disabled 按钮 + 「无权限」文案，
                 #    且前端不再请求 pending-refunds（避免 403）。断言三点 + 无 5xx/错误 toast。
                 lock_ok = btn_ok = False
@@ -443,12 +452,32 @@ class SlipUi:
                     body_txt = page2.locator("body").inner_text()
                     print("    · ⑤ 占位块定位失败：%s" % str(e)[:100])
                 err_bits = [s for s in ("500", "操作失败", "系统异常", "加载失败") if s in body_txt]
-                self.step("⑤ 收银员无 confirm-attribution → 占位块含「无权限」+ 按钮 disabled + 无错误提示",
-                          lock_ok and btn_ok and not err_bits,
-                          "lock 区块含「无权限」=%s；attribution-confirm disabled=%s；页面错误文案=%s"
-                          % (lock_ok, btn_ok, err_bits if err_bits else "无"))
+                block_ok = page2.locator('[data-test="attribution-block"]').count() > 0
+                self.step("⑤ 缺 confirm-attribution 账号 → 占位块 + lock「无权限」+ 按钮 disabled + 无错误",
+                          block_ok and lock_ok and btn_ok and not err_bits,
+                          "attribution-block=%s；lock 含「无权限」=%s；confirm disabled=%s；错误文案=%s"
+                          % (block_ok, lock_ok, btn_ok, err_bits if err_bits else "无"))
             finally:
                 browser2.close()
+
+            # ⑥ 收银员（vcashier01）进缴款单模块应被**路由守卫**拦截（设计预期，固化断言）
+            browser3, page3, logged3 = self.browser_login(pw, self.a.pos_user, self.a.pos_password)
+            try:
+                if not logged3:
+                    self.not_ready("⑥ 收银员路由拦截", "浏览器登录失败（localStorage 无 token）")
+                else:
+                    page3.goto(self.a.admin + "/finance/deposit-slips",
+                               wait_until="domcontentloaded", timeout=120000)
+                    time.sleep(2.0)
+                    txt3 = page3.locator("body").inner_text() or ""
+                    blocked = ("没有权限访问" in txt3) or ("403" in txt3) or ("无权限" in txt3)
+                    list_rendered = page3.locator('[data-test="slip-row"]').count() > 0
+                    self.step("⑥ 收银员（vcashier01）进缴款单模块被路由拦截",
+                              blocked and not list_rendered,
+                              "URL=%s；页面含「没有权限访问/403/无权限」=%s；列表渲染=%s；文案片段=%r"
+                              % (page3.url, blocked, list_rendered, txt3[:80]))
+            finally:
+                browser3.close()
         return self.summary()
 
     def summary(self):
@@ -480,6 +509,8 @@ def main():
     p.add_argument("--password", default="Admin@123456")
     p.add_argument("--pos-user", default="vcashier01")
     p.add_argument("--pos-password", default="123456")
+    p.add_argument("--auditor-user", default="qa_auditor", help="ROLE_AUDITOR：能看缴款单但无 confirm-attribution")
+    p.add_argument("--auditor-password", default="Admin@123456")
     p.add_argument("--refund-user", default="qa_store_b")
     p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--store-id", type=int, default=1)
