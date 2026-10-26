@@ -1174,7 +1174,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /** N19-3a③：统计该门店现金户下 refund_time 为 NULL 的退款流水笔数（详情展示用） */
-    private Integer countMissingRefundTime(Long storeId) {
+    private Integer countMissingRefundTime(Long storeId, PosShift shift) {
         if (storeId == null) {
             return 0;
         }
@@ -1196,7 +1196,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 .eq(FundFlow::getFlowDirection, 2)
                 .eq(FundFlow::getStatus, 2)
                 .eq(FundFlow::getDeleted, 0)
-                .isNull(FundFlow::getRefundTime));
+                .isNull(FundFlow::getRefundTime)
+                .ge(FundFlow::getBusinessDate, shift.getStartTime().toLocalDate())
+                .le(FundFlow::getBusinessDate, shift.getEndTime().toLocalDate()));
         return n == null ? 0 : n.intValue();
     }
 
@@ -1304,7 +1306,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         vo.setActualAmount(slip.getActualAmount());
         vo.setRefundComponentFen(slip.getRefundComponentFen());
         vo.setDifferenceNetFen(slip.getDifferenceNetFen());
-        vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId()));
+        vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId(),
+                slip.getShiftId() == null ? null : posShiftMapper.selectById(slip.getShiftId())));
         vo.setDifferenceAmount(slip.getDifferenceAmount());
         vo.setCashAccountId(slip.getCashAccountId());
         vo.setBankAccountId(slip.getBankAccountId());
