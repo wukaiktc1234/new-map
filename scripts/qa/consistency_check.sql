@@ -890,6 +890,11 @@ SELECT CASE WHEN count(*) = 0
 --   口径（判据定案）：**「待匹配」是合法状态**（退款当天 CSV 尚未导入），所以只看
 --     business_date < CURRENT_DATE - 1（昨天及更早）；此时仍「既无银行退款流水可配、
 --     也不在未清 A/B/C/D 明细里」的退款流水才算孤儿。
+--   【2026-10-26 方案 B 过渡】只看 **account_type = 1（银行/商户户）** 的退款流水：
+--     **过渡措施**：现金退款没有银行侧对应，B 项由**缴款单短款 / 现金盘点**闭环
+--     （缴款单 difference_amount 是「应存−实存」总额差，无法与单笔 B 逐条配对，硬配会造成
+--      「金额碰巧相等就核销」的假配对）。**P5 设计现金户对账逻辑时移除本条件，改为按缴款单配对。**
+--     现金户（account_type=2）的 B 类不进孤儿统计，改由 A32-DIST 的 cash-B 桶单独展示。
 --   期望 0；>0 即 FAIL。
 -- ------------------------------------------------------------
 SELECT ((:'REFUND_FLOW_CATEGORIES' <> '')
@@ -907,6 +912,11 @@ SELECT ((:'REFUND_FLOW_CATEGORIES' <> '')
         AND EXISTS (SELECT 1 FROM information_schema.columns
                      WHERE table_schema = 'public' AND table_name = 'reconciliation_statements'
                        AND column_name IN ('statement_id', 'status', 'deleted')
+                     GROUP BY table_name HAVING count(*) = 3)
+        AND to_regclass('public.bank_accounts') IS NOT NULL
+        AND EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name = 'bank_accounts'
+                       AND column_name IN ('account_id', 'account_type', 'deleted')
                      GROUP BY table_name HAVING count(*) = 3)) AS refund_cross_ready
 \gset
 
@@ -922,6 +932,9 @@ SELECT CASE WHEN count(*) = 0
    AND f.status = 2
    AND f.flow_category = 2
    AND f.business_date < CURRENT_DATE - 1
+   -- 方案 B 过渡：只查银行/商户户（account_type=1）；现金户 B 项由缴款单/盘点闭环（P5 移除本条件）
+   AND COALESCE((SELECT ba.account_type FROM bank_accounts ba
+                  WHERE ba.account_id = f.account_id AND ba.deleted = 0), 1) = 1
    AND NOT EXISTS (SELECT 1 FROM bank_transactions b
                     WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
                       AND b.amount = f.amount AND b.business_date = f.business_date)
@@ -932,15 +945,27 @@ SELECT CASE WHEN count(*) = 0
 \gset
 
 -- A32-DIST（信息性，不参与 TOTAL）：退款流水匹配状态分布
+--   六个桶互斥、合计 = total：
+--     matched   = 银行有「同额同日」的退款流水可配
+--     cash-B    = **现金户**（account_type=2）且未匹配 → 待缴款单短款/现金盘点闭环（方案 B 过渡；**不计孤儿**）
+--     pending-B = 银行户、未匹配、同额 B 项在未清明细中
+--     pending-D = 银行户、未匹配、同额 D 项在未清明细中
+--     awaiting  = 银行户、未匹配、仍在时间窗内（今天/昨天，CSV 未导入 —— 合法「待匹配」）
+--     orphan    = 银行户、未匹配、超出时间窗、且不在未清明细中（= A32 命中集）
 SELECT '[INFO] A32-DIST 退款匹配状态分布 matched=' || count(*) FILTER (WHERE x.matched)
-       || ' pending-B=' || count(*) FILTER (WHERE NOT x.matched AND x.pending_b)
-       || ' pending-D=' || count(*) FILTER (WHERE NOT x.matched AND NOT x.pending_b AND x.pending_d)
-       || ' awaiting(待匹配窗口内)=' || count(*) FILTER (WHERE NOT x.matched AND NOT x.pending_b AND NOT x.pending_d AND NOT x.orphan)
-       || ' orphan=' || count(*) FILTER (WHERE x.orphan)
+       || ' cash-B(现金户待缴款单闭环)=' || count(*) FILTER (WHERE NOT x.matched AND x.acct_type = 2)
+       || ' pending-B=' || count(*) FILTER (WHERE NOT x.matched AND x.acct_type = 1 AND x.pending_b)
+       || ' pending-D=' || count(*) FILTER (WHERE NOT x.matched AND x.acct_type = 1 AND NOT x.pending_b AND x.pending_d)
+       || ' awaiting(待匹配窗口内)=' || count(*) FILTER (WHERE NOT x.matched AND x.acct_type = 1 AND NOT x.pending_b
+                                                        AND NOT x.pending_d AND NOT x.orphan_raw)
+       || ' orphan=' || count(*) FILTER (WHERE NOT x.matched AND x.acct_type = 1 AND NOT x.pending_b
+                                          AND NOT x.pending_d AND x.orphan_raw)
        || ' total=' || count(*) AS a32d_line,
        count(*) AS a32d_n
   FROM (
       SELECT f.flow_id,
+             COALESCE((SELECT ba.account_type FROM bank_accounts ba
+                        WHERE ba.account_id = f.account_id AND ba.deleted = 0), 1) AS acct_type,
              EXISTS (SELECT 1 FROM bank_transactions b
                       WHERE b.deleted = 0 AND b.is_refund = true AND b.direction = 2
                         AND b.amount = f.amount AND b.business_date = f.business_date) AS matched,
@@ -961,7 +986,7 @@ SELECT '[INFO] A32-DIST 退款匹配状态分布 matched=' || count(*) FILTER (W
               AND NOT EXISTS (SELECT 1 FROM reconciliation_items i
                                WHERE i.deleted = 0 AND i.cleared_flag = false AND i.amount = f.amount
                                  AND i.statement_id IN (SELECT statement_id FROM reconciliation_statements
-                                                         WHERE deleted = 0 AND status <> 'CLOSED'))) AS orphan
+                                                         WHERE deleted = 0 AND status <> 'CLOSED'))) AS orphan_raw
         FROM fund_flows f
        WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
   ) x

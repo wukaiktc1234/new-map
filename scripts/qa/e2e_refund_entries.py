@@ -123,6 +123,9 @@ class RefundEntries:
         self.step("登录 %s（POS 收银）" % self.a.pos_user, bool(self.cash_token), "HTTP %s" % s2)
         self.step("登录 %s（POS 退款=店长）" % self.a.refund_user, bool(self.manager_token), "HTTP %s" % s3)
         self.user_id = self.num("SELECT user_id FROM users WHERE username='%s' LIMIT 1" % self.a.user)
+        self.manager_user_id = self.num("SELECT user_id FROM users WHERE username='%s' LIMIT 1'"
+                                        % self.a.refund_user) if False else self.num(
+            "SELECT user_id FROM users WHERE username='%s' LIMIT 1" % self.a.refund_user)
         return all([self.admin_token, self.cash_token, self.manager_token])
 
     # ---------- 夹具 ----------
@@ -172,13 +175,14 @@ class RefundEntries:
                     % (order_number, urllib.parse.quote(reason)), self.manager_token)
 
     def backend_apply(self, order_id, amount_fen, refund_type, reason):
-        return http("POST", self.a.api + "/v1/order-new/%s/refund" % order_id, self.admin_token,
+        # 实际路由：OrderNewController @RequestMapping("/v1/orders")，权限 order:manage（qa_store_b 持有）
+        return http("POST", self.a.api + "/v1/orders/%s/refund" % order_id, self.manager_token,
                     {"refundType": refund_type, "refundAmount": int(amount_fen),
                      "refundReason": reason, "refundMethod": 1})
 
     def backend_approve(self, refund_id):
-        return http("POST", self.a.api + "/v1/order-new/refunds/%d/approve?approved=true&approveUserId=%d"
-                    % (int(refund_id), int(self.user_id)), self.admin_token)
+        return http("POST", self.a.api + "/v1/orders/refunds/%d/approve?approved=true&approveUserId=%d"
+                    % (int(refund_id), int(self.manager_user_id)), self.manager_token)
 
     def refund_flows(self, order_id):
         return self.rows("SELECT flow_id, COALESCE(refund_record_id,0), amount, COALESCE(balance_after,0)"
