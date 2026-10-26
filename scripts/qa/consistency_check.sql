@@ -790,6 +790,13 @@ SELECT CASE WHEN count(*) = 0
 --            （与 paid_amount / total_amount 同尺度）；fund_flows.amount 也是分 → **直接比较，禁止 ×100**。
 --            证据（fund-500 实测）：某单 paid_amount=1800(分)、total_amount=1800(分)、
 --            refund_amount=1800.00，对应退款流水 amount=1800(分)。若当成「元」，18 元订单会退 1800 元，不合理。
+--   【口径收窄 2026-10-26】A30/A31/A32/A33 一律要求 **fund_flows.refund_record_id IS NOT NULL**：
+--      **真实类别冲突** —— PaymentServiceImpl:157 把 flow_category=2 也用于「采购付款」，
+--      采购付款一旦落库，A31 的流水侧会永久偏大。真正的退款流水必然带 refund_record_id，
+--      故按数据形态收窄到「真退款」。**这不是白名单**（不看金额/账号/时间等任何白名单式条件）。
+--      根治见 backlog **NEW-21**（采购付款改用 flow_category=6）。
+--   A30 只判**存在性**（该订单有没有退款流水）；**金额一致性交给 A33 逐单对拍**
+--      （多笔部分退款时 单笔金额 ≠ 订单退款额，A30 若比金额必然误报）。
 -- ------------------------------------------------------------
 \set REFUND_FLOW_CATEGORIES '2'
 
@@ -824,10 +831,13 @@ SELECT CASE WHEN count(*) = 0
             AND f.flow_direction = 2
             AND f.order_id = o.order_id
             AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
-            AND f.amount = o.refund_amount::bigint)
+            -- 只判「存在退款流水」；**金额一致性由 A33 逐单对拍**（多笔部分退款时单笔金额≠订单退款额）
+            AND f.refund_record_id IS NOT NULL)
 \gset
 
 -- A31：按日退款流水合计 vs 订单退款合计（orders 无 account_id → 退化为「当日全库合计」口径）
+--   流水侧同样要求 refund_record_id IS NOT NULL：category=2 被采购付款复用（PaymentServiceImpl:157），
+--   不加会把采购付款算进退款合计（根治见 NEW-21）
 SELECT CASE WHEN count(*) = 0
             THEN '[PASS] A31 当日退款流水合计=订单退款合计 days=0'
             ELSE '[FAIL] A31 当日退款流水合计=订单退款合计 days=' || count(*)
@@ -842,6 +852,7 @@ SELECT CASE WHEN count(*) = 0
                 FROM fund_flows f
                WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
                  AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+                 AND f.refund_record_id IS NOT NULL
                GROUP BY 1) fl
         FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
                           SUM(o.refund_amount)::bigint AS amt
@@ -875,6 +886,7 @@ SELECT CASE WHEN count(*) = 0
   LEFT JOIN (SELECT f.order_id, SUM(f.amount) AS amt
                FROM fund_flows f
               WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+                AND f.refund_record_id IS NOT NULL
               GROUP BY f.order_id) r ON r.order_id = o.order_id
  WHERE o.deleted = 0
    AND o.refund_amount > 0
@@ -931,6 +943,8 @@ SELECT CASE WHEN count(*) = 0
  WHERE f.deleted = 0
    AND f.status = 2
    AND f.flow_category = 2
+   -- 收窄到「真退款」：category=2 也被采购付款复用（NEW-21 前），真退款必有 refund_record_id
+   AND f.refund_record_id IS NOT NULL
    AND f.business_date < CURRENT_DATE - 1
    -- 方案 B 过渡：只查银行/商户户（account_type=1）；现金户 B 项由缴款单/盘点闭环（P5 移除本条件）
    AND COALESCE((SELECT ba.account_type FROM bank_accounts ba
@@ -989,6 +1003,7 @@ SELECT '[INFO] A32-DIST 退款匹配状态分布 matched=' || count(*) FILTER (W
                                                          WHERE deleted = 0 AND status <> 'CLOSED'))) AS orphan_raw
         FROM fund_flows f
        WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+         AND f.refund_record_id IS NOT NULL   -- 与 A32 同口径，保证六桶合计=total
   ) x
 \gset
 \else
@@ -1959,7 +1974,8 @@ SELECT o.order_id, o.order_status, o.payment_status,
           WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
             AND f.order_id = o.order_id
             AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
-            AND f.amount = o.refund_amount::bigint)
+            -- 与判定同口径：只判存在性（金额一致性由 A33 对拍）+ 收窄到真退款
+            AND f.refund_record_id IS NOT NULL)
  ORDER BY o.refund_time DESC NULLS LAST, o.order_id
  LIMIT 20;
 \else
@@ -1985,6 +2001,7 @@ SELECT t.d,
                 FROM fund_flows f
                WHERE f.deleted = 0 AND f.status = 2 AND f.flow_direction = 2
                  AND f.flow_category = ANY (string_to_array(:'REFUND_FLOW_CATEGORIES', ',')::int[])
+                 AND f.refund_record_id IS NOT NULL
                GROUP BY 1) fl
         FULL JOIN (SELECT COALESCE(o.refund_time, o.create_time)::date AS d,
                           SUM(o.refund_amount)::bigint AS amt
@@ -2037,6 +2054,7 @@ SELECT o.order_id, o.refund_amount::bigint AS order_refund_fen,
   LEFT JOIN (SELECT f.order_id, SUM(f.amount) AS amt, count(*) AS cnt
                FROM fund_flows f
               WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2
+                AND f.refund_record_id IS NOT NULL
               GROUP BY f.order_id) r ON r.order_id = o.order_id
  WHERE o.deleted = 0 AND o.refund_amount > 0
    AND COALESCE(r.amt, 0) <> o.refund_amount::bigint
