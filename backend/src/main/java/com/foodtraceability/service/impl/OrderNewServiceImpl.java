@@ -22,6 +22,8 @@ import com.foodtraceability.service.MaterialConsumptionAuditService;
 import com.foodtraceability.service.OrderNewService;
 import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.PosSaleFinanceRecorder;
+import com.foodtraceability.utils.SecurityUtils;
+import com.foodtraceability.service.finance.PosRefundFlowRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -79,6 +81,8 @@ public class OrderNewServiceImpl implements OrderNewService {
     private final CostRecordService costRecordService;
     /** 资金流水服务（F6：订单支付落资金流水） */
     private final com.foodtraceability.service.finance.FundFlowService fundFlowService;
+    /** P4-5 R5：退款写流水唯一写点（审批通过时调用） */
+    private final PosRefundFlowRecorder posRefundFlowRecorder;
     /** 银行账户服务（F6：取默认账户） */
     private final com.foodtraceability.service.finance.BankAccountService bankAccountService;
     /** 扣料失败审计服务（P0：独立 bean + REQUIRES_NEW，禁止 this 自调用） */
@@ -100,6 +104,7 @@ public class OrderNewServiceImpl implements OrderNewService {
             ApplicationEventPublisher applicationEventPublisher,
             CostRecordService costRecordService,
             com.foodtraceability.service.finance.FundFlowService fundFlowService,
+            PosRefundFlowRecorder posRefundFlowRecorder,
             com.foodtraceability.service.finance.BankAccountService bankAccountService,
             MaterialConsumptionAuditService materialConsumptionAuditService,
             com.foodtraceability.service.SensitiveDataService sensitiveDataService) {
@@ -117,6 +122,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.costRecordService = costRecordService;
         this.fundFlowService = fundFlowService;
+        this.posRefundFlowRecorder = posRefundFlowRecorder;
         this.bankAccountService = bankAccountService;
         this.materialConsumptionAuditService = materialConsumptionAuditService;
         this.sensitiveDataService = sensitiveDataService;
@@ -407,14 +413,10 @@ public class OrderNewServiceImpl implements OrderNewService {
         refundRecord.setRefundItemIds(convertRefundItemIdsToCsv(refundDTO.getItemIds()));
         orderRefundRecordNewMapper.insert(refundRecord);
 
-        // 如果是全额退款，直接更新订单状态
-        if (refundDTO.getRefundType() == 1) {
-            int newOrderStatus = 5; // 全额退款
-            orderNewMapper.addRefundAmount(orderId, refundAmount, newOrderStatus);
-        } else {
-            // 部分退款，更新为部分退款状态
-            orderNewMapper.addRefundAmount(orderId, refundAmount, 4); // 4=部分退款
-        }
+        // P4-5 R5 口径：**申请阶段不动 orders.refund_amount / order_status**。
+        // 申请可能被拒绝；refund_amount 必须只反映「已完成的退款」（审批通过时回写），
+        // 否则 A30（refund_amount>0 却无退款流水）会永久误报，资金口径失真。
+        // 回写动作统一在 approveRefund(approved=true) 完成。
 
         log.info("退款申请提交成功, refundId: {}", refundRecord.getRefundId());
         return convertToRefundVO(refundRecord);
@@ -479,6 +481,40 @@ public class OrderNewServiceImpl implements OrderNewService {
                 // 现改为：库存回补失败抛出异常 → 主事务回滚 → 退款记录不更新为"已退款"
                 restoreInventoryForRefund(order, refundRecord);
             }
+
+            // ==================================================================
+            // P4-5 R5 口径：审批通过才回写 orders.refund_amount / order_status（申请阶段不动），
+            // 并做累计校验：本次退款不得超过「已付 − 已退」剩余可退额（防超退，如 36 元订单退 30+20）。
+            // ==================================================================
+            long thisRefund = refundRecord.getRefundAmount() == null ? 0L : refundRecord.getRefundAmount();
+            if (order != null && thisRefund > 0) {
+                long alreadyRefunded = order.getRefundAmount() == null ? 0L : order.getRefundAmount().longValue();
+                long paidFen = order.getPaidAmount() == null ? 0L : order.getPaidAmount();
+                long remainingFen = paidFen - alreadyRefunded;
+                if (thisRefund > remainingFen) {
+                    throw new com.foodtraceability.common.exception.BusinessException(400,
+                            "退款金额超过剩余可退额：本次 " + thisRefund + " 分，剩余 " + remainingFen + " 分");
+                }
+                long newTotal = alreadyRefunded + thisRefund;
+                orderNewMapper.addRefundAmount(order.getOrderId(), thisRefund, newTotal >= paidFen ? 5 : 4);
+            }
+
+            // ==================================================================
+            // P4-5 R5：退款资金流水**唯一时点** = 审批同意（此处）。
+            // 理由：applyRefund 只是「申请」，可能被拒绝；只有审批通过、refund_status 置 3（已退款）
+            // 才是真实资金动作。写入失败即抛出 → 整个审批事务回滚（不会出现「审批通过但账上没退」）。
+            // ==================================================================
+            posRefundFlowRecorder.record(
+                    refundRecord.getOrderId(),
+                    refundRecord.getRefundId(),
+                    refundRecord.getRefundAmount() == null ? 0L : refundRecord.getRefundAmount(),
+                    null,
+                    order != null ? order.getStoreId() : null,
+                    order != null ? order.getPaymentMethod() : null,
+                    approveUserId,
+                    SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "system",
+                    LocalDate.now(),
+                    "ORDER_REFUND_APPROVE");
 
             // 发布退款事件（DF-022 修复）：触发下游财务联动
             // 监听器 OrderRefundEventListener 会在主事务提交后（AFTER_COMMIT）异步：
