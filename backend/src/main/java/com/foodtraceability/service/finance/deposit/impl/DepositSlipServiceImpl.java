@@ -213,9 +213,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         // N19-2②：班次内「退款构成」金额（只写 refund_component_fen，**不动 expected/difference**）
         //   口径：Σ 该门店现金户在班次窗口内的现金退款流水（flow_category=2 且 direction=2）
         //   时间判定：refund_time 有值 → 落在 [shift.start, shift.end]；refund_time 为空的历史行
-        //   → 退化为「business_date 的日期落在班次日期区间」，并单独计数 fallbackByDate 便于回填。
+        //   → **N19-3a③ 起不再日级兜底**：不归属任何班次，逐笔审计 RECON_REFUND_TIME_MISSING 待回填。
         // ==================================================================
-        RefundComponent component = sumShiftRefundComponent(shift, storeId, true);   // generate：首次落边界待确认审计
+        RefundComponent component = sumShiftRefundComponent(shift, storeId, true, LocalDateTime.now());   // generate：as-of=now
         slip.setRefundComponentFen(component.fen);
         // 守卫（N19-2②）：退款构成超过应交额时**照常写入**（允许为负），但必须打点
         if (component.fen > expected) {
@@ -764,11 +764,12 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     /** N19-2：退款构成计算结果 */
     private static final class RefundComponent {
         private final long fen;
-        private final int fallbackByDate;
+        /** N19-3a③：refund_time 为 NULL 的现金退款笔数（不归属任何班次，待回填） */
+        private final int missingRefundTimeCount;
 
-        private RefundComponent(long fen, int fallbackByDate) {
+        private RefundComponent(long fen, int missingRefundTimeCount) {
             this.fen = fen;
-            this.fallbackByDate = fallbackByDate;
+            this.missingRefundTimeCount = missingRefundTimeCount;
         }
     }
 
@@ -780,10 +781,11 @@ public class DepositSlipServiceImpl implements DepositSlipService {
      *   <li>账户：该门店的现金户（account_type=2 / status=1 / deleted=0）；无现金户 → 0（不抛，避免影响出单）</li>
      *   <li>流水：flow_category=2（退款）且 flow_direction=2（出账）且 status=2 且 deleted=0</li>
      *   <li>时间：refund_time 有值 → 必须落在 [shift.start_time, shift.end_time]；
-     *       refund_time 为 NULL（历史 36 条）→ 退化为 business_date 的**日期**落在班次日期区间，计入 fallbackByDate</li>
+     *       refund_time 为 NULL → **不归属任何班次**（不计入），返回 missingRefundTimeCount 供详情展示</li>
      * </ul>
      */
-    private RefundComponent sumShiftRefundComponent(PosShift shift, long storeId, boolean auditPending) {
+    private RefundComponent sumShiftRefundComponent(PosShift shift, long storeId, boolean auditPending,
+                                                   java.time.LocalDateTime asOf) {
         List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
                 .eq(BankAccount::getStoreId, storeId)
                 .eq(BankAccount::getAccountType, 2)
@@ -819,7 +821,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         java.time.LocalDateTime boundaryFrom = shift.getStartTime().plusMinutes(shiftBoundaryMinutes);
         java.time.LocalDateTime boundaryTo = shift.getEndTime().minusMinutes(shiftBoundaryMinutes);
         long fen = 0L;
-        int fallbackByDate = 0;
+        int missingRefundTime = 0;
+        java.util.List<FundFlow> missingRefundTimeFlows = new java.util.ArrayList<>();
         java.util.List<Long> boundaryPending = new java.util.ArrayList<>();
         if (flows != null) {
             for (FundFlow flow : flows) {
@@ -843,21 +846,17 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                         continue;
                     }
                     fen += amount;
-                } else if (flow.getBusinessDate() != null) {
-                    // 历史行无 refund_time：按「天」判断是否落在班次日期区间
-                    LocalDate d = flow.getBusinessDate();
-                    LocalDate sd = shift.getStartTime().toLocalDate();
-                    LocalDate ed = shift.getEndTime().toLocalDate();
-                    if (!d.isBefore(sd) && !d.isAfter(ed)) {
-                        fen += amount;
-                        fallbackByDate++;
-                    }
+                } else {
+                    // N19-3a③：refund_time 为 NULL → **不归属任何班次**（不计入 refund_component），
+                    // 逐笔落审计 RECON_REFUND_TIME_MISSING 待回填；不再按 business_date 日级兜底。
+                    missingRefundTime++;
+                    missingRefundTimeFlows.add(flow);
                 }
             }
         }
         log.info("[METRIC] refund_component_computed shiftId={} cashAccountId={} refundComponentFen={} flows={} attributed={} boundaryPending={}",
                 shift.getShiftId(), cashAccountId, fen, flows == null ? 0 : flows.size(), attributionByRefund.size(), boundaryPending.size());
-        log.info("[METRIC] refund_component_fallback_by_date count={}", fallbackByDate);
+        log.info("[METRIC] refund_component_missing_refund_time count={}", missingRefundTime);
 
         // N19-2④：边界退回落审计（待人工确认归属），失败不影响出单
         for (Long pendingRefundId : auditPending ? boundaryPending : java.util.Collections.<Long>emptyList()) {
@@ -872,7 +871,20 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                         shift.getShiftId(), e.getMessage());
             }
         }
-        return new RefundComponent(fen, fallbackByDate);
+        for (FundFlow missingFlow : auditPending ? missingRefundTimeFlows : java.util.Collections.<FundFlow>emptyList()) {
+            try {
+                auditRecon("RECON_REFUND_TIME_MISSING", shift.getShiftId(),
+                        "退款缺少发生时刻（refund_time IS NULL），不归属任何班次：flowNo="
+                                + missingFlow.getFlowNo() + " accountId=" + missingFlow.getAccountId()
+                                + " businessDate=" + missingFlow.getBusinessDate() + " 金额=" + missingFlow.getAmount() + " 分",
+                        "{\"flowNo\":\"" + missingFlow.getFlowNo() + "\",\"accountId\":" + missingFlow.getAccountId()
+                                + ",\"businessDate\":\"" + missingFlow.getBusinessDate() + "\",\"amount\":" + missingFlow.getAmount() + "}");
+            } catch (Exception e) {
+                log.warn("[METRIC] audit_write_failed operationType=RECON_REFUND_TIME_MISSING flowNo={} err={}",
+                        missingFlow.getFlowNo(), e.getMessage());
+            }
+        }
+        return new RefundComponent(fen, missingRefundTime);
     }
 
     /**
@@ -1000,6 +1012,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /** N19-2④：班次边界待确认审计（失败只 WARN，不影响出单） */
+    /** N19-2④ / N19-3a③：对账类审计（失败只 WARN，不影响出单） */
+    private void auditRecon(String operationType, Long targetId, String desc, String dataJson) {
+        Long operatorId = currentOperatorId();
+        boolean ok = financeAuditLogService.log(operatorId, currentOperatorName(), operationType,
+                "FINANCE_DEPOSIT_SLIP", targetId, "POS_SHIFT", desc, dataJson, null);
+        if (!ok) {
+            log.warn("[METRIC] audit_write_failed operationType={} targetId={}", operationType, targetId);
+        }
+    }
+
     private void auditShiftBoundary(Long shiftId, String desc, String dataJson) {
         Long operatorId = currentOperatorId();
         boolean ok = financeAuditLogService.log(operatorId, currentOperatorName(), "RECON_SHIFT_BOUNDARY_PENDING",
@@ -1127,7 +1149,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     targetSlipId, target.getShiftId());
             return;
         }
-        RefundComponent component = sumShiftRefundComponent(shift, target.getStoreId(), false);
+        RefundComponent component = sumShiftRefundComponent(shift, target.getStoreId(), false, target.getCreateTime());   // 重算：as-of=create_time（A39 同口径）
         long expected = target.getExpectedAmount() == null ? 0L : target.getExpectedAmount();
         long actual = target.getActualAmount() == null ? 0L : target.getActualAmount();
         long differenceNet = differenceNetOf(actual, expected, component.fen);
@@ -1149,6 +1171,33 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** N19-3a③：统计该门店现金户下 refund_time 为 NULL 的退款流水笔数（详情展示用） */
+    private Integer countMissingRefundTime(Long storeId) {
+        if (storeId == null) {
+            return 0;
+        }
+        List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                .eq(BankAccount::getStoreId, storeId)
+                .eq(BankAccount::getAccountType, 2)
+                .eq(BankAccount::getStatus, 1)
+                .eq(BankAccount::getDeleted, 0));
+        if (cashAccounts == null || cashAccounts.isEmpty()) {
+            return 0;
+        }
+        java.util.List<Long> accountIds = new ArrayList<>();
+        for (BankAccount a : cashAccounts) {
+            accountIds.add(a.getAccountId());
+        }
+        Long n = fundFlowMapper.selectCount(new LambdaQueryWrapper<FundFlow>()
+                .in(FundFlow::getAccountId, accountIds)
+                .eq(FundFlow::getFlowCategory, 2)
+                .eq(FundFlow::getFlowDirection, 2)
+                .eq(FundFlow::getStatus, 2)
+                .eq(FundFlow::getDeleted, 0)
+                .isNull(FundFlow::getRefundTime));
+        return n == null ? 0 : n.intValue();
     }
 
     private String nextSlipNo() {
@@ -1253,6 +1302,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         vo.setCollectorName(slip.getCollectorName());
         vo.setExpectedAmount(slip.getExpectedAmount());
         vo.setActualAmount(slip.getActualAmount());
+        vo.setRefundComponentFen(slip.getRefundComponentFen());
+        vo.setDifferenceNetFen(slip.getDifferenceNetFen());
+        vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId()));
         vo.setDifferenceAmount(slip.getDifferenceAmount());
         vo.setCashAccountId(slip.getCashAccountId());
         vo.setBankAccountId(slip.getBankAccountId());

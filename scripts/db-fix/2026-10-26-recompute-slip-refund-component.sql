@@ -15,7 +15,7 @@
 BEGIN;
 
 WITH slip AS (
-    SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount,
+    SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount, s.create_time,
            COALESCE(s.refund_component_fen, 0) AS rcf
       FROM deposit_slips s
      WHERE s.deleted = 0
@@ -30,6 +30,8 @@ WITH slip AS (
       FROM slip s
       JOIN cash_refund f
         ON (f.store_id IS NOT DISTINCT FROM s.store_id)
+       AND f.refund_time IS NOT NULL
+       AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') <= s.create_time
        AND (
              EXISTS (SELECT 1 FROM pos_shifts ps
                       WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
@@ -65,7 +67,7 @@ END $$;
 
 -- 守卫：按 A39 同口径复核，违规必须为 0
 WITH slip AS (
-    SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount,
+    SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount, s.create_time,
            COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen
       FROM deposit_slips s WHERE s.deleted = 0
 ), cash_refund AS (
@@ -77,6 +79,8 @@ WITH slip AS (
     SELECT s.slip_id, COALESCE(SUM(f.amount), 0) AS amt
       FROM slip s JOIN cash_refund f
         ON (f.store_id IS NOT DISTINCT FROM s.store_id)
+       AND f.refund_time IS NOT NULL
+       AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') <= s.create_time
        AND (
              EXISTS (SELECT 1 FROM pos_shifts ps
                       WHERE ps.shift_id = s.shift_id AND ps.deleted = 0

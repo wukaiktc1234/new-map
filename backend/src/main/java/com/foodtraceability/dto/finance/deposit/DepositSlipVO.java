@@ -19,6 +19,12 @@ public class DepositSlipVO {
     private Long actualAmount;
     /** 应交 − 实收：正=短款，负=长款（只记录在单据上，绝不改 pos_shifts.closing_cash） */
     private Long differenceAmount;
+    /** N19-2：本次存行中属于退款/冲回的金额（分） */
+    private Long refundComponentFen;
+    /** N19-2：净差异 = actual − (expected − refund_component) */
+    private Long differenceNetFen;
+    /** N19-3a③：该门店现金户下 refund_time 为 NULL 的退款流水笔数（未归属任何班次，待回填） */
+    private Integer missingRefundTimeCount;
     private Long cashAccountId;
     private Long bankAccountId;
     private Long depositBankTxnId;
@@ -71,6 +77,15 @@ public class DepositSlipVO {
 
     public Long getDifferenceAmount() { return differenceAmount; }
     public void setDifferenceAmount(Long differenceAmount) { this.differenceAmount = differenceAmount; }
+
+    public Long getRefundComponentFen() { return refundComponentFen; }
+    public void setRefundComponentFen(Long refundComponentFen) { this.refundComponentFen = refundComponentFen; }
+
+    public Long getDifferenceNetFen() { return differenceNetFen; }
+    public void setDifferenceNetFen(Long differenceNetFen) { this.differenceNetFen = differenceNetFen; }
+
+    public Integer getMissingRefundTimeCount() { return missingRefundTimeCount; }
+    public void setMissingRefundTimeCount(Integer missingRefundTimeCount) { this.missingRefundTimeCount = missingRefundTimeCount; }
 
     public Long getCashAccountId() { return cashAccountId; }
     public void setCashAccountId(Long cashAccountId) { this.cashAccountId = cashAccountId; }
