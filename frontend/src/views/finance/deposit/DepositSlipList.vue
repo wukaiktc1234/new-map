@@ -137,7 +137,11 @@ async function openDetail(row: DepositSlipVO): Promise<void> {
   try {
     const fresh = await getDepositSlip(row.slipId)
     detail.value = fresh
-    attribution.value = await getPendingAttribution(row.slipId, fresh)
+    // N19-3b ⑤：无 confirm-attribution 权限时**不请求** pending-refunds（避免 403 噪声），
+    // 给空载荷 → 详情用占位骨架渲染禁用态
+    attribution.value = canConfirm.value
+      ? await getPendingAttribution(row.slipId, fresh)
+      : { pendingRefunds: [], candidateShifts: [], missingRefundTimeCount: 0 }
   } catch (error) {
     listError.value = error instanceof Error ? error.message : '缴款单详情加载失败'
   } finally {
@@ -152,7 +156,10 @@ async function handleConfirm(payload: { refundRecordId: number; shiftId: number;
   try {
     const updated = await confirmAttribution(detail.value.slipId, payload)
     detail.value = updated
-    attribution.value = await getPendingAttribution(updated.slipId, updated)
+    // N19-3b ⑤：无 confirm-attribution 权限时不请求 pending-refunds（避免 403 噪声）
+    attribution.value = canConfirm.value
+      ? await getPendingAttribution(updated.slipId, updated)
+      : { pendingRefunds: [], candidateShifts: [], missingRefundTimeCount: 0 }
     const idx = rows.value.findIndex((r) => r.slipId === updated.slipId)
     if (idx >= 0) rows.value[idx] = updated
     ElMessage.success('已确认退款归属，单据退款构成与净值已重算')

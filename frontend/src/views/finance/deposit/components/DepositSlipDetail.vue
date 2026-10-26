@@ -124,6 +124,13 @@ watch(pending, (list) => {
   }
 }, { immediate: true })
 
+/**
+ * 归属区渲染条件（N19-3b ⑤ 定案）：
+ * 有 pending 退款 **或** 当前用户无权限（此时用占位骨架展示禁用态，便于验收/E2E）。
+ * 无权限时列表页不请求 pending-refunds（避免 403 噪声），attribution 为空 → 走占位分支。
+ */
+const showAttribution = computed<boolean>(() => pending.value.length > 0 || !props.canConfirm)
+
 function reasonValid(row: PendingAttributionRefundVO): boolean {
   return (reasons.value[row.refundRecordId] || '').trim().length >= 4
 }
@@ -216,12 +223,10 @@ defineExpose({ localError })
     </section>
 
     <!-- 待确认归属 -->
-    <section v-if="pending.length" class="slip-attribution">
+    <section v-if="showAttribution" class="slip-attribution" data-test="attribution-block">
       <header class="slip-attribution__head">
         <h4>待确认归属</h4>
-        <el-tooltip v-if="!canConfirm" content="仅店长/财务可确认归属" placement="top">
-          <span class="slip-attribution__lock">无权限</span>
-        </el-tooltip>
+        <span v-if="!canConfirm" class="slip-attribution__lock">无权限确认退款归属（需店长/财务）</span>
       </header>
       <div v-if="localError" class="slip-attribution__error">{{ localError }}</div>
       <table class="slip-attribution__table">
@@ -279,10 +284,27 @@ defineExpose({ localError })
                     data-test="attribution-confirm"
                     :disabled="!canSubmit(row)"
                     :loading="confirming"
+                    :title="canConfirm ? '' : '无权限'"
                     @click="submit(row)"
                   >确认归属</el-button>
                 </span>
               </el-tooltip>
+            </td>
+          </tr>
+
+          <!-- 无权限占位行：不发起 pending-refunds 请求也能展示禁用态 -->
+          <tr v-if="!canConfirm && pending.length === 0" data-test="attribution-placeholder">
+            <td colspan="5" class="slip-attribution__empty">
+              无可确认的退款归属数据（当前账号无查看权限，已跳过取数）
+            </td>
+            <td>
+              <el-button
+                type="primary"
+                link
+                data-test="attribution-confirm"
+                disabled
+                title="无权限"
+              >确认归属</el-button>
             </td>
           </tr>
         </tbody>
@@ -404,6 +426,11 @@ defineExpose({ localError })
 .slip-attribution__lock {
   font-size: 12px;
   color: var(--el-color-warning-dark-2, #b88230);
+}
+
+.slip-attribution__empty {
+  color: var(--fts-text-secondary, #909399);
+  font-size: 12px;
 }
 
 .slip-attribution__error {
