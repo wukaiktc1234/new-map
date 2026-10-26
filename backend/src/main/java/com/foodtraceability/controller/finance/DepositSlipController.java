@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -122,6 +123,19 @@ public class DepositSlipController {
     @PreAuthorize("hasAuthority('finance:deposit-slip:reverse')")
     public Result<DepositSlipVO> reverse(@PathVariable Long slipId, @Valid @RequestBody ReverseSlipDTO dto) {
         return Result.success(depositSlipService.reverse(slipId, dto));
+    }
+
+    /** N19-2④：人工确认退款归属班次（幂等 + 覆盖 + 乐观锁），并重算退款构成与净差异 */
+    @Operation(summary = "人工确认退款归属班次（N19-2④）", description = "写入 refund_shift_attribution 并重算该缴款单的 refund_component_fen / difference_net_fen")
+    @PostMapping("/{slipId}/confirm-attribution")
+    @PreAuthorize("hasAuthority('finance:deposit-slip:confirm-attribution')")
+    public Result<DepositSlipVO> confirmAttribution(
+            @PathVariable Long slipId,
+            @RequestBody Map<String, Object> body) {
+        Long refundRecordId = body.get("refundRecordId") == null ? null : Long.valueOf(String.valueOf(body.get("refundRecordId")));
+        Long shiftId = body.get("shiftId") == null ? null : Long.valueOf(String.valueOf(body.get("shiftId")));
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        return Result.success(depositSlipService.confirmAttribution(slipId, refundRecordId, shiftId, reason));
     }
 
     /** SL11：导出 CSV */

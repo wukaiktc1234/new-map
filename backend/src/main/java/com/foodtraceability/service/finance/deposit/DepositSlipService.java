@@ -51,6 +51,16 @@ public interface DepositSlipService {
     /** SL10 冲正（FINANCE_DIRECTOR）：只增反向流水，原流水 status=3 */
     DepositSlipVO reverse(Long slipId, ReverseSlipDTO dto);
 
+    /**
+     * N19-2④：人工确认退款→班次归属（幂等 + 覆盖 + 乐观锁），并重算 refund_component_fen / difference_net_fen。
+     *
+     * @param slipId         缴款单（重算对象）
+     * @param refundRecordId 退款单号（唯一键）
+     * @param shiftId        归属班次
+     * @param reason         确认原因
+     */
+    DepositSlipVO confirmAttribution(Long slipId, Long refundRecordId, Long shiftId, String reason);
+
     /** SL11 导出 CSV */
     String exportCsv(DepositSlipQueryDTO query);
 }
