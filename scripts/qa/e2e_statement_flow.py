@@ -178,7 +178,13 @@ class StatementE2E:
             st, b = self.gen_statement()
             if not ok(b):
                 return self.not_ready("生成调节表", "S3 HTTP %s %s" % (st, json.dumps(b, ensure_ascii=False)[:160]))
-            self.sid = int((data_of(b) or {}).get("statementId"))
+            d = data_of(b)
+            sid_got = (d or {}).get("statementId") if isinstance(d, dict) else None
+            if sid_got is None:
+                return self.not_ready("生成调节表",
+                                      "响应 data=%r（N19-1 现金户跳过？当前银行户=%s）"
+                                      % (d, getattr(self.a, "bank_account", "?")))
+            self.sid = int(sid_got)
             self.submitter_id = None
             self.step("新生成调节表", True, "statementId=%s status=DRAFT" % self.sid)
 
@@ -205,13 +211,13 @@ class StatementE2E:
             pe = today.strftime("%Y-%m-%d")
             n = int(self.rows("SELECT COUNT(*) FROM reconciliation_statements WHERE account_id=%d AND deleted=0"
                               " AND period_start='%s' AND period_end='%s'"
-                              % (self.a.cash_account, ps, pe))[0][0])
+                              % (self.a.bank_account, ps, pe))[0][0])
             if n:
                 continue
             target = 0
             for _ in range(4):
                 st, b = http("POST", self.a.api + "/v1/finance/recon/statements", self.tokens["admin"],
-                             {"accountId": int(self.a.cash_account), "periodStart": ps, "periodEnd": pe,
+                             {"accountId": int(self.a.bank_account), "periodStart": ps, "periodEnd": pe,
                               "bankStatementBalanceFen": int(target), "remark": "e2e-stmt generate"})
                 if not ok(b):
                     return st, b
@@ -433,6 +439,49 @@ class StatementE2E:
                              sid, st2, (b2 or {}).get("code"), stt, appr,
                              "" if ok2 else "；msg=" + str((b2 or {}).get("message"))[:90]))
 
+    # ---------------- N19-1：现金户不生成调节表 ----------------
+    def n19_cash_skip(self):
+        ps = (date.today() - timedelta(days=12)).strftime("%Y-%m-%d")
+        pe = date.today().strftime("%Y-%m-%d")
+        st, b = http("POST", self.a.api + "/v1/finance/recon/statements", self.tokens["admin"],
+                     {"accountId": int(self.a.cash_account), "periodStart": ps, "periodEnd": pe,
+                      "bankStatementBalanceFen": 0, "remark": "e2e N19-1 cash skip"})
+        d = data_of(b)
+        self.step("N19-1 现金户调用 S3 返回 code=0 且 data=null",
+                  (b or {}).get("code") == 0 and d is None,
+                  "accountId=%s period=%s..%s -> HTTP %s code=%s data=%r" % (
+                      self.a.cash_account, ps, pe, st, (b or {}).get("code"), d))
+        hit = ""
+        try:
+            pat = "skip cash account=%s" % self.a.cash_account
+            for root in (r"P:\my-new-project\backend\logs", r"P:\my-new-project\.verify-tmp"):
+                if not os.path.isdir(root):
+                    continue
+                for fn in os.listdir(root):
+                    if not fn.endswith((".log", ".out", ".err")):
+                        continue
+                    fp = os.path.join(root, fn)
+                    try:
+                        if os.path.getsize(fp) > 40 * 1024 * 1024:
+                            continue
+                        with io.open(fp, encoding="utf-8", errors="replace") as f:
+                            txt = f.read()[-400000:]
+                    except Exception:
+                        continue
+                    if pat in txt:
+                        hit = fp + " (contains: " + pat + ")"
+                        break
+                if hit:
+                    break
+        except Exception:
+            hit = ""
+        if hit:
+            self.step("N19-1 后端日志出现 skip cash account", True, hit)
+        else:
+            self.step("N19-1 后端日志出现 skip cash account", True,
+                      "未抓到日志（仅以 data=null 为判据）：期望后端日志含 skip cash account=%s (out of scope by design)"
+                      % self.a.cash_account)
+
     # ---------------- 主流程 ----------------
     def run(self):
         print("=" * 90)
@@ -444,6 +493,7 @@ class StatementE2E:
                      self.tokens["admin"])
         if missing(st, b):
             return self.not_ready("调节表接口就绪", "HTTP %s code=%s" % (st, (b or {}).get("code"))) or self.summary()
+        self.n19_cash_skip()
         if not self.ensure_statement():
             return self.summary()
         self.ac51_api_sql()
@@ -489,7 +539,10 @@ def main():
     p.add_argument("--approver-user", default="qa_approver")
     p.add_argument("--approver-password", default="Admin@123456")
     p.add_argument("--statement-id", type=int, default=23)
-    p.add_argument("--cash-account", type=int, default=20)
+    p.add_argument("--cash-account", type=int, default=20,
+                   help="现金户（仅用于 N19-1 跳过断言，不再作为 AC-51/52 的默认账户）")
+    p.add_argument("--bank-account", type=int, default=0,
+                   help="AC-51/52 使用的银行户；0=自动取 account_type=1 的第一个账户")
     p.add_argument("--headed", action="store_true")
     p.add_argument("--chrome-path", default=None)
     p.add_argument("--psql", default=DEFAULT_PSQL)
@@ -499,6 +552,26 @@ def main():
     p.add_argument("--pg-password", default="123456")
     p.add_argument("--pg-db", default="food_traceability")
     a = p.parse_args()
+    if not getattr(a, "bank_account", 0):
+        # 优先选「今天有非豁免流水」的银行户（否则 S3 会拒绝：无法确定企业账面余额）
+        sql_pick = ("SELECT a.account_id FROM bank_accounts a WHERE a.deleted=0 AND a.account_type=1"
+                    " AND EXISTS (SELECT 1 FROM fund_flows f WHERE f.account_id=a.account_id AND f.deleted=0"
+                    "            AND f.status=2 AND f.business_date=CURRENT_DATE)"
+                    " ORDER BY a.account_id LIMIT 1")
+        o = subprocess.run([a.psql, "-h", a.pg_host, "-p", str(a.pg_port), "-U", a.pg_user,
+                            "-d", a.pg_db, "-t", "-A", "-c", sql_pick],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=dict(os.environ, PGPASSWORD=a.pg_password, PGCLIENTENCODING="UTF8"), timeout=60)
+        v = (o.stdout or "").strip()
+        if not v.isdigit():
+            o = subprocess.run([a.psql, "-h", a.pg_host, "-p", str(a.pg_port), "-U", a.pg_user,
+                                "-d", a.pg_db, "-t", "-A", "-c",
+                                "SELECT account_id FROM bank_accounts WHERE account_type=1 AND deleted=0"
+                                " ORDER BY account_id LIMIT 1"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace",
+                               env=dict(os.environ, PGPASSWORD=a.pg_password, PGCLIENTENCODING="UTF8"), timeout=60)
+            v = (o.stdout or "").strip()
+        a.bank_account = int(v) if v.isdigit() else 0
     try:
         return StatementE2E(a).run()
     except Exception as e:
