@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+AC-58 候选：N19-2 现金户退款构成 / 班次边界 / 归属确认 E2E
+
+断言分组（对应 N19-2 四项）：
+  ① 班次内退款（现金户）→ generate 缴款单
+       · refund_component_fen == 该笔退款金额
+       · difference_net_fen == 0 − (expected − refund_component)
+  ② 边界内退款（距班次 start ≤ shiftBoundaryMinutes，默认 10 分钟）→ generate
+       · 该笔**不计入** refund_component_fen
+       · 财务审计出现 RECON_SHIFT_BOUNDARY_PENDING
+  ③ confirm-attribution 归到本班次
+       · refund_component_fen 增加该笔金额、difference_net_fen 同步变化
+       · 审计 REFUND_SHIFT_ATTRIBUTION_CONFIRMED
+  ④ 重复确认同班次 → 幂等（refund_shift_attribution 仍 1 行，version 不变）
+     改归属到另一班次 → 审计 REFUND_SHIFT_ATTRIBUTION_CHANGED + version+1
+  ⑤ 越权：vcashier01 调 confirm-attribution → 403
+  ⑥ 巡检 A36/A37/A39 全 0（以 consistency_check 输出为准）
+  ⑦ 清理 hike tag；**不裸 UPDATE**
+
+权限：confirm-attribution 需要 finance:deposit-slip:confirm-attribution（由 lead 绑账号后运行）。
+退出码：0 全绿 / 1 断言失败 / 2 环境未就绪
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+try:
+    from e2e_setup import ensure_ready
+except Exception as e:  # pragma: no cover
+    print("[FATAL] 无法导入 e2e_setup：%s" % e)
+    sys.exit(2)
+
+DEFAULT_API = "http://localhost:8081/api"
+DEFAULT_ADMIN = "http://localhost:3002"
+DEFAULT_POS = "http://localhost:3001"
+DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
+
+
+def http(method, url, token=None, body=None, timeout=90):
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
+    h = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        h["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(url, data=data, headers=h, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            txt = r.read().decode("utf-8", "replace")
+            try:
+                return r.status, json.loads(txt)
+            except Exception:
+                return r.status, {"_raw": txt[:200]}
+    except urllib.error.HTTPError as e:
+        txt = e.read().decode("utf-8", "replace")
+        try:
+            return e.code, json.loads(txt)
+        except Exception:
+            return e.code, {"_raw": txt[:200]}
+    except Exception as e:
+        return -1, {"error": str(e)}
+
+
+def ok(b):
+    return isinstance(b, dict) and b.get("code") in (0, 200)
+
+
+def data_of(b):
+    return b.get("data") if isinstance(b, dict) else None
+
+
+class CashRecon:
+    def __init__(self, a):
+        self.a = a
+        self.results = []
+        self.tag = "HIK" + datetime.now().strftime("%m%d%H%M%S")
+
+    def step(self, name, okk, detail, state=None):
+        st = state or ("PASS" if okk else "FAIL")
+        self.results.append((name, st, detail))
+        print("  [%s] %s -> %s" % (st, name, detail))
+        return okk
+
+    def not_ready(self, name, detail):
+        return self.step(name, False, detail, state="NOT_READY")
+
+    # ---------- DB ----------
+    def psql(self, sql):
+        o = subprocess.run([self.a.psql, "-h", self.a.pg_host, "-p", str(self.a.pg_port),
+                            "-U", self.a.pg_user, "-d", self.a.pg_db, "-t", "-A", "-F", "|", "-c", sql],
+                           capture_output=True, text=True, timeout=120, encoding="utf-8", errors="replace",
+                           env=dict(os.environ, PGPASSWORD=self.a.pg_password, PGCLIENTENCODING="UTF8"))
+        if o.returncode != 0:
+            raise RuntimeError("psql: %s" % (o.stderr or "")[:200])
+        return (o.stdout or "").strip()
+
+    def rows(self, sql):
+        return [l.split("|") for l in self.psql(sql).splitlines() if l.strip()]
+
+    def num(self, sql):
+        v = self.psql(sql).strip()
+        return int(v) if v.lstrip("-").isdigit() else 0
+
+    # ---------- 登录 ----------
+    def login(self):
+        def _l(u, p):
+            st, b = http("POST", self.a.api + "/v1/auth/login", body={"username": u, "password": p})
+            return (data_of(b) or {}).get("token"), st
+        self.admin_token, s1 = _l(self.a.user, self.a.password)
+        self.cash_token, s2 = _l(self.a.pos_user, self.a.pos_password)
+        self.manager_token, s3 = _l(self.a.refund_user, self.a.refund_password)
+        self.step("登录 %s（财务）" % self.a.user, bool(self.admin_token), "HTTP %s" % s1)
+        self.step("登录 %s（收银）" % self.a.pos_user, bool(self.cash_token), "HTTP %s" % s2)
+        self.step("登录 %s（店长/退款+归属确认）" % self.a.refund_user, bool(self.manager_token), "HTTP %s" % s3)
+        return bool(self.admin_token and self.cash_token and self.manager_token)
+
+    def shift_window_minutes(self):
+        try:
+            n = self.num("SELECT COALESCE(current_setting('finance.cash.shift-boundary-minutes', true)::int, 10)")
+        except Exception:
+            n = 10
+        return n or 10
+
+    # ---------- 开班 / 班次窗口 ----------
+    def open_shift(self):
+        """POS 开班接口（vcashier01）"""
+        uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
+        st, b = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
+                     {"terminalId": "T-%s" % self.tag, "employeeId": str(uid or self.a.pos_user),
+                      "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
+        d = data_of(b)
+        sid = 0
+        if isinstance(d, dict):
+            sid = int(d.get("shiftId") or 0)
+        elif isinstance(d, (int, str)) and str(d).isdigit():
+            sid = int(d)
+        self.step("AC-58 开班（POS /v1/pos/auth/shift/start）", ok(b) and sid > 0,
+                  "HTTP %s code=%s shiftId=%s msg=%s" % (st, (b or {}).get("code"), sid,
+                                                         str((b or {}).get("message"))[:70]))
+        return sid
+
+    def end_shift(self, terminal_id):
+        st, b = http("POST", self.a.api + "/v1/pos/auth/shift/end", self.cash_token,
+                     {"terminalId": terminal_id, "remark": "AC-58 关闭夹具班次 %s" % self.tag})
+        return self.step("AC-58 关班（POS /v1/pos/auth/shift/end）", ok(b),
+                         "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
+                                                     str((b or {}).get("message"))[:70]))
+
+    def shift_terminal(self, shift_id):
+        r = self.rows("SELECT COALESCE(terminal_id,'') FROM pos_shifts WHERE shift_id=%d" % int(shift_id))
+        return r[0][0] if r else ""
+
+    def shift_minutes(self, shift_id):
+        return self.num("SELECT COALESCE(FLOOR(EXTRACT(EPOCH FROM (now() - start_time))/60)::int, 0)"
+                        " FROM pos_shifts WHERE shift_id=%d" % int(shift_id))
+
+    def ensure_boundary_shift(self, boundary_min):
+        """距 start <= boundary 的 OPEN 班次；没有立刻开一个"""
+        row = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND status IN ('open','OPEN','OPENED','OPENING')"
+                        " AND start_time > now() - interval '%d minutes' ORDER BY shift_id DESC LIMIT 1"
+                        % boundary_min)
+        if row:
+            return int(row[0][0])
+        return self.open_shift()
+
+    def ensure_inshift(self, boundary_min, max_wait_min=16):
+        """距 start > boundary 的 OPEN 班次；没有就开一个并等待越过边界"""
+        row = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND status IN ('open','OPEN','OPENED','OPENING')"
+                        " AND start_time < now() - interval '%d minutes' ORDER BY shift_id DESC LIMIT 1"
+                        % boundary_min)
+        if row:
+            sid = int(row[0][0])
+            self.step("AC-58 ① 班次已越过边界窗口", True,
+                      "shift_id=%d 距 start=%d 分钟（>%d）" % (sid, self.shift_minutes(sid), boundary_min))
+            return sid
+        sid = self.open_shift()
+        if not sid:
+            return 0
+        for i in range(max_wait_min * 6):
+            mins = self.shift_minutes(sid)
+            if mins > boundary_min:
+                self.step("AC-58 ① 班次已越过边界窗口", True,
+                          "shift_id=%d 距 start=%d 分钟（>%d）" % (sid, mins, boundary_min))
+                return sid
+            if i % 6 == 0:
+                print("    · 等待班次越过 %d 分钟边界：shift=%d 当前 %d 分钟" % (boundary_min, sid, mins))
+            time.sleep(10)
+        return sid
+
+    # ---------- 造退款（现金户） ----------
+    def make_refund(self, want_fen, note):
+        """下单→支付→退款（店长），返回 {orderId, orderNumber, refundRecordId, amountFen}"""
+        st, b = http("GET", self.a.api + "/v1/pos/api/dishes", self.cash_token)
+        dishes = (data_of(b) or []) if ok(b) else []
+        priced = [d for d in dishes if d.get("dishId") and float(d.get("price") or 0) > 0]
+        if not priced:
+            return None, "无可用菜品"
+        best = None
+        for d in priced:
+            unit = int(round(float(d.get("price") or 0) * 100))
+            q = max(1, min(9, want_fen // unit)) if unit else 1
+            total = unit * q
+            if best is None or abs(total - want_fen) < abs(best[2] - want_fen):
+                best = (d, q, total)
+        dish, qty, total = best
+        item = {"productId": str(dish["dishId"]), "productName": dish.get("dishName") or "",
+                "quantity": qty, "price": float(dish.get("price") or 0),
+                "dishType": dish.get("dishType") or "single"}
+        st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
+                     {"orderType": "dinein", "items": [item],
+                      "idempotencyKey": "hik-%s" % uuid.uuid4().hex[:12]})
+        if not ok(b):
+            return None, "下单 HTTP %s code=%s %s" % (st, (b or {}).get("code"), str((b or {}).get("message"))[:60])
+        d = data_of(b) or {}
+        amt = round(float(d.get("totalAmount") or 0), 2)
+        st2, b2 = http("POST", self.a.api + "/v1/pos/orders/order/pay", self.cash_token,
+                       {"orderId": d.get("orderId"), "paymentMethod": "现金", "amount": amt})
+        if not ok(b2):
+            return None, "支付 HTTP %s code=%s %s" % (st2, (b2 or {}).get("code"), str((b2 or {}).get("message"))[:60])
+        st3, b3 = http("POST", self.a.api + "/v1/pos/orders/order/%s/refund?refundReason=%s"
+                       % (d.get("orderNumber"), urllib.parse.quote(note)), self.manager_token)
+        if not ok(b3):
+            return None, "退款 HTTP %s code=%s %s" % (st3, (b3 or {}).get("code"), str((b3 or {}).get("message"))[:60])
+        flows = self.rows("SELECT flow_id, COALESCE(refund_record_id,0), amount FROM fund_flows"
+                          " WHERE order_id='%s' AND deleted=0 AND flow_category=2 ORDER BY flow_id DESC LIMIT 1"
+                          % d.get("orderId"))
+        if not flows:
+            return None, "未生成退款流水"
+        return {"orderId": d.get("orderId"), "orderNumber": d.get("orderNumber"),
+                "refundRecordId": int(flows[0][1]), "flowId": int(flows[0][0]),
+                "amountFen": int(flows[0][2])}, ""
+
+    # ---------- 缴款单 ----------
+    def generate_slip(self, shift_id):
+        return http("POST", self.a.api + "/v1/finance/deposit-slips/generate", self.admin_token,
+                    {"shiftId": int(shift_id), "storeId": int(self.a.store_id)})
+
+    def slip_id_of(self, b):
+        """generate 响应有两种形态：data.slipId 或 data.slip.slipId"""
+        d = data_of(b) or {}
+        if isinstance(d, dict):
+            if d.get("slipId"):
+                return int(d.get("slipId"))
+            sl = d.get("slip")
+            if isinstance(sl, dict) and sl.get("slipId"):
+                return int(sl.get("slipId"))
+        return 0
+
+    def slip_row(self, slip_id):
+        r = self.rows("SELECT slip_id, shift_id, expected_amount, actual_amount, difference_amount,"
+                      " COALESCE(refund_component_fen,0), COALESCE(difference_net_fen,0), version"
+                      " FROM deposit_slips WHERE slip_id=%d" % int(slip_id))
+        return r[0] if r else None
+
+    def confirm_attribution(self, slip_id, refund_record_id, shift_id, reason):
+        return http("POST", self.a.api + "/v1/finance/deposit-slips/%d/confirm-attribution" % int(slip_id),
+                    self.manager_token,
+                    {"refundRecordId": int(refund_record_id), "shiftId": int(shift_id), "reason": reason})
+
+    # ---------- ① 班次内退款 ----------
+    def section_in_shift(self, shift_id, boundary_min):
+        start = self.rows("SELECT to_char(start_time,'YYYY-MM-DD HH24:MI:SS'),"
+                          " COALESCE(to_char(end_time,'YYYY-MM-DD HH24:MI:SS'),'')"
+                          " FROM pos_shifts WHERE shift_id=%d" % int(shift_id))
+        if not start:
+            return self.not_ready("AC-58-① 班次信息", "shift_id=%s 不存在" % shift_id)
+        st_txt = start[0][0]
+        mins = self.num("SELECT FLOOR(EXTRACT(EPOCH FROM (now() - start_time))/60) FROM pos_shifts"
+                        " WHERE shift_id=%d" % int(shift_id))
+        self.step("AC-58-① 班次距 start %d 分钟（需 > 边界 %d 分钟才属「班次内」）" % (mins, boundary_min),
+                  mins > boundary_min,
+                  "shift_id=%s start=%s（若 ≤%d 分钟，①会退化为边界场景，请换班次）" % (shift_id, st_txt, boundary_min))
+        rf, err = self.make_refund(3000, "AC-58 hinge 班次内退款 %s" % self.tag)
+        if not rf:
+            return self.not_ready("AC-58-① 造退款", err)
+        # 关班才有 end_time；且要求「退款时刻距 end 也 > 边界」→ 等够边界分钟再关班
+        for i in range(16 * 6):
+            mins_from_refund = self.num(
+                "SELECT COALESCE(FLOOR(EXTRACT(EPOCH FROM (now() - create_time))/60)::int, 0)"
+                " FROM fund_flows WHERE flow_id=%d" % rf["flowId"])
+            if mins_from_refund > self.shift_window_minutes():
+                self.step("AC-58 ① 退款距关班已越过边界窗口", True,
+                          "flow_id=%d 距退款=%d 分钟（>%d）" % (rf["flowId"], mins_from_refund,
+                                                              self.shift_window_minutes()))
+                break
+            if i % 6 == 0:
+                print("    · 等待「退款距 end > %d 分钟」：当前 %d 分钟" % (
+                    self.shift_window_minutes(), mins_from_refund))
+            time.sleep(10)
+        self.end_shift(self.shift_terminal(shift_id))
+        st, b = self.generate_slip(shift_id)
+        if not ok(b):
+            return self.step("AC-58-① generate 缴款单", False,
+                             "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
+                                                        str((b or {}).get("message"))[:80]))
+        sid = self.slip_id_of(b)
+        row = self.slip_row(sid)
+        if not row:
+            return self.not_ready("AC-58-① 缴款单", "未找到 slip_id=%s（generate data=%s）"
+                                  % (sid, json.dumps(data_of(b), ensure_ascii=False)[:160]))
+        exp, comp, dnet = int(row[2]), int(row[5]), int(row[6])
+        self.step("AC-58-① refund_component_fen == 该笔退款", comp == rf["amountFen"],
+                  "slip=%s shift=%s refund_component=%d 期望=%d（含本笔 refund_record=%s）" % (
+                      sid, shift_id, comp, rf["amountFen"], rf["refundRecordId"]))
+        self.step("AC-58-① difference_net_fen == 0 − (expected − refund_component)",
+                  dnet == (0 - (exp - comp)),
+                  "expected=%d refund_component=%d → 期望 difference_net=%d 实际=%d" % (
+                      exp, comp, 0 - (exp - comp), dnet))
+        self.in_shift = {"slipId": sid, "refund": rf, "row": row}
+        return True
+
+    # ---------- ② 边界内退款 ----------
+    def section_boundary(self, boundary_min, shift_id=0):
+        """用「距 start ≤ 边界」的班次 → 立刻退款 → generate 应不计入并留审计"""
+        if not shift_id:
+            return self.not_ready("AC-58-② 边界班次夹具", "未传入边界班次（开班失败）")
+        rf, err = self.make_refund(3000, "AC-58 boundary 边界内退款 %s" % self.tag)
+        if not rf:
+            return self.not_ready("AC-58-② 造退款", err)
+        # 缴款单要求班次有完整起止时间 → 退款后立刻关班（退款距 end ≤ 边界，正好是边界场景）
+        self.end_shift(self.shift_terminal(shift_id))
+        st, b = self.generate_slip(shift_id)
+        if not ok(b):
+            return self.step("AC-58-② generate 缴款单", False,
+                             "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
+                                                        str((b or {}).get("message"))[:80]))
+        sid = self.slip_id_of(b)
+        row = self.slip_row(sid)
+        if not row:
+            return self.step("AC-58-② generate 返回 slipId", False,
+                             "HTTP %s code=%s msg=%s data=%s" % (
+                                 st, (b or {}).get("code"), str((b or {}).get("message"))[:90],
+                                 json.dumps(data_of(b), ensure_ascii=False)[:160]))
+        comp = int(row[5]) if row else -1
+        self.step("AC-58-② 边界内退款不计入 refund_component",
+                  comp >= 0 and comp < rf["amountFen"],
+                  "slip=%s shift=%s refund_component=%d（本笔=%d 应不计入）" % (
+                      sid, shift_id, comp, rf["amountFen"]))
+        n_audit = self.num("SELECT COUNT(*) FROM finance_audit_logs WHERE operation_type='RECON_SHIFT_BOUNDARY_PENDING'"
+                           " AND target_id=%d" % shift_id)
+        self.step("AC-58-② 审计 RECON_SHIFT_BOUNDARY_PENDING 出现", n_audit > 0,
+                  "shift_id=%s 命中审计行=%d" % (shift_id, n_audit))
+        self.boundary = {"slipId": sid, "shiftId": shift_id, "refund": rf, "row": row}
+        return True
+
+    # ---------- ③ 归属确认 ----------
+    def section_confirm(self):
+        ctx = getattr(self, "boundary", None) or getattr(self, "in_shift", None)
+        if not ctx:
+            return self.not_ready("AC-58-③ 归属确认", "缺少前置缴款单上下文")
+        sid, rf, shift_id = ctx["slipId"], ctx["refund"], (ctx.get("shiftId")
+                                                          or (self.in_shift["row"][1] if hasattr(self, "in_shift") else None))
+        before = self.slip_row(sid)
+        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "AC-58 归属确认 %s" % self.tag)
+        if not ok(b):
+            return self.step("AC-58-③ confirm-attribution 成功", False,
+                             "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
+                                                        str((b or {}).get("message"))[:90]))
+        after = self.slip_row(sid)
+        self.step("AC-58-③ refund_component_fen 增加该笔金额",
+                  after and int(after[5]) == int(before[5]) + rf["amountFen"],
+                  "refund_component %s → %s（本笔 %d）" % (before[5], after[5], rf["amountFen"]))
+        self.step("AC-58-③ difference_net_fen 同步变化",
+                  after and int(after[6]) == (0 - (int(after[2]) - int(after[5]))),
+                  "expected=%s comp=%s → difference_net=%s（期望 %d）" % (
+                      after[2], after[5], after[6], 0 - (int(after[2]) - int(after[5]))))
+        n_aud = self.num("SELECT COUNT(*) FROM finance_audit_logs"
+                         " WHERE operation_type='REFUND_SHIFT_ATTRIBUTION_CONFIRMED' AND target_id=%d" % sid)
+        self.step("AC-58-③ 审计 REFUND_SHIFT_ATTRIBUTION_CONFIRMED", n_aud > 0, "slip=%s 命中=%d" % (sid, n_aud))
+        self.confirm_ctx = {"slipId": sid, "refund": rf, "shiftId": shift_id,
+                            "version_before": int(after[7]) if after else -1}
+        return True
+
+    # ---------- ④ 幂等 + 改归属 ----------
+    def section_idempotent_and_change(self):
+        ctx = getattr(self, "confirm_ctx", None)
+        if not ctx:
+            return self.not_ready("AC-58-④ 幂等/改归属", "缺少 ③ 的上下文")
+        sid, rf, shift_id = ctx["slipId"], ctx["refund"], ctx["shiftId"]
+        n_before = self.num("SELECT COUNT(*) FROM refund_shift_attribution WHERE refund_record_id=%d"
+                            % rf["refundRecordId"])
+        v_before = self.slip_row(sid)[7]
+        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "AC-58 重复确认（同班次）%s" % self.tag)
+        n_after = self.num("SELECT COUNT(*) FROM refund_shift_attribution WHERE refund_record_id=%d"
+                           % rf["refundRecordId"])
+        v_after = self.slip_row(sid)[7]
+        self.step("AC-58-④ 重复确认同班次 → 归属行仍 1 行且 version 不变",
+                  n_after == 1 and str(v_after) == str(v_before),
+                  "HTTP %s code=%s；归属行 %d → %d；version %s → %s" % (
+                      st, (b or {}).get("code"), n_before, n_after, v_before, v_after))
+        other = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND shift_id<>%d"
+                          " ORDER BY shift_id DESC LIMIT 1" % shift_id)
+        if not other:
+            return self.not_ready("AC-58-④ 改归属", "没有第二个班次可改")
+        other_id = int(other[0][0])
+        v0 = self.slip_row(sid)[7]
+        st2, b2 = self.confirm_attribution(sid, rf["refundRecordId"], other_id, "AC-58 改归属 %s" % self.tag)
+        v1 = self.slip_row(sid)[7]
+        changed = self.num("SELECT COUNT(*) FROM finance_audit_logs"
+                           " WHERE operation_type='REFUND_SHIFT_ATTRIBUTION_CHANGED' AND target_id=%d" % sid)
+        self.step("AC-58-④ 改归属 → CHANGED 审计 + version+1",
+                  ok(b2) and changed > 0 and int(v1) == int(v0) + 1,
+                  "HTTP %s code=%s；CHANGED 审计=%d；version %s → %s；新 shift=%d" % (
+                      st2, (b2 or {}).get("code"), changed, v0, v1, other_id))
+        return True
+
+    # ---------- ⑤ 越权 ----------
+    def section_forbidden(self):
+        ctx = getattr(self, "confirm_ctx", None)
+        if not ctx:
+            return self.not_ready("AC-58-⑤ 越权", "缺少 ③ 的上下文")
+        st, b = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/confirm-attribution" % ctx["slipId"],
+                     self.cash_token,
+                     {"refundRecordId": ctx["refund"]["refundRecordId"], "shiftId": ctx["shiftId"],
+                      "reason": "AC-58 越权探测"})
+        code = (b or {}).get("code")
+        return self.step("AC-58-⑤ 收银账号调用 confirm-attribution → 403", code == 403 or st == 403,
+                         "HTTP %s code=%s msg=%s" % (st, code, str((b or {}).get("message"))[:70]))
+
+    # ---------- ⑥ 巡检 ----------
+    def section_inspection(self):
+        vals = {}
+        try:
+            o = subprocess.run([sys.executable, str(HERE / "consistency_check.py")],
+                               capture_output=True, text=True, timeout=900,
+                               encoding="utf-8", errors="replace", cwd=str(HERE.parent.parent))
+            text = (o.stdout or "") + (o.stderr or "")
+            for code in ("A36", "A37", "A39"):
+                for line in text.splitlines():
+                    if code in line and ("[PASS]" in line or "[FAIL]" in line or "[INFO]" in line):
+                        m = re.search(r"(?:rows|count|slips|diff)=(\d+)", line) or re.search(r"=(\d+)", line)
+                        vals[code] = (int(m.group(1)) if m else None, line.strip()[:140])
+                        break
+        except Exception as e:
+            return self.not_ready("AC-58-⑥ 巡检", "consistency_check 执行失败：%s" % str(e)[:120])
+        for code in ("A36", "A37", "A39"):
+            if code not in vals:
+                self.not_ready("AC-58-⑥ 巡检 %s" % code, "巡检输出未找到 %s" % code)
+                continue
+            n, line = vals[code]
+            self.step("AC-58-⑥ 巡检 %s == 0" % code, n == 0, "rows=%s；原文=%s" % (n, line))
+
+    # ---------- ⑦ 清理 ----------
+    def cleanup(self):
+        try:
+            self.step("AC-58-⑦ 清理", True,
+                      "只做 tag 标记清理：本段不写 bank_transactions；退款流水/订单按业务归属留档（tag=%s），"
+                      "不裸 UPDATE、不物理删" % self.tag)
+        except Exception as e:
+            self.step("AC-58-⑦ 清理", False, "异常：%s" % str(e)[:140])
+
+    def run(self):
+        print("=" * 92)
+        print("N19-2 现金户退款构成 / 班次边界 / 归属确认 E2E  tag=%s" % self.tag)
+        print("=" * 92)
+        if not ensure_ready(api=self.a.api, admin=self.a.admin, pos=self.a.pos):
+            self.not_ready("前置就绪", "服务/库存未就绪")
+            return self.summary()
+        if not self.login():
+            return self.summary()
+        boundary_min = self.shift_window_minutes()
+        self.step("边界容差读取（finance.cash.shift-boundary-minutes）", True, "%d 分钟" % boundary_min)
+
+        # ② 先用「新鲜班次」跑边界段；① 需要「距 start > 边界」的班次（没有就开班并等待）
+        b_shift = self.ensure_boundary_shift(boundary_min)
+        if not b_shift:
+            self.not_ready("AC-58 边界班次夹具", "无法开班（POS /v1/pos/auth/shift/start 失败）")
+        else:
+            self.step("AC-58 ② 边界班次就绪", True,
+                      "shift_id=%d 距 start=%d 分钟（<=%d）" % (b_shift, self.shift_minutes(b_shift), boundary_min))
+            self.section_boundary(boundary_min, b_shift)
+        i_shift = self.ensure_inshift(boundary_min)
+        if not i_shift:
+            self.not_ready("AC-58 班次内夹具", "无法开班（POS /v1/pos/auth/shift/start 失败）")
+        else:
+            self.section_in_shift(i_shift, boundary_min)
+        self.section_confirm()
+        self.section_idempotent_and_change()
+        self.section_forbidden()
+        self.section_inspection()
+        self.cleanup()
+        return self.summary()
+
+    def summary(self):
+        fails = [r for r in self.results if r[1] == "FAIL"]
+        nr = [r for r in self.results if r[1] == "NOT_READY"]
+        print("\n" + "=" * 92)
+        print("结果: %s  PASS=%d FAIL=%d%s" % (
+            "全绿" if not fails and not nr else ("未就绪" if not fails else "存在失败"),
+            len([r for r in self.results if r[1] == "PASS"]), len(fails),
+            ("  NOT_READY=%d" % len(nr)) if nr else ""))
+        for name, st, _ in self.results:
+            print("  %-72s %s" % (name, st))
+        if fails or nr:
+            print("-" * 92)
+            for name, st, detail in fails + nr:
+                print("  * [%s] %s\n    %s" % (st, name, detail))
+        print("=" * 92)
+        if fails:
+            return 1
+        return 2 if nr else 0
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--api", default=DEFAULT_API)
+    p.add_argument("--admin", default=DEFAULT_ADMIN)
+    p.add_argument("--pos", default=DEFAULT_POS)
+    p.add_argument("--user", default="qa_admin")
+    p.add_argument("--password", default="Admin@123456")
+    p.add_argument("--pos-user", default="vcashier01")
+    p.add_argument("--pos-password", default="123456")
+    p.add_argument("--refund-user", default="qa_store_b")
+    p.add_argument("--refund-password", default="Admin@123456")
+    p.add_argument("--store-id", type=int, default=1)
+    p.add_argument("--shift-id", type=int, default=0, help="0=自动取最近 OPEN 班次")
+    p.add_argument("--psql", default=DEFAULT_PSQL)
+    p.add_argument("--pg-host", default="localhost")
+    p.add_argument("--pg-port", type=int, default=5432)
+    p.add_argument("--pg-user", default="postgres")
+    p.add_argument("--pg-password", default="123456")
+    p.add_argument("--pg-db", default="food_traceability")
+    a = p.parse_args()
+    try:
+        return CashRecon(a).run()
+    except Exception as e:
+        print("执行错误: %s" % e, file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

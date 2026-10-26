@@ -2632,3 +2632,30 @@ SELECT count(*) FROM (
 **NEW-15 追加范围**：`[RECON] skip cash account` 与 `[RECON_REFUND_PAIRING]` 同因（logger 未落盘/级别过滤）→ 关键判定点需补**可查审计或指标**，否则 E2E 只能以 `data=null` 间接判据。
 
 **同类索引风险（NEW-30，待做）**：`uk_recon_items_statement_subject`、`uk_recon_items_subject`、`uk_recon_diff_subject` 仍缺 `deleted=0` 过滤 → 软删后同主体无法再插入（与 NEW-29 同类）。
+
+### 63.19 AC-58 发现的 A39①/② 口径冲突与裁决（2026-10-26 16:05）
+
+**冲突事实（E2E 实测，`e2e-hik-4.log`）**
+| slip | refund_component | difference_net | shift | 说明 |
+|---|---|---|---|---|
+| 244 | 0 | -2500 | 308 | 边界带内退款**不计入**（N19-2② 正确行为） |
+| 245 | 0 | -2500 | 310 | 同上 |
+| 246 | **2500** | 0 | 311 | 班次窗口内退款**自动计入** |
+`refund_shift_attribution` 行数 = **0**（无任何人工确认）→ A39② 「`refund_component_fen` = 已归属合计」**恒红**。
+
+**根因**：N19-2 的 `refund_component` 有两个来源 —— ①**班次窗口内自动计入**（`refund_time` 落 `[start,end]` 且不在边界带）②**人工归属**（`refund_shift_attribution`）。A39② 只认第二个来源 → 语义互斥。
+
+**裁决：改断言，不改产品**（自动计入的退款**不写** attribution，避免为正常路径制造噪声记录/审计量）。A39② 的期望改为：
+```sql
+-- 期望 refund_component_fen = Σ 现金退款金额，满足任一：
+--   (a) 自动计入：refund_time ∈ [start_time + N, end_time - N]（N = finance.cash.shift-boundary-minutes，默认 10）
+--   (b) 人工归属：refund_shift_attribution.shift_id = 该班次
+```
+①（`difference_net = actual − (expected − refund_component)`）保持不变。
+边界分钟数在巡检脚本内定义为**可配置常量**（默认 10），注释注明「须与后端 `finance.cash.shift-boundary-minutes` 同步」。
+
+**顺带记录的两条环境事实（E2E 踩坑，需长期记住）**
+- `pos_shifts.status` 是 **varchar**，实际取值 `CLOSED` / `completed` / `active`（不是 0/1 整数、不是 `OPEN`）；
+- **同一 POS 终端不能并存两个进行中的班次**（第二次开班返回 `code=500 该终端已有进行中的班次`）→ 造夹具必须用不同 `terminalId`（`T-<tag>`）。
+
+**脚本修正**：`POST /deposit-slips/generate` 的响应形态是 `{reused:false, slip:{slipId:...}}`，断言必须兼容 `data.slipId` / `data.slip.slipId` 两种（原按 `data.slipId` 取到 0 → ①③④⑤ 全部 NOT_READY）。
