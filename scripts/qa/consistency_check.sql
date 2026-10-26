@@ -1274,10 +1274,23 @@ SELECT CASE WHEN (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT
 \endif
 
 -- ------------------------------------------------------------
+-- A39 所需常量：**班次边界带分钟数**（默认 10）
+--   ⚠️ **与后端配置 finance.cash.shift-boundary-minutes 保持一致，改动需同步**；
+--      脚本内只此一处定义，禁止在 SQL 里散落硬编码数字。
+\set SHIFT_BOUNDARY_MINUTES 10
+
+-- ------------------------------------------------------------
 -- A39（**参与判定**）：缴款单恒等式
---   对 deleted=0 的缴款单：
---     ① difference_net_fen = actual_amount - (expected_amount - refund_component_fen)
---     ② refund_component_fen = 该缴款单（slip_id）已归属退款流水合计（分）
+--   对 deleted=0 的缴款单，两条恒等式都要成立：
+--     ① difference_net_fen = actual_amount - (expected_amount - refund_component_fen)   ← 口径不变
+--     ② refund_component_fen = **期望退款合计**，期望值 = Σ 满足以下**任一**条件的现金退款流水：
+--        (a) **自动计入**：refund_time 落在该缴款单对应班次 [start_time, end_time] 内，
+--            且**不在边界带**（距 start ≤ N 分钟 或 距 end ≤ N 分钟者剔除；N = :SHIFT_BOUNDARY_MINUTES）
+--        (b) **人工归属**：refund_shift_attribution 存在该 refund_record_id 且 shift_id = 该班次
+--        —— 依据：N19-2② 的自动计入**不写归属表**（E2E 实测 slip 246：refund_component_fen=2500、
+--           attribution 行数=0）。若②只看归属表会恒红，故按「自动 ∪ 人工」取期望值。
+--   为什么剔除边界带：班次边界的退款归属到哪个班次本身不确定，后端同样排除边界带（待人工确认，
+--   对应审计 RECON_SHIFT_BOUNDARY_PENDING / A38 的待确认计数）。
 --   分母 = difference_net_fen IS NOT NULL 的缴款单（N19-2 新口径）；
 --          N19-2 之前的老单该列为 NULL → 单独报 `legacy_null=<k>`，不计入分母（避免误红）。
 -- ------------------------------------------------------------
@@ -1296,20 +1309,40 @@ WITH slip AS (
            COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen
       FROM deposit_slips s
      WHERE s.deleted = 0
-), attr_sum AS (
-    SELECT a.slip_id, SUM(f.amount) AS amt
-      FROM refund_shift_attribution a
-      JOIN fund_flows f ON f.refund_record_id = a.refund_record_id
-                       AND f.deleted = 0 AND f.flow_category = 2 AND f.flow_direction = 2
-     WHERE a.slip_id IS NOT NULL
-     GROUP BY a.slip_id
+), cash_refund AS (
+    -- 现金户退款流水（与 A36/A38 同口径）
+    SELECT f.flow_id, f.amount, f.refund_record_id, f.refund_time
+      FROM fund_flows f
+      JOIN bank_accounts ba ON ba.account_id = f.account_id AND ba.deleted = 0
+     WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2 AND f.flow_direction = 2
+       AND f.refund_record_id IS NOT NULL
+       AND ba.account_type = 2
+), expected AS (
+    -- 期望退款合计 = 自动计入（窗内且不在边界带）∪ 人工归属（attribution.shift_id = 该班次）
+    SELECT s.slip_id, COALESCE(SUM(f.amount), 0) AS amt
+      FROM slip s
+      JOIN cash_refund f
+        ON (
+             EXISTS (SELECT 1 FROM pos_shifts ps
+                      WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
+                        AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
+                        AND f.refund_time IS NOT NULL
+                        AND (f.refund_time AT TIME ZONE 'Asia/Shanghai')
+                            BETWEEN ps.start_time + make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int)
+                                AND ps.end_time   - make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int))
+             OR
+             EXISTS (SELECT 1 FROM refund_shift_attribution a
+                      WHERE a.refund_record_id = f.refund_record_id
+                        AND a.shift_id = s.shift_id)
+           )
+     GROUP BY s.slip_id
 ), viol AS (
     SELECT s.slip_id
       FROM slip s
-      LEFT JOIN attr_sum su ON su.slip_id = s.slip_id
+      LEFT JOIN expected e ON e.slip_id = s.slip_id
      WHERE s.difference_net_fen IS NOT NULL
        AND ( s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
-             OR s.rcf <> COALESCE(su.amt, 0) )
+             OR s.rcf <> COALESCE(e.amt, 0) )
 )
 SELECT CASE WHEN (SELECT count(*) FROM slip WHERE difference_net_fen IS NOT NULL) = 0
             THEN '[INFO] A39 skipped_no_data 分母=0（无 N19-2 新口径缴款单；legacy_null='
