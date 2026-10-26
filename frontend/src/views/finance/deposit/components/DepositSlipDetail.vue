@@ -11,11 +11,17 @@
  */
 import { computed, ref, watch } from 'vue'
 import { formatFen } from '@/types/finance-recon'
-import type { DepositSlipVO, PendingAttributionRefundVO } from '@/api/finance-deposit-slip'
+import type {
+  DepositSlipVO,
+  PendingAttributionPayload,
+  PendingAttributionRefundVO,
+  ShiftCandidateVO,
+} from '@/api/finance-deposit-slip'
 
 interface Props {
   slip: DepositSlipVO | null
-  pendingRefunds?: PendingAttributionRefundVO[]
+  /** 后端 pending-refunds 整对象：{ pendingRefunds, candidateShifts, missingRefundTimeCount } */
+  attribution?: PendingAttributionPayload | null
   /** 是否有 finance:deposit-slip:confirm-attribution 权限 */
   canConfirm?: boolean
   /** 提交中 */
@@ -23,7 +29,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  pendingRefunds: () => [],
+  attribution: null,
   canConfirm: false,
   confirming: false,
 })
@@ -89,14 +95,30 @@ const hints = computed<Array<{ key: string; text: string; count: number }>>(() =
   return list
 })
 
-/** 待确认归属条目（有候选班次才可提交） */
-const pending = computed<PendingAttributionRefundVO[]>(() => props.pendingRefunds ?? [])
+/** 待确认归属条目（由后端 pendingRefunds 驱动） */
+const pending = computed<PendingAttributionRefundVO[]>(() => props.attribution?.pendingRefunds ?? [])
+
+/** 整单共享候选班次（后端 candidateShifts）；行级若也带则优先行级 */
+const sharedCandidates = computed<ShiftCandidateVO[]>(() => props.attribution?.candidateShifts ?? [])
+
+function candidatesOf(row: PendingAttributionRefundVO): ShiftCandidateVO[] {
+  const rowList = row.candidateShifts ?? []
+  return rowList.length > 0 ? rowList : sharedCandidates.value
+}
+
+/** 候选班次展示文案：优先后端 label（如 "morning #352"），缺失时按位置给 上一/本/下一班次；避免 #id 重复 */
+function candidateLabel(cand: ShiftCandidateVO, idx: number): string {
+  const fallback = idx === 0 ? '上一班次' : idx === 1 ? '本班次' : '下一班次'
+  const base = (cand.label || '').trim() || fallback
+  return base.includes('#' + cand.shiftId) ? base : base + ' #' + cand.shiftId
+}
 
 watch(pending, (list) => {
   // 默认选中「本班次」（中间那个候选）
   for (const item of list) {
     if (selectedShift.value[item.refundRecordId]) continue
-    const candidates = item.candidateShifts ?? []
+    // 默认选中「本班次」= 候选中间那个（后端顺序：上一 / 本 / 下一）
+    const candidates = candidatesOf(item)
     const fallback = candidates.length ? candidates[Math.min(1, candidates.length - 1)].shiftId : null
     if (fallback != null) selectedShift.value[item.refundRecordId] = fallback
   }
@@ -231,14 +253,12 @@ defineExpose({ localError })
                 data-test="attribution-shift"
               >
                 <el-radio-button
-                  v-for="(cand, idx) in (row.candidateShifts || [])"
+                  v-for="(cand, idx) in candidatesOf(row)"
                   :key="cand.shiftId"
                   :value="cand.shiftId"
                   :data-shift-id="cand.shiftId"
-                >
-                  {{ cand.label || (idx === 0 ? '上一班次' : idx === 1 ? '本班次' : '下一班次') }}
-                  <span class="dim">#{{ cand.shiftId }}</span>
-                </el-radio-button>
+                  :title="(cand.startTime || '') + ' ~ ' + (cand.endTime || '')"
+                >{{ candidateLabel(cand, idx) }}</el-radio-button>
               </el-radio-group>
             </td>
             <td>

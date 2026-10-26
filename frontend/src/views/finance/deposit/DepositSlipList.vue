@@ -17,11 +17,11 @@ import DepositSlipDetail from './components/DepositSlipDetail.vue'
 import {
   confirmAttribution,
   getDepositSlip,
+  getPendingAttribution,
   listDepositSlips,
-  listPendingAttributionRefunds,
   type DepositSlipHints,
   type DepositSlipVO,
-  type PendingAttributionRefundVO,
+  type PendingAttributionPayload,
 } from '@/api/finance-deposit-slip'
 import { usePermissionStore } from '@/stores/permission'
 import { formatFen } from '@/types/finance-recon'
@@ -43,7 +43,8 @@ const dateRange = ref<[string, string] | null>(null)
 
 const drawerVisible = ref(false)
 const detail = ref<DepositSlipVO | null>(null)
-const pendingRefunds = ref<PendingAttributionRefundVO[]>([])
+/** 后端 pending-refunds 整对象（pendingRefunds + candidateShifts + missingRefundTimeCount） */
+const attribution = ref<PendingAttributionPayload | null>(null)
 const detailLoading = ref(false)
 const confirming = ref(false)
 
@@ -132,11 +133,11 @@ async function openDetail(row: DepositSlipVO): Promise<void> {
   drawerVisible.value = true
   detailLoading.value = true
   detail.value = row
-  pendingRefunds.value = []
+  attribution.value = null
   try {
     const fresh = await getDepositSlip(row.slipId)
     detail.value = fresh
-    pendingRefunds.value = await listPendingAttributionRefunds(row.slipId, fresh)
+    attribution.value = await getPendingAttribution(row.slipId, fresh)
   } catch (error) {
     listError.value = error instanceof Error ? error.message : '缴款单详情加载失败'
   } finally {
@@ -151,7 +152,7 @@ async function handleConfirm(payload: { refundRecordId: number; shiftId: number;
   try {
     const updated = await confirmAttribution(detail.value.slipId, payload)
     detail.value = updated
-    pendingRefunds.value = await listPendingAttributionRefunds(updated.slipId, updated)
+    attribution.value = await getPendingAttribution(updated.slipId, updated)
     const idx = rows.value.findIndex((r) => r.slipId === updated.slipId)
     if (idx >= 0) rows.value[idx] = updated
     ElMessage.success('已确认退款归属，单据退款构成与净值已重算')
@@ -296,7 +297,7 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
       <div v-loading="detailLoading">
         <DepositSlipDetail
           :slip="detail"
-          :pending-refunds="pendingRefunds"
+          :attribution="attribution"
           :can-confirm="canConfirm"
           :confirming="confirming"
           @confirm="handleConfirm"

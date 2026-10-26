@@ -73,15 +73,17 @@ export interface DepositSlipVO {
   boundaryRefunds?: PendingAttributionRefundVO[] | null
   pendingAttributionRefunds?: PendingAttributionRefundVO[] | null
   refundsPending?: PendingAttributionRefundVO[] | null
+  /** 整单共享的候选班次（若后端在详情里也内联） */
+  candidateShifts?: ShiftCandidateVO[] | null
 }
 
-/** 候选班次 */
+/** 候选班次（后端：{ shiftId, label, startTime, endTime }） */
 export interface ShiftCandidateVO {
   shiftId: number
-  /** 展示名（上一班次 / 本班次 / 下一班次 或 具体时间窗文案） */
+  /** 展示名，如 `morning #325` */
   label?: string | null
-  windowStart?: string | null
-  windowEnd?: string | null
+  startTime?: string | null
+  endTime?: string | null
 }
 
 /** 待确认归属的退款行 */
@@ -92,8 +94,19 @@ export interface PendingAttributionRefundVO {
   /** 分 */
   amountFen: number | null
   refundTime?: string | null
-  /** 候选班次（上一/本/下一） */
+  /** 行级候选班次（后端目前放顶层，行级为兼容保留） */
   candidateShifts?: ShiftCandidateVO[] | null
+}
+
+/**
+ * 待确认归属载荷（后端真实响应结构）：
+ * `{ pendingRefunds: [...], candidateShifts: [{shiftId,label,startTime,endTime}], missingRefundTimeCount: 0 }`
+ * 三个字段都在 data 根节点上；candidateShifts 是**整单共享**的三选一候选，不是行级字段。
+ */
+export interface PendingAttributionPayload {
+  pendingRefunds: PendingAttributionRefundVO[]
+  candidateShifts: ShiftCandidateVO[]
+  missingRefundTimeCount: number
 }
 
 /** 列表查询 */
@@ -245,21 +258,71 @@ export async function getDepositSlip(slipId: number): Promise<DepositSlipVO> {
  * 详情若已内联 pendingRefunds，则直接用内联数据（少一次请求）；
  * 端点暂未上线时用 silentGet 静默降级为空数组（不弹提示）。
  */
-export async function listPendingAttributionRefunds(
+export async function getPendingAttribution(
   slipId: number,
   detail?: DepositSlipVO | null,
-): Promise<PendingAttributionRefundVO[]> {
-  const inline = detail?.pendingRefunds
-  if (Array.isArray(inline) && inline.length > 0) return inline
+): Promise<PendingAttributionPayload> {
+  const empty: PendingAttributionPayload = { pendingRefunds: [], candidateShifts: [], missingRefundTimeCount: 0 }
+
+  // 详情内联优先（少一次请求）
+  const inlineRows = detail?.pendingRefunds ?? detail?.boundaryRefunds ?? detail?.pendingAttributionRefunds ?? null
+  if (Array.isArray(inlineRows) && inlineRows.length > 0) {
+    return {
+      // 内联数据本身已是 VO 形态，直接透传（保留原字段）
+      pendingRefunds: inlineRows as PendingAttributionRefundVO[],
+      candidateShifts: (detail?.candidateShifts ?? []) as ShiftCandidateVO[],
+      missingRefundTimeCount: detail?.missingRefundTimeCount ?? 0,
+    }
+  }
+
   try {
-    // 用 silentGet：该端点为可选能力，未提供时不要弹「资源不存在」噪音
-    const data = await silentGet<unknown>(`/v1/finance/deposit-slips/${encodeURIComponent(String(slipId))}/pending-refunds`)
-    if (Array.isArray(data)) return data as PendingAttributionRefundVO[]
-    const records = (data as Record<string, unknown> | null)?.records
-    return Array.isArray(records) ? (records as PendingAttributionRefundVO[]) : []
+    // silentGet：端点暂不可用时不弹提示
+    const data = await silentGet<Record<string, unknown> | null>(
+      `/v1/finance/deposit-slips/${encodeURIComponent(String(slipId))}/pending-refunds`,
+    )
+    if (!data) return empty
+
+    // 后端真实结构：data = { pendingRefunds, candidateShifts, missingRefundTimeCount }
+    // （兼容历史上直接返回数组 / { records: [] } 的形态）
+    if (Array.isArray(data)) {
+      return { pendingRefunds: data.map(normalizePendingRefund), candidateShifts: [], missingRefundTimeCount: 0 }
+    }
+    const rowsRaw = Array.isArray(data.pendingRefunds)
+      ? data.pendingRefunds
+      : Array.isArray(data.records)
+        ? data.records
+        : []
+    const shiftsRaw = Array.isArray(data.candidateShifts) ? data.candidateShifts : []
+    return {
+      pendingRefunds: (rowsRaw as Array<Record<string, unknown>>).map(normalizePendingRefund),
+      candidateShifts: (shiftsRaw as Array<Record<string, unknown>>).map(normalizeShiftCandidate),
+      missingRefundTimeCount: toNum(data.missingRefundTimeCount) ?? 0,
+    }
   } catch {
-    // 端点未提供时安静降级（区块隐藏），不打扰用户
-    return []
+    return empty
+  }
+}
+
+/** 归一单条待确认退款（后端字段：refundRecordId / refundNo / amountFen / refundTime） */
+function normalizePendingRefund(raw: Record<string, unknown>): PendingAttributionRefundVO {
+  const rowCandidates = Array.isArray(raw.candidateShifts) ? raw.candidateShifts : []
+  return {
+    refundRecordId: Number(raw.refundRecordId ?? raw.id ?? 0),
+    refundNo: (raw.refundNo as string) ?? (raw.refund_no as string) ?? null,
+    orderNumber: (raw.orderNumber as string) ?? (raw.order_no as string) ?? null,
+    amountFen: toNum(raw.amountFen) ?? toNum(raw.amount),
+    refundTime: (raw.refundTime as string) ?? (raw.refund_time as string) ?? null,
+    candidateShifts: (rowCandidates as Array<Record<string, unknown>>).map(normalizeShiftCandidate),
+  }
+}
+
+/** 归一候选班次（后端字段：shiftId / label / startTime / endTime） */
+function normalizeShiftCandidate(raw: Record<string, unknown>): ShiftCandidateVO {
+  return {
+    shiftId: Number(raw.shiftId ?? 0),
+    label: (raw.label as string) ?? null,
+    startTime: (raw.startTime as string) ?? null,
+    endTime: (raw.endTime as string) ?? null,
   }
 }
 
@@ -279,7 +342,7 @@ export async function confirmAttribution(
 export const financeDepositSlipApi = {
   listDepositSlips,
   getDepositSlip,
-  listPendingAttributionRefunds,
+  getPendingAttribution,
   confirmAttribution,
 }
 
