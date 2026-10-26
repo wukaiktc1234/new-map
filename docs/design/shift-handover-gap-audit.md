@@ -207,3 +207,38 @@ DepositSlipServiceImpl.java:383   throw new BusinessException(ErrorCode.PARAM_ER
 
 → DTO 注解 + 服务双重强制；**不支持「只标记已存行、后续财务汇总核对」**。
 
+
+
+## 七、差异 3 修法调整（2026-10-27 Owner 定案：两种模式并存 + 开关）
+
+**结论变更**：不再二选一，改为 **人工汇总（默认，本轮实现）+ 系统自动匹配（可选，排期中）**，由财务设置页开关切换。
+
+### 7.1 人工汇总模式（默认，本轮实现）
+
+| 项 | 设计 |
+|---|---|
+| 接口 | `DepositToBankDTO.bankTransactionId` **改为可选**（去掉 `@NotNull`）；服务层「有值则校验存在性，无值则跳过」 |
+| 存行语义 | 不绑流水 → `status=DEPOSITED` 且 `deposit_bank_txn_id = NULL`；审计 `operation_data.matched=false` |
+| 对账视图 | 新端点 `GET /v1/finance/deposit-slips/daily-summary?date=`，返回：`depositedSlips[]`、`totalCashCountedFen`、`matchedFen`、`unmatchedFen`、`unmatchedCount`、`bankInflowFen` |
+| 可见性要求 | **未绑流水的单必须出现在 `unmatchedCount`**，页面整行标红 + 顶部红色横幅（`data-test="unmatched-banner"`），**不得静默** |
+| 人工确认 | 「人工确认一致」仅在 `unmatchedCount=0` 且 `totalCashCountedFen == bankInflowFen` 时可用，点击写审计 `DEPOSIT_DAILY_SUMMARY_CONFIRMED` |
+
+### 7.2 系统自动匹配模式（可选，排期，不写代码）
+
+| 项 | 设计 |
+|---|---|
+| 数据模型 | `deposit_batch(batch_id, account_id, total_fen, txn_id, business_date, mode)` + `deposit_slip_allocation(slip_id, batch_id, amount_fen)` + `deposit_slips.deposit_batch_id` |
+| 匹配方式 | 批次总额与银行进账 1:1 配对；批次内按 allocation 拆到单 |
+| 历史兼容 | 切换**只影响新单**，历史单保持 `deposit_bank_txn_id` 语义；设置页显示「当前有 N 张缴款单处于人工汇总模式」 |
+| 前置条件 | 需扩 `ReconBatchExecutor#match` 支持 N:1（当前三层全 1:1，见 §6.2），否则即便有批次表也配不上 |
+
+### 7.3 开关位置与文案（设计稿，不写代码）
+
+- **位置**：财务设置页 → 「存行与对账」分组 → 第一项；
+- **控件**：单选（radio）两项：
+  - ○ **人工汇总核对**（默认）— 副文案：「店长存行只标记已存行，财务按日核对『当日应存合计 vs 银行进账合计』」；
+  - ○ **系统自动匹配** — 副文案：「需先生成存行批次；系统按批次总额与银行进账自动配对，需 N:1 匹配能力」；
+- **权限**：仅 `ROLE_FINANCE_DIRECTOR` 可改（按钮 `@PreAuthorize` 同码）；
+- **切换提示**：切换后弹确认「仅影响新建缴款单，历史单据保持原样。当前有 N 张缴款单处于人工汇总模式」；
+- **降级保护**：若自动匹配所需的 N:1 能力未上线，该选项 disabled + tooltip「需先完成 N:1 匹配改造（差异 3 阶段二）」。
+
