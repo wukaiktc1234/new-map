@@ -136,7 +136,7 @@ public class ReceiptServiceImpl extends ServiceImpl<ReceiptMapper, Receipt>
         FundFlowCreateDTO flowDTO = new FundFlowCreateDTO();
         flowDTO.setAccountId(bankAccount.getAccountId());
         flowDTO.setFlowDirection(1); // 收入
-        flowDTO.setFlowCategory(1); // 销售收款
+        flowDTO.setFlowCategory(com.foodtraceability.common.finance.FundFlowCategory.SALE); // 1=销售收款
         flowDTO.setAmount(dto.getReceiptAmount());
         flowDTO.setCounterpartyName(receivable.getCustomerName());
         flowDTO.setBusinessDate(dto.getReceiptDate());

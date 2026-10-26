@@ -13,7 +13,7 @@ package com.foodtraceability.common.finance;
  *   <li>{@link #REFUND}=2 —— 退款出账（P4-5 专用）；<b>2 不再被采购付款复用（NEW-21）</b></li>
  *   <li>{@link #INTERNAL_TRANSFER}=5 —— 存款/内部转账（存行、账户间划转）</li>
  *   <li>{@link #PURCHASE_PAYMENT}=6 —— 采购付款（付款单）</li>
- *   <li>{@link #PURCHASE_PAYMENT_RETURN}=7 —— 采购付款退回</li>
+ *   <li>{@link #PURCHASE_PAYMENT_RETURN}=7 —— 采购付款红冲/作废的反向收入流水（direction=1，款退回账户）</li>
  * </ul>
  */
 public final class FundFlowCategory {
@@ -30,7 +30,11 @@ public final class FundFlowCategory {
     /** 6 = 采购付款（付款单出账）—— NEW-21：旧代码曾用 2，已迁出 */
     public static final int PURCHASE_PAYMENT = 6;
 
-    /** 7 = 采购付款退回（付款单冲销） */
+    /**
+     * 7 = 采购付款**红冲/作废**生成的**反向收入流水**（direction=1：付款单作废后款项退回账户）。
+     *
+     * <p><b>不是</b>采购退货退款（那是供应商侧的应收冲减，走应付/采购域，不在资金流水这边）。</p>
+     */
     public static final int PURCHASE_PAYMENT_RETURN = 7;
 
     private FundFlowCategory() {

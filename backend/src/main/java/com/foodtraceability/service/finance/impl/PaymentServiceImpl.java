@@ -56,7 +56,6 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentMapper, Payment>
     /** 银行存款科目编码 */
     private static final String SUBJECT_CODE_BANK = "1002";
     /** 资金流水分类：采购付款退回 */
-    private static final int FLOW_CATEGORY_PAYMENT_RETURN = 7;
 
     private final PayableMapper payableMapper;
     private final BankAccountMapper bankAccountMapper;
@@ -281,7 +280,7 @@ public class PaymentServiceImpl extends ServiceImpl<PaymentMapper, Payment>
         FundFlowCreateDTO flowDTO = new FundFlowCreateDTO();
         flowDTO.setAccountId(bankAccount.getAccountId());
         flowDTO.setFlowDirection(1); // 收入
-        flowDTO.setFlowCategory(FLOW_CATEGORY_PAYMENT_RETURN); // 采购付款退回
+        flowDTO.setFlowCategory(com.foodtraceability.common.finance.FundFlowCategory.PURCHASE_PAYMENT_RETURN); // 7=付款单红冲/作废的反向收入（款退回账户）
         flowDTO.setAmount(paymentAmount);
         flowDTO.setCounterpartyName(payable.getSupplierName());
         flowDTO.setBusinessDate(payment.getPaymentDate());

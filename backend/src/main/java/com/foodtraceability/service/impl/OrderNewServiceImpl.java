@@ -324,7 +324,7 @@ public class OrderNewServiceImpl implements OrderNewService {
                     new com.foodtraceability.dto.finance.FundFlowCreateDTO();
             dto.setAccountId(accountId);
             dto.setFlowDirection(1); // 收入
-            dto.setFlowCategory(1);  // 销售收款
+            dto.setFlowCategory(com.foodtraceability.common.finance.FundFlowCategory.SALE);  // 1=销售收款
             dto.setAmount(amount);
             dto.setCounterpartyName(order.getCustomerName() != null ? order.getCustomerName() : "散客");
             dto.setBusinessDate(java.time.LocalDate.now());
