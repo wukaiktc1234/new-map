@@ -124,6 +124,16 @@ public class DepositSlipController {
     public Result<DepositSlipVO> reverse(@PathVariable Long slipId, @Valid @RequestBody ReverseSlipDTO dto) {
         return Result.success(depositSlipService.reverse(slipId, dto));
     }
+    /** N19-3b：待确认归属的数据源（空时返回空数组，不返回 404） */
+    @GetMapping("/{slipId}/pending-refunds")
+    @PreAuthorize("hasAuthority('finance:deposit-slip:view')")
+    @Operation(summary = "待确认归属退款 + 候选班次（N19-3b）",
+            description = "pendingRefunds=本单班次边界带内且无归属记录的现金退款；candidateShifts=上一/本/下一班次；空则返回空数组")
+    public Result<com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO> pendingRefunds(
+            @PathVariable Long slipId) {
+        return Result.success(depositSlipService.pendingRefunds(slipId));
+    }
+
 
     /** N19-2④：人工确认退款归属班次（幂等 + 覆盖 + 乐观锁），并重算退款构成与净差异 */
     @Operation(summary = "人工确认退款归属班次（N19-2④）", description = "写入 refund_shift_attribution 并重算该缴款单的 refund_component_fen / difference_net_fen")

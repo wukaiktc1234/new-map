@@ -23,6 +23,12 @@ public class DepositSlipVO {
     private Long refundComponentFen;
     /** N19-2：净差异 = actual − (expected − refund_component) */
     private Long differenceNetFen;
+    /** N19-3b：班次窗口未结束的缴款单数（与巡检 A39 still_open 同义） */
+    private Integer stillOpenCount;
+    /** N19-3b：本单窗口内「生成之后才发生」的退款笔数（与巡检 A39 stale 同义） */
+    private Integer staleCount;
+    /** N19-3b：difference_net_fen 为 NULL 的历史缴款单数 */
+    private Integer legacyNullCount;
     /** N19-3a③：该门店现金户下 refund_time 为 NULL 的退款流水笔数（未归属任何班次，待回填） */
     private Integer missingRefundTimeCount;
     private Long cashAccountId;
@@ -83,6 +89,15 @@ public class DepositSlipVO {
 
     public Long getDifferenceNetFen() { return differenceNetFen; }
     public void setDifferenceNetFen(Long differenceNetFen) { this.differenceNetFen = differenceNetFen; }
+
+    public Integer getStillOpenCount() { return stillOpenCount; }
+    public void setStillOpenCount(Integer stillOpenCount) { this.stillOpenCount = stillOpenCount; }
+
+    public Integer getStaleCount() { return staleCount; }
+    public void setStaleCount(Integer staleCount) { this.staleCount = staleCount; }
+
+    public Integer getLegacyNullCount() { return legacyNullCount; }
+    public void setLegacyNullCount(Integer legacyNullCount) { this.legacyNullCount = legacyNullCount; }
 
     public Integer getMissingRefundTimeCount() { return missingRefundTimeCount; }
     public void setMissingRefundTimeCount(Integer missingRefundTimeCount) { this.missingRefundTimeCount = missingRefundTimeCount; }

@@ -1173,6 +1173,205 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         }
     }
 
+    /**
+     * N19-3b：本单「待确认归属」数据源。
+     *
+     * <p>pendingRefunds = 本单班次边界带内（距 start/end ≤ boundary 分钟）且尚无 attribution 的现金退款；
+     * candidateShifts = 同一门店的上一 / 本 / 下一班次（缺则少给）；
+     * missingRefundTimeCount = 本单窗口内 refund_time 为 NULL 的退款笔数。</p>
+     * <p>空数据返回空数组（code=0），不抛 404。</p>
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO pendingRefunds(Long slipId) {
+        com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO vo =
+                new com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO();
+        DepositSlip slip = depositSlipMapper.selectById(slipId);
+        if (slip == null || slip.getShiftId() == null) {
+            return vo;
+        }
+        PosShift shift = posShiftMapper.selectById(slip.getShiftId());
+        if (shift == null || shift.getStartTime() == null || shift.getEndTime() == null) {
+            return vo;
+        }
+        Long storeId = slip.getStoreId();
+        List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                .eq(BankAccount::getStoreId, storeId)
+                .eq(BankAccount::getAccountType, 2)
+                .eq(BankAccount::getStatus, 1)
+                .eq(BankAccount::getDeleted, 0));
+        if (cashAccounts != null && !cashAccounts.isEmpty()) {
+            java.util.List<Long> accountIds = new ArrayList<>();
+            for (BankAccount a : cashAccounts) {
+                accountIds.add(a.getAccountId());
+            }
+            java.time.LocalDateTime boundaryFrom = shift.getStartTime().plusMinutes(shiftBoundaryMinutes);
+            java.time.LocalDateTime boundaryTo = shift.getEndTime().minusMinutes(shiftBoundaryMinutes);
+            List<FundFlow> flows = fundFlowMapper.selectList(new LambdaQueryWrapper<FundFlow>()
+                    .in(FundFlow::getAccountId, accountIds)
+                    .eq(FundFlow::getFlowCategory, 2)
+                    .eq(FundFlow::getFlowDirection, 2)
+                    .eq(FundFlow::getStatus, 2)
+                    .eq(FundFlow::getDeleted, 0)
+                    .isNotNull(FundFlow::getRefundTime)
+                    .ge(FundFlow::getBusinessDate, shift.getStartTime().toLocalDate().minusDays(1))
+                    .le(FundFlow::getBusinessDate, shift.getEndTime().toLocalDate().plusDays(1)));
+            java.util.Set<Long> attributed = new java.util.HashSet<>();
+            List<com.foodtraceability.entity.finance.recon.RefundShiftAttribution> attrs =
+                    refundShiftAttributionMapper.selectList(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.RefundShiftAttribution>());
+            if (attrs != null) {
+                for (com.foodtraceability.entity.finance.recon.RefundShiftAttribution a : attrs) {
+                    if (a.getRefundRecordId() != null) {
+                        attributed.add(a.getRefundRecordId());
+                    }
+                }
+            }
+            if (flows != null) {
+                for (FundFlow flow : flows) {
+                    LocalDateTime rt = LocalDateTime.ofInstant(flow.getRefundTime().toInstant(), java.time.ZoneId.systemDefault());
+                    if (rt.isBefore(shift.getStartTime()) || rt.isAfter(shift.getEndTime())) {
+                        continue;
+                    }
+                    boolean inBoundary = rt.isBefore(boundaryFrom) || rt.isAfter(boundaryTo);
+                    if (!inBoundary) {
+                        continue;   // 非边界带：已自动计入，无需人工确认
+                    }
+                    if (flow.getRefundRecordId() != null && attributed.contains(flow.getRefundRecordId())) {
+                        continue;   // 已有归属记录
+                    }
+                    com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.PendingRefund pr =
+                            new com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.PendingRefund();
+                    pr.refundRecordId = flow.getRefundRecordId();
+                    pr.flowNo = flow.getFlowNo();
+                    pr.amountFen = flow.getAmount();
+                    pr.refundTime = rt;
+                    pr.orderId = flow.getOrderId();
+                    vo.pendingRefunds.add(pr);
+                }
+            }
+        }
+
+        // 候选班次：本班次前后 7 天内的班次，用「时间窗内订单所属门店」判定同门店；
+        // 无订单的班次无法判定门店（resolveShiftStores 会抛 BusinessException）→ 退化为「同一收银员」，
+        // 避免整个接口因为一个无订单班次 400。
+        List<PosShift> sameStore = new ArrayList<>();
+        List<PosShift> allShifts = posShiftMapper.selectList(new LambdaQueryWrapper<PosShift>()
+                .eq(PosShift::getDeleted, 0)
+                .isNotNull(PosShift::getStartTime)
+                .ge(PosShift::getStartTime, shift.getStartTime().minusDays(7))
+                .le(PosShift::getStartTime, shift.getStartTime().plusDays(7))
+                .orderByAsc(PosShift::getStartTime));
+        if (allShifts != null) {
+            for (PosShift ps : allShifts) {
+                boolean sameStoreShift;
+                try {
+                    sameStoreShift = resolveShiftStores(ps).contains(storeId);
+                } catch (Exception ignore) {
+                    sameStoreShift = ps.getEmployeeId() != null && ps.getEmployeeId().equals(shift.getEmployeeId());
+                }
+                if (sameStoreShift) {
+                    sameStore.add(ps);
+                }
+            }
+        }
+        int idx = -1;
+        for (int i = 0; i < sameStore.size(); i++) {
+            if (sameStore.get(i).getShiftId().equals(shift.getShiftId())) {
+                idx = i;
+                break;
+            }
+        }
+        java.util.List<PosShift> picked = new ArrayList<>();
+        if (idx >= 0) {
+            if (idx > 0) {
+                picked.add(sameStore.get(idx - 1));
+            }
+            picked.add(sameStore.get(idx));
+            if (idx + 1 < sameStore.size()) {
+                picked.add(sameStore.get(idx + 1));
+            }
+        } else {
+            picked.add(shift);
+        }
+        for (PosShift ps : picked) {
+            com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift cs =
+                    new com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift();
+            cs.shiftId = ps.getShiftId();
+            cs.startTime = ps.getStartTime();
+            cs.endTime = ps.getEndTime();
+            cs.label = (ps.getShiftType() == null ? "班次" : ps.getShiftType()) + " #" + ps.getShiftId();
+            vo.candidateShifts.add(cs);
+        }
+
+        vo.missingRefundTimeCount = countMissingRefundTime(storeId, shift);
+        return vo;
+    }
+
+    /** N19-3b：stale 计数（本单窗口内「生成之后才发生」的退款笔数，与 A39 stale 同义） */
+    private Integer countStaleRefunds(DepositSlip slip, PosShift shift) {
+        if (slip == null || shift == null || slip.getCreateTime() == null || shift.getStartTime() == null) {
+            return 0;
+        }
+        List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                .eq(BankAccount::getStoreId, slip.getStoreId())
+                .eq(BankAccount::getAccountType, 2)
+                .eq(BankAccount::getStatus, 1)
+                .eq(BankAccount::getDeleted, 0));
+        if (cashAccounts == null || cashAccounts.isEmpty()) {
+            return 0;
+        }
+        java.util.List<Long> accountIds = new ArrayList<>();
+        for (BankAccount a : cashAccounts) {
+            accountIds.add(a.getAccountId());
+        }
+        List<FundFlow> flows = fundFlowMapper.selectList(new LambdaQueryWrapper<FundFlow>()
+                .in(FundFlow::getAccountId, accountIds)
+                .eq(FundFlow::getFlowCategory, 2)
+                .eq(FundFlow::getFlowDirection, 2)
+                .eq(FundFlow::getStatus, 2)
+                .eq(FundFlow::getDeleted, 0)
+                .isNotNull(FundFlow::getRefundTime));
+        int stale = 0;
+        if (flows != null) {
+            for (FundFlow f : flows) {
+                LocalDateTime rt = LocalDateTime.ofInstant(f.getRefundTime().toInstant(), java.time.ZoneId.systemDefault());
+                if (rt.isAfter(slip.getCreateTime())
+                        && !rt.isBefore(shift.getStartTime().plusMinutes(shiftBoundaryMinutes))
+                        && !rt.isAfter(shift.getEndTime().minusMinutes(shiftBoundaryMinutes))) {
+                    stale++;
+                }
+            }
+        }
+        return stale;
+    }
+
+    /** N19-3b：still_open 计数（班次窗口未结束的 N19-2 缴款单数，与 A39 still_open 同义） */
+    private Integer countStillOpenSlips() {
+        int open = 0;
+        List<DepositSlip> slips = depositSlipMapper.selectList(new LambdaQueryWrapper<DepositSlip>()
+                .eq(DepositSlip::getDeleted, 0)
+                .isNotNull(DepositSlip::getDifferenceNetFen));
+        if (slips != null) {
+            LocalDateTime now = LocalDateTime.now();
+            for (DepositSlip s2 : slips) {
+                PosShift ps = s2.getShiftId() == null ? null : posShiftMapper.selectById(s2.getShiftId());
+                if (ps == null || ps.getEndTime() == null || !ps.getEndTime().isBefore(now)) {
+                    open++;
+                }
+            }
+        }
+        return open;
+    }
+
+    /** N19-3b：legacy_null 计数（difference_net_fen 为 NULL 的历史缴款单数） */
+    private Integer countLegacyNullSlips() {
+        Long n = depositSlipMapper.selectCount(new LambdaQueryWrapper<DepositSlip>()
+                .eq(DepositSlip::getDeleted, 0)
+                .isNull(DepositSlip::getDifferenceNetFen));
+        return n == null ? 0 : n.intValue();
+    }
+
+
     /** N19-3a③：统计该门店现金户下 refund_time 为 NULL 的退款流水笔数（详情展示用） */
     private Integer countMissingRefundTime(Long storeId, PosShift shift) {
         if (storeId == null) {
@@ -1306,8 +1505,12 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         vo.setActualAmount(slip.getActualAmount());
         vo.setRefundComponentFen(slip.getRefundComponentFen());
         vo.setDifferenceNetFen(slip.getDifferenceNetFen());
-        vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId(),
-                slip.getShiftId() == null ? null : posShiftMapper.selectById(slip.getShiftId())));
+        PosShift voShift = slip.getShiftId() == null ? null : posShiftMapper.selectById(slip.getShiftId());
+        vo.setMissingRefundTimeCount(countMissingRefundTime(slip.getStoreId(), voShift));
+        // N19-3b：四类计数全部由后端给（A39 同口径），前端不得自造
+        vo.setStaleCount(countStaleRefunds(slip, voShift));
+        vo.setStillOpenCount(countStillOpenSlips());
+        vo.setLegacyNullCount(countLegacyNullSlips());
         vo.setDifferenceAmount(slip.getDifferenceAmount());
         vo.setCashAccountId(slip.getCashAccountId());
         vo.setBankAccountId(slip.getBankAccountId());
