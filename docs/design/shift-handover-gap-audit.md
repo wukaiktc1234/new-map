@@ -126,3 +126,55 @@ SELECT count(*) FROM fund_flows WHERE deleted=0 AND flow_category=5;   -- 内部
 - close / verify 是否有代码调用点（死码 vs 待接线）未核；
 - bank_transactions 是否已有 slip_id 反向关联（影响批次改造）；
 - 真实门店「次日汇总存行」比例未知，决定差异 3 的优先级。
+
+
+### 1.5 接班时输入备用金的环节（补充审计）
+
+**① 字段存在：pos_shifts.opening_cash（单位=元）**
+
+~~~sql
+-- \d pos_shifts 实测
+opening_cash | numeric(10,2) | not null | default 0.00     ← 备用金（元，与 closing_cash 同尺度）
+closing_cash | numeric(10,2) |                          ← 交班现金（元，已定性为「仅展示」）
+total_amount | numeric(12,2) | not null | default 0.00
+handover_remark | text
+~~~
+
+**② 接口层有「输入备用金」：POS 开班接口**
+
+~~~
+PosStartShiftDTO.java:30        private BigDecimal openingCash;
+PosAuthServiceImpl.java:185     String shiftType, BigDecimal openingCash)
+PosAuthServiceImpl.java:210     shift.setOpeningCash(openingCash != null ? openingCash : BigDecimal.ZERO);
+~~~
+
+**③ 前端没有「输入备用金」界面**
+
+~~~text
+grep "openingCash|opening_cash|备用金" frontend/src  → 仅 2 处命中，且都是知识库文案：
+  kb-003-management.ts:22   「…各币格内有足够零钱备用金」
+  kb-003-management.ts:172  「- 期初备用金金额」
+~~~
+→ POS 前端**没有输入框**，运行态 opening_cash 恒为默认 0.00（除非直接调接口）。备用金交接在**界面上完全不存在**，仅数据模型与后端接口预留。
+
+**④ actual_amount 是否用 opening_cash 计算 —— 没有**
+
+~~~
+DepositSlipServiceImpl.java:194   long expected = sumCashPayments(shift, storeId);   ← expected 不含备用金
+DepositSlipServiceImpl.java:900   private long sumCashPayments(...)                   ← 现金支付重算，未引用 openingCash
+receive 接口：body 只有 receivedAmountFen，无 reserve 入参、无「请扣除备用金」提示
+~~~
+
+**⑤ 结论：actual 只能按「抽屉总额」填 → 系统性假长款（非偶发）**
+
+~~~
+场景：备用金 1000 元 + 本班现金净收入 5000 元
+  expected_amount = 5000（不含备用金）
+  收银员只能按抽屉总额填 actual = 6000（系统里看不到备用金，也无提示）
+  ⇒ difference_amount = +1000「长款」；difference_net_fen = +1000
+  ⇒ 每一班固定出现 1000 元假长款，金额恰等于备用金
+~~~
+**额外风险**：若某门店确实通过接口写入了 opening_cash（例如 1000），但前端不展示，收银员**无从知道**应填 5000 —— 现场只会按总额填，差异依旧。
+
+**⑥ 本条定性：需要修（P1），且优先级高于 1.4 的结论** —— 因为「界面缺失」+「expected 不含备用金」是**双重缺口**：即使补了提示，若 opening_cash 无输入入口，提示的数字也不可信。
+
