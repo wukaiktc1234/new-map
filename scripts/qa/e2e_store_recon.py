@@ -424,10 +424,24 @@ class StoreReconE2E:
             self.page.goto(self.a.admin + "/finance/recon", wait_until="domcontentloaded", timeout=120000)
             self.page.wait_for_selector('[data-test="channel-fee-total"]', timeout=45000)
             # 就绪标记：面板 idle/loading 时三个属性输出空串，data-fee-state 供等待
+            # A 类加固（lead 批准）：state=ready 之后再等 fen/diff 非空，避免「state 先置位、数值后写」竞态
             wait_for_data_attr(self.page, '[data-test="channel-fee-total"]', "data-fee-state", "ready", timeout=45000)
-            fee = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-fee-fen")
-            diff = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-diff-fen")
-            cnt = read_data_attr(self.page, '[data-test="channel-fee-total"]', "data-count")
+            wait_for_data_attr(self.page, '[data-test="channel-fee-total"]', "data-fee-fen", READY_NONEMPTY, timeout=45000)
+            wait_for_data_attr(self.page, '[data-test="channel-fee-total"]', "data-diff-fen", READY_NONEMPTY, timeout=45000)
+            # 三属性必须**同一时刻**都非空再取值：组件重渲染会瞬间清空属性，分三次 read 会读到半态
+            fee = diff = cnt = ""
+            for _ in range(100):      # 最多 20s
+                fee, diff, cnt = self.page.evaluate(
+                    """() => {
+                        const el = document.querySelector('[data-test="channel-fee-total"]');
+                        if (!el) return ['', '', ''];
+                        return [el.getAttribute('data-fee-fen') || '',
+                                el.getAttribute('data-diff-fen') || '',
+                                el.getAttribute('data-count') || ''];
+                    }""")
+                if (fee or '').strip() and (diff or '').strip() and (cnt or '').strip():
+                    break
+                time.sleep(0.2)
             api_count, api_fee, api_diff = api_vals
             def same(a, b):
                 try:
