@@ -95,6 +95,11 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         Integer accountType = cashOrBankType(accountId);
         if (accountType != null && accountType == 2) {
             log.info("[RECON] skip cash account={} (out of scope by design)", accountId);
+            // NEW-15：跳过动作留痕（审计失败不影响主流程）
+            auditReconEvent("RECON_SKIP_CASH", accountId, "BANK_ACCOUNT",
+                    "对账跳过现金户：account=" + accountId + " 期间=" + ps + "~" + pe + " 原因=设计上不参与(account_type=2)",
+                    "{\"accountId\":" + accountId + ",\"periodStart\":\"" + ps + "\",\"periodEnd\":\"" + pe
+                            + "\",\"accountType\":2,\"reason\":\"out_of_scope_by_design\"}");
             return null;
         }
 
@@ -519,6 +524,10 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
         Integer acctType = cashOrBankType(accountId);
         if (acctType != null && acctType == 2) {
             log.info("[RECON] skip cash account={} (out of scope by design)", accountId);
+            auditReconEvent("RECON_SKIP_CASH", accountId, "BANK_ACCOUNT",
+                    "未达账项识别跳过现金户：account=" + accountId + " 期间=" + ps + "~" + pe + " 原因=设计上不参与(account_type=2)",
+                    "{\"accountId\":" + accountId + ",\"periodStart\":\"" + ps + "\",\"periodEnd\":\"" + pe
+                            + "\",\"accountType\":2,\"reason\":\"out_of_scope_by_design\"}");
             return new ArrayList<>();
         }
         Long userId = currentUserId();
@@ -558,9 +567,20 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
             }
         }
         if (!refundFlowRows.isEmpty() || !bankRefundRows.isEmpty()) {
+            int unpairedFlowsB = refundFlowRows.size() - pairedFlowIds.size();
+            int unpairedBankRefundsD = bankRefundRows.size() - pairedTxnIds.size();
             log.info("[RECON_REFUND_PAIRING] account={} period={}~{} refundFlows={} bankRefunds={} paired={} unpairedFlows(B)={} unpairedBankRefunds(D)={}",
                     accountId, ps, pe, refundFlowRows.size(), bankRefundRows.size(), pairedFlowIds.size(),
-                    refundFlowRows.size() - pairedFlowIds.size(), bankRefundRows.size() - pairedTxnIds.size());
+                    unpairedFlowsB, unpairedBankRefundsD);
+            // NEW-15：退款配对结果留痕（审计失败不影响主流程）
+            auditReconEvent("RECON_REFUND_PAIRING", accountId, "BANK_ACCOUNT",
+                    "退款配对：account=" + accountId + " 期间=" + ps + "~" + pe + " 退款流水=" + refundFlowRows.size()
+                            + " 银行退款=" + bankRefundRows.size() + " 已配对=" + pairedFlowIds.size()
+                            + " 未配对B=" + unpairedFlowsB + " 未配对D=" + unpairedBankRefundsD,
+                    "{\"accountId\":" + accountId + ",\"periodStart\":\"" + ps + "\",\"periodEnd\":\"" + pe
+                            + "\",\"refundFlows\":" + refundFlowRows.size() + ",\"bankRefunds\":" + bankRefundRows.size()
+                            + ",\"paired\":" + pairedFlowIds.size() + ",\"unpairedFlowsB\":" + unpairedFlowsB
+                            + ",\"unpairedBankRefundsD\":" + unpairedBankRefundsD + "}");
         }
         String flowExclusion = pairedFlowIds.isEmpty() ? ""
                 : "   AND ff.flow_id NOT IN (" + joinedIds(pairedFlowIds) + ") ";
@@ -1141,6 +1161,26 @@ public class ReconciliationStatementServiceImpl implements ReconciliationStateme
      */
     private static BusinessException conflict(String msg) {
         return new BusinessException(409, msg);
+    }
+
+    /**
+     * 写巡检/对账类审计（NEW-15：复用 finance_audit_logs，operation_type 前缀统一 RECON_）。
+     *
+     * <p><b>失败不影响主流程</b>：任何异常只 WARN 并打 [METRIC] audit_write_failed，
+     * 主流程（对账生成/识别）继续。</p>
+     */
+    private void auditReconEvent(String operationType, Long targetId, String targetType,
+                                 String desc, String dataJson) {
+        try {
+            jdbc.update("INSERT INTO finance_audit_logs (operator_id, operator_name, operation_type, module,"
+                            + " target_id, target_type, operation_desc, operation_data, create_time, created_by, version) "
+                            + "VALUES (?,?,?,'finance',?,?,?,?,NOW(),?,0)",
+                    currentUserId(), currentUserName(), operationType, targetId, targetType, desc, dataJson,
+                    currentUserName());
+        } catch (Exception e) {
+            log.warn("[METRIC] audit_write_failed operationType={} targetId={} err={}",
+                    operationType, targetId, e.getMessage());
+        }
     }
 
     private Long currentUserId() {
