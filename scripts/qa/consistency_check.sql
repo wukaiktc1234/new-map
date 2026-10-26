@@ -1283,7 +1283,9 @@ SELECT CASE WHEN (SELECT count(*) FROM cash_refund WHERE business_date < CURRENT
 -- A39（**参与判定**）：缴款单恒等式
 --   对 deleted=0 的缴款单，两条恒等式都要成立：
 --     ① difference_net_fen = actual_amount - (expected_amount - refund_component_fen)   ← 口径不变
---     ② refund_component_fen = **期望退款合计**，期望值 = Σ 满足以下**任一**条件的现金退款流水：
+--     ② refund_component_fen = **期望退款合计**，期望值 = Σ 满足以下**任一**条件的现金退款流水
+--        （**且退款的账户门店 = 缴款单门店**：bank_accounts.store_id IS NOT DISTINCT FROM deposit_slips.store_id；
+--          不加这条，整日班次窗口会把其它门店的退款也算进来 —— 实测 slip 232(store=2) 曾因此误红）：
 --        (a) **自动计入**：refund_time 落在该缴款单对应班次 [start_time, end_time] 内，
 --            且**不在边界带**（距 start ≤ N 分钟 或 距 end ≤ N 分钟者剔除；N = :SHIFT_BOUNDARY_MINUTES）
 --        (b) **人工归属**：refund_shift_attribution 存在该 refund_record_id 且 shift_id = 该班次
@@ -1305,13 +1307,13 @@ SELECT (to_regclass('public.deposit_slips') IS NOT NULL
 
 \if :slip_identity_ready
 WITH slip AS (
-    SELECT s.slip_id, s.shift_id, s.expected_amount, s.actual_amount,
+    SELECT s.slip_id, s.store_id, s.shift_id, s.expected_amount, s.actual_amount,
            COALESCE(s.refund_component_fen, 0) AS rcf, s.difference_net_fen
       FROM deposit_slips s
      WHERE s.deleted = 0
 ), cash_refund AS (
-    -- 现金户退款流水（与 A36/A38 同口径）
-    SELECT f.flow_id, f.amount, f.refund_record_id, f.refund_time
+    -- 现金户退款流水（与 A36/A38 同口径），并带出账户所属门店用于「门店归属」约束
+    SELECT f.flow_id, f.amount, f.refund_record_id, f.refund_time, ba.store_id AS store_id
       FROM fund_flows f
       JOIN bank_accounts ba ON ba.account_id = f.account_id AND ba.deleted = 0
      WHERE f.deleted = 0 AND f.status = 2 AND f.flow_category = 2 AND f.flow_direction = 2
@@ -1319,10 +1321,15 @@ WITH slip AS (
        AND ba.account_type = 2
 ), expected AS (
     -- 期望退款合计 = 自动计入（窗内且不在边界带）∪ 人工归属（attribution.shift_id = 该班次）
+    --   **且必须门店一致**：退款流水所属门店（bank_accounts.store_id）与缴款单 store_id 相同。
+    --   否则整日班次窗口（如 test 数据 00:00–23:59 的 shift）会把**其它门店**的退款也算进来。
+    --   ⚠️ pos_shifts 表**没有 store_id 列**（information_schema 实测），门店归属只能经
+    --      fund_flows.account_id → bank_accounts.store_id 拿到。
     SELECT s.slip_id, COALESCE(SUM(f.amount), 0) AS amt
       FROM slip s
       JOIN cash_refund f
-        ON (
+        ON (f.store_id IS NOT DISTINCT FROM s.store_id)
+       AND (
              EXISTS (SELECT 1 FROM pos_shifts ps
                       WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
                         AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
