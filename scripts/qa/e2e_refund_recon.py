@@ -141,8 +141,19 @@ class RefundRecon:
         if not priced:
             return None, "无可用菜品"
         dish = max(priced, key=lambda x: float(x.get("price") or 0))
+        unit_fen = int(round(float(dish.get("price") or 0) * 100))
+        # 关键：让本轮退款金额在「今天」唯一，否则同额多笔退款会与银行退款贪心 1:1 抢配，
+        # 导致本轮流水被判「未配对落 B」，断言失去意义。
+        qty = 1
+        for q in list(range(2, 10)) + [1]:
+            cand = unit_fen * q
+            used = self.num("SELECT COUNT(*) FROM fund_flows WHERE deleted=0 AND flow_category=2"
+                            " AND amount=%d AND business_date='%s'" % (cand, self.a.business_date))
+            if used == 0:
+                qty = q
+                break
         item = {"productId": str(dish["dishId"]), "productName": dish.get("dishName") or "",
-                "quantity": 1, "price": float(dish.get("price") or 0),
+                "quantity": qty, "price": float(dish.get("price") or 0),
                 "dishType": dish.get("dishType") or "single"}
         st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.pos_token,
                      {"orderType": "dinein", "items": [item],
@@ -191,6 +202,7 @@ class RefundRecon:
         after_bal = self.cash_balance()
         okk = (cat == 2 and direction == 2 and amount == amt_fen and rrid > 0
                and rr_amt == amount and (before_bal - after_bal) == amt_fen)
+        self.last_refund_flow_id = fid
         return self.step("AC-57-1a 退款流水：category=2 / direction=2 / amount=A / refund_record_id 对拍 / 余额减 A", okk,
                          "flow_id=%d category=%d direction=%d amount=%d（期望 %d）refund_record_id=%d"
                          "（order_refund_records.refund_amount=%d）balance_after=%d；现金户 %d → %d（差 %d）" % (
@@ -221,7 +233,9 @@ class RefundRecon:
 
     # ---------- 2) 配对形态 ----------
     def paired(self, order):
+        """配对形态：等额银行退款与**本次退款流水同账户**插入，重算后该 flow_id 不应出现在 A/B/C/D"""
         amt_fen = int(round(order["amount"] * 100))
+        my_flow = getattr(self, "last_refund_flow_id", 0)
         batch = self.num("SELECT COALESCE(MAX(batch_id),0) FROM bank_transactions")
         uid = self.num("SELECT user_id FROM users WHERE username='%s' LIMIT 1" % self.a.user)
         # 对账按账户跑：夹具必须落在**退款流水所在账户**（cash 户）才算同一对账域
@@ -241,15 +255,20 @@ class RefundRecon:
         self.step("AC-57-2a 造等额银行退款 + force 重建", ok(b),
                   "账户=%d 金额=%d tag=%s；R1 HTTP %s" % (acct, amt_fen, ref, st))
         sid = self.ensure_statement(acct, "%s-PAIR-STMT" % self.tag)
-        hit = self.rows("SELECT i.item_id, i.category FROM reconciliation_items i"
-                        " WHERE i.statement_id=%d AND i.deleted=0 AND i.amount=%d"
-                        " AND i.category IN ('A','B','C','D') ORDER BY i.item_id DESC LIMIT 3" % (sid, amt_fen))
-        n = len(hit)
-        return self.step("AC-57-2b 配对后退款不出现在 A/B/C/D 明细", len(hit) == 0,
-                         "同额条目数=%s；命中样例=%s" % (n, hit))
+        hit = self.rows("SELECT i.item_id, i.category, COALESCE(i.flow_id,0) FROM reconciliation_items i"
+                        " WHERE i.statement_id=%d AND i.deleted=0 AND i.flow_id=%d"
+                        " AND i.category IN ('A','B','C','D') ORDER BY i.item_id DESC LIMIT 3"
+                        % (sid, my_flow))
+        same_amt = self.num("SELECT COUNT(*) FROM reconciliation_items WHERE statement_id=%d"
+                            " AND deleted=0 AND amount=%d" % (sid, amt_fen))
+        return self.step("AC-57-2b 配对后本次退款流水（flow_id=%d）不出现在 A/B/C/D 明细" % my_flow,
+                         len(hit) == 0,
+                         "本表同额条目总数=%d（含其它轮次遗留）；本次 flow_id 命中=%s；statement=%d account=%d"
+                         % (same_amt, hit if hit else "无", sid, acct))
 
     # ---------- 3) 未配对形态 ----------
     def unpaired(self):
+        my2 = 0
         order, err = self.make_order()
         if not order:
             return self.not_ready("AC-57-3a 造未配对退款夹具", err)
@@ -259,6 +278,18 @@ class RefundRecon:
             return self.not_ready("AC-57-3a 退款接口", "HTTP %s code=%s %s" % (
                 st, (b or {}).get("code"), str((b or {}).get("message"))[:70]))
         amt_fen = int(round(order["amount"] * 100))
+        # 定位本轮退款流水：先按 order_id，再按「本轮唯一金额」兜底
+        _r2 = self.rows("SELECT flow_id FROM fund_flows WHERE order_id='%s' AND deleted=0"
+                        " AND flow_category=2 ORDER BY flow_id DESC LIMIT 1" % order["orderId"])
+        if not _r2:
+            _r2 = self.rows("SELECT flow_id FROM fund_flows WHERE deleted=0 AND flow_category=2"
+                            " AND amount=%d AND business_date='%s' ORDER BY flow_id DESC LIMIT 1"
+                            % (amt_fen, self.a.business_date))
+        my2 = int(_r2[0][0]) if _r2 else 0
+        if my2 == 0:
+            return self.step("AC-57-3b 未配对退款：未找到退款流水", False,
+                             "orderId=%s orderNumber=%s amount=%d" % (
+                                 order["orderId"], order["orderNumber"], amt_fen))
         # 未配对形态同样在**退款流水所在账户**（cash 户）的调节表里体现
         acct = self.num("SELECT account_id FROM bank_accounts WHERE store_id=%d AND account_type=2"
                         " AND deleted=0 ORDER BY account_id LIMIT 1" % self.a.store_id)
@@ -266,12 +297,13 @@ class RefundRecon:
              {"accountId": int(acct), "businessDate": self.a.business_date, "force": True})
         sid2 = self.ensure_statement(acct, "%s-UNPAIR-STMT" % self.tag)
         cats = self.rows("SELECT category, COUNT(*) FROM reconciliation_items"
-                         " WHERE statement_id=%d AND deleted=0 AND amount=%d"
-                         " GROUP BY category ORDER BY category" % (sid2, amt_fen))
+                         " WHERE statement_id=%d AND deleted=0 AND flow_id=%d"
+                         " GROUP BY category ORDER BY category" % (sid2, my2))
         cmap = {r[0]: int(r[1]) for r in cats}
         okk = cmap.get("B", 0) > 0 and cmap.get("D", 0) == 0
-        return self.step("AC-57-3b 未配对退款出现在 B 类且不在 D 类", okk,
-                         "金额=%d 分；类别分布=%s" % (amt_fen, cmap))
+        return self.step("AC-57-3b 未配对退款（flow_id=%d）落 B 类且不在 D 类" % my2, okk,
+                         "金额=%d 分；该 flow 的类别分布=%s；statement=%d account=%d" % (
+                             amt_fen, cmap, sid2, acct))
 
     # ---------- 4) A19 ----------
     def a19(self):
