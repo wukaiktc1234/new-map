@@ -1,11 +1,9 @@
 package com.foodtraceability.dto.finance.deposit;
 
-import jakarta.validation.constraints.NotNull;
-
 /** SL6 存行入参：关联外部到账流水 bank_transactions.transaction_id（E3-8/E3-9 用）。 */
 public class DepositToBankDTO {
 
-    @NotNull(message = "bankTransactionId 不能为空")
+    /** 差异3：**可选** —— 为空表示「人工汇总模式」（未绑定到账流水，仍可存行，审计标 matched=false） */
     private Long bankTransactionId;
 
     private String depositRefNo;

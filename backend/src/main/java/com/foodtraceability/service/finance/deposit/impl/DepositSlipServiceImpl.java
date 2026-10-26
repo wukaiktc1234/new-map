@@ -402,44 +402,68 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         financePeriodGuard.assertOpen(businessDateOfSlip(slipId));
         DepositSlip slip = requireSlip(slipId);
         requireStatus(slip, "存行", ST_RECEIVED);
-        if (dto == null || dto.getBankTransactionId() == null) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "bankTransactionId 不能为空");
-        }
         // 红线 2：幂等键 [depositSlip=<slip_no>] 已存在 → 400，且流水条数不变
         if (existsSlipTransferFlow(slip.getSlipNo())) {
             throw new BusinessException(ErrorCode.PARAM_ERROR,
                     "该缴款单已入账（幂等键 [depositSlip=" + slip.getSlipNo() + "] 已存在），不可重复存行");
         }
-
         long amount = slip.getActualAmount() == null ? 0L : slip.getActualAmount();
         if (amount <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR,
                     "实收金额必须大于 0 才能存行：slipNo=" + slip.getSlipNo() + " actualAmount=" + amount);
         }
-
-        BankTransaction txn = bankTransactionMapper.selectById(dto.getBankTransactionId());
-        if (txn == null || Integer.valueOf(1).equals(txn.getDeleted())) {
-            throw new BusinessException(ErrorCode.NOT_FOUND,
-                    "存行流水不存在：bankTransactionId=" + dto.getBankTransactionId());
+        if (dto == null) {
+            dto = new DepositToBankDTO();
         }
-        BankAccount bankAccount = bankAccountMapper.selectById(txn.getAccountId());
-        if (bankAccount == null || Integer.valueOf(1).equals(bankAccount.getDeleted())) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "存行流水对应账户不存在：accountId=" + txn.getAccountId());
-        }
-        if (bankAccount.getStatus() == null || bankAccount.getStatus() != 1) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "存行账户已停用：accountId=" + bankAccount.getAccountId());
-        }
-        // E3-9：存行账户的门店必须等于单据门店
-        if (bankAccount.getStoreId() == null || !bankAccount.getStoreId().equals(slip.getStoreId())) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "E3-9 校验失败：存行账户门店与缴款单门店不一致（slip.storeId=" + slip.getStoreId()
-                            + ", account.storeId=" + bankAccount.getStoreId() + "）");
-        }
-        // E3-8：存行金额必须等于关联外部流水金额
-        if (txn.getAmount() == null || txn.getAmount() != amount) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR,
-                    "E3-8 校验失败：存行金额与缴款单实收不一致（bank_transactions.amount=" + txn.getAmount()
-                            + ", actualAmount=" + amount + "）");
+        // 差异3：bankTransactionId **可选**
+        //   有值 → 老链路（校验存在性/账户门店/金额一致，E3-8/E3-9 全走）
+        //   为空 → 人工汇总模式：仍可存行（现金户→本店银行户），但 deposit_bank_txn_id 留 NULL，审计 matched=false
+        BankTransaction txn = null;
+        BankAccount bankAccount;
+        boolean txnMatched = false;
+        if (dto.getBankTransactionId() != null) {
+            txn = bankTransactionMapper.selectById(dto.getBankTransactionId());
+            if (txn == null || Integer.valueOf(1).equals(txn.getDeleted())) {
+                throw new BusinessException(ErrorCode.NOT_FOUND,
+                        "存行流水不存在：bankTransactionId=" + dto.getBankTransactionId());
+            }
+            bankAccount = bankAccountMapper.selectById(txn.getAccountId());
+            if (bankAccount == null || Integer.valueOf(1).equals(bankAccount.getDeleted())) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "存行流水对应账户不存在：accountId=" + txn.getAccountId());
+            }
+            if (bankAccount.getStatus() == null || bankAccount.getStatus() != 1) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "存行账户已停用：accountId=" + bankAccount.getAccountId());
+            }
+            // E3-9：存行账户的门店必须等于单据门店
+            if (bankAccount.getStoreId() == null || !bankAccount.getStoreId().equals(slip.getStoreId())) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "E3-9 校验失败：存行账户门店与缴款单门店不一致（slip.storeId=" + slip.getStoreId()
+                                + ", account.storeId=" + bankAccount.getStoreId() + "）");
+            }
+            // E3-8：存行金额必须等于关联外部流水金额
+            if (txn.getAmount() == null || txn.getAmount() != amount) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "E3-8 校验失败：存行金额与缴款单实收不一致（bank_transactions.amount=" + txn.getAmount()
+                                + ", actualAmount=" + amount + "）");
+            }
+            txnMatched = true;
+        } else {
+            // 人工汇总：优先用单据上已有的银行户，其次本店启用的银行账户（account_type=1）
+            bankAccount = slip.getBankAccountId() == null ? null : bankAccountMapper.selectById(slip.getBankAccountId());
+            if (bankAccount == null || Integer.valueOf(1).equals(bankAccount.getDeleted())) {
+                List<BankAccount> banks = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                        .eq(BankAccount::getStoreId, slip.getStoreId())
+                        .eq(BankAccount::getAccountType, 1)
+                        .eq(BankAccount::getStatus, 1)
+                        .eq(BankAccount::getDeleted, 0)
+                        .orderByAsc(BankAccount::getAccountId));
+                bankAccount = (banks == null || banks.isEmpty()) ? null : banks.get(0);
+            }
+            if (bankAccount == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "未指定 bankTransactionId 且门店没有启用的银行账户，无法存行：storeId=" + slip.getStoreId());
+            }
+            log.info("[METRIC] deposit_slip_manual_mode slipNo={} bankAccountId={}", slip.getSlipNo(), bankAccount.getAccountId());
         }
 
         BankAccount cashAccount = requireCashAccount(slip.getStoreId());
@@ -467,9 +491,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 .set(DepositSlip::getStatus, ST_DEPOSITED)
                 .set(DepositSlip::getCashAccountId, cashAccount.getAccountId())
                 .set(DepositSlip::getBankAccountId, bankAccount.getAccountId())
-                .set(DepositSlip::getDepositBankTxnId, txn.getTransactionId())
-                .set(DepositSlip::getDepositRefNo, dto.getDepositRefNo() != null
-                        ? dto.getDepositRefNo() : txn.getExternalTxnId())
+                .set(DepositSlip::getDepositBankTxnId, txnMatched ? txn.getTransactionId() : null)
+                .set(DepositSlip::getDepositRefNo, dto.getDepositRefNo() != null ? dto.getDepositRefNo()
+                        : (txnMatched ? txn.getExternalTxnId() : null))
                 .set(DepositSlip::getDepositedAt, now)
                 .set(DepositSlip::getRemark, mergeRemark(slip.getRemark(), dto.getRemark()))
                 .set(DepositSlip::getUpdateTime, now));
@@ -507,7 +531,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 "{\"slipNo\":\"" + slip.getSlipNo() + "\",\"statusBefore\":\"RECEIVED\",\"statusAfter\":\"DEPOSITED\""
                         + ",\"amount\":" + amount + ",\"cashAccountId\":" + cashAccount.getAccountId()
                         + ",\"bankAccountId\":" + bankAccount.getAccountId()
-                        + ",\"bankTransactionId\":" + txn.getTransactionId()
+                        + ",\"bankTransactionId\":" + (txnMatched ? txn.getTransactionId() : "null")
+                        + ",\"matched\":" + txnMatched
                         + ",\"flowNos\":[\"" + cashFlowNo + "\",\"" + bankFlowNo + "\"]}");
         log.info("[METRIC] deposit_slip_deposited slipNo={} amount={} cash={}({}→v{}) bank={}({}→v{})",
                 slip.getSlipNo(), amount,
@@ -1197,6 +1222,77 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /**
+    /** 差异3：某营业日的存行汇总（人工汇总模式）：当天 DEPOSITED 缴款单 + 绑/未绑流水拆分 + 银行进账。 */
+    @Override
+    @Transactional(readOnly = true)
+    public com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO dailySummary(java.time.LocalDate date) {
+        com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO vo =
+                new com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO();
+        java.time.LocalDate day = date == null ? java.time.LocalDate.now() : date;
+        List<DepositSlip> slips = depositSlipMapper.selectList(new LambdaQueryWrapper<DepositSlip>()
+                .eq(DepositSlip::getDeleted, 0)
+                .eq(DepositSlip::getStatus, ST_DEPOSITED)
+                .eq(DepositSlip::getBusinessDate, day)
+                .orderByAsc(DepositSlip::getSlipId));
+        java.util.Set<Long> bankAccountIds = new java.util.LinkedHashSet<>();
+        long totalCashCounted = 0L;
+        long matched = 0L;
+        long unmatched = 0L;
+        int unmatchedCount = 0;
+        if (slips != null) {
+            for (DepositSlip s : slips) {
+                com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.Row row =
+                        new com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.Row();
+                row.slipId = s.getSlipId();
+                row.slipNo = s.getSlipNo();
+                row.storeId = s.getStoreId();
+                row.actualAmount = s.getActualAmount() == null ? 0L : s.getActualAmount();
+                row.reserveFen = s.getReserveFen() == null ? 0L : s.getReserveFen();
+                row.cashCountedFen = s.getCashCountedFen() == null
+                        ? (row.actualAmount - row.reserveFen) : s.getCashCountedFen();
+                row.depositBankTxnId = s.getDepositBankTxnId();
+                vo.depositedSlips.add(row);
+
+                totalCashCounted += row.cashCountedFen;
+                if (row.depositBankTxnId == null) {
+                    unmatched += row.cashCountedFen;
+                    unmatchedCount++;          // 差异3：未绑流水必须显式计数，不得静默
+                } else {
+                    matched += row.cashCountedFen;
+                }
+                if (s.getBankAccountId() != null) {
+                    bankAccountIds.add(s.getBankAccountId());
+                }
+            }
+        }
+        vo.totalCashCountedFen = totalCashCounted;
+        vo.matchedFen = matched;
+        vo.unmatchedFen = unmatched;
+        vo.unmatchedCount = unmatchedCount;
+
+        // 银行进账：当日这些银行户的 bank_transactions 方向=1 合计
+        long bankInflow = 0L;
+        if (!bankAccountIds.isEmpty()) {
+            List<com.foodtraceability.entity.finance.recon.BankTransaction> bankTxns =
+                    bankTransactionMapper.selectList(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.BankTransaction>()
+                            .in(com.foodtraceability.entity.finance.recon.BankTransaction::getAccountId, bankAccountIds)
+                            .eq(com.foodtraceability.entity.finance.recon.BankTransaction::getDirection, 1)
+                            .eq(com.foodtraceability.entity.finance.recon.BankTransaction::getDeleted, 0)
+                            .eq(com.foodtraceability.entity.finance.recon.BankTransaction::getBusinessDate, day));
+            if (bankTxns != null) {
+                for (com.foodtraceability.entity.finance.recon.BankTransaction t : bankTxns) {
+                    bankInflow += t.getAmount() == null ? 0L : t.getAmount();
+                }
+            }
+        }
+        vo.bankInflowFen = bankInflow;
+        log.info("[METRIC] deposit_daily_summary day={} slips={} totalCashCounted={} matched={} unmatched={} unmatchedCount={} bankInflow={}",
+                day, vo.depositedSlips.size(), totalCashCounted, matched, unmatched, unmatchedCount, bankInflow);
+        return vo;
+    }
+
+
+    /**
      * N19-3b：本单「待确认归属」数据源。
      *
      * <p>pendingRefunds = 本单班次边界带内（距 start/end ≤ boundary 分钟）且尚无 attribution 的现金退款；
@@ -1395,9 +1491,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
 
-    /** N19-3a③：统计该门店现金户下 refund_time 为 NULL 的退款流水笔数（详情展示用） */
+    /** N19-3a③ / N19-3b：统计**本单班次窗口内** refund_time 为 NULL 的退款笔数（shift 为空则 0） */
     private Integer countMissingRefundTime(Long storeId, PosShift shift) {
-        if (storeId == null) {
+        if (storeId == null || shift == null || shift.getStartTime() == null || shift.getEndTime() == null) {
             return 0;
         }
         List<BankAccount> cashAccounts = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()

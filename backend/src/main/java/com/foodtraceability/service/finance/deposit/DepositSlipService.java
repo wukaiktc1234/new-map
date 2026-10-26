@@ -64,6 +64,9 @@ public interface DepositSlipService {
     /** N19-3b：本单「待确认归属」数据源（边界带内且无归属的退款 + 候选班次 + 缺时刻计数） */
     com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO pendingRefunds(Long slipId);
 
+    /** 差异3：某营业日的存行汇总（含未绑流水的单，unmatchedCount 不得静默为 0） */
+    com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO dailySummary(java.time.LocalDate date);
+
     /** SL11 导出 CSV */
     String exportCsv(DepositSlipQueryDTO query);
 }
