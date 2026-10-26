@@ -662,7 +662,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         // ==================================================================
         posRefundFlowRecorder.record(order.getOrderId(), record.getRefundId(), remaining,
                 null, order.getStoreId(), order.getPaymentMethod(),
-                SecurityUtils.getCurrentUserId(), operatorName, LocalDate.now(), "POS_REFUND");
+                SecurityUtils.getCurrentUserId(), operatorName, LocalDate.now(), "POS_REFUND",
+                record.getCompleteTime() != null ? record.getCompleteTime() : record.getCreateTime());
         log.info("新表订单退款完成: orderId={}, 退款 {} 分（已退 {} + 本次 {}）, 操作人={}",
                 order.getOrderId(), paid, refunded, remaining, operatorName);
         return Result.success(true);

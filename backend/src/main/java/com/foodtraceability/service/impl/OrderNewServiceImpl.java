@@ -514,7 +514,8 @@ public class OrderNewServiceImpl implements OrderNewService {
                     approveUserId,
                     SecurityUtils.getCurrentUsername() != null ? SecurityUtils.getCurrentUsername() : "system",
                     LocalDate.now(),
-                    "ORDER_REFUND_APPROVE");
+                    "ORDER_REFUND_APPROVE",
+                    refundRecord.getCompleteTime() != null ? refundRecord.getCompleteTime() : refundRecord.getCreateTime());
 
             // 发布退款事件（DF-022 修复）：触发下游财务联动
             // 监听器 OrderRefundEventListener 会在主事务提交后（AFTER_COMMIT）异步：

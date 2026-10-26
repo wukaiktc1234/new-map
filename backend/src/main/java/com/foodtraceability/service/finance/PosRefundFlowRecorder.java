@@ -74,12 +74,16 @@ public class PosRefundFlowRecorder {
      */
     public Outcome record(String orderId, Long refundRecordId, long amountFen, Long accountIdHint,
                           Long storeId, Integer paymentMethod, Long operatorId, String operatorName,
-                          LocalDate businessDate, String scene) {
+                          LocalDate businessDate, String scene, java.time.LocalDateTime refundOccurredAt) {
         if (refundRecordId == null) {
             throw new BusinessException(500, "退款入账失败：缺少退款单号（refund_record_id 为幂等键）");
         }
         if (amountFen <= 0) {
             throw new BusinessException(500, "退款入账失败：退款金额必须为正数，收到 " + amountFen + " 分");
+        }
+        // N19-2③：退款发生时刻必须来自退款单本身（complete_time 优先，其次 create_time），**禁止回落 now()**
+        if (refundOccurredAt == null) {
+            throw new BusinessException(400, "退款发生时刻缺失");
         }
         LocalDate date = businessDate != null ? businessDate : LocalDate.now();
         // TD-39：期间封账 → 409，调用方整体回滚
@@ -124,6 +128,7 @@ public class PosRefundFlowRecorder {
         flow.setStatus(2);
         flow.setOrderId(orderId);
         flow.setRefundRecordId(refundRecordId);
+        flow.setRefundTime(refundOccurredAt.atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime());   // N19-2③
         flow.setRemark("POS退款：退款单#" + refundRecordId
                 + (orderId == null ? "" : " 订单=" + orderId) + " [" + scene + "]");
         flow.setCreateUserId(operatorId);
