@@ -359,9 +359,47 @@ class SlipUi:
                     disabled_before = btn.is_disabled()
                     shifts = page.locator(rrow + ' [data-test="attribution-shift"] [data-shift-id]')
                     n_shift = shifts.count()
-                    if n_shift > 0:
-                        shifts.first.click()
-                    page.locator(rrow + ' [data-test="attribution-reason"] input').first.fill("E2E 归属确认原因")
+                    if n_shift == 0:
+                        shifts = page.locator(rrow + ' .el-radio-button')
+                        n_shift = shifts.count()
+                    # 【教训·必须保留】必须选「本单所属班次」（data-shift-id == slip.shiftId）：
+                    #   按 A39 口径 attribution.shift_id 必须等于 slip.shift_id 才计入，
+                    #   归属到别的班次（上一/下一班次）本单的 rcf 不会变 → 断言必然误判。
+                    #   （2026-10-26 实测：选到 355「上一班次」时 rcf 恒为 0，选中本单 357 后 0 → 2500）
+                    own_shift = vo.get("shiftId")
+                    picked = None
+                    for i in range(n_shift):
+                        sid_attr = shifts.nth(i).get_attribute("data-shift-id")
+                        if str(sid_attr) == str(own_shift):
+                            picked = shifts.nth(i)
+                            break
+                    if picked is None and n_shift > 0:
+                        picked = shifts.first
+                    if picked is not None:
+                        picked.click()
+                        print("    · 已选候选班次：data-shift-id=%s（本单班次=%s）"
+                              % (picked.get_attribute("data-shift-id"), own_shift))
+                    # 原因输入框：data-test 可能落在 el-input 根节点或内部 input 上，多种选择器兜底
+                    reason_loc = None
+                    for sel in (rrow + ' [data-test="attribution-reason"] input',
+                                rrow + ' input[data-test="attribution-reason"]',
+                                rrow + ' [data-test="attribution-reason"]',
+                                rrow + ' .el-input input'):
+                        try:
+                            cand = page.locator(sel)
+                            if cand.count() > 0:
+                                reason_loc = cand.first
+                                break
+                        except Exception:
+                            continue
+                    if reason_loc is None:
+                        self.step("④ 原因输入框定位", False, "所有候选选择器都没命中（attribution-reason）")
+                    else:
+                        try:
+                            reason_loc.click(timeout=5000)
+                            reason_loc.fill("E2E 归属确认原因")
+                        except Exception as e:
+                            print("    · 原因输入失败：%s" % str(e)[:90])
                     time.sleep(0.5)
                     disabled_after = btn.is_disabled()
                     self.step("④ 三选一 + 原因≥4 字 → 提交按钮可用", (not disabled_after),
@@ -390,18 +428,25 @@ class SlipUi:
             try:
                 page2.goto(self.a.admin + "/finance/deposit-slips/%d" % slip_id,
                            wait_until="domcontentloaded", timeout=120000)
+                # ⑤ 口径（lead 定案·方式1变体）：无权限时渲染**占位块** + disabled 按钮 + 「无权限」文案，
+                #    且前端不再请求 pending-refunds（避免 403）。断言三点 + 无 5xx/错误 toast。
+                lock_ok = btn_ok = False
+                body_txt = ""
                 try:
-                    page2.wait_for_selector('[data-test="attribution-row"]', timeout=15000)
-                    row2 = page2.locator('[data-test="attribution-row"]').first
-                    btn2 = row2.locator('[data-test="attribution-confirm"]').first
-                    disabled2 = btn2.is_disabled()
+                    page2.wait_for_selector('.slip-attribution__lock', timeout=15000)
+                    lock_txt = (page2.locator('.slip-attribution__lock').first.inner_text() or "").strip()
+                    lock_ok = "无权限" in lock_txt
+                    btn2 = page2.locator('[data-test="attribution-confirm"]').first
+                    btn_ok = btn2.count() > 0 and btn2.is_disabled()
                     body_txt = page2.locator("body").inner_text()
-                    has_no_perm = "无权限" in body_txt
-                    self.step("⑤ 收银员无 confirm-attribution → 按钮 disabled +「无权限」",
-                              disabled2 and has_no_perm,
-                              "按钮 disabled=%s；页面含「无权限」=%s" % (disabled2, has_no_perm))
                 except Exception as e:
-                    self.not_ready("⑤ 收银员视角", "未渲染归属区（%s）" % str(e)[:100])
+                    body_txt = page2.locator("body").inner_text()
+                    print("    · ⑤ 占位块定位失败：%s" % str(e)[:100])
+                err_bits = [s for s in ("500", "操作失败", "系统异常", "加载失败") if s in body_txt]
+                self.step("⑤ 收银员无 confirm-attribution → 占位块含「无权限」+ 按钮 disabled + 无错误提示",
+                          lock_ok and btn_ok and not err_bits,
+                          "lock 区块含「无权限」=%s；attribution-confirm disabled=%s；页面错误文案=%s"
+                          % (lock_ok, btn_ok, err_bits if err_bits else "无"))
             finally:
                 browser2.close()
         return self.summary()
