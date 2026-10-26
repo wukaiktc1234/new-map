@@ -2599,3 +2599,15 @@ SELECT count(*) FROM (
 - **NEW-26**：退款触发 KDS 联动（菜品标记 REFUNDED，复用现有 KDS 通道）。
 - **NEW-27**：报损确认由后厨端执行（KDS 弹窗确认，报损单挂退款单）。
 - 排序：**先 NEW-19（资金正确性）→ 再 NEW-25/26/27（现场体验与损耗联动）**。
+
+### 63.16 NEW-29 部分唯一索引 + A32-DIST 口径（2026-10-26 14:30）
+
+**NEW-29：`uk_recon_statements_period` 缺 `deleted` 过滤 → 软删后无法重新生成对账表**
+- 索引实况（`pg_indexes`）：`uk_recon_statements_period (account_id, period_start, period_end)`、`uk_recon_statements_no (statement_no)` 均为**全量唯一**（无 `WHERE deleted=0`），且都是 **UNIQUE CONSTRAINT**（不能直接 `DROP INDEX`，须先 `ALTER TABLE … DROP CONSTRAINT`）。
+- 处置（选①部分唯一索引）：`ALTER TABLE … DROP CONSTRAINT uk_recon_statements_period/no` → `CREATE UNIQUE INDEX uk_recon_statements_period_live … WHERE deleted=0`、`uk_recon_statements_no_live … WHERE deleted=0`；备份 `scripts/db-fix/backup/20261026-pre-new29-schema.sql`（schema-only）。
+- **同类风险（未改，待定）**：`uk_recon_items_statement_subject (statement_id, category, COALESCE(flow_id,0), COALESCE(transaction_id,0))`、`uk_recon_items_subject (run_id, side, …)`、`uk_recon_diff_subject (run_id, difference_type, …)` 同样缺 `deleted=0` 过滤 → 软删 items 后同主体无法再插入（与 107/108 软删 80 条 items 的场景同类）。
+
+**A32-DIST 口径（补答）**
+- `total` = **退款流水条数**（`fund_flows WHERE deleted=0 AND flow_category=2 AND refund_record_id IS NOT NULL`），**不是退款单数**（一张退款单理论上对应一条流水，1:1，但口径定义以流水为准）。
+- 32 → 36 的增量来自**并行 E2E 新产生的退款流水**（`e2e_refund_entries` 的三入口 + 多笔部分退款）。**与 NEW-28 无关**：A32-DIST 不读 `refund_status`（全文 0 命中），NEW-28 只改状态。
+- 六桶：`matched`（已与银行退款配对）/ `cash-B`（现金户待缴款单闭环）/ `pending-B` / `pending-D` / `awaiting`（当日待匹配窗口内）/ `orphan`，互斥且合计 = total。
