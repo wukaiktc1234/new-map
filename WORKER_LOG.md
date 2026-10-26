@@ -2576,3 +2576,26 @@ SELECT count(*) FROM (
 **NEW-19 设计 v3 另两处修正**
 - A32 只查银行户（`account_type=1`）、A36 只查现金户（`account_type=2`），**列集合互斥**；撤 `account_type=1` 时必须把分流写进两条 SQL，不能两条都覆盖全部账户。
 - 断言增加「分母」：A30/A32/A33/A36/A37/A39 必须输出被检查行数，**分母=0 时输出 `[INFO] skipped_no_data`，不得输出 `[PASS]`**。
+
+### 63.15 现金户退出调节表核查 + 退款权限码 + 时间语义（2026-10-26 14:00）
+
+**① 现金户 statement 实况：无需归档**
+- `SELECT count(*) … account_type=2 AND deleted=0` = **0**（唯一一张现金户 statement `107`/account 20 早已软删 `deleted=1`）→ **归档动作是 no-op**，无历史数据需要迁移。
+- 归档方式定案（供未来使用）：**软删 `deleted=1` + `reconciliation_items` 同步软删**（与 statement 107/108 的处理一致），**不改 status 为 ARCHIVED**（避免新增枚举值影响前端三态徽标）；已软删的 107 已符合此口径。
+- A19/A32 无变化（`deleted=0` 过滤生效），当前 22 判定项仍全 PASS。
+
+**② `order:refund:initiate` 权限码：已建并绑 3 角色**
+- `INSERT 0 1`（permissions）+ `INSERT 0 3`（role_permissions）→ 绑定 **ROLE_CASHIER / ROLE_STORE_MANAGER / ROLE_FINANCE_DIRECTOR**。
+- **状态机支持「待审批」中间态**（`OrderNewServiceImpl`）：`0 = 待审核`（`:410`）、`3 = 已退款`（`:470`）、`2 = 已拒绝`（`:525`）→ **不阻塞**。
+- **⚠ 由此暴露一个真实缺陷（P1，未修）**：POS 即时退款路径写入 `order_refund_records.refund_status = 2`，按上述枚举 **2 = 已拒绝** → 成功的 POS 退款在库里被标成「已拒绝」（当前库 `refund_status` 分布：2 → 29 行、3 → 7 行）。记 **NEW-28**。
+
+**③ 时间语义（写入 WORKER_LOG，作为 NEW-19 配对依据）**
+- **POS 即时退款**：`create_time`（退款单创建）与 `complete_time`（退款完成）**同一事务内写入，差值 0 秒**（实测 `diff > 60s` 行数 = **0**）。
+- **后台申请→审批**：`create_time` = **申请时刻**（`applyRefund:410` 写 refund_status=0）；`complete_time` = **资金流出时刻**（`approveRefund:470` 置 3）。两者可差数分钟到数天 → **配对必须用 `complete_time`**。
+- 回填守卫实测：`order_refund_records` 共 **36** 行，`complete_time IS NULL` = **0**，`|complete_time − create_time| > 60s` = **0** → 当前回填无歧义、无时钟偏差。
+
+**④ 三项待办（backlog，不执行）**
+- **NEW-25**：NFC 工牌快速授权（员工卡绑定表 + POS 读卡 + 挂失换卡）。
+- **NEW-26**：退款触发 KDS 联动（菜品标记 REFUNDED，复用现有 KDS 通道）。
+- **NEW-27**：报损确认由后厨端执行（KDS 弹窗确认，报损单挂退款单）。
+- 排序：**先 NEW-19（资金正确性）→ 再 NEW-25/26/27（现场体验与损耗联动）**。
