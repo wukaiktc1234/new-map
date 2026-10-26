@@ -803,15 +803,15 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                 .ge(FundFlow::getBusinessDate, shift.getStartTime().toLocalDate().minusDays(1))
                 .le(FundFlow::getBusinessDate, shift.getEndTime().toLocalDate().plusDays(1)));
 
-        // N19-2④：本班次已人工确认归属的退款单（边界退款只能靠人工归属纳入）
-        java.util.Set<Long> attributedRefundIds = new java.util.HashSet<>();
+        // N19-2④：人工归属 **优先于** 窗口规则 —— 一笔退款被归属到某班次后，
+        // 只在该班次计入；其它班次即使窗口覆盖也不再计入（否则迁出侧会残留，正是 A39 抓的缺陷）。
+        java.util.Map<Long, Long> attributionByRefund = new java.util.HashMap<>();
         List<com.foodtraceability.entity.finance.recon.RefundShiftAttribution> attributions =
-                refundShiftAttributionMapper.selectList(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.RefundShiftAttribution>()
-                        .eq(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getShiftId, shift.getShiftId()));
+                refundShiftAttributionMapper.selectList(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.RefundShiftAttribution>());
         if (attributions != null) {
             for (com.foodtraceability.entity.finance.recon.RefundShiftAttribution a : attributions) {
                 if (a.getRefundRecordId() != null) {
-                    attributedRefundIds.add(a.getRefundRecordId());
+                    attributionByRefund.put(a.getRefundRecordId(), a.getShiftId());
                 }
             }
         }
@@ -825,12 +825,13 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             for (FundFlow flow : flows) {
                 long amount = flow.getAmount() == null ? 0L : flow.getAmount();
                 Long refundRecordId = flow.getRefundRecordId();
-                boolean attributedHere = refundRecordId != null && attributedRefundIds.contains(refundRecordId);
-                // ① 已人工归属本班次 → 无条件计入（边界退款也只能这样进来）
-                if (attributedHere) {
+                Long attributedShift = refundRecordId == null ? null : attributionByRefund.get(refundRecordId);
+                // (b) 人工归属到本班次 → 计入（与 A39 的 OR 语义一致）
+                if (attributedShift != null && attributedShift.equals(shift.getShiftId())) {
                     fen += amount;
                     continue;
                 }
+                // (a) 否则按窗口规则：窗口内且不在边界带才计入
                 if (flow.getRefundTime() != null) {
                     LocalDateTime rt = LocalDateTime.ofInstant(flow.getRefundTime().toInstant(), java.time.ZoneId.systemDefault());
                     if (rt.isBefore(shift.getStartTime()) || rt.isAfter(shift.getEndTime())) {
@@ -855,7 +856,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             }
         }
         log.info("[METRIC] refund_component_computed shiftId={} cashAccountId={} refundComponentFen={} flows={} attributed={} boundaryPending={}",
-                shift.getShiftId(), cashAccountId, fen, flows == null ? 0 : flows.size(), attributedRefundIds.size(), boundaryPending.size());
+                shift.getShiftId(), cashAccountId, fen, flows == null ? 0 : flows.size(), attributionByRefund.size(), boundaryPending.size());
         log.info("[METRIC] refund_component_fallback_by_date count={}", fallbackByDate);
 
         // N19-2④：边界退回落审计（待人工确认归属），失败不影响出单
@@ -1028,13 +1029,15 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         if (shift == null || Integer.valueOf(1).equals(shift.getDeleted())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "班次不存在：shiftId=" + shiftId);
         }
-        LocalDateTime now = LocalDateTime.now();
         Long operatorId = currentOperatorId();
 
         com.foodtraceability.entity.finance.recon.RefundShiftAttribution existing =
                 refundShiftAttributionMapper.selectOne(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.RefundShiftAttribution>()
                         .eq(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getRefundRecordId, refundRecordId)
                         .last("LIMIT 1"));
+        Long oldShiftId = existing == null ? null : existing.getShiftId();
+        Long oldSlipId = existing == null ? null : existing.getSlipId();
+        boolean changed = false;
         if (existing == null) {
             com.foodtraceability.entity.finance.recon.RefundShiftAttribution row =
                     new com.foodtraceability.entity.finance.recon.RefundShiftAttribution();
@@ -1068,26 +1071,73 @@ public class DepositSlipServiceImpl implements DepositSlipService {
             if (updated == 0) {
                 throw new ConflictException("该退款已被确认，请刷新");
             }
+            changed = true;
             audit(slip, "REFUND_SHIFT_ATTRIBUTION_CHANGED",
-                    "退款归属变更：refundRecordId=" + refundRecordId + " oldShiftId=" + existing.getShiftId()
+                    "退款归属变更：refundRecordId=" + refundRecordId + " oldShiftId=" + oldShiftId
                             + " -> newShiftId=" + shiftId + " 原因=" + reason,
-                    "{\"refundRecordId\":" + refundRecordId + ",\"oldShiftId\":" + existing.getShiftId()
+                    "{\"refundRecordId\":" + refundRecordId + ",\"oldShiftId\":" + oldShiftId
                             + ",\"newShiftId\":" + shiftId + ",\"slipId\":" + slipId + "}");
         }
 
-        long expected = slip.getExpectedAmount() == null ? 0L : slip.getExpectedAmount();
-        long actual = slip.getActualAmount() == null ? 0L : slip.getActualAmount();
-        Long storeForComponent = slip.getStoreId();   // PosShift 无 store_id，按缴款单门店取现金户
-        RefundComponent component = sumShiftRefundComponent(shift, storeForComponent, false);   // 确认重算：不重复写 PENDING 审计
+        // 金额一律「按公式重算」，不做增量：CONFIRMED 重算目标班次；CHANGED 旧/新两侧都重算
+        recomputeSlipByShift(shiftId);
+        if (changed && oldShiftId != null && !oldShiftId.equals(shiftId)) {
+            recomputeSlipByShift(oldShiftId);
+        }
+        if (oldSlipId != null && !oldSlipId.equals(slipId)) {
+            recomputeSlipRefundComponent(oldSlipId);
+        }
+        log.info("[METRIC] refund_attribution_done refundRecordId={} newShiftId={} oldShiftId={} changed={}",
+                refundRecordId, shiftId, oldShiftId, changed);
+        return detail(slipId);
+    }
+
+    /** 按班次找缴款单并重算（一班一单，TD-33） */
+    private void recomputeSlipByShift(Long shiftId) {
+        if (shiftId == null) {
+            return;
+        }
+        DepositSlip target = depositSlipMapper.selectOne(new LambdaQueryWrapper<DepositSlip>()
+                .eq(DepositSlip::getShiftId, shiftId)
+                .eq(DepositSlip::getDeleted, 0)
+                .last("LIMIT 1"));
+        if (target == null) {
+            log.info("[METRIC] refund_component_recompute_skipped reason=no_slip_for_shift shiftId={}", shiftId);
+            return;
+        }
+        recomputeSlipRefundComponent(target.getSlipId());
+    }
+
+    /**
+     * 重算某张缴款单的退款构成与净差异（唯一公式，与巡检 A39 同口径）：
+     * refund_component = Σ 同门店现金户的现金退款流水，且
+     *     (a) refund_time ∈ [shift.start + boundary, shift.end - boundary]
+     *     或 (b) 该 refund_record_id 的归属记录 shift_id = 本缴款单的 shift_id
+     *     （refund_time 为空的历史行 → 退化为 business_date 落在班次日期区间）
+     * difference_net = actual - (expected - refund_component)
+     */
+    private void recomputeSlipRefundComponent(Long targetSlipId) {
+        DepositSlip target = depositSlipMapper.selectById(targetSlipId);
+        if (target == null || target.getShiftId() == null) {
+            return;
+        }
+        PosShift shift = posShiftMapper.selectById(target.getShiftId());
+        if (shift == null) {
+            log.info("[METRIC] refund_component_recompute_skipped reason=no_shift slipId={} shiftId={}",
+                    targetSlipId, target.getShiftId());
+            return;
+        }
+        RefundComponent component = sumShiftRefundComponent(shift, target.getStoreId(), false);
+        long expected = target.getExpectedAmount() == null ? 0L : target.getExpectedAmount();
+        long actual = target.getActualAmount() == null ? 0L : target.getActualAmount();
         long differenceNet = differenceNetOf(actual, expected, component.fen);
         depositSlipMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DepositSlip>()
-                .eq(DepositSlip::getSlipId, slipId)
+                .eq(DepositSlip::getSlipId, targetSlipId)
                 .set(DepositSlip::getRefundComponentFen, component.fen)
                 .set(DepositSlip::getDifferenceNetFen, differenceNet)
-                .set(DepositSlip::getUpdateTime, now));
-        log.info("[METRIC] deposit_slip_attribution_recomputed slipId={} refundComponent={} differenceNet={}",
-                slipId, component.fen, differenceNet);
-        return detail(slipId);
+                .set(DepositSlip::getUpdateTime, LocalDateTime.now()));
+        log.info("[METRIC] refund_component_recomputed slipId={} shiftId={} refundComponent={} expected={} actual={} differenceNet={}",
+                targetSlipId, target.getShiftId(), component.fen, expected, actual, differenceNet);
     }
 
     /** 缴款单号：DS + yyyyMMdd + 4 位序号（复用 order_sequence 号段，避免并发撞号） */
