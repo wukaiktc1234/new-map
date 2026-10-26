@@ -289,16 +289,56 @@ class StoreReconE2E:
             self.page.goto(self.a.admin + "/finance/store-recon", wait_until="domcontentloaded", timeout=120000)
             # 页面结构：店铺输入框（默认=本店）+「查询」按钮
             filled = False
+            # A 类加固（lead 批准）：先等页面「当前门店」就绪（userInfo 异步），再 fill + 校验值，不一致重试（最多 3 次，含 JS 通道）
+            try:
+                self.page.wait_for_function(
+                    '() => !!document.querySelector("input[placeholder*=门店]")', timeout=15000)
+            except Exception:
+                pass
+            try:
+                self.page.wait_for_selector('text=当前门店', timeout=10000)
+            except Exception:
+                pass
+            store_input = None
             for sel in ('input[placeholder*="门店ID"]', 'input[placeholder*="门店"]',
                         '.store-recon__filters .el-input__inner:not([placeholder*="日期"])'):
                 try:
                     loc = self.page.locator(sel)
                     if loc.count() > 0:
-                        loc.first.fill(str(self.a.other_store), timeout=8000)
-                        filled = True
+                        store_input = loc.first
                         break
                 except Exception:
                     continue
+            want = str(self.a.other_store)
+            for attempt in (1, 2, 3):
+                if store_input is None:
+                    break
+                try:
+                    store_input.click(timeout=5000)
+                    store_input.fill(want, timeout=8000)
+                    v = (store_input.input_value(timeout=3000) or "").strip()
+                    if v != want:
+                        # JS 通道：直接写 value 并派发 input/change，绕过组件重渲染
+                        self.page.evaluate(
+                            """(args) => {
+                                const el = document.querySelector(args.sel);
+                                if (!el) return;
+                                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                                setter.call(el, args.val);
+                                el.dispatchEvent(new Event('input', { bubbles: true }));
+                                el.dispatchEvent(new Event('change', { bubbles: true }));
+                            }""",
+                            {"sel": 'input[placeholder*="门店"]', "val": want})
+                        time.sleep(0.3)
+                        v = (store_input.input_value(timeout=3000) or "").strip()
+                    if v == want:
+                        filled = True
+                        break
+                    print("    · AC-49c fill 校验失败（第 %d 次）：输入框值=%r，期望 %r → 重试"
+                          % (attempt, v, want))
+                except Exception as e:
+                    print("    · AC-49c fill 异常（第 %d 次）：%s" % (attempt, str(e)[:90]))
+                time.sleep(0.5)
             clicked = False
             for sel in ('button:has-text("查询")', '.store-recon button.el-button--primary',
                         '[data-test="btn-query"]', 'button.el-button--primary'):
@@ -318,12 +358,18 @@ class StoreReconE2E:
                     self.page.locator('button:has-text("查询")').first.click(timeout=8000)
             except Exception:
                 pass
-            time.sleep(2.5)
+            # A 类加固（lead 批准）：forbidden 是 v-if 渲染（无 data-visible 属性）→ 等元素可见（最多 15s）
+            okk = False
             try:
-                self.page.wait_for_selector('[data-test="store-recon-forbidden"]', timeout=20000)
+                self.page.wait_for_selector('[data-test="store-recon-forbidden"]',
+                                            state="visible", timeout=15000)
                 okk = self.page.locator('[data-test="store-recon-forbidden"]').count() > 0
-            except Exception:
-                okk = False
+            except Exception as e:
+                print("    · AC-49c 等待 forbidden 可见失败：%s" % str(e)[:120])
+                try:
+                    okk = self.page.locator('[data-test="store-recon-forbidden"]').count() > 0
+                except Exception:
+                    okk = False
             txt = ""
             try:
                 txt = (self.page.locator('[data-test="store-recon-forbidden"]').first.inner_text() or "")[:80]
