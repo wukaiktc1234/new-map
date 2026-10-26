@@ -178,3 +178,32 @@ receive 接口：body 只有 receivedAmountFen，无 reserve 入参、无「请�
 
 **⑥ 本条定性：需要修（P1），且优先级高于 1.4 的结论** —— 因为「界面缺失」+「expected 不含备用金」是**双重缺口**：即使补了提示，若 opening_cash 无输入入口，提示的数字也不可信。
 
+
+
+## 六、对账系统 N:1 汇总匹配能力（差异 3 修法前提）
+
+### 6.1 匹配逻辑代码位置
+
+- 权威实现：`ReconBatchExecutor#match` (`ReconBatchExecutor.java:330`)，分层：
+  - **L1** `:332-356`：渠道流水号（去前缀）**精确命中，1:1 自动**；候选取 `.size()==1` 才配对，`>1` 落 AMBIGUOUS；
+  - **TIME_DIFF** `:358-389`：同账户 + **金额完全相等** + 时间窗，**1:1**（跨日窗 6h）；无身份交集落 AMBIGUOUS；
+  - 汇总：`finalizeRun:738-756` 只做 `matchedCount/matchedAmount` 统计。
+- 另一条（退款专项）：`ReconciliationStatementServiceImpl:513-534` 贪心 1:1（`txnAmount == flowAmount` 命中即 `break`）。
+
+### 6.2 是否支持「多笔内部转账汇总匹配一笔银行流水」—— **不支持**
+
+代码中所有配对都是**单个 internal ↔ 单个 external**（`candidates.size()==1` / `amount` 严格相等 / 命中即 `break`），**没有任何聚合或拆分逻辑**（无 sum-then-match、无部分匹配、无 allocation）。
+
+→ **差异 3 必须走批次改造**（`deposit_batch` + `deposit_slip_allocation`），或新增 N:1 匹配能力（工作量更大且影响既有 L1/L2/TIME_DIFF 三层语义）。
+
+### 6.3 deposit 接口 `bankTransactionId` 是否强制必填 —— **强制**
+
+~~~java
+DepositToBankDTO.java:8   @NotNull(message = "bankTransactionId 不能为空")
+DepositToBankDTO.java:9   private Long bankTransactionId;
+DepositSlipServiceImpl.java:381   requireStatus(slip, "存行", ST_RECEIVED);
+DepositSlipServiceImpl.java:383   throw new BusinessException(ErrorCode.PARAM_ERROR, "bankTransactionId 不能为空");
+~~~
+
+→ DTO 注解 + 服务双重强制；**不支持「只标记已存行、后续财务汇总核对」**。
+
