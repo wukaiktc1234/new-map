@@ -2611,3 +2611,24 @@ SELECT count(*) FROM (
 - `total` = **退款流水条数**（`fund_flows WHERE deleted=0 AND flow_category=2 AND refund_record_id IS NOT NULL`），**不是退款单数**（一张退款单理论上对应一条流水，1:1，但口径定义以流水为准）。
 - 32 → 36 的增量来自**并行 E2E 新产生的退款流水**（`e2e_refund_entries` 的三入口 + 多笔部分退款）。**与 NEW-28 无关**：A32-DIST 不读 `refund_status`（全文 0 命中），NEW-28 只改状态。
 - 六桶：`matched`（已与银行退款配对）/ `cash-B`（现金户待缴款单闭环）/ `pending-B` / `pending-D` / `awaiting`（当日待匹配窗口内）/ `orphan`，互斥且合计 = total。
+
+### 63.17 N19-1 收口：两项回归定性 + NEW-29 运行时验证（2026-10-26 14:35）
+
+**回归① `e2e_store_recon` AC-49c —— 不是回归（git 回退对比）**
+- HEAD `9b6731b`：**10 PASS / 0 FAIL，EXIT=0**；基准 `d734cc5`（回退 backend 重编译重启）：**10 PASS / 0 FAIL，EXIT=0**；AC-49c 原文两次完全一致（`forbidden 文案=无权访问其他门店数据`）。
+- 归因：`forbidden` 来自 `data_scope` 越权判定，与调节表存在与否无关 → `generate()` 返回 null 不影响该断言。首轮 `sr=1` 为并发/时序抖动，**已澄清**。
+
+**回归② `e2e_statement_flow` —— 真回归但属脚本未适配**
+- HEAD：**EXIT=2**（`e2e_statement_flow.py:181 int(None)`）；基准 `d734cc5`：**14 PASS / EXIT=0**。
+- 根因：脚本默认用**现金户 20** 调 `POST /v1/finance/recon/statements` → N19-1 令其返回 `data=null` → `int(None)` 崩。产品行为符合设计。
+- 修复（仅 `scripts/qa`）：默认改银行户（自动挑当日有非豁免流水，实测 24）+ 新增 `n19_cash_skip()`（现金户断言 `code=0 且 data=null`）+ `ensure_statement()` 对 `data=None` 走 `not_ready`。
+- 修复后：**16 PASS / 0 FAIL，EXIT=0**（14 原有 + 2 新增）。
+
+**NEW-29 运行时验证：PASS**
+- 前置：`statement_id=108 (account 24, 2026-10-26, deleted=1)` 仍在库；索引已改为 `uk_recon_statements_period_live/no_live … WHERE deleted=0`。
+- 请求 account 24 + 2026-10-26 → `HTTP 200 code=0 data={statementId:116, statementNo:BS2026100007, status:DRAFT}`；库内 116(deleted=0) 与 108(deleted=1) **共存**，**未触发 DuplicateKey**。
+- 夹具清理：116 的 3 条 items + statement 本身已**软删**（守卫 `status=DRAFT`），复核 108/116 均 `deleted=1`。
+
+**NEW-15 追加范围**：`[RECON] skip cash account` 与 `[RECON_REFUND_PAIRING]` 同因（logger 未落盘/级别过滤）→ 关键判定点需补**可查审计或指标**，否则 E2E 只能以 `data=null` 间接判据。
+
+**同类索引风险（NEW-30，待做）**：`uk_recon_items_statement_subject`、`uk_recon_items_subject`、`uk_recon_diff_subject` 仍缺 `deleted=0` 过滤 → 软删后同主体无法再插入（与 NEW-29 同类）。
