@@ -176,3 +176,59 @@ UPDATE fund_flows f SET refund_time = r.refund_time
 | A39 | 缴款单恒等式 | `count(现金户且非 DRAFT 的 deposit_slips)` | 同上 |
 
 > 实现要求：判定行格式统一为 `[PASS]/[FAIL]/[INFO skipped_no_data]`，且**分母列随行输出**（如 `denom=12`），便于审计回溯。
+
+## 12. v3 补充（2026-10-26 13:40，5 点确认后）
+
+### 12.1 人工确认归属的权限码：**新建，不复用**
+
+- 不复用 `finance:deposit-slip:submit`（提交缴款单）/`receive`（收款确认）：这两个是**资金交接**语义，人工归属是**账务裁决**，混用会让「谁能改账」无法审计；
+- 新建 **`finance:deposit-slip:confirm-attribution`**（另加 `finance:deposit-slip:confirm-attribution:view` 如需只读），绑定角色：财务主管 + 店长（收银员**不可**自行终审）；
+- **因此 P2-8 对该端点是阻塞项**（需建码 + 绑角色 + `@PreAuthorize`），已列 §12.5。
+
+### 12.2 三个隐含假设的处置
+
+**A. `refund_component > expected_amount` 时怎么办**
+→ **不拒绝生成缴款单**：现金退款可能来自**上一班次遗留现金**（本班次无对应收款），拒绝生成会卡住交班。做法：
+- 照常生成缴款单，`refund_component_fen` 如实写入；
+- `difference_net_fen` 允许为负（表示「应存净额为负」，即本班次净流出）；
+- **页面标红 + 文案**：「本班次退款额（X 分）超过应存现金（Y 分），差额来自上一班次遗留现金或异常，请核对」；
+- **A39 不因此判红**（恒等式仍成立）；新增 **A40（判定）**：`refund_component_fen > expected_amount` 的缴款单数 → 期望 0（超出即需人工解释，**不是静默**）。
+
+**B. 同一退款能否归属两个班次**
+→ **只能选一个**（互斥）。`refund_record_id` 在 `deposit_slips` 的归属是**单值**，实现上：
+- 归属记录写 `refund_shift_attribution(refund_record_id UNIQUE, shift_id, slip_id, operator, confirmed_at, reason)`；`UNIQUE(refund_record_id)` 保证**一个退款只归一个班次**；
+- 若要拆分（少见：跨班次的合并退款），**不支持**，需人工拆成两笔退款单后再归属 —— 避免同一笔钱被两个班次各算一次。
+
+**C. 人工确认的幂等与锁**
+| 问题 | 处置 |
+|---|---|
+| 确认后能否改 | **可改，但留痕**：再次确认覆盖 `refund_shift_attribution`，并追加审计 `REFUND_SHIFT_ATTRIBUTION_CHANGED`（记录 old/new shift_id、operator、reason）；不计「重复确认」为错误 |
+| 确认期间能否生成缴款单 | **能生成**，但该退款**不计入任何班次**的 `refund_component`，缴款单标 `pending_manual_count > 0` + 页面提示；确认后**重算**该缴款单（不需要重新生成） |
+| 未确认期间缴款单是锁定还是用临时值 | **不锁定、不用临时值**：`refund_component_fen` 只统计「已确认/自动归属」的退款，待确认的不计入（宁少不多，避免虚假平衡）；`A38` INFO 显示待确认笔数 |
+| 并发 | 确认操作用 `refund_shift_attribution` 唯一键 + 乐观锁（`version`）；两个操作员同时确认同一退款 → 后者 409「该退款已被确认，请刷新」 |
+
+### 12.3 断言分母与验收标准（实测）
+
+- 当前分母：**A30 = 33**（`orders.refund_amount>0` 且未删）、**A33 = 33**（同源）、**A32 = 36**（`flow_category=2` 且 `refund_record_id` 非空）；
+- **两条分母均 > 0** → 引入「分母=0 输出 INFO」后，**当前 PASS/INFO 计数不变**（仍 22 判定项 PASS、13 INFO），验收标准**保持**「22 判定项全 PASS」；
+- 该机制的价值在**未来**：若数据被清空，断言会输出 `[INFO] skipped_no_data` 而非 `[PASS]`，避免「没数据 = 都对」的假绿。
+
+### 12.4 权限对表复核（用 information_schema 自查后）
+
+- 真实结构：`role_permissions(id, role_id varchar, permission_id **varchar**, deleted smallint)`；`permissions.permission_id` 为 **bigint**，业务键是 `permission_id_str`；
+- **原先查询返回空的原因**：`role_permissions.permission_id` 是 **varchar**，与 `permissions.permission_id`（bigint）类型不匹配 → 按 `permission_id_str` 重查；
+- 重查结果：**绑定 1719 条**、覆盖 **430** 个权限码、**孤儿绑定 2 条**（`role_permissions.permission_id` 在 `permissions` 里不存在 → 需清理，记 P2）；
+- `finance:%` 码中**没有任何一个码是 0 角色**（`HAVING count=0` 返回 0 行）→ **既有 finance 权限码绑定完整**；
+- **结论**：P2-8 对**既有**码已澄清；对**新建**码（`confirm-attribution`）仍是待办（见 12.5）。
+
+### 12.5 阻塞项（进实现前）
+
+1. **新建权限码 `finance:deposit-slip:confirm-attribution`**（+ 绑定角色 + `@PreAuthorize` + 权限矩阵文档）；
+2. **清理 2 条孤儿 `role_permissions` 绑定**（`permission_id` 不存在）；
+3. 迁移清单追加：`deposit_slips.refund_component_fen`、`deposit_slips.difference_net_fen`、`fund_flows.refund_time`、新表 `refund_shift_attribution`。
+
+### 12.6 `order_refund_records.refund_time` 的写入与语义（**待补证**）
+
+- 写入位置：退款入口（`PosOrderPaymentServiceImpl#refundNewOrder` / `OrderNewServiceImpl#approveRefund`）在插入 `order_refund_records` 时写入；
+- **语义判定未完成**：需确认它是「POS 端退款操作时刻」还是「退款单创建时刻」（两者在异步审批场景会差数分钟到数天）；
+- **NULL 率未取到**（本轮 SQL 未返回，疑该表无 `refund_time` 列或列名不同）→ **列为阻塞**：进实现前必须贴出 `\d order_refund_records` 与写入行号。
