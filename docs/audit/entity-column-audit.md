@@ -2,178 +2,178 @@
 
 库：`food_traceability` ｜ 扫描实体：`backend/src/main/java` ｜ 核对 `@TableField` 列数：3521
 
-| # | 表 | 实体文件 | 字段 | 实体列名 | 相似真实列 |
-|---|----|----------|------|----------|------------|
-| 1 | `accounting_subject` | AccountingSubject.java | `createBy` | `create_by` | `(无相似列)` |
-| 2 | `accounting_subject` | AccountingSubject.java | `updateBy` | `update_by` | `(无相似列)` |
-| 3 | `leave_requests` | LeaveRequestEntity.java | `createdTime` | `created_time` | `create_time` |
-| 4 | `leave_requests` | LeaveRequestEntity.java | `updatedTime` | `updated_time` | `update_time` |
-| 5 | `overtime_requests` | OvertimeRequestEntity.java | `createdTime` | `created_time` | `create_time` |
-| 6 | `overtime_requests` | OvertimeRequestEntity.java | `updatedTime` | `updated_time` | `update_time` |
-| 7 | `reimbursement_requests` | ReimbursementRequestEntity.java | `createdTime` | `created_time` | `create_time` |
-| 8 | `reimbursement_requests` | ReimbursementRequestEntity.java | `updatedTime` | `updated_time` | `update_time` |
-| 9 | `requisition_requests` | RequisitionRequestEntity.java | `(表不存在)` | `-` | `-` |
-| 10 | `swap_request_details` | SwapRequestDetailEntity.java | `(表不存在)` | `-` | `-` |
-| 11 | `travel_requests` | TravelRequestEntity.java | `(表不存在)` | `-` | `-` |
-| 12 | `approval_record` | ApprovalRecord.java | `stepName` | `step_name` | `step_number` |
-| 13 | `approval_record` | ApprovalRecord.java | `reviewType` | `review_type` | `(无相似列)` |
-| 14 | `approval_record` | ApprovalRecord.java | `createTime` | `created_at` | `create_time` |
-| 15 | `approval_record` | ApprovalRecord.java | `updateTime` | `updated_at` | `update_time` |
-| 16 | `backup_restore_log` | BackupRestoreLog.java | `deleted` | `deleted` | `(无相似列)` |
-| 17 | `budget` | Budget.java | `(表不存在)` | `-` | `-` |
-| 18 | `category_operation_log` | CategoryOperationLog.java | `(表不存在)` | `-` | `-` |
-| 19 | `combo_inventory` | ComboInventory.java | `createBy` | `create_by` | `created_by` |
-| 20 | `combo_inventory` | ComboInventory.java | `updateBy` | `update_by` | `updated_by` |
-| 21 | `contract_document` | ContractDocument.java | `(表不存在)` | `-` | `-` |
-| 22 | `contract_template` | ContractTemplate.java | `(表不存在)` | `-` | `-` |
-| 23 | `cost_allocation` | CostAllocation.java | `(表不存在)` | `-` | `-` |
-| 24 | `cost_allocation_detail` | CostAllocationDetail.java | `(表不存在)` | `-` | `-` |
-| 25 | `cost_allocation_rule` | CostAllocationRule.java | `(表不存在)` | `-` | `-` |
-| 26 | `coupon` | Coupon.java | `(表不存在)` | `-` | `-` |
-| 27 | `data_change_history` | DataChangeHistory.java | `(表不存在)` | `-` | `-` |
-| 28 | `data_link_event` | DataLinkEvent.java | `(表不存在)` | `-` | `-` |
-| 29 | `department_permissions` | DepartmentPermission.java | `(表不存在)` | `-` | `-` |
-| 30 | `dish_combo` | DishCombo.java | `comboName` | `name` | `(无相似列)` |
-| 31 | `dish_ingredient` | DishIngredient.java | `(表不存在)` | `-` | `-` |
-| 32 | `dish_inventory` | DishInventory.java | `createBy` | `create_by` | `created_by` |
-| 33 | `dish_inventory` | DishInventory.java | `updateBy` | `update_by` | `updated_by` |
-| 34 | `dish_recipe` | DishRecipe.java | `dishCode` | `dish_code` | `dish_id` |
-| 35 | `dish_recipe` | DishRecipe.java | `ingredientId` | `ingredient_id` | `(无相似列)` |
-| 36 | `dish_recipe` | DishRecipe.java | `ingredientName` | `ingredient_name` | `(无相似列)` |
-| 37 | `dish_recipe` | DishRecipe.java | `ingredientCode` | `ingredient_code` | `(无相似列)` |
-| 38 | `dish_recipe` | DishRecipe.java | `allowVariance` | `allow_variance` | `(无相似列)` |
-| 39 | `dish_recipe` | DishRecipe.java | `estimatedCost` | `estimated_cost` | `(无相似列)` |
-| 40 | `dish_recipe` | DishRecipe.java | `actualCost` | `actual_cost` | `(无相似列)` |
-| 41 | `dish_recipe` | DishRecipe.java | `sortOrder` | `sort_order` | `(无相似列)` |
-| 42 | `dish_recipe` | DishRecipe.java | `remark` | `remark` | `(无相似列)` |
-| 43 | `dish_recipe` | DishRecipe.java | `createBy` | `create_by` | `(无相似列)` |
-| 44 | `dish_recipe` | DishRecipe.java | `updateBy` | `update_by` | `(无相似列)` |
-| 45 | `electronic_invoice_item` | ElectronicInvoiceItem.java | `remark` | `remark` | `(无相似列)` |
-| 46 | `employees` | Employee.java | `name` | `EMPLOYEE_NAME` | `(无相似列)` |
-| 47 | `employees` | Employee.java | `employeeCode` | `EMPLOYEE_CODE` | `(无相似列)` |
-| 48 | `event_outbox` | EventOutbox.java | `createdAt` | `created_at` | `create_time` |
-| 49 | `file_attachment` | FileAttachment.java | `(表不存在)` | `-` | `-` |
-| 50 | `finance_account` | FinanceAccount.java | `(表不存在)` | `-` | `-` |
-| 51 | `finance_approval` | FinanceApproval.java | `(表不存在)` | `-` | `-` |
-| 52 | `finance_record_audit_log` | FinanceRecordAuditLog.java | `(表不存在)` | `-` | `-` |
-| 53 | `finance_report` | FinanceReport.java | `(表不存在)` | `-` | `-` |
-| 54 | `finance_report_detail` | FinanceReportDetail.java | `(表不存在)` | `-` | `-` |
-| 55 | `food_trace` | FoodTrace.java | `(表不存在)` | `-` | `-` |
-| 56 | `hardware_config` | HardwareConfig.java | `(表不存在)` | `-` | `-` |
-| 57 | `hardware_config_version` | HardwareConfigVersion.java | `(表不存在)` | `-` | `-` |
-| 58 | `hardware_operation_log` | HardwareOperationLog.java | `(表不存在)` | `-` | `-` |
-| 59 | `inventory_category` | InventoryCategory.java | `(表不存在)` | `-` | `-` |
-| 60 | `inventory_code` | InventoryCode.java | `(表不存在)` | `-` | `-` |
-| 61 | `inventory_log` | InventoryLog.java | `(表不存在)` | `-` | `-` |
-| 62 | `v_inventory_summary` | InventorySummary.java | `(表不存在)` | `-` | `-` |
-| 63 | `inventory_transactions` | InventoryTransaction.java | `(表不存在)` | `-` | `-` |
-| 64 | `inventory_transfer_detail` | InventoryTransferDetail.java | `(表不存在)` | `-` | `-` |
-| 65 | `inventory_unit` | InventoryUnit.java | `(表不存在)` | `-` | `-` |
-| 66 | `invitation_expense_record` | InvitationExpenseRecord.java | `(表不存在)` | `-` | `-` |
-| 67 | `invitation_reminder_log` | InvitationReminderLog.java | `(表不存在)` | `-` | `-` |
-| 68 | `locker_slot` | LockerSlot.java | `(表不存在)` | `-` | `-` |
-| 69 | `loss_outbound` | LossOutbound.java | `lossQuantity` | `loss_quantity` | `quantity` |
-| 70 | `loss_outbound` | LossOutbound.java | `lossDate` | `loss_date` | `loss_time` |
-| 71 | `loss_outbound` | LossOutbound.java | `lossAmount` | `loss_amount` | `(无相似列)` |
-| 72 | `loss_outbound` | LossOutbound.java | `approverId` | `approver_id` | `(无相似列)` |
-| 73 | `loss_outbound` | LossOutbound.java | `approverName` | `approver_name` | `(无相似列)` |
-| 74 | `loss_outbound` | LossOutbound.java | `approveTime` | `approve_time` | `(无相似列)` |
-| 75 | `material_usage_record` | MaterialUsageRecord.java | `(表不存在)` | `-` | `-` |
-| 76 | `notification_user_preference` | NotificationSetting.java | `notificationMethod` | `notification_method` | `notification_type` |
-| 77 | `ocr_record` | OcrRecord.java | `(表不存在)` | `-` | `-` |
-| 78 | `operation_logs` | OperationLog.java | `(表不存在)` | `-` | `-` |
-| 79 | `operation_type` | OperationType.java | `(表不存在)` | `-` | `-` |
-| 80 | `orders_legacy` | Order.java | `userId` | `USER_ID` | `(无相似列)` |
-| 81 | `orders_legacy` | Order.java | `orderNumber` | `ORDER_NUMBER` | `(无相似列)` |
-| 82 | `orders_legacy` | Order.java | `orderType` | `ORDER_TYPE` | `(无相似列)` |
-| 83 | `orders_legacy` | Order.java | `orderStatus` | `ORDER_STATUS` | `(无相似列)` |
-| 84 | `orders_legacy` | Order.java | `orderAmount` | `ORDER_AMOUNT` | `(无相似列)` |
-| 85 | `orders_legacy` | Order.java | `discountAmount` | `DISCOUNT_AMOUNT` | `(无相似列)` |
-| 86 | `orders_legacy` | Order.java | `actualAmount` | `ACTUAL_AMOUNT` | `(无相似列)` |
-| 87 | `orders_legacy` | Order.java | `paymentMethod` | `PAYMENT_METHOD` | `(无相似列)` |
-| 88 | `orders_legacy` | Order.java | `paymentTime` | `PAYMENT_TIME` | `(无相似列)` |
-| 89 | `orders_legacy` | Order.java | `deliveryAddress` | `DELIVERY_ADDRESS` | `(无相似列)` |
-| 90 | `orders_legacy` | Order.java | `contactName` | `CONTACT_NAME` | `(无相似列)` |
-| 91 | `orders_legacy` | Order.java | `contactPhone` | `CONTACT_PHONE` | `(无相似列)` |
-| 92 | `orders_legacy` | Order.java | `remarks` | `REMARKS` | `(无相似列)` |
-| 93 | `orders_legacy` | Order.java | `idempotencyKey` | `IDEMPOTENCY_KEY` | `(无相似列)` |
-| 94 | `orders_legacy` | Order.java | `orderSource` | `ORDER_SOURCE` | `(无相似列)` |
-| 95 | `orders_legacy` | Order.java | `merchantId` | `MERCHANT_ID` | `(无相似列)` |
-| 96 | `orders_legacy` | Order.java | `storeId` | `STORE_ID` | `(无相似列)` |
-| 97 | `orders_legacy` | Order.java | `storeName` | `STORE_NAME` | `(无相似列)` |
-| 98 | `orders_legacy` | Order.java | `deliverymanId` | `DELIVERYMAN_ID` | `(无相似列)` |
-| 99 | `orders_legacy` | Order.java | `estimatedDeliveryTime` | `ESTIMATED_DELIVERY_TIME` | `(无相似列)` |
-| 100 | `orders_legacy` | Order.java | `actualDeliveryTime` | `ACTUAL_DELIVERY_TIME` | `(无相似列)` |
-| 101 | `orders_legacy` | Order.java | `cancelReason` | `CANCEL_REASON` | `(无相似列)` |
-| 102 | `orders_legacy` | Order.java | `refundReason` | `REFUND_REASON` | `(无相似列)` |
-| 103 | `orders_legacy` | Order.java | `refundAmount` | `REFUND_AMOUNT` | `(无相似列)` |
-| 104 | `orders_legacy` | Order.java | `refundTime` | `REFUND_TIME` | `(无相似列)` |
-| 105 | `orders_legacy` | Order.java | `createTime` | `CREATE_TIME` | `(无相似列)` |
-| 106 | `orders_legacy` | Order.java | `updateTime` | `UPDATE_TIME` | `(无相似列)` |
-| 107 | `orders_legacy` | Order.java | `createBy` | `CREATE_BY` | `(无相似列)` |
-| 108 | `orders_legacy` | Order.java | `updateBy` | `UPDATE_BY` | `(无相似列)` |
-| 109 | `orders_legacy` | Order.java | `deleted` | `DELETED` | `(无相似列)` |
-| 110 | `over_age_worker` | OverAgeWorker.java | `(表不存在)` | `-` | `-` |
-| 111 | `password_history` | PasswordHistory.java | `deleted` | `deleted` | `(无相似列)` |
-| 112 | `permission_assignment_log` | PermissionAssignmentLog.java | `deleted` | `deleted` | `(无相似列)` |
-| 113 | `plan_item` | PlanItem.java | `(表不存在)` | `-` | `-` |
-| 114 | `print_format_template` | PrintFormatTemplate.java | `(表不存在)` | `-` | `-` |
-| 115 | `promotion` | Promotion.java | `promotionCode` | `promotion_code` | `promotion_id` |
-| 116 | `promotion` | Promotion.java | `promotionName` | `promotion_name` | `promotion_id` |
-| 117 | `promotion` | Promotion.java | `targetId` | `target_id` | `(无相似列)` |
-| 118 | `promotion` | Promotion.java | `targetType` | `target_type` | `(无相似列)` |
-| 119 | `receivable` | Receivable.java | `(表不存在)` | `-` | `-` |
-| 120 | `registration_code_log` | RegistrationCodeLog.java | `(表不存在)` | `-` | `-` |
-| 121 | `roles` | Role.java | `roleCode` | `ROLE_CODE` | `(无相似列)` |
-| 122 | `roles` | Role.java | `roleName` | `ROLE_NAME` | `(无相似列)` |
-| 123 | `roles` | Role.java | `roleDescription` | `DESCRIPTION` | `(无相似列)` |
-| 124 | `roles` | Role.java | `status` | `STATUS` | `(无相似列)` |
-| 125 | `roles` | Role.java | `deleted` | `DELETED` | `(无相似列)` |
-| 126 | `roles` | Role.java | `version` | `VERSION` | `(无相似列)` |
-| 127 | `role_departments` | RoleDepartment.java | `(表不存在)` | `-` | `-` |
-| 128 | `role_stores` | RoleStore.java | `(表不存在)` | `-` | `-` |
-| 129 | `salary_adjustment` | SalaryAdjustment.java | `(表不存在)` | `-` | `-` |
-| 130 | `salary_record` | SalaryRecord.java | `(表不存在)` | `-` | `-` |
-| 131 | `salary_rule` | SalaryRule.java | `(表不存在)` | `-` | `-` |
-| 132 | `sales_order` | SalesOrder.java | `(表不存在)` | `-` | `-` |
-| 133 | `sales_order_detail` | SalesOrderDetail.java | `(表不存在)` | `-` | `-` |
-| 134 | `scan_device` | ScanDevice.java | `(表不存在)` | `-` | `-` |
-| 135 | `scan_record` | ScanRecord.java | `(表不存在)` | `-` | `-` |
-| 136 | `self_purchase` | SelfPurchase.java | `(表不存在)` | `-` | `-` |
-| 137 | `self_purchase_item` | SelfPurchaseItem.java | `(表不存在)` | `-` | `-` |
-| 138 | `store_inventory_log` | StoreInventoryLog.java | `(表不存在)` | `-` | `-` |
-| 139 | `supplier_evaluations` | SupplierEvaluation.java | `(表不存在)` | `-` | `-` |
-| 140 | `sys_devices` | SysDevice.java | `(表不存在)` | `-` | `-` |
-| 141 | `sys_permissions` | SysPermission.java | `(表不存在)` | `-` | `-` |
-| 142 | `sys_print_templates` | SysPrintTemplate.java | `(表不存在)` | `-` | `-` |
-| 143 | `sys_roles` | SysRole.java | `(表不存在)` | `-` | `-` |
-| 144 | `sys_stores` | SysStore.java | `(表不存在)` | `-` | `-` |
-| 145 | `takeout_locker` | TakeoutLocker.java | `(表不存在)` | `-` | `-` |
-| 146 | `traceability_code` | TraceabilityCode.java | `(表不存在)` | `-` | `-` |
-| 147 | `trace_code_log` | TraceCodeLog.java | `(表不存在)` | `-` | `-` |
-| 148 | `trace_stage` | TraceStage.java | `(表不存在)` | `-` | `-` |
-| 149 | `user_sessions` | UserSession.java | `(表不存在)` | `-` | `-` |
-| 150 | `voucher_header` | VoucherHeader.java | `summary` | `summary` | `(无相似列)` |
-| 151 | `voucher_header` | VoucherHeader.java | `period` | `period` | `(无相似列)` |
-| 152 | `voucher_header` | VoucherHeader.java | `createBy` | `create_by` | `(无相似列)` |
-| 153 | `voucher_header` | VoucherHeader.java | `updateBy` | `update_by` | `(无相似列)` |
-| 154 | `voucher_line` | VoucherLine.java | `subjectId` | `subject_id` | `subject_code` |
-| 155 | `voucher_line` | VoucherLine.java | `debit` | `debit` | `(无相似列)` |
-| 156 | `voucher_line` | VoucherLine.java | `credit` | `credit` | `(无相似列)` |
-| 157 | `voucher_line` | VoucherLine.java | `businessId` | `business_id` | `(无相似列)` |
-| 158 | `voucher_line` | VoucherLine.java | `businessType` | `business_type` | `(无相似列)` |
-| 159 | `voucher_line` | VoucherLine.java | `updateTime` | `update_time` | `(无相似列)` |
-| 160 | `voucher_signature_log` | VoucherSignatureLog.java | `signType` | `sign_type` | `(无相似列)` |
-| 161 | `voucher_signature_log` | VoucherSignatureLog.java | `signAlgorithm` | `sign_algorithm` | `signature_algorithm` |
-| 162 | `voucher_signature_log` | VoucherSignatureLog.java | `signerCertNo` | `signer_cert_no` | `(无相似列)` |
-| 163 | `voucher_signature_log` | VoucherSignatureLog.java | `signTime` | `sign_time` | `(无相似列)` |
-| 164 | `voucher_signature_log` | VoucherSignatureLog.java | `signOriginal` | `sign_original` | `(无相似列)` |
-| 165 | `voucher_signature_log` | VoucherSignatureLog.java | `signValue` | `sign_value` | `(无相似列)` |
-| 166 | `voucher_signature_log` | VoucherSignatureLog.java | `certificateInfo` | `certificate_info` | `certificate_valid_from` |
-| 167 | `voucher_signature_log` | VoucherSignatureLog.java | `timestampToken` | `timestamp_token` | `(无相似列)` |
-| 168 | `voucher_signature_log` | VoucherSignatureLog.java | `timestampAuthority` | `timestamp_authority` | `(无相似列)` |
-| 169 | `voucher_signature_log` | VoucherSignatureLog.java | `errorCode` | `error_code` | `(无相似列)` |
-| 170 | `weighing_device` | WeighingDevice.java | `(表不存在)` | `-` | `-` |
-| 171 | `weighing_record` | WeighingRecord.java | `(表不存在)` | `-` | `-` |
+| # | 表 | 表行数 | 实体文件 | 字段 | 实体列名 | 相似真实列 | 判定 |
+|---|----|--------|----------|------|----------|------------|------|
+| 1 | `accounting_subject` | ? | AccountingSubject.java | `createBy` | `create_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 2 | `accounting_subject` | ? | AccountingSubject.java | `updateBy` | `update_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 3 | `leave_requests` | ? | LeaveRequestEntity.java | `createdTime` | `created_time` | `create_time` | B/表不存在 → 先判死代码 |
+| 4 | `leave_requests` | ? | LeaveRequestEntity.java | `updatedTime` | `updated_time` | `update_time` | B/表不存在 → 先判死代码 |
+| 5 | `overtime_requests` | ? | OvertimeRequestEntity.java | `createdTime` | `created_time` | `create_time` | B/表不存在 → 先判死代码 |
+| 6 | `overtime_requests` | ? | OvertimeRequestEntity.java | `updatedTime` | `updated_time` | `update_time` | B/表不存在 → 先判死代码 |
+| 7 | `reimbursement_requests` | ? | ReimbursementRequestEntity.java | `createdTime` | `created_time` | `create_time` | B/表不存在 → 先判死代码 |
+| 8 | `reimbursement_requests` | ? | ReimbursementRequestEntity.java | `updatedTime` | `updated_time` | `update_time` | B/表不存在 → 先判死代码 |
+| 9 | `requisition_requests` | ? | RequisitionRequestEntity.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 10 | `swap_request_details` | ? | SwapRequestDetailEntity.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 11 | `travel_requests` | ? | TravelRequestEntity.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 12 | `approval_record` | ? | ApprovalRecord.java | `stepName` | `step_name` | `step_number` | B/表不存在 → 先判死代码 |
+| 13 | `approval_record` | ? | ApprovalRecord.java | `reviewType` | `review_type` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 14 | `approval_record` | ? | ApprovalRecord.java | `createTime` | `created_at` | `create_time` | B/表不存在 → 先判死代码 |
+| 15 | `approval_record` | ? | ApprovalRecord.java | `updateTime` | `updated_at` | `update_time` | B/表不存在 → 先判死代码 |
+| 16 | `backup_restore_log` | ? | BackupRestoreLog.java | `deleted` | `deleted` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 17 | `budget` | ? | Budget.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 18 | `category_operation_log` | ? | CategoryOperationLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 19 | `combo_inventory` | ? | ComboInventory.java | `createBy` | `create_by` | `created_by` | B/表不存在 → 先判死代码 |
+| 20 | `combo_inventory` | ? | ComboInventory.java | `updateBy` | `update_by` | `updated_by` | B/表不存在 → 先判死代码 |
+| 21 | `contract_document` | ? | ContractDocument.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 22 | `contract_template` | ? | ContractTemplate.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 23 | `cost_allocation` | ? | CostAllocation.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 24 | `cost_allocation_detail` | ? | CostAllocationDetail.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 25 | `cost_allocation_rule` | ? | CostAllocationRule.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 26 | `coupon` | ? | Coupon.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 27 | `data_change_history` | ? | DataChangeHistory.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 28 | `data_link_event` | ? | DataLinkEvent.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 29 | `department_permissions` | ? | DepartmentPermission.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 30 | `dish_combo` | ? | DishCombo.java | `comboName` | `name` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 31 | `dish_ingredient` | ? | DishIngredient.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 32 | `dish_inventory` | ? | DishInventory.java | `createBy` | `create_by` | `created_by` | B/表不存在 → 先判死代码 |
+| 33 | `dish_inventory` | ? | DishInventory.java | `updateBy` | `update_by` | `updated_by` | B/表不存在 → 先判死代码 |
+| 34 | `dish_recipe` | ? | DishRecipe.java | `dishCode` | `dish_code` | `dish_id` | B/表不存在 → 先判死代码 |
+| 35 | `dish_recipe` | ? | DishRecipe.java | `ingredientId` | `ingredient_id` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 36 | `dish_recipe` | ? | DishRecipe.java | `ingredientName` | `ingredient_name` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 37 | `dish_recipe` | ? | DishRecipe.java | `ingredientCode` | `ingredient_code` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 38 | `dish_recipe` | ? | DishRecipe.java | `allowVariance` | `allow_variance` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 39 | `dish_recipe` | ? | DishRecipe.java | `estimatedCost` | `estimated_cost` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 40 | `dish_recipe` | ? | DishRecipe.java | `actualCost` | `actual_cost` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 41 | `dish_recipe` | ? | DishRecipe.java | `sortOrder` | `sort_order` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 42 | `dish_recipe` | ? | DishRecipe.java | `remark` | `remark` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 43 | `dish_recipe` | ? | DishRecipe.java | `createBy` | `create_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 44 | `dish_recipe` | ? | DishRecipe.java | `updateBy` | `update_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 45 | `electronic_invoice_item` | ? | ElectronicInvoiceItem.java | `remark` | `remark` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 46 | `employees` | ? | Employee.java | `name` | `EMPLOYEE_NAME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 47 | `employees` | ? | Employee.java | `employeeCode` | `EMPLOYEE_CODE` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 48 | `event_outbox` | ? | EventOutbox.java | `createdAt` | `created_at` | `create_time` | B/表不存在 → 先判死代码 |
+| 49 | `file_attachment` | ? | FileAttachment.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 50 | `finance_account` | ? | FinanceAccount.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 51 | `finance_approval` | ? | FinanceApproval.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 52 | `finance_record_audit_log` | ? | FinanceRecordAuditLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 53 | `finance_report` | ? | FinanceReport.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 54 | `finance_report_detail` | ? | FinanceReportDetail.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 55 | `food_trace` | ? | FoodTrace.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 56 | `hardware_config` | ? | HardwareConfig.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 57 | `hardware_config_version` | ? | HardwareConfigVersion.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 58 | `hardware_operation_log` | ? | HardwareOperationLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 59 | `inventory_category` | ? | InventoryCategory.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 60 | `inventory_code` | ? | InventoryCode.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 61 | `inventory_log` | ? | InventoryLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 62 | `v_inventory_summary` | ? | InventorySummary.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 63 | `inventory_transactions` | ? | InventoryTransaction.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 64 | `inventory_transfer_detail` | ? | InventoryTransferDetail.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 65 | `inventory_unit` | ? | InventoryUnit.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 66 | `invitation_expense_record` | ? | InvitationExpenseRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 67 | `invitation_reminder_log` | ? | InvitationReminderLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 68 | `locker_slot` | ? | LockerSlot.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 69 | `loss_outbound` | ? | LossOutbound.java | `lossQuantity` | `loss_quantity` | `quantity` | B/表不存在 → 先判死代码 |
+| 70 | `loss_outbound` | ? | LossOutbound.java | `lossDate` | `loss_date` | `loss_time` | B/表不存在 → 先判死代码 |
+| 71 | `loss_outbound` | ? | LossOutbound.java | `lossAmount` | `loss_amount` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 72 | `loss_outbound` | ? | LossOutbound.java | `approverId` | `approver_id` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 73 | `loss_outbound` | ? | LossOutbound.java | `approverName` | `approver_name` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 74 | `loss_outbound` | ? | LossOutbound.java | `approveTime` | `approve_time` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 75 | `material_usage_record` | ? | MaterialUsageRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 76 | `notification_user_preference` | ? | NotificationSetting.java | `notificationMethod` | `notification_method` | `notification_type` | B/表不存在 → 先判死代码 |
+| 77 | `ocr_record` | ? | OcrRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 78 | `operation_logs` | ? | OperationLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 79 | `operation_type` | ? | OperationType.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 80 | `orders_legacy` | ? | Order.java | `userId` | `USER_ID` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 81 | `orders_legacy` | ? | Order.java | `orderNumber` | `ORDER_NUMBER` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 82 | `orders_legacy` | ? | Order.java | `orderType` | `ORDER_TYPE` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 83 | `orders_legacy` | ? | Order.java | `orderStatus` | `ORDER_STATUS` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 84 | `orders_legacy` | ? | Order.java | `orderAmount` | `ORDER_AMOUNT` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 85 | `orders_legacy` | ? | Order.java | `discountAmount` | `DISCOUNT_AMOUNT` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 86 | `orders_legacy` | ? | Order.java | `actualAmount` | `ACTUAL_AMOUNT` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 87 | `orders_legacy` | ? | Order.java | `paymentMethod` | `PAYMENT_METHOD` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 88 | `orders_legacy` | ? | Order.java | `paymentTime` | `PAYMENT_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 89 | `orders_legacy` | ? | Order.java | `deliveryAddress` | `DELIVERY_ADDRESS` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 90 | `orders_legacy` | ? | Order.java | `contactName` | `CONTACT_NAME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 91 | `orders_legacy` | ? | Order.java | `contactPhone` | `CONTACT_PHONE` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 92 | `orders_legacy` | ? | Order.java | `remarks` | `REMARKS` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 93 | `orders_legacy` | ? | Order.java | `idempotencyKey` | `IDEMPOTENCY_KEY` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 94 | `orders_legacy` | ? | Order.java | `orderSource` | `ORDER_SOURCE` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 95 | `orders_legacy` | ? | Order.java | `merchantId` | `MERCHANT_ID` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 96 | `orders_legacy` | ? | Order.java | `storeId` | `STORE_ID` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 97 | `orders_legacy` | ? | Order.java | `storeName` | `STORE_NAME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 98 | `orders_legacy` | ? | Order.java | `deliverymanId` | `DELIVERYMAN_ID` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 99 | `orders_legacy` | ? | Order.java | `estimatedDeliveryTime` | `ESTIMATED_DELIVERY_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 100 | `orders_legacy` | ? | Order.java | `actualDeliveryTime` | `ACTUAL_DELIVERY_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 101 | `orders_legacy` | ? | Order.java | `cancelReason` | `CANCEL_REASON` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 102 | `orders_legacy` | ? | Order.java | `refundReason` | `REFUND_REASON` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 103 | `orders_legacy` | ? | Order.java | `refundAmount` | `REFUND_AMOUNT` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 104 | `orders_legacy` | ? | Order.java | `refundTime` | `REFUND_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 105 | `orders_legacy` | ? | Order.java | `createTime` | `CREATE_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 106 | `orders_legacy` | ? | Order.java | `updateTime` | `UPDATE_TIME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 107 | `orders_legacy` | ? | Order.java | `createBy` | `CREATE_BY` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 108 | `orders_legacy` | ? | Order.java | `updateBy` | `UPDATE_BY` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 109 | `orders_legacy` | ? | Order.java | `deleted` | `DELETED` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 110 | `over_age_worker` | ? | OverAgeWorker.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 111 | `password_history` | ? | PasswordHistory.java | `deleted` | `deleted` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 112 | `permission_assignment_log` | ? | PermissionAssignmentLog.java | `deleted` | `deleted` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 113 | `plan_item` | ? | PlanItem.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 114 | `print_format_template` | ? | PrintFormatTemplate.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 115 | `promotion` | ? | Promotion.java | `promotionCode` | `promotion_code` | `promotion_id` | B/表不存在 → 先判死代码 |
+| 116 | `promotion` | ? | Promotion.java | `promotionName` | `promotion_name` | `promotion_id` | B/表不存在 → 先判死代码 |
+| 117 | `promotion` | ? | Promotion.java | `targetId` | `target_id` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 118 | `promotion` | ? | Promotion.java | `targetType` | `target_type` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 119 | `receivable` | ? | Receivable.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 120 | `registration_code_log` | ? | RegistrationCodeLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 121 | `roles` | ? | Role.java | `roleCode` | `ROLE_CODE` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 122 | `roles` | ? | Role.java | `roleName` | `ROLE_NAME` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 123 | `roles` | ? | Role.java | `roleDescription` | `DESCRIPTION` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 124 | `roles` | ? | Role.java | `status` | `STATUS` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 125 | `roles` | ? | Role.java | `deleted` | `DELETED` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 126 | `roles` | ? | Role.java | `version` | `VERSION` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 127 | `role_departments` | ? | RoleDepartment.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 128 | `role_stores` | ? | RoleStore.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 129 | `salary_adjustment` | ? | SalaryAdjustment.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 130 | `salary_record` | ? | SalaryRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 131 | `salary_rule` | ? | SalaryRule.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 132 | `sales_order` | ? | SalesOrder.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 133 | `sales_order_detail` | ? | SalesOrderDetail.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 134 | `scan_device` | ? | ScanDevice.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 135 | `scan_record` | ? | ScanRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 136 | `self_purchase` | ? | SelfPurchase.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 137 | `self_purchase_item` | ? | SelfPurchaseItem.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 138 | `store_inventory_log` | ? | StoreInventoryLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 139 | `supplier_evaluations` | ? | SupplierEvaluation.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 140 | `sys_devices` | ? | SysDevice.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 141 | `sys_permissions` | ? | SysPermission.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 142 | `sys_print_templates` | ? | SysPrintTemplate.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 143 | `sys_roles` | ? | SysRole.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 144 | `sys_stores` | ? | SysStore.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 145 | `takeout_locker` | ? | TakeoutLocker.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 146 | `traceability_code` | ? | TraceabilityCode.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 147 | `trace_code_log` | ? | TraceCodeLog.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 148 | `trace_stage` | ? | TraceStage.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 149 | `user_sessions` | ? | UserSession.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 150 | `voucher_header` | ? | VoucherHeader.java | `summary` | `summary` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 151 | `voucher_header` | ? | VoucherHeader.java | `period` | `period` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 152 | `voucher_header` | ? | VoucherHeader.java | `createBy` | `create_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 153 | `voucher_header` | ? | VoucherHeader.java | `updateBy` | `update_by` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 154 | `voucher_line` | ? | VoucherLine.java | `subjectId` | `subject_id` | `subject_code` | B/表不存在 → 先判死代码 |
+| 155 | `voucher_line` | ? | VoucherLine.java | `debit` | `debit` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 156 | `voucher_line` | ? | VoucherLine.java | `credit` | `credit` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 157 | `voucher_line` | ? | VoucherLine.java | `businessId` | `business_id` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 158 | `voucher_line` | ? | VoucherLine.java | `businessType` | `business_type` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 159 | `voucher_line` | ? | VoucherLine.java | `updateTime` | `update_time` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 160 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signType` | `sign_type` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 161 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signAlgorithm` | `sign_algorithm` | `signature_algorithm` | B/表不存在 → 先判死代码 |
+| 162 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signerCertNo` | `signer_cert_no` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 163 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signTime` | `sign_time` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 164 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signOriginal` | `sign_original` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 165 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `signValue` | `sign_value` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 166 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `certificateInfo` | `certificate_info` | `certificate_valid_from` | B/表不存在 → 先判死代码 |
+| 167 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `timestampToken` | `timestamp_token` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 168 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `timestampAuthority` | `timestamp_authority` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 169 | `voucher_signature_log` | ? | VoucherSignatureLog.java | `errorCode` | `error_code` | `(无相似列)` | B/表不存在 → 先判死代码 |
+| 170 | `weighing_device` | ? | WeighingDevice.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
+| 171 | `weighing_record` | ? | WeighingRecord.java | `(表不存在)` | `-` | `-` | B/表不存在 → 先判死代码 |
 
 合计 **171** 处不一致。

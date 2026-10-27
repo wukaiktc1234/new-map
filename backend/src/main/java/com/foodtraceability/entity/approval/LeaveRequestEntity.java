@@ -98,12 +98,12 @@ public class LeaveRequestEntity implements Serializable {
     private String handoverNote;
 
     /** 创建时间 */
-    @TableField(value = "created_time", fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     @Schema(description = "创建时间")
     private LocalDateTime createdTime;
 
     /** 更新时间 */
-    @TableField(value = "updated_time", fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     @Schema(description = "更新时间")
     private LocalDateTime updatedTime;
 

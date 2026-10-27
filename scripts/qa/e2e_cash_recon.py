@@ -92,11 +92,27 @@ class CashRecon:
         # 统一标记（Owner 2026-10-27 批准）：可写文本字段统一带此前缀，供 e2e_cleanup.py 定位
         self.mark = "[E2E:%s]" % self.tag
         self.seq = 0
+        import time as _t
+        self._t0 = _t.monotonic()
+        self._max_seconds = None
 
     def next_idem(self):
         """确定性幂等键：E2E-<tag>-<n>（订单侧 tag 锚点）"""
         self.seq += 1
         return "E2E-%s-%d" % (self.tag, self.seq)
+
+    # ---------- 心跳（长跑可观测性） ----------
+    def beat(self, stage):
+        """阶段性心跳：打印时间戳与自套件启动起的耗时。
+
+        为什么需要：本套件一段要开班/等边界窗口，长跑时**没有任何输出**，外部无法区分
+        「还在跑」和「已经卡死」——以前只能靠人盯着猜。每段开始/结束各打一条。
+        """
+        import time as _t
+        elapsed = _t.monotonic() - getattr(self, "_t0", _t.monotonic())
+        print("  [BEAT +%6.1fs] %s" % (elapsed, stage), flush=True)
+        if getattr(self, "_max_seconds", None) and elapsed > self._max_seconds:
+            raise SystemExit("  [BEAT] 超过 --max-seconds=%s，主动中止（防止无限挂起）" % self._max_seconds)
 
     def step(self, name, okk, detail, state=None):
         st = state or ("PASS" if okk else "FAIL")
@@ -682,11 +698,13 @@ class CashRecon:
         print("=" * 92)
         print("N19-2 现金户退款构成 / 班次边界 / 归属确认 E2E  tag=%s" % self.tag)
         print("=" * 92)
+        self.beat("start: 前置就绪检查")
         if not ensure_ready(api=self.a.api, admin=self.a.admin, pos=self.a.pos):
             self.not_ready("前置就绪", "服务/库存未就绪")
             return self.summary()
         if not self.login():
             return self.summary()
+        self.beat("login done")
         boundary_min = self.shift_window_minutes()
         self.step("边界容差读取（finance.cash.shift-boundary-minutes）", True, "%d 分钟" % boundary_min)
 
@@ -704,9 +722,14 @@ class CashRecon:
         else:
             self.section_in_shift(i_shift, boundary_min)
         # bug-③：幂等键语义（同 key 重放 / 换 key 新建 / 并发同 key）
+        self.beat("bug-③ 幂等断言 开始")
         self.check_order_idempotency()
+        self.beat("bug-③ 幂等断言 结束")
+        self.beat("section_confirm 开始")
         self.section_confirm()
+        self.beat("section_confirm 结束")
         self.section_idempotent_and_change()
+        self.beat("section_idempotent_and_change 结束")
         self.section_forbidden()
         self.section_inspection()
         self.section_deposit_manual()
@@ -739,6 +762,8 @@ def main():
     p.add_argument("--admin", default=DEFAULT_ADMIN)
     p.add_argument("--pos", default=DEFAULT_POS)
     p.add_argument("--user", default="qa_admin")
+    p.add_argument("--timeout", type=int, default=120, help="单次 HTTP 超时（秒，默认 120）")
+    p.add_argument("--max-seconds", type=int, default=1800, help="整套件最长耗时（秒，默认 1800；超时主动中止）")
     p.add_argument("--password", default="Admin@123456")
     p.add_argument("--pos-user", default="vcashier01")
     p.add_argument("--pos-password", default="123456")
@@ -758,7 +783,10 @@ def main():
     p.add_argument("--pg-db", default="food_traceability")
     a = p.parse_args()
     try:
-        return CashRecon(a).run()
+        runner = CashRecon(a)
+        runner._max_seconds = a.max_seconds
+        print("  [BEAT] 套件启动，单次 HTTP 超时 %ds，整套上限 %ds" % (a.timeout, a.max_seconds), flush=True)
+        return runner.run()
     except Exception as e:
         print("执行错误: %s" % e, file=sys.stderr)
         return 2

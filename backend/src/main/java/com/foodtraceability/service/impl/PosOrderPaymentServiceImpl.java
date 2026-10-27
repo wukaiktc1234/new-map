@@ -1,5 +1,7 @@
 package com.foodtraceability.service.impl;
 
+
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.finance.AtomicBalanceUpdater;
 import com.foodtraceability.common.finance.FinancePeriodGuard;
 import com.foodtraceability.common.sequence.SequenceAllocator;
@@ -162,7 +164,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             // 查询订单
             Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderId, request.getOrderId()));
             if (order == null) {
-                return Result.error("订单不存在");
+                return Result.error(ErrorCode.NOT_FOUND.getCode(), "订单不存在");
             }
             if (order.getOrderSource() == null || order.getOrderSource() != 4) {
                 return Result.error("仅支持POS终端订单支付");
@@ -344,7 +346,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         // 查询订单（遗留表兜底）
         Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNumber, orderNumber));
         if (order == null) {
-            return Result.error("订单不存在");
+            return Result.error(ErrorCode.NOT_FOUND.getCode(), "订单不存在");
         }
         if (order.getOrderStatus() == 7) {
             return Result.error("订单已退款");
@@ -953,7 +955,7 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
                 new LambdaQueryWrapper<Order>().eq(Order::getTransactionId, qrTransactionId));
         if (order == null) {
             log.warn("交易号对应的订单不存在: transactionId={}", qrTransactionId);
-            return Result.error("订单不存在或交易号已失效");
+            return Result.error(ErrorCode.NOT_FOUND.getCode(), "订单不存在或交易号已失效");
         }
         if (order.getOrderSource() == null || order.getOrderSource() != 4) {
             return Result.error("仅支持POS终端订单支付");

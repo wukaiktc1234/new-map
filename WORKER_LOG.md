@@ -3568,3 +3568,60 @@ POST 下单 缺 storeId                   → code=0（从登录上下文解析�
 1. bug-⑫ 101 处无前置分支，建议按模块顺序（先 POS/财务热路径）；
 2. 实体列名 A 档 23 处是否批量修（建议先修 A，B/C 先确认是否死代码）；
 3. `mvn test` 23F/20E 等 A 档修完再看剩余。
+
+## 76. bug-⑫ 首批 + 实体 A 档判定 + E2E 心跳（2026-10-27 23:05–23:20）
+
+### 76.1 bug-⑫ 发现「第二种形态」：service 层 `return Result.error("…")`
+
+Lead 让我先改 `PosOrderController`，但实测该 controller **已有**正确的 `catch (BusinessException be) { … throw be; }`。
+「支付不存在订单 → 500」的真凶是 **service 直接 `return Result.error("订单不存在")`**（`Result.error(String)` 默认 500）：
+```
+PosOrderPaymentServiceImpl:165 return Result.error("订单不存在")      → 已是 code=500，与 catch 无关
+PosOrderPaymentServiceImpl:347 return Result.error("订单不存在")
+PosOrderPaymentServiceImpl:956 return Result.error("订单不存在或交易号已失效")
+同形态还有：PosOrderQueryServiceImpl:91/324、KitchenOrderController 6 处、TrayServiceImpl 2 处 …
+```
+已修 PosOrderPaymentServiceImpl 的 3 处 → `Result.error(ErrorCode.NOT_FOUND.getCode(), …)`：
+```
+支付不存在订单：改前 500 → 改后 404「订单不存在」✔
+确认扫码/不存在的交易号：仍 500「交易号格式非法」（第三种形态，未修，待裁）
+```
+**结论**：bug-⑫ 有三种形态 —— ① controller `catch(RuntimeException)+Result.error(msg)`（101 处）；
+② service `return Result.error(String)`（本次实测命中的就是它）；③ 参数校验抛非业务异常（「交易号格式非法」）。
+只治 ① 治不完，建议下一批先治 ②（同文件集中、改动小、命中面广）。
+
+### 76.2 实体 A 档：逐条判定（不修活死代码）
+
+11 张 A 档表实测行数（清空后全部 0，**不能靠行数判活死**），改用「实体是否被 Mapper/ServiceImpl 引用」判定：
+
+| 实体 | 引用点 | 判定 | 处置 |
+|------|--------|------|------|
+| LeaveRequestEntity | 13 / 5 文件（mapper+impl 10） | 活代码，列名 `created_time`→表里是 `create_time` = **写错** | **已修** |
+| OvertimeRequestEntity | 13 / 5 | 同上 | **已修** |
+| ReimbursementRequestEntity | 14 / 5 | 同上 | **已修** |
+| ApprovalRecord | 138 / 12 | 活代码，但 `created_at/updated_at` 是**另一套命名**（表里 create_time/update_time），且同表还有 `step_name`→`step_number` 语义差 | **待裁**（改动面大，需确认业务语义） |
+| DishRecipe | 87 / 11 | **legacy 旧模型空表**（bug-① 已确认，其 ServiceImpl 本轮已删） | **不改**（Lead 明确：不许把它修活） |
+| EventOutbox / LossOutbound / NotificationSetting / Promotion / ComboInventory / DishInventory | 4~132 | 表有数据面、实体活，但错列名涉及业务字段（`promotion_code`→`promotion_id`）而非单纯时间戳 | **待裁**（`promotion_code`→`promotion_id` 明显不是笔误，是不同语义） |
+
+修后复跑审计：**171 → 165**（−6，正是三个实体的 created/updated 两组）。
+
+### 76.3 B 档 69 / C 档 79：先判死代码（未改）
+
+判定法：对每个实体 grep 其类名在 `backend/src/main/java` 的出现次数；仅出现在自身文件 → 死代码。
+（本轮只给出方法与结论口径，完整清单建议在下一批用脚本批量产出并入库 `docs/audit/`。）
+**不改死代码**：把死代码改成能编译能跑，等于把僵尸变成会咬人的僵尸。
+
+### 76.4 `e2e_cash_recon.py` 加心跳（Lead ⑤）
+
+```
+新增 CashRecon.beat(stage)：打印 [BEAT +<elapsed>s] stage，并在超过上限时主动 SystemExit
+新增参数 --timeout（单次 HTTP，默认 120s）/ --max-seconds（整套上限，默认 1800s）
+在 run() 的 start / login done / 幂等断言前后 / section_confirm / idempotent_and_change / cleanup 打点
+```
+冒烟实测（--max-seconds 90）：
+```
+[BEAT] 套件启动，单次 HTTP 超时 120s，整套上限 90s
+[BEAT +   0.0s] start: 前置就绪检查
+[BEAT +   4.8s] login done
+```
+以后再长跑，外部能直接看出「走到哪一段、卡在哪一段」。
