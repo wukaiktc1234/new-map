@@ -114,12 +114,13 @@ public class EmployeeApproval implements Serializable {
     private String departmentId;
 
     /** 创建时间 */
-    @TableField(value = "created_time", fill = FieldFill.INSERT)
+    // bug-⑪：列名写错（created_time 不存在，实际是 create_time）→ 按 id 查审批必 500
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     @Schema(description = "创建时间")
     private LocalDateTime createdTime;
 
     /** 更新时间 */
-    @TableField(value = "updated_time", fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     @Schema(description = "更新时间")
     private LocalDateTime updatedTime;
 

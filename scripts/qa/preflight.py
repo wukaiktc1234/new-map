@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -39,6 +40,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 CHECK = Path(__file__).resolve().parent / "consistency_check.py"
 WARN_RATIO = 0.5
+# 干净库 gate 用到的外部命令（Windows 下 psql 来自仓库自带 PostgreSQL）
+PSQL = str(ROOT / "PostgreSQL" / "18" / "bin" / "psql.exe")
+PG_PASSWORD = "123456"
 
 
 def run(cmd, cwd, timeout=1800, env=None):
@@ -154,6 +158,122 @@ def check_runtime_exception_ratchet():
     return 0
 
 
+MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
+FLYWAY_RUNNER_SRC = ROOT / "scripts" / "qa" / "db" / "FlywayMigrateRunner.java"
+GATE_TMP = ROOT / ".preflight-tmp"
+TEST_DB = "food_traceability_test"
+
+
+def expected_latest_version():
+    """从迁移文件名解析最大版本号（不写死数字）。
+
+    Flyway 的版本排序按「数字段逐段比较」，所以用 tuple(int) 比较；返回原始字符串与段元组。
+    """
+    # 关键：Flyway 比版本时把短版本**补 0 到同长度**再逐段比较
+    # （例：2026022701 与 20261027.001 → (2026022701, 0) vs (20261027, 1) → 前者更大），
+    # 直接按不等长 tuple 比较会得出相反的「最新版本」。
+    versions = []
+    for f in MIGRATION_DIR.glob("V*.sql"):
+        ver = f.name[1:].split("__", 1)[0]
+        try:
+            # Flyway 的分隔符同时支持 '.' 与 '_'（V20261027_001 即 20261027.001），
+            # 只按 '.' 切会把 "_001" 当成整数的一部分 → 版本排序整体错位。
+            versions.append((ver, [int(p) for p in re.split(r"[._]", ver) if p != ""]))
+        except ValueError:
+            continue
+    if not versions:
+        return None
+    width = max(len(v[1]) for v in versions)
+    padded = [(ver, segs + [0] * (width - len(segs))) for ver, segs in versions]
+    return max(padded, key=lambda x: x[1])[0]
+
+
+def _psql(db, sql):
+    return run([PSQL, "-h", "localhost", "-p", "5432", "-U", "postgres", "-d", db, "-A", "-F", "|", "-t", "-c", sql],
+               ROOT, timeout=300, env=dict(os.environ, PGPASSWORD=PG_PASSWORD, PGCLIENTENCODING="UTF8"))
+
+
+def _mvn_path():
+    return find_mvn()
+
+
+def _java_paths():
+    jh = find_java_home()
+    if not jh:
+        return None, None, None
+    b = Path(jh) / "bin"
+    return str(b / "java.exe"), str(b / "javac.exe"), Path(jh)
+
+
+def check_clean_db_migration():
+    """第三条 gate（--full 才跑）：干净库必须一次迁移成功（bug-⑦/⑧ 的回归闸门）。
+
+    头注释（写在这里防遗忘）：
+      **迁移链必须能在干净库一次建成功** —— 本 gate 就是为了防止第 4、5 个漂移断点。
+      漂移的典型来源：迁移引用「历史库演进出来的列/序列」，活库永远不重跑所以看不见。
+    """
+    expected = expected_latest_version()
+    if not expected:
+        print("[WARN] 未从 %s 解析到任何迁移版本，跳过干净库 gate" % MIGRATION_DIR)
+        return 0
+    print("[GATE] 干净库迁移：期望最新版本 = %s（从目录解析，不写死）" % expected)
+
+    rc, _ = _psql("postgres", "DROP DATABASE IF EXISTS %s" % TEST_DB)
+    if rc != 0:
+        print("[BLOCK] 干净库 gate：DROP DATABASE %s 失败（可能仍有连接）" % TEST_DB)
+        return 2
+    rc, out = _psql("postgres", "CREATE DATABASE %s WITH ENCODING 'UTF8' TEMPLATE template0" % TEST_DB)
+    if rc != 0:
+        print("[BLOCK] 干净库 gate：CREATE DATABASE 失败：%s" % out.strip()[:200])
+        return 2
+
+    GATE_TMP.mkdir(parents=True, exist_ok=True)
+    cp_file = GATE_TMP / "cp.txt"
+    if not cp_file.exists():
+        jh = find_java_home()
+        env_mvn = dict(os.environ, JAVA_HOME=str(jh)) if jh else None
+        rc, out = run([_mvn_path(), "-o", "-B", "-q", "dependency:build-classpath",
+                       "-Dmdep.outputFile=%s" % cp_file], ROOT / "backend", timeout=600, env=env_mvn)
+        if rc != 0 or not cp_file.exists():
+            print("[WARN] 干净库 gate：生成依赖 classpath 失败（跳过 gate）：%s" % out.strip()[:200])
+            return 0
+    classpath = cp_file.read_text(encoding="utf-8", errors="replace").strip() + str(os.pathsep) + str(GATE_TMP)
+
+    java_exe, javac_exe, java_home = _java_paths()
+    if not java_exe:
+        print("[WARN] 干净库 gate：找不到 JDK（跳过 gate）")
+        return 0
+    rc, out = run([javac_exe, "-proc:none", "-encoding", "UTF-8", "-cp", classpath, "-d", str(GATE_TMP),
+                   str(FLYWAY_RUNNER_SRC)], ROOT, timeout=600,
+                  env=dict(os.environ, JAVA_HOME=str(java_home)))
+    if rc != 0:
+        print("[WARN] 干净库 gate：编译 FlywayMigrateRunner 失败（跳过 gate）：%s" % out.strip()[:200])
+        return 0
+
+    rc, out = run([java_exe, "-cp", classpath, "FlywayMigrateRunner", TEST_DB, str(MIGRATION_DIR)], ROOT, timeout=1800,
+                  env=dict(os.environ, JAVA_HOME=str(java_home)))
+    line = next((l for l in out.splitlines() if l.startswith("FLYWAY_RESULT")), "")
+    if "ok=true" not in line:
+        print("[BLOCK] 干净库 gate：迁移失败 → %s" % (line or out.strip().splitlines()[-1] if out.strip() else "(无输出)"))
+        return 2
+
+    rc, hist = _psql(TEST_DB, "SELECT count(*) FILTER (WHERE NOT success), max(installed_rank), "
+                              "count(*) FILTER (WHERE success) FROM flyway_schema_history")
+    rc2, ver = _psql(TEST_DB, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1")
+    failed, max_rank, ok_cnt = [x.strip() for x in (hist.strip().split("|") + ["", "", ""])[:3]]
+    latest = ver.strip()
+    print("[GATE] 干净库迁移结果：%s ｜ failed=%s rank=%s success=%s latest=%s"
+          % (line, failed, max_rank, ok_cnt, latest))
+    if failed != "0":
+        print("[BLOCK] 干净库 gate：flyway_schema_history 存在失败记录 failed=%s" % failed)
+        return 2
+    if latest != expected:
+        print("[BLOCK] 干净库 gate：最新版本 %s ≠ 目录期望 %s（迁移未跑到最新）" % (latest, expected))
+        return 2
+    print("[GATE] 干净库迁移通过（%s，%s 条成功）" % (latest, ok_cnt))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -175,6 +295,11 @@ def main():
         if compile_rc != 0:
             print("[WARN] test-compile 失败（rc=%s）→ 注意：test-compile≠test，但连编译都不过就不该开工" % compile_rc)
             warn = True
+
+    clean_db_rc = 0
+    if a.full:
+        print("-" * 86)
+        clean_db_rc = check_clean_db_migration()
 
     test_rc = None
     if a.full:
@@ -210,6 +335,9 @@ def main():
         return 2
     if ratchet_rc != 0:
         print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
+        return 2
+    if clean_db_rc != 0:
+        print("[RESULT] BLOCKED：干净库迁移 gate 未通过 → exit 2")
         return 2
     if ratio > WARN_RATIO:
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"

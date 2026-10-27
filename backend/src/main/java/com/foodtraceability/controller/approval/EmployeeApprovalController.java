@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.approval;
 
+
+import com.foodtraceability.common.exception.BusinessException;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.approval.EmployeeApprovalCreateDTO;
@@ -129,6 +131,10 @@ public class EmployeeApprovalController {
 
             ApprovalDetailVO detail = employeeApprovalService.getApprovalDetail(approvalId);
             return Result.success(detail);
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("获取审批详情业务异常，审批ID：{}，错误：{}", approvalId, e.getMessage());
             return Result.error(e.getMessage());
@@ -154,6 +160,10 @@ public class EmployeeApprovalController {
 
             EmployeeApprovalVO vo = employeeApprovalService.submitApproval(dto, userId);
             return Result.success(vo);
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("提交审批申请业务异常，用户ID：{}，错误：{}", userId, e.getMessage());
             return Result.error(e.getMessage());
@@ -185,6 +195,10 @@ public class EmployeeApprovalController {
 
             employeeApprovalService.approveApproval(approvalId, reviewerId, comment);
             return Result.success();
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("通过审批业务异常，审批ID：{}，错误：{}", approvalId, e.getMessage());
             return Result.error(e.getMessage());
@@ -220,6 +234,10 @@ public class EmployeeApprovalController {
 
             employeeApprovalService.rejectApproval(approvalId, reviewerId, comment);
             return Result.success();
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("驳回审批业务异常，审批ID：{}，错误：{}", approvalId, e.getMessage());
             return Result.error(e.getMessage());
@@ -248,6 +266,10 @@ public class EmployeeApprovalController {
 
             employeeApprovalService.withdrawApproval(approvalId, userId);
             return Result.success();
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("撤回审批业务异常，审批ID：{}，错误：{}", approvalId, e.getMessage());
             return Result.error(e.getMessage());
@@ -276,6 +298,10 @@ public class EmployeeApprovalController {
 
             employeeApprovalService.urgeApproval(approvalId, userId);
             return Result.success();
+        } catch (BusinessException e) {
+            // bug-⑫：BusinessException 必须原样上抛，交由 GlobalExceptionHandler 映射成 404/400/403；
+            // 旧写法 catch(RuntimeException) + Result.error(msg) 会把业务码一律压成 500。
+            throw e;
         } catch (RuntimeException e) {
             log.warn("催办审批业务异常，审批ID：{}，错误：{}", approvalId, e.getMessage());
             return Result.error(e.getMessage());

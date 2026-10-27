@@ -3432,3 +3432,78 @@ scripts/qa/preflight.py                     新增 check_runtime_exception_ratch
 
 `GET /v1/orders/search` 被 `/{orderId}` 遮蔽：现已返回 404「订单不存在，ID: search」（不再是 500）。
 是否新增 `/search` 字面量端点属产品决定；本轮不做。
+
+## 74. bug-⑨ 接口级验证 + 挖出 bug-⑪/⑫ + 干净库 gate 进 preflight（2026-10-27 22:35–22:55）
+
+### 74.1 临时补角色做接口级验证（Lead 批准）
+
+```
+绑定前：user_roles 有效行 23；qa_approver 仅 ROLE_FINANCE_MANAGER
+补发：ROLE_DEPARTMENT_MANAGER → user_roles 24 行
+撤回：DELETE 1 → user_roles 23 行；qa_approver 回到仅 ROLE_FINANCE_MANAGER
+```
+
+### 74.2 逐条接口实测（qa_approver）
+
+| # | 请求 | 改前 | 改后 | 结论 |
+|---|------|------|------|------|
+| ① | GET /v1/approvals/999999 | 500（DB 报 created_time 不存在） | **404** 审批记录不存在 | business code |
+| ② | PUT /v1/approvals/999999/approve | 500 | **404** 审批记录不存在 | ✔ |
+| ③ | PUT /v1/approvals/999999/reject | 500 | **404** 审批记录不存在 | ✔ |
+| ④ | PUT /v1/approvals/999999/withdraw | 403 | 403 | 仍需 hasRole('employee')，非本次范围 |
+| ⑤ | PUT /v1/approvals/999999/urge | 403 | 403 | 同上 |
+| ⑥ | POST /v1/approvals（type 非法） | 500 | **400** | ✔ |
+| ⑦ | POST /v1/approvals（formData 坏 JSON） | 500 | **400** | ✔ |
+
+### 74.3 验证途中挖出两个真缺陷（都已修）
+
+**bug-⑪（P1）：实体列名写错 → 按 id 查审批必 500**
+`entity/approval/EmployeeApproval.java` 的 `created_time`/`updated_time` 在表里不存在（实际是 `create_time`/`update_time`）→
+`SELECT ... created_time ...` 直接 `BadSqlGrammar`。改成正确列名后 ①②③ 才走到「审批记录不存在」分支。
+
+**bug-⑫（P1，系统性）：Controller 把 BusinessException 吞成 500**
+`EmployeeApprovalController` 6 处 `catch (RuntimeException e) { return Result.error(e.getMessage()); }`，
+而 `Result.error(String)` **默认 code=500** → 即便 service 抛的是 `BusinessException(NOT_FOUND)`，前端也只看到 500。
+修法：在这些方法里加 `catch (BusinessException e) { throw e; }` 前置分支，交由 `GlobalExceptionHandler` 统一映射。
+**这条是「500 治不完」的根因之一**：只改 service 不改 controller，等于白改。
+
+### 74.4 干净库 gate 进 preflight（第三条 gate）
+
+新增：
+```
+scripts/qa/db/FlywayMigrateRunner.java   项目无 flyway-maven-plugin，用 Flyway API 直接对目标库 migrate
+scripts/qa/preflight.py                  check_clean_db_migration()，仅 --full 执行
+```
+流程：`DROP DATABASE IF EXISTS food_traceability_test` → `CREATE ... TEMPLATE template0` →
+`mvn dependency:build-classpath`（缓存到 .preflight-tmp/cp.txt）→ javac 编译 runner → `java FlywayMigrateRunner <db> <dir>` →
+查 `flyway_schema_history`：`failed` 必须 0，且 `latest` 必须等于**从 db/migration 目录解析出的最大版本**（不写死）。
+
+**解析版本时踩了两个坑（都写进代码注释）**：
+1) Flyway 的分隔符同时支持 `.` 与 `_`（`V20261027_001` 即 `20261027.001`）——只按 `.` 切会把 `_001` 当整数一部分，排序整体错位；
+2) Flyway 比较版本会把短版本**补 0 到同长度**再逐段比较（`2026022701` > `20261027.001`）——
+   前两个坑让 gate 误报「迁移未跑到最新」，实际是解析错。
+
+### 74.5 `--full` 实测（三数字 + 棘轮 + 干净库）
+
+```
+[GATE] test-compile → rc=0 BUILD SUCCESS
+[GATE] 干净库迁移：期望最新版本 = 2026022701（目录解析）
+[GATE] 干净库迁移结果：FLYWAY_RESULT ok=true executed=238 ｜ failed=0 rank=238 success=238 latest=2026022701
+[GATE] 干净库迁移通过（2026022701，238 条成功）
+[GATE] 棘轮通过：throw new RuntimeException( = 504（基线 504，持平）
+[GATE] 巡检统计：PASS=20 skipped_no_data=10 FAIL=0 判定项=20（skipped 33% < 阈值 50%）
+[RESULT] PASS=20 skipped=10 (33%) FAIL=0 → WARN
+```
+
+### 74.6 ⚠️ `mvn test` 目前是红的（既有问题，非本轮引入）
+
+```
+Tests run: 766, Failures: 23, Errors: 20, Skipped: 5 → BUILD FAILURE
+代表性失败：
+  SystemSettingsDatabaseTest.testUpdateSetting      BadSqlGrammar
+  PositionSortingTest（4 个）                       NPE Page.getRecords()
+  SysDictServiceImplTest$UpdateDictItemTests        NPE Integer.intValue()
+  PositionCodeGeneratorTest.testSequenceLimit       RuntimeException（职位编码耗尽 1000）
+```
+这些用例依赖真实库状态（清空/编码序列），与本轮改动无关；**建议单开一批修复**，
+否则 `preflight --full` 会长期停在 WARN，等于「真验证档」形同虚设。
