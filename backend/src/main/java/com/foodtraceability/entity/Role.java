@@ -30,19 +30,19 @@ public class Role {
     /**
      * 角色编码（唯一）
      */
-    @TableField("ROLE_CODE")
+    @TableField("role_code")
     @Schema(description = "角色编码（唯一）", example = "admin")
     private String roleCode;
     /**
      * 角色名称
      */
-    @TableField("ROLE_NAME")
+    @TableField("role_name")
     @Schema(description = "角色名称", example = "系统管理员")
     private String roleName;
     /**
      * 角色描述
      */
-    @TableField("DESCRIPTION")
+    @TableField("description")
     @Schema(description = "角色描述", example = "拥有系统所有权限的管理员角色")
     private String roleDescription;
     /**
@@ -56,7 +56,7 @@ public class Role {
      * 角色状态（active: 启用, inactive: 禁用）
      * 数据库列为 varchar，直接以字符串存储，前端期望直接返回 'active'/'inactive'。
      */
-    @TableField("STATUS")
+    @TableField("status")
     @Schema(description = "角色状态（active: 启用, inactive: 禁用）", example = "active")
     private String status;
     /**
@@ -137,14 +137,14 @@ public class Role {
      * 逻辑删除标记
      */
     @TableLogic
-    @TableField("DELETED")
+    @TableField("deleted")
     @Schema(description = "逻辑删除标记", example = "0")
     private Integer deleted;
     /**
      * 版本号（乐观锁）
      */
     @Version
-    @TableField("VERSION")
+    @TableField("version")
     @Schema(description = "版本号（乐观锁）", example = "1")
     private Integer version;
     /**

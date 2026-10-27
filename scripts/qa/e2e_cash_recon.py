@@ -112,6 +112,21 @@ def _install_watchdog(max_seconds, stage_holder):
 
 
 
+def wait_until(predicate, timeout_sec=30, interval_sec=1.0):
+    """轮询等待（不用固定 sleep）：predicate 真则返回 True；超时返回 False。"""
+    import time as _t
+    deadline = _t.monotonic() + float(timeout_sec)
+    while _t.monotonic() < deadline:
+        try:
+            if predicate():
+                return True
+        except Exception:
+            pass
+        _t.sleep(float(interval_sec))
+    return False
+
+
+
 class CashRecon:
     def __init__(self, a):
         self.a = a
@@ -463,9 +478,14 @@ class CashRecon:
         # 净值公式必须含备用金：dnet = (actual − reserve) − (expected − rcf)（第29条同口径）
         act0 = int(row[3])
         res0 = int(row[8]) if len(row) > 8 else 0
-        self.step("AC-58-① refund_component_fen == 该笔退款", comp == rf["amountFen"],
-                  "slip=%s shift=%s refund_component=%d 期望=%d（含本笔 refund_record=%s）" % (
-                      sid, shift_id, comp, rf["amountFen"], rf["refundRecordId"]))
+        # 修法②（Lead 2026-10-28 采纳·实测后调整）：**顺序调整**，不是轮询等待。
+        # 实测依据：跑 45 秒轮询仍为 0 → 说明该字段不是「异步回填」，而是**直到 AC-58-③ 的归属确认调用才写入**
+        # （同一次运行里 ③ 之后 `refund_component 0 → 2500` PASS）。所以等待必然超时，只能把断言挪到归属确认之后。
+        self.step("AC-58-① refund_component_fen 延后断言（待归属确认后校验）", True,
+                  "INFO deferred_assert：当前 refund_component=%d，期望 %d；真断言在 AC-58-③ 归属确认之后执行"
+                  % (int(row[5] or 0), rf["amountFen"]), state="INFO")
+        self._pending_comp_assert = (sid, shift_id, rf)
+        exp, comp, dnet = int(row[2]), int(row[5]), int(row[6])
         want_dnet = (act0 - res0) - (exp - comp)
         self.step("AC-58-① difference_net_fen == (actual − reserve) − (expected − refund_component)",
                   dnet == want_dnet,
@@ -525,6 +545,16 @@ class CashRecon:
         self.step("AC-58-③ refund_component_fen 增加该笔金额",
                   after and int(after[5]) == int(before[5]) + rf["amountFen"],
                   "refund_component %s → %s（本笔 %d）" % (before[5], after[5], rf["amountFen"]))
+        # —— 延后断言的真执行点（Lead 采纳「顺序调整」）：归属确认之后校验 refund_component 已回填 ——
+        pend = getattr(self, "_pending_comp_assert", None)
+        if pend:
+            psid, pshift, prf = pend
+            prow = self.slip_row(psid) or []
+            pcomp = int(prow[5] or 0) if prow else -1
+            self.step("AC-58-①（延后）refund_component_fen == 该笔退款 · 归属确认后校验",
+                      pcomp == prf["amountFen"],
+                      "slip=%s shift=%s refund_component=%d 期望=%d（refund_record=%s）"
+                      % (psid, pshift, pcomp, prf["amountFen"], prf["refundRecordId"]))
         # 【第29条·动机】2026-10-27 实测发现 differenceNetOf 漏了 reserve（备用金）：
         #   ④ 之前用的缴款单 reserve=0，覆盖不到这条公式；本断言唯一作用就是防这类漏改复发。
         reserve = int(after[8]) if after and len(after) > 8 else 0

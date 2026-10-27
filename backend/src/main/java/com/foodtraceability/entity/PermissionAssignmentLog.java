@@ -119,7 +119,7 @@ public class PermissionAssignmentLog {
      * 是否删除（0-未删除，1-已删除）
      */
     @TableLogic
-    @TableField("deleted")
+    @TableField(exist = false) // 库中无 deleted 列（实测 permission_assignment_log）
     @Schema(description = "是否删除")
     private Integer deleted;
 

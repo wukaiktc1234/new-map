@@ -14,7 +14,7 @@ public class DishCombo {
     private Long id;
     @TableField("combo_code")
     private String comboCode;
-    @TableField("name")
+    @TableField("combo_name")
     private String comboName;
     @TableField("description")
     private String description;

@@ -87,13 +87,13 @@ public class AccountingSubject implements Serializable {
     /**
      * 创建人
      */
-    @TableField("create_by")
+    @TableField(exist = false) // 库中无 create_by（实测 accounting_subject 只有 create_time/update_time）
     private String createBy;
 
     /**
      * 更新人
      */
-    @TableField("update_by")
+    @TableField(exist = false) // 库中无 update_by
     private String updateBy;
 
     /**

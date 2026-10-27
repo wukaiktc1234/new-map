@@ -31,7 +31,7 @@ public class Employee {
     /**
      * 员工姓名
      */
-    @TableField("EMPLOYEE_NAME")
+    @TableField("employee_name")
     @Schema(description = "员工姓名", example = "张三")
     private String name;
 
@@ -45,7 +45,7 @@ public class Employee {
     /**
      * 员工编码（唯一）
      */
-    @TableField("EMPLOYEE_CODE")
+    @TableField("employee_code")
     @Schema(description = "员工编码（唯一）", example = "EMP001")
     private String employeeCode;
 

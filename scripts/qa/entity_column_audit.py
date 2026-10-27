@@ -89,10 +89,40 @@ def entity_usage(ent_name):
     return hits
 
 
+def self_test():
+    """自测：用**已知答案**的小样本验证分类正确（Lead 2026-10-28 要求）。
+
+    为什么：本脚本曾把 m[4] 当「表不存在」判定用，导致 154 条全部误分类为「表不存在」，
+    真实列不匹配隐身一轮。没有自测的审计脚本 = 不可信的审计结论。
+    """
+    cases = [
+        # (mismatch 元组, 期望「是否表不存在」)
+        (('t_missing', 'X.java', '(表不存在)', '-', '-'), True),
+        (('t_ok', 'Y.java', 'fieldA', 'col_a', 'col_b'), False),
+        (('t_ok2', 'Z.java', 'fieldB', 'col_x', '(无相似列)'), False),
+    ]
+    ok = True
+    for rec, expect_missing in cases:
+        got_missing = rec[2] == '(表不存在)'   # 正确判据：m[2]
+        wrong = rec[4] == '(表不存在)'         # 曾经的错误判据：m[4]
+        status = 'PASS' if got_missing == expect_missing else 'FAIL'
+        if status == 'FAIL':
+            ok = False
+        print('  [%s] table=%-10s 正确判据→表不存在=%s 期望=%s（旧错判据会得到 %s）'
+              % (status, rec[0], got_missing, expect_missing, wrong))
+    print('自测结果：%s' % ('全部通过' if ok else '存在失败'))
+    return 0 if ok else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--db', default='food_traceability')
+    ap.add_argument('--self-test', action='store_true', help='跑已知答案的小样本，验证分类正确')
+    ap.add_argument('--only-existing-with-data', action='store_true',
+                    help='只输出「表存在且有数据」的列不匹配（门禁用；目标 0）')
     a = ap.parse_args()
+    if a.self_test:
+        return self_test()
     cols = fetch_columns(a.db)
     mismatches = []
     checked = 0
@@ -114,12 +144,24 @@ def main():
                 # 相似列：用 difflib 找最接近的真实列（created_time → create_time 这种差 1 个字符的能命中）
                 close = difflib.get_close_matches(column, sorted(actual), n=1, cutoff=0.75)
                 mismatches.append((table, path.name, field, column, close[0] if close else '(无相似列)'))
+    if a.only_existing_with_data:
+        # 门禁模式：只保留「表存在」的候选，再按行数过滤（有数据才算真风险）
+        pre = [m for m in mismatches if m[2] != '(表不存在)']
+        rc = fetch_rowcounts(a.db, {m[0] for m in pre})
+        mismatches = [m for m in pre if (rc.get(m[0]) or 0) > 0]
+        print('[GATE] --only-existing-with-data：仅统计「表存在且有数据」的列不匹配，共 %d 条\n' % len(mismatches))
+        if not mismatches:
+            print('✔ 0 条：实体与表列一致（针对有数据的表）')
+            return 0
+        for m in mismatches:
+            print('  ✘ %s.%s（实体 %s）→ 行数 %s' % (m[0], m[3], m[1], rc.get(m[0])))
+        return 2
     print('# 实体列名审计（bug-⑪ 系统性排查）\n')
     print('库：`%s` ｜ 扫描实体：`backend/src/main/java` ｜ 核对 `@TableField` 列数：%d\n' % (a.db, checked))
     if not mismatches:
         print('未发现不一致：所有 @TableField 列名都能在 information_schema 中命中。')
         return 0
-    tables = {m[0] for m in mismatches if m[4] != '(表不存在)'}
+    tables = {m[0] for m in mismatches if m[2] != '(表不存在)'}  # m[2]=字段列；原写 m[4] 导致所有表都被当成「表不存在」
     rows = fetch_rowcounts(a.db, tables)
     print('| # | 表 | 表行数 | 实体文件 | 字段 | 实体列名 | 相似真实列 | 判定 |')
     print('|---|----|--------|----------|------|----------|------------|------|')

@@ -63,6 +63,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
     private final StoreNewMapper storeNewMapper;
     /** W1-EC-01: canonical 订单表 Mapper（orders 表） */
     private final OrderNewMapper orderNewMapper;
+
+    /** bug-㉒：独立事务回查（外层事务被 PG 标记 aborted 时使用） */
+    @org.springframework.beans.factory.annotation.Autowired
+    private OrderIdempotencyLookup orderIdempotencyLookup;
     /** W1-EC-01: canonical 订单明细表 Mapper（order_items 表） */
     private final OrderItemNewMapper orderItemNewMapper;
 
@@ -410,7 +414,24 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             } catch (org.springframework.dao.DuplicateKeyException duplicateKeyException) {
                 // 并发双创建：另一请求已用同一 key 落库 → 回查并返回它的订单（不是 500）
                 if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
-                    OrderNew concurrent = findOrderByIdempotencyKey(idempotencyKey);
+                    // bug-㉒：必须用独立事务回查 —— 本事务已被 PG 标记 aborted，同事务再查必 500。
+                    // 且必须**重试**：撞唯一键的那一刻，胜者事务可能还没提交，独立事务查不到（实测：单次回查为 null → 500）。
+                    // 采用短轮询（最多 10 次 × 100ms = 1s），仍查不到才如实抛错。
+                    OrderNew concurrent = null;
+                    for (int attempt = 0; attempt < 10; attempt++) {
+                        if (orderIdempotencyLookup != null) {
+                            concurrent = orderIdempotencyLookup.findByKeyInNewTx(idempotencyKey);
+                        }
+                        if (concurrent != null) {
+                            break;
+                        }
+                        try {
+                            Thread.sleep(100L);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
                     if (concurrent != null) {
                         log.info("[METRIC] order_idempotent_replay_concurrent idempotencyKey={} orderId={} orderNumber={}",
                                 idempotencyKey, concurrent.getOrderId(), concurrent.getOrderNumber());
