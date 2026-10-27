@@ -1,5 +1,8 @@
 package com.foodtraceability.service.impl;
 
+
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.foodtraceability.dto.marketing.PromotionCreateDTO;
 import com.foodtraceability.dto.marketing.PromotionUpdateDTO;
@@ -38,7 +41,7 @@ public class PromotionServiceImpl extends ServiceImpl<MarketingPromotionMapper, 
                 .eq(MarketingPromotion::getPromotionCode, createDTO.getPromotionCode())
                 .one();
         if (existing != null) {
-            throw new RuntimeException("活动编码已存在: " + createDTO.getPromotionCode());
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "活动编码已存在: " + createDTO.getPromotionCode());
         }
 
         // 时间校验

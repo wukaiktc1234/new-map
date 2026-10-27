@@ -3742,3 +3742,59 @@ beat() 记录 self._last_stage；超 --max-seconds 时打印：
   [BEAT] 超过 --max-seconds=1800（超时于 stage=section_confirm 之后 1802.3s），主动中止
   并以 SystemExit(3) 退出
 ```
+
+## 79. bug-⑬ 修复（三审批落库打通）+ Promotion 补列（2026-10-27 23:25–23:35）
+
+### 79.1 bug-⑬：两处遗漏都修了（不止 employeeId）
+
+| 遗漏 | 报错 | 修法 |
+|------|------|------|
+| `employeeId` 从不赋值 | `null value in column "employee_id" of relation "leave_requests"` | `saveDetailByType(...)` 增加 `employeeId` 形参，六个 `save*Detail` 各自 `entity.setEmployeeId(employeeId)`；**取值来自登录人（`X-User-Id` / 安全上下文），不从 formJson 取**（防伪造） |
+| `update_time` 从不赋值 | 下一层报 `null value in column "update_time"` | 六个 `save*Detail` 在 `setCreatedTime` 后补 `setUpdatedTime(LocalDateTime.now())` |
+
+（`setEmployeeId` 全目录原先 0 处命中 → 修后 6 处；`setUpdatedTime` 修后 11 处含其他实体）
+
+### 79.2 三个实体的接口级验证（Lead ④ 要求，**这次给到 200 + 落库**）
+
+```
+POST /v1/approvals {type:leave}        → code=0 approvalId=7747e3e8f8414185a609a251a34f70f7
+POST /v1/approvals {type:overtime}     → code=0 approvalId=e5db54ae41ed472a8412fb6978d9b986
+POST /v1/approvals {type:reimbursement}→ code=0 approvalId=265808cfc3e14d90b175f8685c2ef3ed
+
+落库：leave_requests 1 行 / overtime_requests 1 行 / reimbursement_requests 1 行
+      employee_id 非空 = 1/1/1 ｜ create_time 非空 = 1/1/1
+样例：leave      employee_id=2080170081205395463 create_time=2026-10-27 23:32:30.132065
+      overtime   employee_id=2080170081205395463 create_time=2026-10-27 23:32:30.175302
+      reimbursement employee_id=2080170081205395463 create_time=2026-10-27 23:32:30.203711
+```
+（临时补 `ROLE_EMPLOYEE` 给 vcashier01 以过 `hasRole('employee')`；**验后已撤回**，user_roles 回到 23 行、vcashier01 仅 ROLE_CASHIER。）
+三条审批及其明细行**保留**作为证据，要清按备份→删处理。
+
+### 79.3 Promotion 补列（Lead 裁定：补列不改契约）
+
+迁移 `V20261027_002__promotion_code_column.sql`：
+```sql
+ALTER TABLE promotion ADD COLUMN IF NOT EXISTS promotion_code varchar(64);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_promotion_code ON promotion (promotion_code) WHERE promotion_code IS NOT NULL;
+COMMENT ON COLUMN promotion.promotion_code IS '推广业务码（非主键；可为空，空表示未设置推广码）';
+```
+已执行：`promotion_code character varying(64)` ✔；`uk_promotion_code` 部分唯一索引 ✔；**未 backfill**（不伪造编码）。
+
+**调用面清单**：
+```
+写入码：PromotionServiceImpl:51  promotion.setPromotionCode(createDTO.getPromotionCode())   ← 创建时写入
+按码判重：PromotionServiceImpl:38 .eq(MarketingPromotion::getPromotionCode, createDTO.getPromotionCode())
+          PromotionServiceImpl:41 「活动编码已存在」→ 本轮改为 BusinessException(PARAM_ERROR)（原 RuntimeException）
+实体侧：Promotion.promotionCode（@TableField promotion_code）、PromotionCreateDTO.promotionCode
+注意：MarketingPromotion 也声明 promotion_code，但 marketing_promotions 表**没有该列**（实测 0）→ 该实体/表属另一处待判定的问题
+```
+「按码查」目前**没有对外端点**（只有创建时判重），所以「码为空 → 404「该推广未设置推广码」」这条**暂时无处落地**；
+若后续开按码查接口，按此口径实现。
+
+### 79.4 棘轮 / 巡检
+
+```
+[GATE] 棘轮通过：throw new RuntimeException( = 483（基线 483，持平；本轮 Promotion 那处已从 Runtime 改为 Business）
+[GATE] 形态②棘轮通过：Result.error("字面量) = 828（基线 841，减少 13）
+汇总: 26 PASS / 0 FAIL（判定项 26 条（其中 4 条 skipped_no_data，分母=0））
+```

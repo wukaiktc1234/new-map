@@ -262,7 +262,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
             }
 
             // 3. 根据 type 创建对应的详情实体并保存
-            saveDetailByType(approval.getApprovalId(), dto);
+            saveDetailByType(approval.getApprovalId(), dto, employeeId);
 
             // 4. 风控评估（异步或同步均可，此处同步执行以便返回预警信息）
             Object contextData = buildContextDataByType(approval);
@@ -568,7 +568,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * 根据审批类型保存详情数据
      * 从 formJson JSON字符串反序列化为对应的 CreateDTO，再保存到详情表
      */
-    private void saveDetailByType(String approvalId, EmployeeApprovalCreateDTO dto) {
+    private void saveDetailByType(String approvalId, EmployeeApprovalCreateDTO dto, String employeeId) {
         ObjectMapper objectMapper = new ObjectMapper();
         // 注册 Java 8 时间模块以支持 LocalDate/LocalDateTime 反序列化
         objectMapper.registerModule(new JavaTimeModule());
@@ -578,32 +578,32 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
             switch (dto.getType()) {
                 case "leave": {
                     LeaveCreateDTO leaveDto = objectMapper.readValue(dto.getFormJson(), LeaveCreateDTO.class);
-                    saveLeaveDetail(approvalId, leaveDto);
+                    saveLeaveDetail(approvalId, leaveDto, employeeId);
                     break;
                 }
                 case "overtime": {
                     OvertimeCreateDTO overtimeDto = objectMapper.readValue(dto.getFormJson(), OvertimeCreateDTO.class);
-                    saveOvertimeDetail(approvalId, overtimeDto);
+                    saveOvertimeDetail(approvalId, overtimeDto, employeeId);
                     break;
                 }
                 case "swap": {
                     SwapCreateDTO swapDto = objectMapper.readValue(dto.getFormJson(), SwapCreateDTO.class);
-                    saveSwapDetail(approvalId, swapDto);
+                    saveSwapDetail(approvalId, swapDto, employeeId);
                     break;
                 }
                 case "travel": {
                     TravelCreateDTO travelDto = objectMapper.readValue(dto.getFormJson(), TravelCreateDTO.class);
-                    saveTravelDetail(approvalId, travelDto);
+                    saveTravelDetail(approvalId, travelDto, employeeId);
                     break;
                 }
                 case "reimbursement": {
                     ReimbursementCreateDTO reimbursementDto = objectMapper.readValue(dto.getFormJson(), ReimbursementCreateDTO.class);
-                    saveReimbursementDetail(approvalId, reimbursementDto);
+                    saveReimbursementDetail(approvalId, reimbursementDto, employeeId);
                     break;
                 }
                 case "requisition": {
                     RequisitionCreateDTO requisitionDto = objectMapper.readValue(dto.getFormJson(), RequisitionCreateDTO.class);
-                    saveRequisitionDetail(approvalId, requisitionDto);
+                    saveRequisitionDetail(approvalId, requisitionDto, employeeId);
                     break;
                 }
                 default:
@@ -619,7 +619,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * 保存请假详情
      * LeaveCreateDTO 无 days 字段，需从 startDate/endDate 自动计算请假天数
      */
-    private void saveLeaveDetail(String approvalId, LeaveCreateDTO leaveDto) {
+    private void saveLeaveDetail(String approvalId, LeaveCreateDTO leaveDto, String employeeId) {
         if (leaveDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "请假信息不能为空");
         }
@@ -639,6 +639,9 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         entity.setHandoverNote(leaveDto.getHandoverNote());
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
+        
+        entity.setEmployeeId(employeeId);   // bug-⑬：从登录人取，**不从 formJson 取**（防伪造）
         leaveRequestMapper.insert(entity);
     }
 
@@ -647,7 +650,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * OvertimeCreateDTO 的 startTime/endTime 为 String(HH:mm)，需转换为 LocalTime；
      * 无 hours 字段，根据起止时间自动计算加班小时数
      */
-    private void saveOvertimeDetail(String approvalId, OvertimeCreateDTO overtimeDto) {
+    private void saveOvertimeDetail(String approvalId, OvertimeCreateDTO overtimeDto, String employeeId) {
         if (overtimeDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "加班信息不能为空");
         }
@@ -670,6 +673,9 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         entity.setOvertimeType(overtimeDto.getOvertimeType());
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
+        
+        entity.setEmployeeId(employeeId);   // bug-⑬：从登录人取，**不从 formJson 取**（防伪造）
         overtimeRequestMapper.insert(entity);
     }
 
@@ -677,7 +683,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * 保存换班详情
      * SwapCreateDTO 使用 originalDate/targetDate/reason（非 originalShiftDate/targetShiftDate/swapReason）
      */
-    private void saveSwapDetail(String approvalId, SwapCreateDTO swapDto) {
+    private void saveSwapDetail(String approvalId, SwapCreateDTO swapDto, String employeeId) {
         if (swapDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "换班信息不能为空");
         }
@@ -700,6 +706,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         entity.setPartnerConfirmed(false);
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
         swapRequestDetailMapper.insert(entity);
     }
 
@@ -709,7 +716,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * DTO 使用 travelPurpose/estimatedBudget（非 purpose/estimatedCost）；
      * estimatedBudget 前端传入元，Entity 存储分，需做元转分
      */
-    private void saveTravelDetail(String approvalId, TravelCreateDTO travelDto) {
+    private void saveTravelDetail(String approvalId, TravelCreateDTO travelDto, String employeeId) {
         if (travelDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "出差信息不能为空");
         }
@@ -737,6 +744,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         entity.setRelatedTaskId(travelDto.getRelatedTaskId());
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
         travelRequestMapper.insert(entity);
     }
 
@@ -745,7 +753,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * ReimbursementCreateDTO 使用 items(列表)/reimbursementCategory/bankAccount/payeeName；
      * 无 amount/category/invoiceNumber/invoiceDate/relatedTravelApprovalId 等字段
      */
-    private void saveReimbursementDetail(String approvalId, ReimbursementCreateDTO reimbursementDto) {
+    private void saveReimbursementDetail(String approvalId, ReimbursementCreateDTO reimbursementDto, String employeeId) {
         if (reimbursementDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "报销信息不能为空");
         }
@@ -773,6 +781,9 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         }
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
+        
+        entity.setEmployeeId(employeeId);   // bug-⑬：从登录人取，**不从 formJson 取**（防伪造）
         reimbursementRequestMapper.insert(entity);
     }
 
@@ -781,7 +792,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      * RequisitionCreateDTO 使用 urgencyLevel/supplierPreference（非 isUrgent/supplierId）；
      * 无 itemId 字段；estimatedCost 前端传入元，Entity 存储分，需做元转分
      */
-    private void saveRequisitionDetail(String approvalId, RequisitionCreateDTO requisitionDto) {
+    private void saveRequisitionDetail(String approvalId, RequisitionCreateDTO requisitionDto, String employeeId) {
         if (requisitionDto == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "领用信息不能为空");
         }
@@ -810,6 +821,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         }
         // Entity 使用 createdTime（非 createTime）
         entity.setCreatedTime(LocalDateTime.now());
+        entity.setUpdatedTime(LocalDateTime.now());   // bug-⑬：update_time 也是 NOT NULL，缺了照样 500
         requisitionRequestMapper.insert(entity);
     }
 
