@@ -10,9 +10,19 @@ echo 切换到项目根目录: %cd%
 
 echo.
 echo 检查Java环境...
+rem 本机 JDK 不在 PATH 上：优先使用仓库自带的 JDK21，避免被误判为「无 JDK」
+if not defined JAVA_HOME (
+    if exist "%~dp0\..\..\JDK21\bin\java.exe" (
+        set "JAVA_HOME=%~dp0\..\..\JDK21"
+        echo 已自动设置 JAVA_HOME=%JAVA_HOME%
+    )
+)
+if defined JAVA_HOME (
+    set "PATH=%JAVA_HOME%\bin;%PATH%"
+)
 java -version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Java环境未找到，请确保已安装Java 21或更高版本
+    echo Java环境未找到：请设置 JAVA_HOME=P:\my-new-project\JDK21（本仓库自带 JDK 21）
     pause
     exit /b 1
 )

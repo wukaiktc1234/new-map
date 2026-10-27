@@ -11,10 +11,25 @@
 | 前端 | Vue.js 3.3.8 + TypeScript 5.2.2 + Element Plus 2.4.4 |
 | 构建 | Maven 3.9.x / Vite 5.0.0 / npm 9.x |
 
+## 环境前置（必读）
+
+本机 JDK **不在 PATH 上**，也没有预设 `JAVA_HOME`；`where java` 查不到属正常现象，**不代表没有 JDK**。
+
+```powershell
+# 本仓库自带的 JDK 21（唯一正确路径）
+$env:JAVA_HOME = "P:\my-new-project\JDK21"
+$env:PATH = "$env:JAVA_HOME\bin;" + $env:PATH
+java -version   # 期望 21.x
+```
+
+> 历史坑：`H:\fuwu\jdk-17...` 目录已不存在，指向它的 JAVA_HOME 会让 `mvn` 报
+> `The JAVA_HOME environment variable is not defined correctly`，并被误判成「本机没有 JDK」。
+> 详见 `NIGHT_PATROL_LOG.md` 的 JAVA_HOME 记录。
+
 ## 快速启动
 
 ```bash
-# 后端
+# 后端（必须先按上面设置 JAVA_HOME）
 cd backend && mvn spring-boot:run -DskipTests
 
 # 前端（新终端）

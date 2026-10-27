@@ -42,6 +42,8 @@ const loading = ref(false)
 const defaultsLoading = ref(false)
 /** 默认值来源：store-config / last-shift / none */
 const defaultSource = ref<'store-config' | 'last-shift' | 'none'>('none')
+/** 默认值快照（提示「沿用上一班 X」，不随用户编辑变化） */
+const defaultValue = ref('')
 
 /** 门店固定备用金配置（后端暂无来源，恒 null；接口就绪后在此替换） */
 async function loadStoreReserve(): Promise<number | null> {
@@ -72,16 +74,19 @@ async function loadDefaults(): Promise<void> {
     const fromConfig = await loadStoreReserve()
     if (fromConfig != null) {
       raw.value = fromConfig.toFixed(2)
+      defaultValue.value = raw.value
       defaultSource.value = 'store-config'
       return
     }
     const fromLastShift = await loadLastShiftOpeningCash()
     if (fromLastShift != null) {
       raw.value = fromLastShift.toFixed(2)
+      defaultValue.value = raw.value
       defaultSource.value = 'last-shift'
       return
     }
     raw.value = ''
+    defaultValue.value = ''
     defaultSource.value = 'none'
   } finally {
     defaultsLoading.value = false
@@ -207,12 +212,16 @@ function close(): void {
         </el-form-item>
       </el-form>
 
-      <p class="start-shift__source">
-        默认值来源：{{
-          defaultSource === 'store-config' ? '门店固定备用金'
-          : defaultSource === 'last-shift' ? '上一班次开班现金'
-          : '无默认值（必填）'
-        }}
+      <p class="start-shift__source" data-test="opening-cash-source">
+        <template v-if="defaultSource === 'last-shift'">
+          沿用上一班 {{ defaultValue }}（仅为默认值，可修改）
+        </template>
+        <template v-else-if="defaultSource === 'store-config'">
+          沿用门店固定备用金 {{ defaultValue }}（仅为默认值，可修改）
+        </template>
+        <template v-else>
+          无历史备用金可沿用，请手工填写（必填）
+        </template>
       </p>
 
       <p v-if="errorText" class="start-shift__error" data-test="opening-cash-error">{{ errorText }}</p>
