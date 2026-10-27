@@ -3798,3 +3798,61 @@ COMMENT ON COLUMN promotion.promotion_code IS '推广业务码（非主键；可
 [GATE] 形态②棘轮通过：Result.error("字面量) = 828（基线 841，减少 13）
 汇总: 26 PASS / 0 FAIL（判定项 26 条（其中 4 条 skipped_no_data，分母=0））
 ```
+
+## 80. mvn test 全量查清 + 两处根因修复 + MarketingPromotion 判定 + 证据标记（2026-10-27 23:40–23:55）
+
+### 80.1 `mvn -o -B test` 全量（本轮首次跑）
+
+```
+Tests run: 766, Failures: 23, Errors: 20, Skipped: 5  → BUILD FAILURE
+```
+
+失败集中在 7 个类。**按根因分类（不是按文件）**：
+
+| 类别 | 用例数 | 根因 | 判定 |
+|------|--------|------|------|
+| `SystemSettingsDatabaseTest` 13 errors | 13 | **实体列名错**：`SysSetting` 的 `@TableId(value="id")`，而 `sys_settings` 主键是 `setting_id` → `字段 "id" 不存在`（BadSqlGrammar） | **今天同一根因家族**（bug-⑪）→ 已修 |
+| `SystemSettingsIntegrationTest` 5 failures | 5 | 同一个 `id` 列问题导致接口 500（JSON code 期望 0 实得 500） | 同上 → 已随修复消除 |
+| `SysSettingServiceTest` 4 failures | 4 | 同一 `id` 列问题的下游 | 同上 |
+| `InventoryDeductionServiceImplTest` 2 failures | 2 | **今天换表引入的回归**：测试仍 mock `DishRecipeMapper`，服务已改 `DishRecipeNewMapper`；且 `dishId` 现按数字 `food_id` 解析 | 已修（测试适配新 mapper + 数字 id） |
+| `PositionSortingTest` 4 errors（NPE Page.getRecords） | 4 | 未判定（疑为 MyBatis-Plus 分页插件在单测环境未初始化） | 历史遗留，**未判定** |
+| `PositionCodeGeneratorTest` 5 / `FoodCodeGeneratorTest` 3 | 8 | 编码生成器对岗位名/最大值边界的期望与实际不符 | 历史遗留（今天未触及这两个类） |
+| `CostRecordServiceImplTest` / `InvoiceReimbursementServiceImplTest` / `PayableServiceImplTest` / `PosOrderQueryServiceImplTest` 各 1 | 4 | 财务/查询断言不符（costNo 前缀、支付状态、VO 字段、支付方式） | **未判定**（今天未改这些文件的逻辑；但 PosOrder* 与我改过异常语义同包，需下一轮确认） |
+
+**关于 Lead 特别核对的两项**：
+- `SystemSettingsDatabaseTest`（BadSqlGrammar）：**确认同一根因家族** —— 不是 `create_time`，而是 `SysSetting.id` ↔ `sys_settings.setting_id`。修后 **13/13 全绿**。
+- `SysDictServiceImplTest`（NPE）：未随本次改动变化，**仍红**，属独立问题（未判定）。
+
+### 80.2 本轮修复（两处）
+
+```
+entity/SysSetting.java      @TableId(value = "id") → "setting_id"
+test/InventoryDeductionServiceImplTest  mock 换 DishRecipeNewMapper；recipe() 用 foodId/materialId/requiredQuantity；deductByRecipe("D-1") → ("1")（换表后 dishId 按数字 food_id 解析）
+```
+复跑：`SystemSettingsDatabaseTest` 13/13 绿、`InventoryDeductionServiceImplTest` 14/14 绿（27 用例 0 失败）。
+
+### 80.3 MarketingPromotion 判定：**我上一轮说错了，撤回**
+
+上一轮我说「MarketingPromotion 也声明 promotion_code，但 marketing_promotions 表没有该列」—— **错在我查了复数表名**。实测：
+```
+to_regclass('public.marketing_promotion')  = marketing_promotion ✔ 存在
+to_regclass('public.marketing_promotions') = NULL（复数表不存在，我上轮误查此名）
+marketing_promotion 列：promotion_id,promotion_name,promotion_code,promotion_type,discount_participant_count,…,deleted
+行数：0
+```
+→ `MarketingPromotion.promotion_code` **映射正确、无需处理**；真实缺列的是 `Promotion.java`（表 `promotion`），已由 V20261027_002 补列。
+
+### 80.4 三条审批证据加标记（幂等）
+
+`employee_approvals` **没有 `form_json` 列**（实际列：…form_summary,remark,…），故标记落在 `remark` 与 `form_summary`：
+```sql
+remark       ← 缺失时追加 '[E2E:evidence]'
+form_summary ← 缺失时前缀 '[E2E-evidence-nightly]'
+```
+实测两条都命中 UPDATE 3；幂等复跑后内容完全不变：
+```
+7747e3e8…(leave)        remark=[E2E:evidence]  form_summary=[E2E-evidence-nightly]
+e5db54ae…(overtime)     同上
+265808cf…(reimbursement) 同上
+```
+三条**未删除**（验收证据）。

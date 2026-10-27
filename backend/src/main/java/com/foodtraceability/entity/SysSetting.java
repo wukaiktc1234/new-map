@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @TableName("sys_settings")
 @Schema(description = "系统设置表")
 public class SysSetting {
-    @TableId(value = "id", type = IdType.AUTO)
+    @TableId(value = "setting_id", type = IdType.AUTO)
     @Schema(description = "设置ID")
     private Long id;
     @TableField("setting_group")

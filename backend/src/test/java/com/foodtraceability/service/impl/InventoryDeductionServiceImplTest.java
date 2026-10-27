@@ -2,11 +2,11 @@ package com.foodtraceability.service.impl;
 
 import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.dto.InventoryDeductionDTO;
-import com.foodtraceability.entity.DishRecipe;
+import com.foodtraceability.entity.DishRecipeNew;
 import com.foodtraceability.entity.FoodTraceCode;
 import com.foodtraceability.entity.MaterialTraceCode;
 import com.foodtraceability.entity.MaterialUsageRecord;
-import com.foodtraceability.mapper.DishRecipeMapper;
+import com.foodtraceability.mapper.DishRecipeNewMapper;
 import com.foodtraceability.mapper.FoodTraceCodeMapper;
 import com.foodtraceability.mapper.MaterialTraceCodeMapper;
 import com.foodtraceability.mapper.MaterialUsageRecordMapper;
@@ -53,7 +53,7 @@ class InventoryDeductionServiceImplTest {
     private MaterialTraceCodeMapper materialTraceCodeMapper;
 
     @Mock
-    private DishRecipeMapper dishRecipeMapper;
+    private DishRecipeNewMapper dishRecipeNewMapper;
 
     @Mock
     private FoodTraceCodeMapper foodTraceCodeMapper;
@@ -72,7 +72,7 @@ class InventoryDeductionServiceImplTest {
         when(materialTraceCodeMapper.selectOne(any())).thenReturn(null);
         when(materialTraceCodeMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(materialTraceCodeMapper.updateById(any(MaterialTraceCode.class))).thenReturn(1);
-        when(dishRecipeMapper.selectList(any())).thenReturn(new ArrayList<>());
+        when(dishRecipeNewMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(foodTraceCodeMapper.selectOne(any())).thenReturn(null);
         when(foodTraceCodeMapper.updateById(any(FoodTraceCode.class))).thenReturn(1);
         when(materialUsageRecordMapper.insert(any(MaterialUsageRecord.class))).thenReturn(1);
@@ -98,12 +98,16 @@ class InventoryDeductionServiceImplTest {
         return t;
     }
 
-    private static DishRecipe recipe(String ingredientId, String name, String qty, String unit) {
-        DishRecipe r = new DishRecipe();
-        r.setDishId("D-1");
-        r.setIngredientId(ingredientId);
-        r.setIngredientName(name);
-        r.setQuantity(new BigDecimal(qty));
+    private static DishRecipeNew recipe(String ingredientId, String name, String qty, String unit) {
+        DishRecipeNew r = new DishRecipeNew();
+        r.setFoodId(1L);
+        try {
+            r.setMaterialId(Long.valueOf(ingredientId));
+        } catch (NumberFormatException e) {
+            r.setMaterialId(0L);
+        }
+        r.setMaterialName(name);
+        r.setRequiredQuantity(new java.math.BigDecimal(qty));
         r.setUnit(unit);
         return r;
     }
@@ -214,7 +218,7 @@ class InventoryDeductionServiceImplTest {
     @Test
     @DisplayName("deductByRecipe：无配方时直接返回，不产生任何写入")
     void deductByRecipe_noRecipes_returnsEarly() {
-        service.deductByRecipe("D-1", 2, "KO-1", "FTC-1");
+        service.deductByRecipe("1", 2, "KO-1", "FTC-1");
 
         verify(materialUsageRecordMapper, never()).insert(any(MaterialUsageRecord.class));
         verify(foodTraceCodeMapper, never()).updateById(any(FoodTraceCode.class));
@@ -224,7 +228,7 @@ class InventoryDeductionServiceImplTest {
     @Test
     @DisplayName("deductByRecipe：按 配方用量×份数 登记明细，并回写菜品追溯码 JSON")
     void deductByRecipe_computesQuantitiesAndPersistsJson() {
-        when(dishRecipeMapper.selectList(any())).thenReturn(List.of(
+        when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(
                 recipe("100", "五花肉", "0.2", "kg"),
                 recipe("101", "冰糖", "0.05", "kg")
         ));
@@ -232,7 +236,7 @@ class InventoryDeductionServiceImplTest {
         foodTraceCode.setTraceCodeId("FTC-1");
         when(foodTraceCodeMapper.selectOne(any())).thenReturn(foodTraceCode);
 
-        service.deductByRecipe("D-1", 3, "KO-1", "FTC-1");
+        service.deductByRecipe("1", 3, "KO-1", "FTC-1");
 
         InventoryDeductionDTO deduction = service.getDeductionRecord("KO-1");
         assertNotNull(deduction);
@@ -249,10 +253,10 @@ class InventoryDeductionServiceImplTest {
     @Test
     @DisplayName("deductByRecipe：菜品追溯码不存在时只登记内存记录，不写库")
     void deductByRecipe_missingFoodTraceCode_onlyRecordsInMemory() {
-        when(dishRecipeMapper.selectList(any())).thenReturn(List.of(recipe("100", "五花肉", "1", "kg")));
+        when(dishRecipeNewMapper.selectList(any())).thenReturn(List.of(recipe("100", "五花肉", "1", "kg")));
         when(foodTraceCodeMapper.selectOne(any())).thenReturn(null);
 
-        service.deductByRecipe("D-1", 1, "KO-9", "FTC-X");
+        service.deductByRecipe("1", 1, "KO-9", "FTC-X");
 
         verify(foodTraceCodeMapper, never()).updateById(any(FoodTraceCode.class));
         assertNotNull(service.getDeductionRecord("KO-9"));
