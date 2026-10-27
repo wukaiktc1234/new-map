@@ -305,7 +305,7 @@ class CashRecon:
         self.step("AC-58-① 班次距 start %d 分钟（需 > 边界 %d 分钟才属「班次内」）" % (mins, boundary_min),
                   mins > boundary_min,
                   "shift_id=%s start=%s（若 ≤%d 分钟，①会退化为边界场景，请换班次）" % (shift_id, st_txt, boundary_min))
-        rf, err = self.make_refund(3000, "AC-58 hinge 班次内退款 %s" % self.tag)
+        rf, err = self.make_refund(3000, "%s AC-58 hinge 班次内退款" % self.mark)
         if not rf:
             return self.not_ready("AC-58-① 造退款", err)
         # 关班才有 end_time；且要求「退款时刻距 end 也 > 边界」→ 等够边界分钟再关班
@@ -353,7 +353,7 @@ class CashRecon:
         """用「距 start ≤ 边界」的班次 → 立刻退款 → generate 应不计入并留审计"""
         if not shift_id:
             return self.not_ready("AC-58-② 边界班次夹具", "未传入边界班次（开班失败）")
-        rf, err = self.make_refund(3000, "AC-58 boundary 边界内退款 %s" % self.tag)
+        rf, err = self.make_refund(3000, "%s AC-58 boundary 边界内退款" % self.mark)
         if not rf:
             return self.not_ready("AC-58-② 造退款", err)
         # 缴款单要求班次有完整起止时间 → 退款后立刻关班（退款距 end ≤ 边界，正好是边界场景）

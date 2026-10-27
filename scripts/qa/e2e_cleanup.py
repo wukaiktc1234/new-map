@@ -12,6 +12,11 @@
     · order_refund_records.refund_reason / refund_shift_attribution.reason / 关班 remark = 前缀 [E2E:<tag>]
     · deposit_slips            = 经 shift_id 关联（generate 未传 remark，无独立 tag）
 
+⚠ **已知后端缺陷（bug-③）**：POS 下单接口**不落** orders.idempotency_key（实测库内 NULL），
+   所以 "E2E-<tag>-<n>" 目前只是传参标记，**不能**当 orders 的定位依据；
+   本脚本因此用「带 tag 的退款记录 → order_id」反查（两套件每单必经退款），
+   幂等键条件保留，等 bug-③ 修好后自动生效。
+
 ⚠ **fund_flows.remark 由后端生成**（PosRefundFlowRecorder:132 "POS退款：退款单#… [POS]"），
    **不含 tag** → 流水只能经 order_id / refund_record_id 外键定位，**绝不能按 remark 找**，
    否则会漏删（这是 tag 体系唯一缺口，写死在此防后人误用）。
@@ -102,7 +107,8 @@ class Cleaner:
         if order_ids:
             refund_conds.append("order_id IN (%s)" % ",".join("'%s'" % x for x in order_ids))
         if self.has_col("order_refund_records", "refund_reason"):
-            refund_conds.append("refund_reason LIKE '%s%%'" % m)
+            refund_conds.append("refund_reason LIKE '%s%%'" % m)          # 主锚点：前缀 [E2E:<tag>]
+            refund_conds.append("refund_reason LIKE '%%%s%%'" % t)         # 兜底：旧版脚本只写裸 tag 的行
         refund_ids = self.collect("order_refund_records", "refund_id",
                                   " OR ".join(refund_conds)) if refund_conds else []
 
