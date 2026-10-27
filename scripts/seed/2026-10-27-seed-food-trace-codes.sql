@@ -21,9 +21,18 @@ SELECT v.trace_code, v.trace_type, v.target_type, v.target_id, v.target_name, v.
   FROM (VALUES
         ('TC-E2E-SEED-001', 2, 3, 1::bigint, '生菜', 'BATCH-E2E-001', DATE '2026-10-26', DATE '2026-11-02', 1::bigint, 'E2E 测试供应商'),
         ('TC-E2E-SEED-002', 2, 3, 3::bigint, '生菜(物料3)', 'BATCH-E2E-002', DATE '2026-10-26', DATE '2026-11-02', 1::bigint, 'E2E 测试供应商'),
-        ('TC-E2E-SEED-003', 1, 1, 1::bigint, '生菜串', 'BATCH-E2E-003', DATE '2026-10-27', DATE '2026-11-03', NULL::bigint, NULL)
+        ('TC-E2E-SEED-003', 1, 1, 1::bigint, '生菜串', 'BATCH-E2E-003', DATE '2026-10-27', DATE '2026-11-03', NULL::bigint, NULL),
+        ('TC-E2E-SEED-004', 1, 1, 1::bigint, '链数据验收菜', 'BATCH-E2E-004', DATE '2026-10-27', DATE '2026-11-03', NULL::bigint, NULL)
        ) AS v(trace_code, trace_type, target_type, target_id, target_name, batch_no, production_date, expiry_date, supplier_id, supplier_name)
  WHERE NOT EXISTS (SELECT 1 FROM food_trace_codes t WHERE t.trace_code = v.trace_code AND t.deleted = 0);
+-- TC-E2E-SEED-004 的 chain_data：**用于验证 jsonb 直通与规范化哈希，勿删**
+--   为什么单独写：jsonb 会规范化（[{"a":1}] 读回变 [{"a": 1}]，9→10 字节），
+--   本行必须保留一个**数组**取值，才能复现「写时算 vs 读回算」哈希一致（见 JsonCanonicalHashUtil 注释）。
+UPDATE food_trace_codes
+   SET chain_data = '[{"a":1},{"node":"验收","ts":"2026-10-27T21:00:00"}]'::jsonb,
+       update_time = now()
+ WHERE trace_code = 'TC-E2E-SEED-004' AND deleted = 0;
 COMMIT;
-SELECT trace_code_id, trace_code, trace_type, target_type, target_id, target_name, status, extra_info
+SELECT trace_code_id, trace_code, trace_type, target_type, target_id, target_name, status,
+       length(chain_data::text) AS chain_len, extra_info
   FROM food_trace_codes WHERE trace_code LIKE 'TC-E2E-SEED-%' ORDER BY trace_code;

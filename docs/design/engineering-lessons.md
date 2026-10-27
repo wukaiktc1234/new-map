@@ -47,3 +47,20 @@
 
 - 事故：删除流水但未回滚余额 → A7 红（发生 2 次）；`ON_ERROR_STOP` 以 `psql -c` 内嵌 `set` 的写法无效 → 整笔事务静默回滚、漏删 4 条流水 → A31 红。
 - 规则：**删除 + 余额重算必须同一事务；psql 必须用 `-v ON_ERROR_STOP=1`；清理脚本必须有「apply 前锚点非空」与「apply 后残留为 0」双向护栏。**
+
+## 9. 别假设项目用了 Lombok（本条来自 bug-③）
+
+- 事故：bug-③ 给 `entity/OrderNew` 与 `dto/OrderResultDTO` 只加了字段，没写访问器 → `mvn compile` BUILD FAILURE，
+  报「找不到符号 `getIdempotencyKey()` / `setReused()`」；我下意识以为「Spring 项目一般有 Lombok」。
+- 实测统计（`backend/src/main/java`，2026-10-27）：**2888 个 Java 文件，使用 `@Data/@Getter/@Setter/@Builder` 的 = 0 个**（0.0%）；
+  `entity/` 406 个文件、`dto/` 795 个文件，**同样 0 个**；`import lombok` 全仓 0 命中。
+  抽查 `OrderNew`：手写 getter 38 个 / setter 38 个。→ **本项目零 Lombok，全手写访问器**。
+  **记忆锚点：2888 : 0** —— 看到任何「加个字段就行」的念头，先想起这组数字。
+- 因此本条不是「同模块混用」也不是「跨模块风格不同」（两者实测均不成立），而是**项目级惯例**：
+  1) **加字段必须同时加手写 getter/setter**（`entity/`、`dto/` 无一例外）；
+  2) 改实体/DTO 后必须立刻 `mvn -o -B -DskipTests compile` 验证，不能只靠「看起来对」；
+  3) 遇到「找不到符号」先查该类**是否有访问器**，不要先怀疑 import 或依赖版本。
+- 附带发现（同源，已修）：`mvn test` 曾因 `OrderNewServiceImplDeductTest` / `OrderNewServiceImplOrderNumberA1Test`
+  构造器参数个数不匹配而**测试编译失败**（他人改构造器加 `PosRefundFlowRecorder` 未同步测试），
+  导致 `spring-boot:run` 连带失败、本地只能 `-Dmaven.test.skip=true` —— 这本身就是「测试假装存在」的静默失效。
+  已补 mock + 构造器参数，`mvn -o -B test-compile` BUILD SUCCESS，34 个用例全绿。

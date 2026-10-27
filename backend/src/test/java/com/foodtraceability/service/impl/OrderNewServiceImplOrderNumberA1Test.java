@@ -30,6 +30,7 @@ import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.finance.BankAccountService;
 import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.FundFlowService;
+import com.foodtraceability.service.finance.PosRefundFlowRecorder;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +86,7 @@ class OrderNewServiceImplOrderNumberA1Test {
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private CostRecordService costRecordService;
     @Mock private FundFlowService fundFlowService;
+    @Mock private PosRefundFlowRecorder posRefundFlowRecorder;
     @Mock private BankAccountService bankAccountService;
     @Mock private MaterialConsumptionAuditService materialConsumptionAuditService;
     @Mock private SensitiveDataService sensitiveDataService;
@@ -112,7 +114,8 @@ class OrderNewServiceImplOrderNumberA1Test {
                 orderNewMapper, orderItemNewMapper, orderPaymentRecordNewMapper, orderRefundRecordNewMapper,
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
                 comboIngredientNewMapper, kitchenOrderMapper, inventoryService,
-                applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
+                applicationEventPublisher, costRecordService, fundFlowService, posRefundFlowRecorder,
+                bankAccountService,
                 materialConsumptionAuditService, sensitiveDataService);
 
         insertedOrder = null;

@@ -26,6 +26,7 @@ import com.foodtraceability.service.InventoryService;
 import com.foodtraceability.service.finance.BankAccountService;
 import com.foodtraceability.service.finance.CostRecordService;
 import com.foodtraceability.service.finance.FundFlowService;
+import com.foodtraceability.service.finance.PosRefundFlowRecorder;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -94,6 +95,7 @@ class OrderNewServiceImplDeductTest {
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private CostRecordService costRecordService;
     @Mock private FundFlowService fundFlowService;
+    @Mock private PosRefundFlowRecorder posRefundFlowRecorder;
     @Mock private BankAccountService bankAccountService;
     @Mock private MaterialConsumptionAuditService materialConsumptionAuditService;
     @Mock private SensitiveDataService sensitiveDataService;
@@ -118,7 +120,8 @@ class OrderNewServiceImplDeductTest {
                 orderNewMapper, orderItemNewMapper, orderPaymentRecordNewMapper, orderRefundRecordNewMapper,
                 diningTableNewMapper, foodNewMapper, dishComboNewMapper, dishRecipeNewMapper,
                 comboIngredientNewMapper, kitchenOrderMapper, inventoryService,
-                applicationEventPublisher, costRecordService, fundFlowService, bankAccountService,
+                applicationEventPublisher, costRecordService, fundFlowService, posRefundFlowRecorder,
+                bankAccountService,
                 materialConsumptionAuditService, sensitiveDataService);
     }
 

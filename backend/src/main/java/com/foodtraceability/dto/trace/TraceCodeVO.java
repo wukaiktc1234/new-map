@@ -100,6 +100,9 @@ public class TraceCodeVO {
 
     /** 追溯链节点列表 */
     @Schema(description = "追溯链节点列表")
+    /** 追溯链原始 JSON（jsonb 读回文本；bug-④：此前 VO 无此字段，接口读不到链数据） */
+    private String chainData;
+
     private List<TraceChainNodeVO> chainNodes;
 
     /** 额外信息 */
@@ -155,6 +158,8 @@ public class TraceCodeVO {
     public void setRiskLevelName(String riskLevelName) { this.riskLevelName = riskLevelName; }
     public String getQrCodeImageUrl() { return qrCodeImageUrl; }
     public void setQrCodeImageUrl(String qrCodeImageUrl) { this.qrCodeImageUrl = qrCodeImageUrl; }
+    public String getChainData() { return chainData; }
+    public void setChainData(String chainData) { this.chainData = chainData; }
     public List<TraceChainNodeVO> getChainNodes() { return chainNodes; }
     public void setChainNodes(List<TraceChainNodeVO> chainNodes) { this.chainNodes = chainNodes; }
     public String getExtraInfo() { return extraInfo; }

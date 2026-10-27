@@ -743,6 +743,8 @@ public class FoodTraceabilityServiceImpl extends ServiceImpl<TraceCodeMapper, Tr
         vo.setRiskLevelName(getRiskLevelName(entity.getRiskLevel()));
         vo.setQrCodeImageUrl(entity.getQrCodeImageUrl());
         vo.setExtraInfo(entity.getExtraInfo());
+        // bug-④：chain_data 原样回显（读回的是 jsonb 规范化文本，不是写入时的原始串）
+        vo.setChainData(entity.getChainData());
         vo.setCreateTime(entity.getCreateTime());
         return vo;
     }

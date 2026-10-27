@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  * 系统核心表，记录每个可追溯单元的唯一标识和完整链路信息
  * 支持正向追溯（扫码查来源）和反向召回（问题原料追踪）
  */
-@TableName("food_trace_codes")
+@TableName(value = "food_trace_codes", autoResultMap = true)
 @Schema(description = "食品追溯码实体")
 public class TraceCode {
 
@@ -103,7 +103,7 @@ public class TraceCode {
     private String qrCodeImageUrl;
 
     /** 追溯链数据JSON（关键！存储完整链条信息） */
-    @TableField("chain_data")
+    @TableField(value = "chain_data", typeHandler = com.foodtraceability.config.handler.JsonbStringTypeHandler.class)
     @Schema(description = "追溯链数据")
     private String chainData;
 
