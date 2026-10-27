@@ -75,3 +75,33 @@
 **判定难点（需 Lead 定）**：这些 Controller 大多是「混合用途」——同一个 Controller 既有查真实表的正常端点，
 也有走缺表的端点（如 `DeviceManagementController`）。给类加注解会误伤正常功能，只能**方法级逐个挑**；
 而方法级的挑选需要「该端点确实写/读这张缺表」的证据，脚本给不出唯一结论，故列为需人工确认。
+
+## 实测判定（Lead ① 要求：证据决定，不靠拍板）
+
+判据：真调一次 → 500 且日志含 `关系 "X" 不存在` → **加注解**；200/400/403/404 → **不加**；500 但非缺表 → **另立 bug**。
+
+| 端点 | 改前返回 | 是否缺表 | 处置 |
+|------|----------|----------|------|
+| `GET /v1/self-purchase/page` | 500「系统繁忙」，日志 `关系 "self_purchase" 不存在`（SelfPurchaseServiceImpl:153） | **是** | **已加注解 → 复测 501** ✔ |
+| `GET /v1/self-purchase/{id}` | 同上（同链） | **是** | 一并覆盖 → 501 ✔ |
+| `GET /v1/sales/order/page` | 501 | 已覆盖 | 不加 |
+| `GET /v1/hardware/version/1` | 501 | 已覆盖 | 不加 |
+| `GET /v1/hardware/devices` | 501 | 已覆盖 | 不加 |
+| `GET /v1/dashboard/today-sales` | 200 code=0 有数据 | 否 | **不加**（不碰缺表） |
+| `GET /v1/dashboard/inventory-alerts` | 200 code=0 | 否 | 不加 |
+| `GET /v1/dashboard/member-growth` | 200 code=0 | 否 | 不加 |
+| `GET /v1/dashboard/finance-summary` | 200 code=0 | 否 | 不加 |
+| `GET /v1/dashboard/overview/1` | 200 code=0 | 否 | 不加（**DashboardServiceImpl 虽有 SalesOrderMapper 字段，但该端点未使用**） |
+| `GET /v1/operations/dashboard/*` | 403 权限 | 无法判定 | 不加（鉴权先拦） |
+| `GET /v1/trace-codes/page`、`/recall-query` | 403 权限 | 无法判定 | 不加 |
+| `GET /v1/hardware/devices/{id}` | 403 权限 | 无法判定 | 不加 |
+| `GET /v1/hardware/device/status` | 400 缺参数 | 否 | 不加 |
+| `GET /v1/scan/devices/status` | 403 权限 | 无法判定 | 不加 |
+| `GET /v1/weighing/devices`、`/weighing/records` | 404 资源不存在 | 否（路径未注册） | 未测（路径需确认） |
+| `GET /v1/takeout-lockers`、`/supplier-evaluations/page`、`/print-format-templates` | 404 | 否 | 未测（路径需确认） |
+| `GET /v1/inventory-deduction/deduction-record/FTC-1` | 500「未找到扣减记录」 | **未判定**（业务码，非缺表） | 另立观察项，不加 |
+| `POST /v1/files/chunk/init|merge`、`POST /v1/trace-codes/{id}/chain-nodes`、`POST /v1/scan/process` 等写接口 | — | — | **未测（需构造含文件/业务主键的报文，且会产生写入副作用）** |
+
+**方法级 vs 文件级的教训**：上一轮我用「文件里存在 `@UnfinishedFeature(table=X)`」判覆盖 —— `SelfPurchaseController` 有注解（标在 `/inbound/{id}` 上），
+但 `/{page}`、`/{id}` 并未被覆盖，实测仍是 500。**文件级检查会高估覆盖率**，必须按方法级或按实测判定。
+

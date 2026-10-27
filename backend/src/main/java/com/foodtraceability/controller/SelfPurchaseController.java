@@ -20,6 +20,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/v1/self-purchase")
 @Tag(name = "自采管理", description = "自采记录管理相关接口")
+// P0-unfinished: self_purchase / self_purchase_item 两边均无表，见 docs/audit/broken-endpoints-prod.md
+@UnfinishedFeature(table = "self_purchase")
+@UnfinishedFeature(table = "self_purchase_item")
 public class SelfPurchaseController {
     
 
@@ -52,7 +55,6 @@ public class SelfPurchaseController {
      * @param selfPurchaseId 自采记录ID
      * @return 入库结果
      */
-    // P0-unfinished: self_purchase 两边均无表，见 docs/audit/broken-endpoints-prod.md
     @UnfinishedFeature(table = "self_purchase")
     @PostMapping("/inbound/{selfPurchaseId}")
     @Operation(summary = "自采入库", description = "处理自采记录的入库操作")
