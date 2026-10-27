@@ -180,9 +180,13 @@ SELECT (to_regclass('public.recon_runs') IS NOT NULL
 \gset
 
 \if :recon_ready
-SELECT CASE WHEN count(*) = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
-       || 'A10 FINALIZED 的 recon_run 无 recon_items rows=' || count(*) AS a10_line,
-       count(*) AS a10_n
+SELECT CASE WHEN (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED') = 0
+            THEN '[INFO] A10 skipped_no_data 分母=0（无 FINALIZED 的 recon_run）'
+            WHEN count(*) = 0 THEN '[PASS] A10 FINALIZED 的 recon_run 无 recon_items rows=0 分母=' || (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED')
+            ELSE '[FAIL] A10 FINALIZED 的 recon_run 无 recon_items rows=' || count(*) || ' 分母=' || (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED')
+       END AS a10_line,
+       CASE WHEN (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED') = 0 THEN 0 ELSE count(*) END AS a10_n,
+       (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED') AS a10_den
   FROM recon_runs r
  WHERE r.status = 'FINALIZED'
    AND NOT EXISTS (SELECT 1 FROM recon_items i WHERE i.run_id = r.run_id)
@@ -683,12 +687,13 @@ SELECT (to_regclass('public.reconciliation_statements') IS NOT NULL
 \gset
 
 \if :stmt_sum_ready
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A27 DRAFT 汇总与未清 items 聚合一致 rows=0'
-            ELSE '[FAIL] A27 DRAFT 汇总与未清 items 聚合一致 rows=' || count(*)
-                 || ' —— 存在 ' || count(*) || ' 张 DRAFT 调节表汇总与明细不一致（疑绕过 service 直改表），禁止接受'
+SELECT CASE WHEN (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT') = 0
+            THEN '[INFO] A27 skipped_no_data 分母=0（无 DRAFT 调节表）'
+            WHEN count(*) = 0 THEN '[PASS] A27 DRAFT 汇总与未清 items 聚合一致 rows=0 分母=' || (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT')
+            ELSE '[FAIL] A27 DRAFT 汇总与未清 items 聚合一致 rows=' || count(*) || ' 分母=' || (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT')
        END AS a27_line,
-       count(*) AS a27_n
+       CASE WHEN (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT') = 0 THEN 0 ELSE count(*) END AS a27_n,
+       (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT') AS a27_den
   FROM reconciliation_statements s
  WHERE s.deleted = 0
    AND s.status = 'DRAFT'
@@ -837,12 +842,13 @@ SELECT (to_regclass('public.orders') IS NOT NULL
 
 \if :refund_ready
 -- A30：有退款额但缺对应退款流水（零容忍）
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A30 有退款额但无退款流水 orders=0'
-            ELSE '[FAIL] A30 有退款额但无退款流水 orders=' || count(*)
-                 || ' —— 存在 ' || count(*) || ' 笔订单有退款额但缺对应退款流水，禁止接受'
+SELECT CASE WHEN (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) = 0
+            THEN '[INFO] A30 skipped_no_data 分母=0（无含退款额的订单）'
+            WHEN count(*) = 0 THEN '[PASS] A30 有退款额但无退款流水 orders=0 分母=' || (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0)
+            ELSE '[FAIL] A30 有退款额但无退款流水 orders=' || count(*) || ' 分母=' || (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0)
        END AS a30_line,
-       count(*) AS a30_n
+       CASE WHEN (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) = 0 THEN 0 ELSE count(*) END AS a30_n,
+       (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) AS a30_den
   FROM orders o
  WHERE o.deleted = 0
    AND o.refund_amount > 0
@@ -860,12 +866,13 @@ SELECT CASE WHEN count(*) = 0
 -- A31：按日退款流水合计 vs 订单退款合计（orders 无 account_id → 退化为「当日全库合计」口径）
 --   流水侧同样要求 refund_record_id IS NOT NULL：category=2 被采购付款复用（PaymentServiceImpl:157），
 --   不加会把采购付款算进退款合计（根治见 NEW-21）
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A31 当日退款流水合计=订单退款合计 days=0'
-            ELSE '[FAIL] A31 当日退款流水合计=订单退款合计 days=' || count(*)
-                 || ' —— 存在 ' || count(*) || ' 个自然日的退款流水合计与订单退款合计不符，禁止接受'
+SELECT CASE WHEN (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted=0 AND status=2 AND flow_category=2 AND refund_record_id IS NOT NULL) = 0
+            THEN '[INFO] A31 skipped_no_data 分母=0（无退款流水日期）'
+            WHEN count(*) = 0 THEN '[PASS] A31 当日退款流水合计=订单退款合计 days=0 分母=' || (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted=0 AND status=2 AND flow_category=2 AND refund_record_id IS NOT NULL)
+            ELSE '[FAIL] A31 当日退款流水合计=订单退款合计 days=' || count(*) || ' 分母=' || (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted=0 AND status=2 AND flow_category=2 AND refund_record_id IS NOT NULL)
        END AS a31_line,
-       count(*) AS a31_n
+       CASE WHEN (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted=0 AND status=2 AND flow_category=2 AND refund_record_id IS NOT NULL) = 0 THEN 0 ELSE count(*) END AS a31_n,
+       (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted=0 AND status=2 AND flow_category=2 AND refund_record_id IS NOT NULL) AS a31_den
   FROM (
       SELECT COALESCE(fl.d, od.d) AS d,
              COALESCE(fl.amt, 0) AS flow_amt,
@@ -898,12 +905,13 @@ SELECT CASE WHEN count(*) = 0
 --   期望 0 笔不符；>0 即 FAIL。
 -- ------------------------------------------------------------
 \if :refund_ready
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A33 逐单退款对拍(订单退款额=退款流水合计) orders=0'
-            ELSE '[FAIL] A33 逐单退款对拍(订单退款额=退款流水合计) orders=' || count(*)
-                 || ' —— 存在 ' || count(*) || ' 笔订单退款额与退款流水合计不符，禁止接受'
+SELECT CASE WHEN (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) = 0
+            THEN '[INFO] A33 skipped_no_data 分母=0（无含退款额的订单）'
+            WHEN count(*) = 0 THEN '[PASS] A33 逐单退款对拍(订单退款额=退款流水合计) orders=0 分母=' || (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0)
+            ELSE '[FAIL] A33 逐单退款对拍(订单退款额=退款流水合计) orders=' || count(*) || ' 分母=' || (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0)
        END AS a33_line,
-       count(*) AS a33_n
+       CASE WHEN (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) = 0 THEN 0 ELSE count(*) END AS a33_n,
+       (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount,0) > 0) AS a33_den
   FROM orders o
   LEFT JOIN (SELECT f.order_id, SUM(f.amount) AS amt
                FROM fund_flows f
@@ -1441,12 +1449,13 @@ SELECT (to_regclass('public.deposit_slips') IS NOT NULL
                        AND column_name='opening_cash')) AS reserve_ready
 \gset
 \if :reserve_ready
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A42 备用金换算一致 rows=0'
-            ELSE '[FAIL] A42 备用金换算不一致 rows=' || count(*)
-                 || ' —— 存在 reserve_fen <> ROUND(opening_cash*100) 的缴款单，禁止接受'
+SELECT CASE WHEN (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL) = 0
+            THEN '[INFO] A42 skipped_no_data 分母=0（无带班次的缴款单）'
+            WHEN count(*) = 0 THEN '[PASS] A42 备用金换算一致 rows=0 分母=' || (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL)
+            ELSE '[FAIL] A42 备用金换算不一致 rows=' || count(*) || ' 分母=' || (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL)
        END AS a42_line,
-       count(*) AS a42_n
+       CASE WHEN (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL) = 0 THEN 0 ELSE count(*) END AS a42_n,
+       (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL) AS a42_den
   FROM deposit_slips s
   JOIN pos_shifts ps ON ps.shift_id = s.shift_id
  WHERE s.deleted = 0
@@ -1470,12 +1479,13 @@ SELECT (to_regclass('public.deposit_slips') IS NOT NULL
         AND to_regclass('public.fund_flows') IS NOT NULL) AS a43_ready
 \gset
 \if :a43_ready
-SELECT CASE WHEN count(*) = 0
-            THEN '[PASS] A43 DEPOSITED 缴款单缺配对存行流水 rows=0'
-            ELSE '[FAIL] A43 DEPOSITED 缴款单缺配对存行流水 rows=' || count(*)
-                 || ' —— 存在 status=DEPOSITED 但没有成对存行流水（出/入各 1 且金额相等）的缴款单，禁止接受'
+SELECT CASE WHEN (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED') = 0
+            THEN '[INFO] A43 skipped_no_data 分母=0（无 DEPOSITED 缴款单）'
+            WHEN count(*) = 0 THEN '[PASS] A43 DEPOSITED 缴款单缺配对存行流水 rows=0 分母=' || (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED')
+            ELSE '[FAIL] A43 DEPOSITED 缴款单缺配对存行流水 rows=' || count(*) || ' 分母=' || (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED')
        END AS a43_line,
-       count(*) AS a43_n
+       CASE WHEN (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED') = 0 THEN 0 ELSE count(*) END AS a43_n,
+       (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED') AS a43_den
   FROM deposit_slips s
  WHERE s.deleted = 0
    AND s.status = 'DEPOSITED'
@@ -1641,12 +1651,25 @@ WITH a1 AS (
        AND NOT (COALESCE(created_by, '') LIKE 'system/backfill-%'
                 AND (COALESCE(remark, '') LIKE '%[cashBackfill]%'
                      OR COALESCE(remark, '') LIKE '%[posShift=%'))
+), skipped AS (
+    SELECT
+      (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(paid_amount, 0) > 0) AS a1_den,
+      (SELECT count(*) FROM recon_runs WHERE status = 'FINALIZED') AS a10_den,
+      (SELECT count(*) FROM reconciliation_statements WHERE deleted = 0 AND status = 'DRAFT') AS a27_den,
+      (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount, 0) > 0) AS a30_den,
+      (SELECT count(DISTINCT business_date) FROM fund_flows WHERE deleted = 0 AND status = 2 AND flow_category = 2 AND refund_record_id IS NOT NULL) AS a31_den,
+      (SELECT count(*) FROM orders WHERE deleted = 0 AND COALESCE(refund_amount, 0) > 0) AS a33_den,
+      (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND shift_id IS NOT NULL) AS a42_den,
+      (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND status = 'DEPOSITED') AS a43_den
 )
 SELECT line
   FROM (
     SELECT 1 AS ord,
-           CASE WHEN n = 0 THEN '[PASS] ' ELSE '[FAIL] ' END
-           || 'A1 已支付订单缺 SALE 资金流水 rows=' || n AS line
+           CASE WHEN (SELECT a1_den FROM skipped) = 0
+                THEN '[INFO] A1 skipped_no_data 分母=0（无已支付订单 paid_amount>0）'
+                WHEN n = 0 THEN '[PASS] A1 已支付订单缺 SALE 资金流水 rows=0 分母=' || (SELECT a1_den FROM skipped)
+                ELSE '[FAIL] A1 已支付订单缺 SALE 资金流水 rows=' || n || ' 分母=' || (SELECT a1_den FROM skipped)
+           END AS line
       FROM a1
     UNION ALL
     SELECT 2,

@@ -2702,3 +2702,89 @@ SELECT count(*) FROM (
 - 同一 `terminalId` 不可并存两个进行中班次（`code=500`）；
 - `POST /deposit-slips/generate` 响应形态 `{reused, slip:{slipId}}`；
 - 边界容差默认 10 分钟，配置键 `finance.cash.shift-boundary-minutes`。
+
+## 64. 配方扣料换表 + 伪绿断言清理 + 全量清空（2026-10-27 16:00–17:00）
+
+### 64.1 bug-① 按配方扣料：Mapper 切到 dish_recipes（两处前提更正）
+
+**做法**：`InventoryDeductionServiceImpl` / `OrderMaterialRequirementServiceImpl` 的 `DishRecipeMapper`（旧表 `dish_recipe`）
+换成 `DishRecipeNewMapper`（新表 `dish_recipes`）；`KitchenScanServiceImpl` 仅注入切换（原 Mapper 在本类从未使用）；
+新增 `parseFoodId(dishId)` 把 pos 侧 String dishId 转 `dish_recipes.food_id`(bigint)。
+
+**更正一：food_id=1 不是「1 条 1.000 斤」。** `dish_recipes` 里 food_id=1 有 5 行，其中 **4 行 deleted=1**，唯一有效行 `required_quantity=0.100`（斤）；
+三条 1.000 是已删历史行。要看「1.000」应看 **food_id=8**（1 条 `required_quantity=1.000`，单位「个」）。
+
+**更正二：改动前不是「静默扣 0」，而是直接 500。** 旧 Mapper 的实体列含 `dish_code`，而 `dish_recipe` 表根本没有该列：
+```
+BadSqlGrammarException: 字段 "dish_code" 不存在
+SQL: SELECT id,recipe_id,dish_id,dish_name,dish_code,... FROM dish_recipe WHERE deleted=0 AND (dish_id = ?)
+```
+→ 「按配方扣料」这条链路**从未跑通过**（不是数量为 0，是报错）。切换后实测：
+
+| 调用 | 有效配方 | 落库扣料记录 |
+|------|----------|--------------|
+| `POST /v1/inventory-deduction/recipe?dishId=8&quantity=1` | 1 条 1.000 个 | `{"materialId":"36","materialName":"TEST_实验物料_20260914","quantity":1.000,"unit":"个"}` |
+| `POST /v1/inventory-deduction/recipe?dishId=1&quantity=1` | 1 条 0.100 斤 | `{"materialId":"3","materialName":"生菜","quantity":0.100,"unit":"斤"}` |
+
+**未切（P3 技术债）**：`DishRecipeServiceImpl` 仍是 `ServiceImpl<DishRecipeMapper, DishRecipe>`，API 全为 String 型 legacy 签名，
+全仓 grep 无任何调用方、不在扣料链路；切它需连带改接口签名，本轮不动。
+
+**顺带发现（未修）**：`inventory:deduct` 原先 **0 行绑定** → 该接口对所有人 403（形同虚设）。已按 Owner 指令正式绑定
+`ROLE_STORE_MANAGER` + `ROLE_FINANCE_DIRECTOR`（脚本 `scripts/db-fix/2026-10-27-grant-inventory-deduct.sql`），
+**不绑 ROLE_CASHIER**（扣料由系统内部调用，不给收银员直调权限）。
+
+### 64.2 伪绿断言清理：8 条补 skipped_no_data 分支
+
+Owner 强调「不能拿 P0=0 当放行结论」。原先 A1/A10/A27/A30/A31/A33/A42/A43 在分母=0 时仍输出 `[PASS] rows=0`，
+等于「没数据 = 通过」。已为每条补分母判定：分母=0 → `[INFO] <断言> skipped_no_data 分母=0`，**不计入判定**。
+
+| 断言 | 分母定义 |
+|------|----------|
+| A1 | 已支付订单数（`COALESCE(paid_amount,0) > 0`） |
+| A10 | `status='FINALIZED'` 的 recon_run 数 |
+| A27 | `status='DRAFT'` 的调节表数（deleted=0） |
+| A30 | `refund_amount>0` 的订单数（deleted=0） |
+| A31 | 有退款流水的日期数（category=2 且 refund_record_id 非空） |
+| A33 | `refund_amount>0` 的订单数（deleted=0） |
+| A42 | 有班次的缴款单数（`shift_id IS NOT NULL`） |
+| A43 | `status='DEPOSITED'` 的缴款单数 |
+
+汇总行同步改为：`汇总: X PASS / Y FAIL（判定项 N 条（其中 M 条 skipped_no_data，分母=0））；共 … 条断言（含 … 条 INFO）`。
+**判定项计数随数据量浮动（有数据约 26、空库约 16）是正确行为**，不是缺陷。
+
+### 64.3 全量清空 + 重置（Owner 拍板）
+
+按外键由深到浅 DELETE（逐表备份 `.verify-tmp/clear-backup-<table>.csv`，试跑 BEGIN..ROLLBACK 后再正式执行，审计 `DATA_PURGE`）：
+
+| 表 | 清前 | 清后 |
+|----|------|------|
+| kitchen_order | 1328 | 0 |
+| order_items | 214 | 0 |
+| order_payment_records | 211 | 0 |
+| order_refund_records | 74 | 0 |
+| orders | 214 | 0 |
+| material_consumption | 11 | 0 |
+| fund_flows | 173 | 0 |
+| bank_transactions | 35 | 0 |
+| deposit_slips | 30 | 0 |
+| refund_shift_attribution | 13 | 0 |
+| recon_items | 571 | 0 |
+| reconciliation_statements | 9 | 0 |
+| recon_runs | 27 | 0 |
+| recon_differences | 548 | 0 |
+| foods（保留，`stock` 重置 100） | 8 | 8 |
+| dish_recipes（主数据保留） | 12 | 12 |
+
+**A10 替我兜住了一次漏删**：首次清完 A10 立刻 `[FAIL] FINALIZED 的 recon_run 无 recon_items rows=27` ——
+`recon_items` 清了但 `recon_runs` 没清；补清 27/548 后回到 rows=0。
+
+### 64.4 A37 时区加固
+
+A37 原用 `COALESCE(s.end_time, NOW())`，隐式依赖会话时区（服务器 Asia/Shanghai）。UTC 会话下实测偏差 `08:00:00`。
+已改为 `COALESCE(s.end_time, (NOW() AT TIME ZONE 'Asia/Shanghai'))`，并在头注释写明「所有时间比较统一用 Asia/Shanghai 墙钟」。
+
+### 64.5 本轮最终回归
+
+```
+汇总: 16 PASS / 0 FAIL（判定项 16 条（其中 12 条 skipped_no_data，分母=0））；共 42 条断言（含 26 条 INFO，不计入 TOTAL）；SQL 自报 TOTAL FAIL=0
+```
