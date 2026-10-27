@@ -154,6 +154,16 @@ public class ReconBatchExecutor {
 
         List<InternalSubject> internals = loadInternal(run, businessDate);
         List<ExternalSubject> externals = loadExternal(run.getAccountId(), businessDate);
+        // R1 空窗口修正（Owner 裁定走 B）：窗口内**没有任何银行流水**时不允许 FINALIZE。
+        //   依据：对账的银行侧必须有数据，否则 items 恒为 0、run 却 FINALIZED → A10 判红，且掩盖真实缺口。
+        //   处理：直接 400 拒绝（不落任何 FINALIZED 空 run）；调用方可用 EMPTY/SKIPPED 语义另行标记。
+        if (externals.isEmpty()) {
+            log.warn("[METRIC] recon_batch_empty_window runId={} accountId={} date={}",
+                    runId, run.getAccountId(), businessDate);
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "窗口内无银行流水，无法对账：accountId=" + run.getAccountId()
+                            + " businessDate=" + businessDate + "（请先导入银行流水）");
+        }
         log.info("[METRIC] recon_batch_loaded runId={} accountId={} date={} internal={} external={}",
                 runId, run.getAccountId(), businessDate, internals.size(), externals.size());
 
