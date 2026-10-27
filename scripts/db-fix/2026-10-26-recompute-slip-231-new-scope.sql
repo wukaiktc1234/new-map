@@ -18,7 +18,7 @@ WITH cash AS (
     FROM deposit_slips s WHERE s.deleted=0 AND s.slip_id = 231
 )
 UPDATE deposit_slips d SET refund_component_fen = c.comp,
-       difference_net_fen = c.actual_amount - (c.expected_amount - c.comp)
+       difference_net_fen = (c.actual_amount - COALESCE(c.reserve_fen, 0)) - (c.expected_amount - c.comp)
   FROM calc c WHERE d.slip_id = c.slip_id;
 SELECT slip_id, refund_component_fen, difference_net_fen FROM deposit_slips WHERE slip_id=231;
 COMMIT;

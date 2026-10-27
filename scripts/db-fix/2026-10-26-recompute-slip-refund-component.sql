@@ -5,7 +5,7 @@
 --   期望 = Σ 同门店现金户的现金退款流水，满足
 --     (a) refund_time 落在班次 [start+N, end-N]（N=10 分钟边界带，A39 的 SHIFT_BOUNDARY_MINUTES），或
 --     (b) refund_shift_attribution 把该 refund_record_id 归属到该班次
---   difference_net_fen = actual_amount - (expected_amount - refund_component_fen)
+--   difference_net_fen = (actual_amount − reserve_fen) − (expected_amount − refund_component_fen)   ← 差异1 裁决后口径
 -- 守卫：写后复核 A39 恒等式违规数必须为 0，否则 RAISE 回滚；打印影响行数。
 -- =====================================================================
 
@@ -50,12 +50,13 @@ WITH slip AS (
 -- 否则历史脏值会残留（首版用 UPDATE ... FROM 漏了这类行，实测被判守卫拦下）。
 UPDATE deposit_slips s
    SET refund_component_fen = COALESCE((SELECT e.amt FROM expected e WHERE e.slip_id = s.slip_id), 0),
-       difference_net_fen   = s.actual_amount
+       -- 差异1（Owner 裁定）：净差异必须扣备用金 —— (actual − reserve) − (expected − rcf)
+       difference_net_fen   = (s.actual_amount - COALESCE(s.reserve_fen, 0))
                               - (s.expected_amount - COALESCE((SELECT e.amt FROM expected e WHERE e.slip_id = s.slip_id), 0)),
        update_time          = NOW()
  WHERE s.deleted = 0
    AND (COALESCE(s.refund_component_fen, 0) <> COALESCE((SELECT e.amt FROM expected e WHERE e.slip_id = s.slip_id), 0)
-        OR s.difference_net_fen IS DISTINCT FROM s.actual_amount
+        OR s.difference_net_fen IS DISTINCT FROM (s.actual_amount - COALESCE(s.reserve_fen, 0))
              - (s.expected_amount - COALESCE((SELECT e.amt FROM expected e WHERE e.slip_id = s.slip_id), 0)));
 
 DO $$
@@ -96,7 +97,7 @@ WITH slip AS (
 SELECT count(*) AS a39_violations_after
   FROM slip s LEFT JOIN expected e ON e.slip_id = s.slip_id
  WHERE s.difference_net_fen IS NOT NULL
-   AND (s.difference_net_fen <> s.actual_amount - (s.expected_amount - s.rcf)
+   AND (s.difference_net_fen <> (s.actual_amount - COALESCE(s.reserve_fen, 0)) - (s.expected_amount - s.rcf)
         OR s.rcf <> COALESCE(e.amt, 0))
 \gset
 

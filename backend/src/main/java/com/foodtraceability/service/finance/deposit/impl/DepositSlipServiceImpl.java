@@ -937,15 +937,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     }
 
     /**
-     * N19-2②：净差异 = 实收 − (应交 − 退款构成)。
+     * N19-2② + 差异1：净差异 = (实收 − 备用金) − (应交 − 退款构成)。
      *
      * <p>退款构成（refund_component_fen）是「本次存行里本就不该交的退款部分」，
      * 因此先从应交额里扣掉，再与实收比较。允许为负（多退少缴），不做截断。</p>
      */
-    private static long differenceNetOf(long actualFen, long expectedFen, long refundComponentFen) {
-        return actualFen - (expectedFen - refundComponentFen);
-    }
+    private static long differenceNetOf(long actualFen, long reserveFen, long expectedFen, long refundComponentFen) {
+        // 差异1（Owner 裁定）：备用金必须从计现额里扣掉 —— (actual − reserve) − (expected − rcf)
+        return (actualFen - reserveFen) - (expectedFen - refundComponentFen);
 
+    }
     private long sumCashPayments(PosShift shift, long storeId) {
         List<OrderNew> orders = orderNewMapper.selectList(new LambdaQueryWrapper<OrderNew>()
                 .eq(OrderNew::getDeleted, 0)
@@ -1201,7 +1202,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         RefundComponent component = sumShiftRefundComponent(shift, target.getStoreId(), false, target.getCreateTime());   // 重算：as-of=create_time（A39 同口径）
         long expected = target.getExpectedAmount() == null ? 0L : target.getExpectedAmount();
         long actual = target.getActualAmount() == null ? 0L : target.getActualAmount();
-        long differenceNet = differenceNetOf(actual, expected, component.fen);
+        long reserveFen = target.getReserveFen() == null ? 0L : target.getReserveFen();
+        long differenceNet = differenceNetOf(actual, reserveFen, expected, component.fen);
         depositSlipMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<DepositSlip>()
                 .eq(DepositSlip::getSlipId, targetSlipId)
                 .set(DepositSlip::getRefundComponentFen, component.fen)
