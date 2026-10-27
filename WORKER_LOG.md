@@ -3104,3 +3104,130 @@ COMMENT ON INDEX uk_orders_idempotency_key IS 'bug-③ 幂等键唯一（部分�
 ### 68.6 连带更新
 
 `scripts/qa/e2e_cleanup.py` 顶部「已知缺陷 bug-③…key 为 NULL 不能当定位依据」已改为「bug-③ 已修，`E2E-<tag>-<n>` 现在是可靠锚点；退款反查保留为旧数据兜底」。
+
+## 69. bug-④ 落地：jsonb chain_data 的 TypeHandler + 规范化哈希（2026-10-27 21:10–21:30）
+
+### 69.1 先验证：jsonb 会让「写入串 ≠ 读回串」
+
+PostgreSQL 侧实测（`SELECT quote_literal(w), quote_literal((w::jsonb)::text), length(...)`）：
+
+| 用例 | 写入 w | 读回 r | len w → r | w==r |
+|------|--------|--------|-----------|------|
+| 简单数组 | `[{"a":1}]` | `[{"a": 1}]` | 9 → 10 | **false** |
+| 含空格/嵌套/乱序 | `{ "b" : [1, 2, {"c" : "x y"}],  "a":1 }` | `{"a": 1, "b": [1, 2, {"c": "x y"}]}` | 39 → 35 | **false** |
+| 真实记录（TC-E2E-SEED-004） | `[{"a":1},{"node":"验收","ts":"..."}]` | `[{"a": 1}, {"ts": "...", "node": "验收"}]` | 50 → 55 | **false** |
+
+→ **jsonb 规范化成立**：加空格、键重排、去冗余。**哈希必须按规范化形式算**，不能对原始串直接取摘要。
+
+### 69.2 ② 是否改成 Map/List：不需要（grep 证据）
+
+- `chain_data` 在 **XML/SQL 里只出现 1 次**：`TraceCodeMapper.xml:24` 的 `<result>` 映射，**没有任何 `WHERE` / `->>` / `@>` / `jsonb_path` 用法**；
+- Java 侧只有「写字符串」(`FoodTraceabilityServiceImpl:102`) 与「读字段」，无按内部字段查询。
+⇒ 选 **②（Jsonb + String 直通）**，不引入 Map/List 模型。
+
+### 69.3 ③ 实施
+
+| 文件 | 改动 |
+|------|------|
+| `config/handler/JsonbStringTypeHandler.java`（新增） | `BaseTypeHandler<String>`：写 `ps.setObject(i, json, Types.OTHER)`（先 `readTree` 校验，脏 JSON 拒绝）；读 `rs.getString(...)` **不做反序列化**；另提供 `toJson(Object)` 供 Map/List 入参 |
+| `entity/TraceCode.java` | `@TableName(value="food_trace_codes", autoResultMap = true)` + `@TableField(value="chain_data", typeHandler=JsonbStringTypeHandler.class)` |
+| `resources/mapper/TraceCodeMapper.xml` | resultMap 的 `JacksonTypeHandler` → `JsonbStringTypeHandler` |
+| `util/JsonCanonicalHashUtil.java`（新增） | `canonicalize`（解析成树 → 键字典序递归排序 → 无空格序列化）+ `sha256HexCanonical` |
+| `dto/trace/TraceCodeVO.java` | **新增 `chainData` 字段 + 访问器**（此前 VO 根本没有该字段 → 「原样回显」这个用途其实一直没实现） |
+| `service/trace/impl/FoodTraceabilityServiceImpl.java` | `convertToVO` 补 `vo.setChainData(entity.getChainData())` |
+
+**为什么原实现 500**：`JacksonTypeHandler` 会把 jsonb 内容反序列化成**字段声明的类型**（`String`），
+遇到数组 → `MismatchedInputException: Cannot deserialize value of type java.lang.String from Array value`（已实测复现）。
+
+### 69.4 ④ 验收
+
+**a) 写数组值 → 接口 200 且读到内容**
+```
+GET /v1/trace-codes/TC-E2E-SEED-004 → HTTP 200 code=0
+  chainData="[{\"a\": 1}, {\"ts\": \"2026-10-27T21:00:00\", \"node\": \"验收\"}]"
+分页 /v1/trace-codes 也能读到同值；对照 TC-E2E-SEED-001（chain_data 为 NULL）→ chainData=null，回归正常
+```
+
+**b) 写入 vs 读回逐字节**：见 69.1 第三行（50 → 55，`byte_equal = false`）。
+
+**c) 规范化哈希：同一条数据「写时算」与「读回算」相等**（`JsonCanonicalHashUtil`；用 javac 直跑验证，绕过 mvn test）
+```
+case1 w=[{"a":1}] len=9 ｜ r=[{"a": 1}] len=10 ｜ w==r? false
+  canon(w)=[{"a":1}]
+  hash(w)=b713f6d2a989e907c58516a7c8bb487792c8785ddbf367b80dc774bf33b85a85
+  hash(r)=b713f6d2a989e907c58516a7c8bb487792c8785ddbf367b80dc774bf33b85a85  → equal=true
+case2 w len=39 ｜ r len=35 ｜ w==r? false
+  canon={"a":1,"b":[1,2,{"c":"x y"}]}
+  hash(w)=6f1de5c5… ｜ hash(r)=6f1de5c5…  → equal=true
+keyOrder: {"b":2,"a":1} 与 {"a":1,"b":2} 规范化后完全相同
+```
+备注：`src/test/.../JsonCanonicalHashUtilTest.java` 也已写好（3 个用例），但当前 `mvn test` 因**两个既有测试用例**
+（`OrderNewServiceImplDeductTest` / `OrderNewServiceImplOrderNumberA1Test`，构造器参数个数不匹配）编译失败而跑不起来 —— 见 §70 与本轮上报。
+
+**d) 巡检**：`20 PASS / 0 FAIL（判定项 20 条，其中 10 条 skipped_no_data）` —— 与改动前一致。
+
+### 69.5 遗留
+
+- `chain_data` 目前**没有任何哈希调用点**（全仓 grep：只有写字符串 + 读字段）。`JsonCanonicalHashUtil` 是**为后续完整性校验预置**的工具；
+  真正要用时，必须在「写入时算」与「读回时算」两处都调用它，且**只对规范化文本取摘要**。
+- seed 脚本 `scripts/seed/2026-10-27-seed-food-trace-codes.sql` 里 `chain_data` 仍置 NULL（避免把 `'[]'::jsonb` 写进去）；TC-E2E-SEED-004 是本次验收临时插入的数组样例。
+
+## 70. 后续四项：修测试 / SEED-004 并入 seed / 哈希纪律注释 / 教训数字（2026-10-27 21:30–21:45）
+
+### 70.1 修两个编译不过的测试（别人改构造器未同步）
+
+根因：`OrderNewServiceImpl` 构造器新增了第 15 个参数 `PosRefundFlowRecorder posRefundFlowRecorder`（位于 `fundFlowService` 之后、`bankAccountService` 之前），
+两个测试仍按 17 参数调用（实际 18）→ `testCompile` 失败 → `spring-boot:run` 连带失败 → 本地只能 `-Dmaven.test.skip=true`。
+
+diff（两个文件同样三处）：
+```diff
++ import com.foodtraceability.service.finance.PosRefundFlowRecorder;
+  @Mock private FundFlowService fundFlowService;
++ @Mock private PosRefundFlowRecorder posRefundFlowRecorder;
+  service = new OrderNewServiceImpl(
+      ..., applicationEventPublisher, costRecordService, fundFlowService,
++     posRefundFlowRecorder,
+      bankAccountService, materialConsumptionAuditService, sensitiveDataService);
+```
+
+结果：
+```
+mvn -o -B test-compile                → BUILD SUCCESS
+mvn -o -B test -Dtest=OrderNewServiceImplDeductTest,OrderNewServiceImplOrderNumberA1Test,JsonCanonicalHashUtilTest
+  Tests run: 28, Failures: 0, Errors: 0  -- OrderNewServiceImplDeductTest
+  Tests run:  3, Failures: 0, Errors: 0  -- OrderNewServiceImplOrderNumberA1Test
+  Tests run:  3, Failures: 0, Errors: 0  -- JsonCanonicalHashUtilTest
+  合计 Tests run: 34, Failures: 0, Errors: 0, Skipped: 0 → BUILD SUCCESS
+```
+**断言本身没有失效**：补参后 28 + 3 个用例原样全绿，未改动任何断言。
+（日志里的 `[审计失败兜底]` ERROR 行是用例**故意**注入审计失败的断言输出，不是报错。）
+
+### 70.2 TC-E2E-SEED-004 并入 seed（不再当临时插入）
+
+`scripts/seed/2026-10-27-seed-food-trace-codes.sql` 增加：
+- VALUES 里第 4 条 `TC-E2E-SEED-004`（链数据验收菜 / BATCH-E2E-004）；
+- COMMIT 前一条幂等 `UPDATE ... SET chain_data = '[{"a":1},{"node":"验收","ts":"..."}]'::jsonb`，注释写明
+  **「此条用于验证 jsonb 直通与规范化哈希，勿删」**，并解释为何单独 UPDATE（jsonb 规范化 9→10 字节，需保留数组取值）。
+
+幂等复跑实测：
+```
+第 1 次：BEGIN / INSERT 0 0（已存在）/ UPDATE 1 / COMMIT
+第 2 次：BEGIN / INSERT 0 0 / UPDATE 1 / COMMIT
+SELECT：4 行，SEED-004 chain_len=55（其余 3 条为空）
+```
+
+### 70.3 `JsonCanonicalHashUtil` 使用纪律（写进类注释）
+
+新增段落「⚠ 使用方纪律」：调用方必须在**写入时**与**读回后**各算一次并比对；**直接对原始输入串算哈希会因 jsonb 规范化产生假篡改告警**。
+附本次实测：
+```
+w=[{"a":1}]              → r=[{"a": 1}]            9 → 10 字节（逐字节不等）
+w={ "b" : [...],  "a":1 } → r={"a": 1, "b": [...]}  39 → 35 字节（键被重排）
+sha256HexCanonical(w) == sha256HexCanonical(r)        两用例均相等
+```
+并注明：当前项目**尚无调用点**（chain_data 只做原样回显）；接入完整性校验时两处都必须调用本工具。
+
+### 70.4 工程教训第 9 条：数字上提
+
+`docs/design/engineering-lessons.md` 第 9 条补充记忆锚点 **「2888 : 0」**（2888 个 Java 文件 / Lombok 0 命中，0.0%），
+并把「附带发现」改成事实陈述（两个测试已修、34 用例全绿），避免后人以为 `mvn test` 天然不可用。
