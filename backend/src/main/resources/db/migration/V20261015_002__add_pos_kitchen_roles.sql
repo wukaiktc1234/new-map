@@ -27,6 +27,16 @@
 -- 处置：先确保列存在（与活库一致 varchar(30)），再照旧插入；对活库是无操作（IF NOT EXISTS）。
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_level varchar(30);
 
+-- 从零建库修复（bug-⑧）：roles.role_id 是 GENERATED ALWAYS AS IDENTITY，
+-- 而更早的初始化迁移用 OVERRIDING SYSTEM VALUE 直接写了 role_id=1，**序列没被推进** →
+-- 本文件第一条 INSERT 取 nextval 得到 1 → 撞 roles_pkey。
+-- 处置：把序列推到 max(role_id)+1（幂等；活库若已推进则等价无操作，不会回退）。
+SELECT setval(
+    pg_get_serial_sequence('roles', 'role_id'),
+    COALESCE((SELECT MAX(role_id) FROM roles), 0) + 1,
+    false
+);
+
 INSERT INTO roles (role_id_str, role_name, role_code, description, status, data_scope, org_level,
                    deleted, version, create_time, update_time)
 SELECT 'ROLE_CASHIER', '收银员', 'cashier', 'POS 收银员（前台收款）', 'active', 'store', 'STORE_STAFF',

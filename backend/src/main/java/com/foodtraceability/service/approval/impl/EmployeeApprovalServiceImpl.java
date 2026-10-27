@@ -1,6 +1,8 @@
 package com.foodtraceability.service.approval.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
+import com.foodtraceability.common.exception.BusinessException;
+import com.foodtraceability.common.exception.ErrorCode;import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -188,7 +190,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
             EmployeeApproval approval = employeeApprovalMapper.selectById(approvalId);
             if (approval == null) {
                 log.warn("审批记录不存在，审批ID：{}", approvalId);
-                throw new RuntimeException("审批记录不存在");
+                throw new BusinessException(ErrorCode.NOT_FOUND, "审批记录不存在");
             }
 
             // 2. 组装基础VO
@@ -294,13 +296,13 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         try {
             EmployeeApproval approval = employeeApprovalMapper.selectById(approvalId);
             if (approval == null) {
-                throw new RuntimeException("审批记录不存在");
+                throw new BusinessException(ErrorCode.NOT_FOUND, "审批记录不存在");
             }
             if (!"pending".equals(approval.getStatus())) {
-                throw new RuntimeException("当前审批状态不允许通过操作，当前状态：" + approval.getStatus());
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "当前审批状态不允许通过操作，当前状态：" + approval.getStatus());
             }
             if (!reviewerId.equals(approval.getCurrentApproverId())) {
-                throw new RuntimeException("您不是该审批的审批人");
+                throw new BusinessException(ErrorCode.FORBIDDEN, "您不是该审批的审批人");
             }
 
             // 更新状态为已通过
@@ -330,13 +332,13 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         try {
             EmployeeApproval approval = employeeApprovalMapper.selectById(approvalId);
             if (approval == null) {
-                throw new RuntimeException("审批记录不存在");
+                throw new BusinessException(ErrorCode.NOT_FOUND, "审批记录不存在");
             }
             if (!"pending".equals(approval.getStatus())) {
-                throw new RuntimeException("当前审批状态不允许驳回操作，当前状态：" + approval.getStatus());
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "当前审批状态不允许驳回操作，当前状态：" + approval.getStatus());
             }
             if (!reviewerId.equals(approval.getCurrentApproverId())) {
-                throw new RuntimeException("您不是该审批的审批人");
+                throw new BusinessException(ErrorCode.FORBIDDEN, "您不是该审批的审批人");
             }
 
             // 更新状态为已驳回
@@ -367,13 +369,13 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         try {
             EmployeeApproval approval = employeeApprovalMapper.selectById(approvalId);
             if (approval == null) {
-                throw new RuntimeException("审批记录不存在");
+                throw new BusinessException(ErrorCode.NOT_FOUND, "审批记录不存在");
             }
             if (!employeeId.equals(approval.getApplicantId())) {
-                throw new RuntimeException("您不是该审批的申请人，无法撤回");
+                throw new BusinessException(ErrorCode.FORBIDDEN, "您不是该审批的申请人，无法撤回");
             }
             if (!"pending".equals(approval.getStatus())) {
-                throw new RuntimeException("仅待审批状态允许撤回，当前状态：" + approval.getStatus());
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "仅待审批状态允许撤回，当前状态：" + approval.getStatus());
             }
 
             // 更新状态为已撤回
@@ -402,13 +404,13 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
         try {
             EmployeeApproval approval = employeeApprovalMapper.selectById(approvalId);
             if (approval == null) {
-                throw new RuntimeException("审批记录不存在");
+                throw new BusinessException(ErrorCode.NOT_FOUND, "审批记录不存在");
             }
             if (!employeeId.equals(approval.getApplicantId())) {
-                throw new RuntimeException("您不是该审批的申请人，无法催办");
+                throw new BusinessException(ErrorCode.FORBIDDEN, "您不是该审批的申请人，无法催办");
             }
             if (!"pending".equals(approval.getStatus())) {
-                throw new RuntimeException("仅待审批状态的申请可以催办");
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "仅待审批状态的申请可以催办");
             }
 
             // TODO: 发送催办通知（可通过消息队列/站内信/邮件等方式）
@@ -605,11 +607,11 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
                     break;
                 }
                 default:
-                    throw new RuntimeException("不支持的审批类型：" + dto.getType());
+                    throw new BusinessException(ErrorCode.PARAM_ERROR, "不支持的审批类型：" + dto.getType());
             }
         } catch (JsonProcessingException e) {
             log.error("解析审批表单JSON失败，类型：{}，formJson：{}", dto.getType(), dto.getFormJson(), e);
-            throw new RuntimeException("审批表单数据格式错误：" + e.getMessage());
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "审批表单数据格式错误：" + e.getMessage());
         }
     }
 
@@ -619,7 +621,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveLeaveDetail(String approvalId, LeaveCreateDTO leaveDto) {
         if (leaveDto == null) {
-            throw new RuntimeException("请假信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "请假信息不能为空");
         }
         LeaveRequestEntity entity = new LeaveRequestEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));
@@ -647,7 +649,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveOvertimeDetail(String approvalId, OvertimeCreateDTO overtimeDto) {
         if (overtimeDto == null) {
-            throw new RuntimeException("加班信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "加班信息不能为空");
         }
         OvertimeRequestEntity entity = new OvertimeRequestEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));
@@ -677,7 +679,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveSwapDetail(String approvalId, SwapCreateDTO swapDto) {
         if (swapDto == null) {
-            throw new RuntimeException("换班信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "换班信息不能为空");
         }
         SwapRequestDetailEntity entity = new SwapRequestDetailEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));
@@ -709,7 +711,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveTravelDetail(String approvalId, TravelCreateDTO travelDto) {
         if (travelDto == null) {
-            throw new RuntimeException("出差信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "出差信息不能为空");
         }
         TravelRequestEntity entity = new TravelRequestEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));
@@ -745,7 +747,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveReimbursementDetail(String approvalId, ReimbursementCreateDTO reimbursementDto) {
         if (reimbursementDto == null) {
-            throw new RuntimeException("报销信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "报销信息不能为空");
         }
         ReimbursementRequestEntity entity = new ReimbursementRequestEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));
@@ -781,7 +783,7 @@ public class EmployeeApprovalServiceImpl extends ServiceImpl<EmployeeApprovalMap
      */
     private void saveRequisitionDetail(String approvalId, RequisitionCreateDTO requisitionDto) {
         if (requisitionDto == null) {
-            throw new RuntimeException("领用信息不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "领用信息不能为空");
         }
         RequisitionRequestEntity entity = new RequisitionRequestEntity();
         entity.setRequestId(UUID.randomUUID().toString().replace("-", ""));

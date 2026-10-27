@@ -3351,3 +3351,84 @@ GET /v1/orders/{真实ID}            → HTTP 200 code=0 操作成功
 典型：「审批记录不存在」「审批流程不存在」「请假信息不能为空」「当前审批状态不允许通过操作」
 ```
 这些一旦从 Controller 抛出都会被 `GlobalExceptionHandler` 兜成 500，建议按模块分批改为 `BusinessException(ErrorCode.X, msg)`。
+
+## 73. bug-⑧ 从零建库打通 + bug-⑨ 棘轮机制（2026-10-27 22:28–22:45）
+
+### 73.1 bug-⑧：从零建库的第 3、4 个断点（一路修到通）
+
+| # | 断点 | 报错 | 修法 |
+| 2 | `V20261015_002` | `roles.org_level` 不存在 | 文件头 `ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_level varchar(30)` |
+| 3 | 同上（bug-⑧） | `重复键违反唯一约束 "roles_pkey"` | **根因不是插入写法**（4 条 INSERT 本就有 `WHERE NOT EXISTS`），而是 `roles.role_id` 是 `GENERATED ALWAYS AS IDENTITY`，早期迁移用 `OVERRIDING SYSTEM VALUE` 写了 role_id=1 却**没推进序列** → 首条 INSERT 取 nextval=1 撞键。修法：`SELECT setval(pg_get_serial_sequence('roles','role_id'), COALESCE(MAX(role_id),0)+1, false)`（幂等） |
+| 4 | `V20261026_002` | `fund_flows.order_id` 不存在 | `ALTER TABLE fund_flows ADD COLUMN IF NOT EXISTS order_id bigint`（活库同型） |
+
+**从零建库最终数字（food_traceability_test：drop → create → migrate）**：
+```
+MIGRATE → success=true  migrationsExecuted=238  targetSchemaVersion=2026022701
+flyway_schema_history：max(installed_rank)=238 ｜ total=238 ｜ success=t 计数=238 ｜ failed=0
+latest applied = 2026022701
+roles：5 行（role_id 1..5：SUPER_ADMIN / cashier / pos_operator / chef / kitchen），max_role_id=5
+role_permissions：559 行，引用 13 个不同 role_id（证明 seed 幂等改造没有破坏引用）
+关键列复检：onboarding_archive.contract_id=0（仍无，符合新库事实）、roles.org_level=1、fund_flows.order_id=1
+```
+说明：`onboarding_archive.contract_id` 保持**不存在**（不新增该列），
+迁移走「无该列」分支并插了 2 条过渡候选人（oa_rows=2），NOTICE 已打出——即「列在才处理，不在则显式跳过」。
+
+### 73.2 flyway repair 状态（务必告知下一个人）
+
+```
+活库 food_traceability：repair 过（repairActions=2「Aligned applied migration checksums」）
+  checksum 变化：20260728.001 -288156950 → -324698331 ｜ 20261015.002 → -1466961461
+  validate → Successfully validated 239 migrations（无 checksum/validation 错误）
+测试库 food_traceability_test：**drop 后从零重建**，不存在历史 checksum 问题
+两边都已 validate 通过；「先 repair 再 migrate」是活库后续升级的前提。
+```
+
+### 73.3 bug-⑨：棘轮机制（只降不升）
+
+新增：
+```
+scripts/qa/runtime-exception-baseline.txt   基线文件（当前 504）
+scripts/qa/preflight.py                     新增 check_runtime_exception_ratchet()
+```
+规则：静态计数 `throw new RuntimeException(` 于 `backend/src/main/java` 全部 `.java`；
+当前值 > 基线 → 打印 `[BLOCK]` 并 **EXIT=2**（接入 main 的退出码路径，`[RESULT] BLOCKED：裸 RuntimeException 棘轮上升`）。
+基线文件头写明「棘轮基线：只降不升；新增业务语义请用 BusinessException」。
+
+**反向自测（证明它真会拦）**：
+```
+基线人为调低 1（503）→ [BLOCK] 棘轮失败：由基线 503 增加到 504（+1）→ rc=2
+基线带 BOM（\xef\xbb\xbf）→ 仍能解析出 504（读取用 utf-8-sig，防 Windows 编辑器 BOM 让检查静默失效）
+```
+
+### 73.4 样板模块改造：`EmployeeApprovalServiceImpl`
+
+32 处裸异常中，**21 处属业务语义**satisfied改为 `BusinessException`：
+
+| 语义 | 改成 |
+|------|------|
+| 「审批记录不存在」 | `ErrorCode.NOT_FOUND`(404) |
+| 「当前审批状态不允许通过/驳回」「仅待审批状态允许撤回」「仅待审批状态的申请可以催办」 | `ErrorCode.PARAM_ERROR`(400) |
+| 「您不是该审批的审批人 / 申请人」 | `ErrorCode.FORBIDDEN`(403) |
+| 「请假/加班/换班/出差/报销/领用信息不能为空」「不支持的审批类型」「审批表单数据格式错误」 | `ErrorCode.PARAM_ERROR`(400) |
+
+**未改的 11 处**是真正的操作失败（「查询我的审批列表失败」「审批通过失败」「催办审批失败」等），
+它们不是业务语义、改异常类型会掩盖真实故障，留给后续按信号处理策略统一处理。
+
+结果：全库基线 525 → **504**（−21）；`mvn -o -B -DskipTests compile` BUILD SUCCESS。
+
+### 73.5 其余模块清单（不动，等指令）
+
+| 模块 | 约处数 | 建议异常码 |
+|------|--------|-----------|
+| `ApprovalWorkflowServiceImpl` | 10+ | 不存在→404；状态不允许→400 |
+| `OrderNewServiceImpl` | 20+ | 不存在→404；参数→400（已改 1 处样板） |
+| `InventoryDeductionServiceImpl` / 库存类 | 15+ | 库存不足→409/400；物料不存在→404 |
+| `DepositSlipServiceImpl` 之外财务类 | 20+ | 状态非法→400；单据不存在→404 |
+| 其余 `*ServiceImpl`（约 40 个文件） | ~180 | 按「不存在 404 / 参数 400 / 权限 403」统一 |
+
+（口径：`throw new RuntimeException(` 全库 504 处，其中业务语义约 251 处——已扣除本轮 21 处与上轮 1 处。）
+
+### 73.6 bug-⑩（P3，备查，不做）
+
+`GET /v1/orders/search` 被 `/{orderId}` 遮蔽：现已返回 404「订单不存在，ID: search」（不再是 500）。
+是否新增 `/search` 字面量端点属产品决定；本轮不做。

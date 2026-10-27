@@ -105,6 +105,55 @@ def parse_inspection(text):
     return {"pass": passed, "fail": failed, "skipped": skipped, "judged": judged, "raw": raw}
 
 
+RUNTIME_EXC_BASELINE = ROOT / "scripts" / "qa" / "runtime-exception-baseline.txt"
+JAVA_SRC = ROOT / "backend" / "src" / "main" / "java"
+RUNTIME_EXC_PATTERN = "throw new RuntimeException("
+
+
+def count_runtime_exceptions():
+    """统计 backend/src/main/java 下 'throw new RuntimeException(' 的处数（静态文本计数）。"""
+    total = 0
+    for path in sorted(JAVA_SRC.rglob("*.java")):
+        try:
+            total += path.read_text(encoding="utf-8", errors="replace").count(RUNTIME_EXC_PATTERN)
+        except OSError:
+            continue
+    return total
+
+
+def read_runtime_exception_baseline():
+    """读基线文件最后一个非注释数字行；缺失/非法返回 None。"""
+    if not RUNTIME_EXC_BASELINE.exists():
+        return None
+    # utf-8-sig：兼容 Windows 编辑器写入的 BOM（否则数字行首字符带 \ufeff，int() 失败 → 静默不阻断）
+    for line in reversed(RUNTIME_EXC_BASELINE.read_text(encoding="utf-8-sig", errors="replace").splitlines()):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            return int(line)
+        except ValueError:
+            return None
+    return None
+
+
+def check_runtime_exception_ratchet():
+    """棘轮（bug-⑨）：裸 RuntimeException 只降不升。返回 0=通过，2=阻断。"""
+    current = count_runtime_exceptions()
+    base = read_runtime_exception_baseline()
+    if base is None:
+        print("[WARN] 棘轮基线缺失或不可解析：%s（无法判定，按不阻断处理）" % RUNTIME_EXC_BASELINE)
+        return 0
+    delta = current - base
+    if delta > 0:
+        print("[BLOCK] 棘轮失败：throw new RuntimeException( 由基线 %d 增加到 %d（+%d）" % (base, current, delta))
+        print("        业务语义请改 BusinessException(ErrorCode.X, msg)；详见 scripts/qa/runtime-exception-baseline.txt")
+        return 2
+    print("[GATE] 棘轮通过：throw new RuntimeException( = %d（基线 %d，%s）"
+          % (current, base, "减少 %d" % (-delta) if delta < 0 else "持平"))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -116,6 +165,8 @@ def main():
     print("PREFLIGHT GATE   mode=%s" % ("FULL(mvn test)" if a.full else "FAST(test-compile)"))
     print("  提醒：本脚本是开工闸门，不是系统健康证明；分母不足时 PASS 不可信。")
     print("=" * 86)
+
+    ratchet_rc = check_runtime_exception_ratchet()
 
     warn = False
     compile_rc = 0
@@ -156,6 +207,9 @@ def main():
 
     if failed > 0:
         print("[RESULT] BLOCKED：巡检 FAIL=%d > 0 → exit 2" % failed)
+        return 2
+    if ratchet_rc != 0:
+        print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
         return 2
     if ratio > WARN_RATIO:
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
