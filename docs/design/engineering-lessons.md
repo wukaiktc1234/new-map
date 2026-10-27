@@ -78,3 +78,14 @@
 - 危害：**局部绿 ≠ 整体绿**。若按这个结论继续开发，欠账会被永久掩盖，且在发版前才爆。
 - 规则：**凡报「已修/已绿」，必须贴全量 `mvn test` 的最后两行（`Tests run: N, Failures: F, Errors: E, Skipped: S` 与 `BUILD SUCCESS/FAILURE`）**；不许用子集、单类、`-Dtest=` 的结果代表全量。推断必须标注「推断，未实测」。
 
+
+## 12. 跨层调用：单层局部都正常，问题只在链上暴露
+
+- 事故（同一天四次）：
+  ① `bug-⑫`：service `return Result.error(String)`（默认 500）→ controller `catch(RuntimeException)` 吞掉 → 业务码丢失；
+  ② `A46`：代码要 `hr:contract-template:view`，`permissions` 目录里没有 → 除超管外全部 403，**不报错**；
+  ③ `POST /v1/kitchen/scan`：controller 无 mapper，经 `KitchenScanServiceImpl` 写 `material_usage_record` → 覆盖率扫描按 controller 层判成「无入口」，**漏标**；
+  ④ `deploy_gap`：表在迁移里缺失，但活库靠手工建表「看起来正常」。
+- 共同点：**每一层单独看都正常，只有把「入口 → 服务 → 数据」串起来验证才暴露**。
+- 规则：**凡跨层的判断（覆盖率、异常码、权限、表依赖），必须沿调用链验证，不能只验一层**；扫描器只覆盖一层时，其「0 问题」结论不可信。
+
