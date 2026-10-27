@@ -63,6 +63,9 @@ public class ReconRunServiceImpl implements ReconRunService {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter RUN_KEY_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** RUNNING 超过该分钟数视为僵死批次，允许重建（防止上次进程崩溃把当日锁死） */
+    private static final long RUNNING_STALE_MINUTES = 10;
+
     /** 允许发起人工勾稽的当前状态（已自动/人工勾稽的不重复勾稽） */
     private static final Set<String> MATCHABLE_ITEM_STATUS =
             Set.of(ReconDictionary.ITEM_UNMATCHED, ReconDictionary.ITEM_MATCHED);
@@ -101,13 +104,45 @@ public class ReconRunServiceImpl implements ReconRunService {
         }
 
         ReconRun existing = findLatestRun(dto.getAccountId(), businessDate);
-        if (existing != null && !force) {
-            log.info("[METRIC] recon_run_reused accountId={} date={} runId={}", dto.getAccountId(), businessDate, existing.getRunId());
-            return new ReconRunCreateResultVO(true, toVO(existing, account.getAccountName()));
+        // R1 复用规则（Owner 裁定）：只有「FINALIZED 且 items>0」才复用；
+        //   FAILED / 超时的 RUNNING → 重建新 run 并原地跑批（绝不 code=0 却不跑批）；
+        //   FINALIZED 但 items=0 → 异常遗留，400 提示清理，不复用。
+        boolean rebuild = Boolean.TRUE.equals(force);
+        if (existing != null) {
+            String status = existing.getStatus();
+            if (ReconDictionary.RUN_FINALIZED.equals(status)) {
+                long items = countItems(existing.getRunId());
+                if (!force) {
+                    if (items > 0) {
+                        log.info("[METRIC] recon_run_reused accountId={} date={} runId={} items={}",
+                                dto.getAccountId(), businessDate, existing.getRunId(), items);
+                        return new ReconRunCreateResultVO(true, toVO(existing, account.getAccountName()));
+                    }
+                    throw new BusinessException(ErrorCode.PARAM_ERROR,
+                            "该账户当日已有空的 FINALIZED 对账批次（runId=" + existing.getRunId()
+                                    + "，items=0），属异常遗留，请先清理后再跑批");
+                }
+                rebuild = true;
+            } else if (ReconDictionary.RUN_FAILED.equals(status)) {
+                rebuild = true;
+                log.info("[METRIC] recon_run_rebuild_failed accountId={} date={} oldRunId={}",
+                        dto.getAccountId(), businessDate, existing.getRunId());
+            } else {
+                boolean stale = existing.getStartedAt() == null
+                        || existing.getStartedAt().isBefore(LocalDateTime.now().minusMinutes(RUNNING_STALE_MINUTES));
+                if (!stale && !force) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR,
+                            "该账户当日已有进行中的对账批次（runId=" + existing.getRunId()
+                                    + "，status=" + status + "），请稍后重试或传 force=true 重建");
+                }
+                rebuild = true;
+                log.info("[METRIC] recon_run_rebuild_stale accountId={} date={} oldRunId={} status={} stale={}",
+                        dto.getAccountId(), businessDate, existing.getRunId(), status, stale);
+            }
         }
         Long rebuildOf = existing == null ? null : existing.getRunId();
 
-        ReconRun run = newRun(dto.getAccountId(), businessDate, account.getStoreId(), rebuildOf, force, existing);
+        ReconRun run = newRun(dto.getAccountId(), businessDate, account.getStoreId(), rebuildOf, rebuild, existing);
         try {
             reconRunTxSupport.insertRunning(run);
         } catch (DuplicateKeyException e) {
@@ -170,6 +205,12 @@ public class ReconRunServiceImpl implements ReconRunService {
                 .orderByDesc(ReconRun::getRunId)
                 .last("LIMIT 1"));
         return runs == null || runs.isEmpty() ? null : runs.get(0);
+    }
+
+    private long countItems(Long runId) {
+        Long count = reconItemMapper.selectCount(new LambdaQueryWrapper<ReconItem>()
+                .eq(ReconItem::getRunId, runId));
+        return count == null ? 0L : count;
     }
 
     private int countRuns(Long accountId, LocalDate businessDate) {

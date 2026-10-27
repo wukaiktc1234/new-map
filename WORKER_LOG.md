@@ -2888,3 +2888,79 @@ PERM_INVENTORY_DEDUCT → 1, ROLE_ADMIN, ROLE_FINANCE_DIRECTOR, ROLE_OWNER, ROLE
 ```
 
 另：`trace:*` 五个权限码在 `role_permissions` 里本就是 `PERM_TRACE_QUERY` 形态且已绑 4 个角色，无需新增授权。
+
+## 66. bug-⑤ 撤回更正 + R1 空窗口与复用规则修正（2026-10-27 19:20–20:05）
+
+### 66.1 bug-⑤ 更正记录（含 Lead 判断错误的留痕）
+
+**原记（错误）**：bug-⑤（P1）银行流水导入缺失 —— 结论来自 ts-ops 实测「bank_transactions 只有 BankTransactionQueryService」。
+
+**更正后（P2）**：`bug-⑤（P2）银行流水导入易用性缺口 —— 无单条录入 / 无 Excel 模板 / 无幂等回执 / E2E 未接入该通道（退化为 SQL 夹具）`。
+
+**判断错误的证据（本次核实）**：
+
+| 位置 | 事实 |
+|------|------|
+| `BankImportController.java:48` | `POST /v1/finance/bank-transactions/import`（multipart CSV 上传，建导入批次） |
+| `BankImportController.java:77` | `POST /v1/finance/imports/{batchId}/commit`（**落库 bank_transactions**） |
+| `BankImportServiceImpl.java:143/180/337` | `batchMapper.insert` / `rowMapper.insert` / **`txnMapper.insert(txn)`** |
+| `BankImportController.java:95` | `GET /v1/finance/bank-transactions`（只读查询 —— ts-ops 只看到这一个，误判为「只有读」） |
+
+→ 导入通道**一直存在**（两阶段：import → commit）。Lead 已明确采纳本更正，并在裁定里写下「我判断错了」。
+本条按要求只写「P2 易用性」，**不得写成「P1 缺失」**。
+
+### 66.2 R1 空窗口修正（Owner 裁定走 B：不 FINALIZE 空窗口）
+
+`ReconBatchExecutor.java:155-166`：
+
+```java
+List<ExternalSubject> externals = loadExternal(run.getAccountId(), businessDate);
+if (externals.isEmpty()) {
+    log.warn("[METRIC] recon_batch_empty_window runId={} accountId={} date={}", runId, run.getAccountId(), businessDate);
+    throw new BusinessException(ErrorCode.PARAM_ERROR,
+            "窗口内无银行流水，无法对账：accountId=" + run.getAccountId()
+                    + " businessDate=" + businessDate + "（请先导入银行流水）");
+}
+```
+
+语义：异常 → 跑批事务回滚 → 调用方独立事务置 `FAILED` → HTTP 业务码 400；**不产生 FINALIZED 空 run**。
+实测：空窗口 → `code=400`、run 落 FAILED；补 1 条流水 → `code=0`、run `FINALIZED` 且 `items=1`。
+随之清理了修正前遗留的两条空 FINALIZED run（151/152，备份 `.verify-tmp/backup-empty-finalized-runs.csv` + 审计 `DATA_PURGE`），A10 由红转绿（`rows=0 分母=1`）。
+
+### 66.3 R1 复用规则修正（`recon_run_reused` 原先不区分状态）
+
+**缺陷**：`POST /v1/finance/recon-runs` 对同 `(accountId, businessDate)` 无条件复用既有 run。
+实测踩坑：空窗口跑出的 `runId=153`（FAILED）在补流水后被**直接复用** → 接口返回 `code=0` 但**根本没跑批**（items 仍 0、status 仍 FAILED）。
+
+**新规则**（`ReconRunServiceImpl.run()`）：
+
+| 既有 run 状态 | 行为 |
+|---------------|------|
+| `FINALIZED` 且 items>0 | 复用，返回 `reused=true` + 原 run 摘要 |
+| `FINALIZED` 但 items=0 | **400**：`该账户当日已有空的 FINALIZED 对账批次（runId=X，items=0），属异常遗留，请先清理后再跑批` |
+| `FAILED` | **重建新 run 并原地跑批**（`[METRIC] recon_run_rebuild_failed`） |
+| `RUNNING`/其它，且 `started_at` 未超 10 分钟 | 400：进行中，请稍后或 `force=true` |
+| `RUNNING`/其它，且超 10 分钟（僵死） | **重建**（`[METRIC] recon_run_rebuild_stale`） |
+
+辅助：新增常量 `RUNNING_STALE_MINUTES = 10`、方法 `countItems(runId)`；`newRun(...)` 的 key 后缀判断从 `force` 改为 `rebuild`（`force || 需重建`），避免撞 `uk_recon_runs_run_key`。
+
+**三场景实测（账户 25 / 2026-10-27）**：
+
+```
+① 空窗口    → code=400，run 155 FAILED（无 FINALIZED 空 run）
+② 补流水再跑 → code=0，复用规则判 FAILED → 重建 run 156：FINALIZED，items=1，diffs=1（真跑批）
+③ 第三次跑   → code=0，reused=true，未新建 run（仍是 156）
+④ 人造空 FINALIZED run（157）→ code=400「空的 FINALIZED 对账批次…请先清理」，不新建（测试后已删）
+```
+
+### 66.4 `2026-10-27-purge-untagged-statements.sql` 状态
+
+- 路径：`scripts/db-fix/2026-10-27-purge-untagged-statements.sql`
+- **未执行**；DRY 段可跑（只读），`DELETE` 段**整段注释**，等待 Owner 裁定
+- 三条件：① `remark NOT LIKE '%[E2E:%'` ② 无关联 `FINALIZED` recon_run ③ `create_time` 落在 2026-10-27 实验窗口
+- DRY 命中 130~135 六条（remark 均 `e2e-stmt generate`，items 全 0）；120~129 同形态但更早一批，脚本默认不碰
+
+### 66.5 保留证据
+
+- 账户 24：`R1-E2E-TXN1`（12000 分 MANUAL 银行流水）+ run 154（FINALIZED，items=1）—— R1 证据，清理前需先报 Lead
+- 账户 25：`R1-REUSE-TXN1`（9000 分）+ run 155（FAILED）/156（FINALIZED）—— 复用规则三场景证据
