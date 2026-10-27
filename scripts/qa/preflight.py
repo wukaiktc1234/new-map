@@ -18,6 +18,10 @@
   2  巡检 FAIL > 0（阻断）
   3  仅 WARN：分母不足（skipped/(PASS+skipped) > 50%）或 test-compile 失败
 
+发版 / CI 硬规则（Owner 2026-10-27）：
+  `--full` 必须 **EXIT=0** 才准发版；EXIT=3 表示「有 WARN（分母不足 / 编译失败 / mvn test 失败）」，
+  **不得发版**；EXIT=2 直接阻断（巡检 FAIL>0）。CI 里把本脚本的退出码当门禁即可，不要再靠人眼看输出。
+
 用法：
   python scripts/qa/preflight.py            # 开工前快检
   python scripts/qa/preflight.py --full     # E2E 前 / 发版前全量（含 mvn test）

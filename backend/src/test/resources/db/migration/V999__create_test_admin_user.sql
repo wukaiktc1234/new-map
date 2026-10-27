@@ -1,46 +1,55 @@
 -- ============================================================
 -- 安全红线：此脚本仅用于测试环境，禁止在生产环境执行
--- 已从 src/main/resources/db/migration/ 移动到 src/test/resources/db/migration/
--- Flyway 仅在主资源目录扫描迁移脚本，此文件不会在生产环境被自动执行
+-- 位于 src/test/resources/db/migration/（Flyway 主资源目录不含它）
 -- ============================================================
--- S9a-2 幂等化（Owner 裁定：test resources → 改幂等，ON CONFLICT DO NOTHING；纳入 S9a-2）：
--- 1. 对齐活体 users schema：PK user_id / UNIQUE username /
---    NOT NULL 仅 (user_id, username, password)；
---    （旧版 `id`/`created_at`/`updated_at` 列在活体表不存在，原脚本不可执行）
--- 2. 对齐活体 user_roles schema：create_time（旧版 created_at 不存在）；
---    UQ(user_id, role_id)；user_id 为 varchar
--- 3. 移除原版第 3 条 sys_role_permissions 授权语句：该表在活体库不存在（schema 漂移），
---    既不可执行也无法幂等化；授权职责归应用初始化（role_permissions/permissions 初始化逻辑）
--- 4. 全部语句幂等：ON CONFLICT DO NOTHING（重复执行不报错、不产生重复行）
+-- 2026-10-27 修正（测试库隔离落地时暴露的两处 schema 漂移）：
+--   ① 时间列名：活体是 create_time/update_time，但全新迁移出来的库是 created_at/updated_at
+--      → 旧脚本在干净测试库上「列不存在」直接失败；
+--   ② user_id 在全新迁移出来的库是 GENERATED ALWAYS AS IDENTITY → 不能显式插值
+--      （活体是普通列，故旧脚本写死 999 在活体库能过、在测试库必炸）。
+--   修法：DO 块探测实际形态（时间列名 + identity），两种库都能跑；保持幂等；
+--         **不跳过 Flyway、不放宽任何断言**。
 
--- 1. 插入测试admin用户
--- ID使用999，避免与生产admin（user_id=1）冲突
--- 密码使用BCrypt加密：Test@123456 -> $2a$10$N9qco8iKW2E...（这是标准的BCrypt加密）
-INSERT INTO users (
-  user_id,
-  username,
-  password,
-  email,
-  status,
-  roles,
-  create_time,
-  update_time
-) VALUES (
-  999,                                    -- 使用大数字ID，避免与生产用户冲突
-  'test-admin',                          -- 测试专用用户名
-  '$2a$10$N9qco8iKW2E...',               -- 密码：Test@123456的BCrypt加密值
-  'test-admin@example.com',              -- 测试专用邮箱
-  1,                                     -- 状态：启用
-  '["ROLE_ADMIN"]',                      -- 角色：超级管理员
-  NOW(),                                 -- 创建时间
-  NOW()                                  -- 更新时间
-)
-ON CONFLICT DO NOTHING;
+DO $mig$
+DECLARE
+  has_create_time boolean;
+  uid_is_identity boolean;
+  new_uid text;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'users' AND column_name = 'create_time') INTO has_create_time;
+  SELECT is_identity = 'YES' FROM information_schema.columns
+   WHERE table_name = 'users' AND column_name = 'user_id' INTO uid_is_identity;
 
--- 2. 为测试admin用户添加角色关联（UQ(user_id, role_id)，已存在则跳过）
-INSERT INTO user_roles (user_id, role_id, create_time)
-VALUES ('999', 'ROLE_ADMIN', NOW())
-ON CONFLICT DO NOTHING;
+  IF uid_is_identity THEN
+    -- 让数据库生成 user_id（GENERATED ALWAYS），再按 username 取回
+    IF has_create_time THEN
+      INSERT INTO users (username, password, email, status, roles, create_time, update_time)
+      VALUES ('test-admin', '$2a$10$N9qco8iKW2E...', 'test-admin@example.com', '1', '["ROLE_ADMIN"]', NOW(), NOW())
+      ON CONFLICT DO NOTHING;
+    ELSE
+      INSERT INTO users (username, password, email, status, roles)
+      VALUES ('test-admin', '$2a$10$N9qco8iKW2E...', 'test-admin@example.com', '1', '["ROLE_ADMIN"]')
+      ON CONFLICT DO NOTHING;
+    END IF;
+  ELSE
+    IF has_create_time THEN
+      INSERT INTO users (user_id, username, password, email, status, roles, create_time, update_time)
+      VALUES (999, 'test-admin', '$2a$10$N9qco8iKW2E...', 'test-admin@example.com', '1', '["ROLE_ADMIN"]', NOW(), NOW())
+      ON CONFLICT DO NOTHING;
+    ELSE
+      INSERT INTO users (user_id, username, password, email, status, roles)
+      VALUES (999, 'test-admin', '$2a$10$N9qco8iKW2E...', 'test-admin@example.com', '1', '["ROLE_ADMIN"]')
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END IF;
 
--- 3. 验证插入结果（SELECT 不影响幂等性）
+  SELECT user_id::text FROM users WHERE username = 'test-admin' LIMIT 1 INTO new_uid;
+  IF new_uid IS NOT NULL THEN
+    INSERT INTO user_roles (user_id, role_id, create_time)
+    VALUES (new_uid, 'ROLE_ADMIN', NOW())
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $mig$;
+
 SELECT '测试admin用户创建成功' AS result;

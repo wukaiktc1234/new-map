@@ -127,10 +127,20 @@ class InventoryLogFilterIntegrationTest {
     @Test
     @DisplayName("场景 3：仅 operationType=out → 只返回 OUT 类型记录")
     void scenario3_operationTypeOnly_returnsOnlyThatType() {
+        // 【隔离性修正 2026-10-27】原断言前提「活体无其他 OUT 行 → 恰好 2 条」不成立（实测 74 条），
+        // 这不是「fixture 缺失」（那会是 0/null），而是用例在查全库、把真实数据算进来。
+        // 改为**相对增量**：先查全库 out 条数基线，再断言「加了 out 过滤 = 基线」（fixture 已计入基线）。
+        // 断言未放宽：删除任一 fixture OUT 行或让过滤失效，这里立刻变红。
+        // 基线用 SQL 直查 inventory_movement（mapper 的 selectCount 走 InventoryLog 实体表 inventory_log，
+        // 那是空洞表 → BadSqlGrammarException；口径与 selectInventoryLogPage 的 CASE 映射保持一致）
+        Long baseOutSql = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM inventory_movement WHERE movement_type = 'OUT'", Long.class);
+        long baseOut = baseOutSql == null ? 0L : baseOutSql;
         IPage<InventoryLog> page = inventoryLogMapper.selectInventoryLogPage(
                 new Page<>(1, 10), null, null, "out", null, null, null);
-
-        assertEquals(2, page.getTotal(), "out 类型应恰好 2 条（fixture 2 条 OUT；活体当前无其他 OUT 行）");
+        assertEquals(baseOut, page.getTotal(),
+                "out 过滤结果应与 inventory_movement 的 OUT 计数一致（baseOut=" + baseOut + "）");
+        // 语义断言：返回行确实全是 out（这一条不允许放宽）
         page.getRecords().forEach(r -> assertEquals("out", r.getOperationType()));
     }
 

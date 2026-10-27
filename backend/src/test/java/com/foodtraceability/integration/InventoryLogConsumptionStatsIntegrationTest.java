@@ -150,6 +150,25 @@ class InventoryLogConsumptionStatsIntegrationTest {
         return s == null ? BigDecimal.ZERO : s;
     }
 
+
+    /** 非 fixture 的 OUT 基线合计（SELECT-only）——用于 delta 断言，替代「活体无其他 OUT 行」这类脆弱前提 */
+    private BigDecimal baselineOutExcludingFixture() {
+        BigDecimal s = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(change_qty), 0) FROM inventory_movement "
+                        + "WHERE source_ref NOT LIKE 'IT-CS-%' AND movement_type = 'OUT'",
+                BigDecimal.class);
+        return s == null ? BigDecimal.ZERO : s;
+    }
+
+    /** 非 fixture 的「窗口内 OUT」基线合计（SELECT-only） */
+    private BigDecimal baselineOutInWindowExcludingFixture() {
+        BigDecimal s = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(change_qty), 0) FROM inventory_movement "
+                        + "WHERE source_ref NOT LIKE 'IT-CS-%' AND movement_type = 'OUT' "
+                        + "AND create_time >= ?::timestamp AND create_time <= ?::timestamp",
+                BigDecimal.class, START, END);
+        return s == null ? BigDecimal.ZERO : s;
+    }
     @Test
     @DisplayName("验收 1：不传参 → 全局统计（包含断言：fixture 行进入范围 + total ≥ fixture 贡献下界）")
     void noParams_globalStats_inclusionAndBound() {
@@ -166,12 +185,16 @@ class InventoryLogConsumptionStatsIntegrationTest {
     }
 
     @Test
-    @DisplayName("验收 2：仅 operationType=out → 只统计 OUT 行（精确值 -30）")
+    @DisplayName("验收 2：仅 operationType=out → 只统计 OUT 行（相对增量精确 -30）")
     void operationTypeOnly_outTypeOnly() {
+        // 【隔离性修正 2026-10-27】原断言前提「活体无其他 OUT 行 → 恰好 -30」不成立：
+        // 实测库里真实 OUT 合计 -68.1 / 74 条，旧写法让用例在「查全库」的同时给出随机结论。
+        // 改为**相对增量**：stats(out) − baseline(out, 非 fixture) == fixture 贡献(-10 + -20 = -30)。
+        // 断言未放宽：多插一条 fixture OUT 行，这里立刻变红（负向演练已验证）。
+        BigDecimal base = baselineOutExcludingFixture();
         Map<String, Object> stats = inventoryLogMapper.selectConsumptionStats(null, null, "out");
-        // OUT 负号约定：-10 + -20 = -30；IN 行（+5）不计入
-        // （活体账本当前无 fixture 之外的 OUT 行；若出现先核实现状再改 delta 断言）
-        assertTotalExactly(stats, "-30", "out 类型应恰好 -30（fixture -10 + -20，无其他 OUT 行）");
+        assertTotalExactly(stats, base.add(new BigDecimal("-30")).toPlainString(),
+                "out 相对增量应恰好 -30（fixture -10 + -20；非 fixture OUT 基线=" + base + "）");
     }
 
     @Test
@@ -191,19 +214,24 @@ class InventoryLogConsumptionStatsIntegrationTest {
     @Test
     @DisplayName("验收 4：组合参数（out + 区间）→ 交集（精确值 -20）")
     void combined_operationTypeAndWindow_intersection() {
+        // 【隔离性修正 2026-10-27】同上：改为「窗口内非 fixture OUT 基线 + fixture 贡献(-20)」相对断言
+        BigDecimal base = baselineOutInWindowExcludingFixture();
         Map<String, Object> stats = inventoryLogMapper.selectConsumptionStats(START, END, "out");
-        // 仅 IT-CS-OUT-0915（-20）同时满足 out 且在区间内（活体当前无其他 OUT 行）
-        assertTotalExactly(stats, "-20", "out ∩ 区间内应恰好 -20（仅 IT-CS-OUT-0915）");
+        assertTotalExactly(stats, base.add(new BigDecimal("-20")).toPlainString(),
+                "out ∩ 区间内相对增量应恰好 -20（仅 IT-CS-OUT-0915；窗口内非 fixture OUT 基线=" + base + "）");
     }
 
     @Test
     @WithMockUser(username = "admin", authorities = {"inventory:query"})
     @DisplayName("验收 5：端点 GET /v1/inventory/consumptions/stats 不再 500（code=0），Service 硬编码 out 语义保持")
     void endpoint_stats_no500_andOutSemantics() throws Exception {
+        // 【隔离性修正 2026-10-27】端点 total 同样是全库口径 → 用相对基线断言（不放宽、不 skip）；
+        // 鉴权保持 @WithMockUser，不依赖库里真实用户/角色（集成测试自带鉴权）。
+        BigDecimal base = baselineOutExcludingFixture();
         mockMvc.perform(get("/v1/inventory/consumptions/stats"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(-30));
+                .andExpect(jsonPath("$.data.total").value(base.add(new BigDecimal("-30")).intValue()));
         // Service 层硬编码 operationType="out"（InventoryLogServiceImpl）：
         // 端点不带参数也只统计 OUT 行 = fixture -30（活体当前无其他 OUT 行）
     }
