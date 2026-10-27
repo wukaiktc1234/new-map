@@ -1,17 +1,11 @@
--- =====================================================================
--- 2026-10-26-grant-teller-deposit-slip-deposit.sql
--- N19-3a②：给 ROLE_TELLER 补 finance:deposit-slip:deposit（存行）。
---   只补 deposit；**不补 create / submit**（create 走系统自动、submit 属 CASHIER）。
---   幂等；回撤：UPDATE role_permissions SET deleted=1 WHERE role_id='ROLE_TELLER'
---         AND permission_id='finance:deposit-slip:deposit';
--- =====================================================================
+-- ⚠️ 已修正（P0）：必须用 permission_id_str（PERM_FINANCE_DEPOSIT_SLIP_DEPOSIT），不是权限码
+--   另：按 Owner 裁定，deposit 属出纳/财务，不补 create/submit
 \set ON_ERROR_STOP on
 BEGIN;
 INSERT INTO role_permissions (role_id, permission_id, deleted, create_time)
-SELECT 'ROLE_TELLER', 'finance:deposit-slip:deposit', 0, now()
- WHERE NOT EXISTS (
-   SELECT 1 FROM role_permissions rp
-    WHERE rp.role_id='ROLE_TELLER' AND rp.permission_id='finance:deposit-slip:deposit' AND rp.deleted=0);
-SELECT permission_id, deleted FROM role_permissions
- WHERE role_id='ROLE_TELLER' AND permission_id LIKE 'finance:deposit-slip%' ORDER BY 1;
+SELECT 'ROLE_TELLER', p.permission_id_str, 0, now()
+  FROM permissions p
+ WHERE p.permission_code = 'finance:deposit-slip:deposit' AND p.deleted = 0 AND p.status = 1
+   AND NOT EXISTS (SELECT 1 FROM role_permissions rp WHERE rp.role_id='ROLE_TELLER'
+                    AND rp.permission_id = p.permission_id_str AND COALESCE(rp.deleted,0)=0);
 COMMIT;

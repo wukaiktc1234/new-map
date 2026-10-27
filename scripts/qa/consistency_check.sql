@@ -1509,6 +1509,35 @@ SELECT CASE WHEN (SELECT count(*) FROM deposit_slips WHERE deleted = 0 AND statu
 \endif
 
 -- ------------------------------------------------------------
+-- A44（**参与判定**）：role_permissions.permission_id 必须等于 permissions.permission_id_str
+--   **授权必须用 permission_id_str（形如 PERM_FINANCE_DEPOSIT_SLIP_RECEIVE）**；
+--   用权限码字符串（finance:deposit-slip:receive）插入的行，在 UserMapper.getUserRolePermissions
+--   的 join（rp.PERMISSION_ID = p.permission_id_str）上匹配不上 → **静默失效（接口 403）**。
+--   分母 = role_permissions 有效行数；分母=0 → INFO 跳过。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.role_permissions') IS NOT NULL
+        AND to_regclass('public.permissions') IS NOT NULL) AS a44_ready
+\gset
+\if :a44_ready
+SELECT CASE WHEN (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0) = 0
+            THEN '[INFO] A44 skipped_no_data 分母=0（无 role_permissions 有效行）'
+            WHEN count(*) = 0 THEN '[PASS] A44 授权 permission_id 形态合法 rows=0 分母=' || (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0)
+            ELSE '[FAIL] A44 授权 permission_id 形态非法(不等于任何 permission_id_str) rows=' || count(*)
+                 || ' 分母=' || (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0)
+                 || ' —— 这类孤儿授权等于静默失效，禁止接受'
+       END AS a44_line,
+       CASE WHEN (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0) = 0
+            THEN 0 ELSE count(*) END AS a44_n
+  FROM role_permissions rp
+ WHERE COALESCE(rp.deleted,0) = 0
+   AND NOT EXISTS (SELECT 1 FROM permissions p WHERE p.permission_id_str = rp.permission_id)
+\gset
+\else
+\set a44_line '[INFO] A44 跳过（role_permissions / permissions 不存在）'
+\set a44_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1849,6 +1878,10 @@ SELECT line
     SELECT 44,
            :'a43_line'
     UNION ALL
+    -- A44 参与判定：授权 permission_id 形态合法（>0 进 TOTAL）
+    SELECT 45,
+           :'a44_line'
+    UNION ALL
     SELECT 42,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
@@ -1877,7 +1910,8 @@ SELECT line
              + CASE WHEN :a37_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END
               + CASE WHEN :a42_n > 0 THEN 1 ELSE 0 END
-              + CASE WHEN :a43_n > 0 THEN 1 ELSE 0 END)
+              + CASE WHEN :a43_n > 0 THEN 1 ELSE 0 END
+              + CASE WHEN :a44_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
