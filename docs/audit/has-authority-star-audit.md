@@ -53,3 +53,9 @@ permissions 表里 permission_code='*' 的行数 = 0  （SELECT count(*) 实测�
 | 位置 | 改动 | 状态 |
 |------|------|------|
 | `OverAgeWorkerController`（6 处） | → `hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')`；`V20261028_011` 补两码并绑 `ROLE_HR_DIRECTOR` | 已改，待 200 验收 |
+
+## 已知限制（Lead 2026-10-28 裁定）
+
+> 除已改造的 `OverAgeWorkerController` 与本批 Top 3（资产/设备/订单）外，**其余 ~455 处 `hasAuthority('*')` 维持现状**。
+> **当前仅 admin 可调用，属已知限制，不是 bug** —— 这是「未细化的权限设计」，需要产品参与制定权限矩阵（模块 × 动作 × 角色）后才能逐处替换。
+> 排序与依据见 `docs/audit/has-authority-star-top10.md`。

@@ -4356,3 +4356,17 @@ general-ledger / reports-trial-balance / overview-summary / finance-accounts →
 
 **教训**：跨层结论（前端在某处调某接口）必须**两层都取证**：后端 404 只证明接口不存在，不证明调用方；
 前端 grep 只证明引用，不证明运行时真的发请求。缺任一层都不能下结论。
+
+## 93. lesson：`compile` 通过 ≠ `test-compile` 通过（2026-10-28 03:55）
+
+我改 `getLogPage`/`selectLogPage` 签名后跑 `mvn -DskipTests compile` 报 BUILD SUCCESS，据此声称「编译通过」；
+实际 `src/test` 里有 9 处调用没改，`test-compile` 直接失败，导致 pos-ux 起的两个实例都退出、8081 反复起落。
+
+**规则**：凡改**方法签名**（含参数增删、类型变化、返回值变化），验证命令必须是 `mvn -o -B test-compile`；
+`compile` 只编主源，**对测试源一无所知**。
+
+这与「子集冒充全量」同族：**都是把「部分通过」当成「整体通过」**。
+记录三条同族错误，作为交付前检查项：
+1. 子集测试冒充全量测试；
+2. `compile` 冒充 `test-compile`；
+3. 旧进程冒充新代码（改完没重启就测）。
