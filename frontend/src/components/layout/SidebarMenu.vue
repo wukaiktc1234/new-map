@@ -16,6 +16,17 @@ interface MenuItem {
   icon: string
   path?: string
   children?: MenuItem[]
+  /** 置灰不可点（V2.0 未上线功能） */
+  disabled?: boolean
+  /** 未上线标记：tooltip「V2.0 功能」 */
+  comingSoon?: boolean
+  /** 角标文字，如 'V2.0' */
+  badge?: string
+}
+
+/** 置灰项的提示文案（置灰优于隐藏：让人看到「有这个功能，但没上线」） */
+function disabledHint(item: MenuItem): string {
+  return (item.comingSoon ? 'V2.0 功能' : '暂不可用')
 }
 
 interface LogoConfig {
@@ -153,7 +164,9 @@ function handleMenuClick(item: MenuItem) {
   }
 }
 
-function handleSubMenuClick(path: string) {
+function handleSubMenuClick(path: string, options?: { disabled?: boolean; title?: string }) {
+  // 置灰项：不可导航（V2.0 未上线，不做任何跳转）
+  if (options?.disabled) return
   activeSubMenu.value = path
   activeMenu.value = path
   router.push(path)
@@ -227,16 +240,30 @@ const currentParentPath = computed(() => {
             v-if="!collapsed && item.children && isMenuExpanded(item.title)"
             class="sub-menu"
           >
-            <div
+            <el-tooltip
               v-for="child in item.children"
               :key="child.title"
-              class="sub-menu-item"
-              :class="{ 'sub-menu-item--active': child.path && isActiveChild(child.path, item.path || '') }"
-              @click="child.path && handleSubMenuClick(child.path)"
+              :content="child.disabled ? disabledHint(child) : ''"
+              :disabled="!child.disabled"
+              placement="right"
+              :offset="8"
             >
-              <span class="sub-menu-item__dot" />
-              <span class="sub-menu-item__title">{{ child.title }}</span>
-            </div>
+              <div
+                class="sub-menu-item"
+                :class="{
+                  'sub-menu-item--active': child.path && isActiveChild(child.path, item.path || ''),
+                  'sub-menu-item--disabled': child.disabled,
+                }"
+                :data-test="child.disabled ? 'menu-item-disabled' : 'menu-item'"
+                :data-coming-soon="child.comingSoon ? 'true' : 'false'"
+                :aria-disabled="child.disabled ? 'true' : 'false'"
+                @click="child.path && handleSubMenuClick(child.path, { disabled: child.disabled, title: child.title })"
+              >
+                <span class="sub-menu-item__dot" />
+                <span class="sub-menu-item__title">{{ child.title }}</span>
+                <span v-if="child.badge" class="sub-menu-item__badge">{{ child.badge }}</span>
+              </div>
+            </el-tooltip>
           </div>
         </div>
       </nav>
@@ -303,11 +330,16 @@ const currentParentPath = computed(() => {
               v-for="child in currentSubMenuItems"
               :key="child.title"
               class="mixed-content-item"
-              :class="{ 'mixed-content-item--active': child.path && isActiveChild(child.path, currentParentPath) }"
-              @click="child.path && handleSubMenuClick(child.path)"
+              :class="{
+                'mixed-content-item--active': child.path && isActiveChild(child.path, currentParentPath),
+                'mixed-content-item--disabled': child.disabled,
+              }"
+              :data-test="child.disabled ? 'menu-item-disabled' : 'menu-item'"
+              @click="child.path && handleSubMenuClick(child.path, { disabled: child.disabled, title: child.title })"
             >
               <el-icon :size="20"><component :is="child.icon" /></el-icon>
               <span class="mixed-content-item__title">{{ child.title }}</span>
+              <span v-if="child.badge" class="mixed-content-item__badge">{{ child.badge }}</span>
             </div>
           </transition-group>
         </nav>
@@ -352,10 +384,15 @@ const currentParentPath = computed(() => {
           >
             <div
               class="icon-child-item"
-              :class="{ 'icon-child-item--active': child.path && isActiveChild(child.path, currentParentPath) }"
-              @click="child.path && handleSubMenuClick(child.path)"
+              :class="{
+                'icon-child-item--active': child.path && isActiveChild(child.path, currentParentPath),
+                'icon-child-item--disabled': child.disabled,
+              }"
+              :data-test="child.disabled ? 'menu-item-disabled' : 'menu-item'"
+              @click="child.path && handleSubMenuClick(child.path, { disabled: child.disabled, title: child.title })"
             >
               <el-icon :size="20"><component :is="child.icon" /></el-icon>
+              <span v-if="child.badge" class="icon-child-item__badge">{{ child.badge }}</span>
             </div>
           </el-tooltip>
         </nav>
@@ -534,6 +571,28 @@ const currentParentPath = computed(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+// V2.0 未上线：置灰但仍可见
+.sub-menu-item--disabled,
+.mixed-content-item--disabled,
+.icon-child-item--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.sub-menu-item__badge,
+.mixed-content-item__badge,
+.icon-child-item__badge {
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+  border-radius: 3px;
+  background: var(--el-color-info-light-8, #e9e9eb);
+  color: var(--el-color-info-dark-2, #73767a);
+  border: 1px solid var(--el-color-info-light-5, #c8c9cc);
 }
 
 .sub-menu-item {

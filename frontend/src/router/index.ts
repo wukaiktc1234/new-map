@@ -80,6 +80,8 @@ const router = createRouter({
     { path: '/purchase/report', name: 'PurchaseReport', component: () => import('@/views/purchase/PurchaseReport.vue'), meta: { title: '采购报表', domain: 'purchase' } },
     { path: '/purchase/analysis', name: 'PurchaseAnalysis', component: () => import('@/views/purchase/PurchaseAnalysis.vue'), meta: { title: '采购数据分析', domain: 'purchase' } },
     { path: '/purchase/supplier', name: 'SupplierArchive', component: () => import('@/views/purchase/SupplierArchive.vue'), meta: { title: '供应商档案', domain: 'purchase' } },
+    // V2.0 未上线：供应商评估（后端 supplier_evaluations 表已建，无接口）
+    { path: '/purchase/supplier-evaluation', name: 'PurchaseSupplierEvaluation', component: () => import('@/views/common/ComingSoon.vue'), meta: { title: '供应商评估', domain: 'purchase', comingSoon: true, planVersion: 'V2.0' } },
     // 【下线】采购模块物资需求提报：统一由门店运营「物资需求」入口（/store-management/material-request）提报
 
     // ========== 仓储管理 ==========
@@ -201,6 +203,8 @@ const router = createRouter({
     { path: '/device/monitor', name: 'DeviceMonitor', component: () => import('@/views/device/DeviceMonitor.vue'), meta: { title: '设备监控', domain: 'device' } },
     { path: '/device/alerts', name: 'DeviceAlerts', component: () => import('@/views/device/DeviceAlerts.vue'), meta: { title: '设备告警', domain: 'device' } },
     { path: '/device/status-history', name: 'DeviceStatusHistory', component: () => import('@/views/device/DeviceStatusHistory.vue'), meta: { title: '状态历史', domain: 'device' } },
+    // V2.0 未上线：取餐柜（后端 takeout_locker / locker_slot 表已建，无接口）。菜单置灰；直达 URL 也只看到占位说明
+    { path: '/device/locker', name: 'DeviceLocker', component: () => import('@/views/common/ComingSoon.vue'), meta: { title: '取餐柜', domain: 'device', comingSoon: true, planVersion: 'V2.0' } },
 
     // ========== 系统管理 ==========
     { path: '/system/operation-audit', name: 'OperationAudit', component: () => import('@/views/system/OperationAudit.vue'), meta: { title: '操作审计', domain: 'system', roles: [UserRole.OWNER, UserRole.ADMIN] } },

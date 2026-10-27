@@ -27,6 +27,11 @@ const { pagination } = useStandardPage()
 const searchForm = ref({ dateRange: null as [string, string] | null })
 const loading = ref(false)
 const records = ref<FinanceVoucherNew[]>([])
+/**
+ * 加载失败标记：失败时**不展示任何金额**（不写 0.00 冒充「账是空的」），
+ * 页面顶部给显式提示 + 重试。
+ */
+const loadError = ref('')
 
 /** 凭证展示数据（金额已转为格式化字符串） */
 interface VoucherDisplay {
@@ -43,9 +48,18 @@ interface VoucherDisplay {
 
 const displayRecords = ref<VoucherDisplay[]>([])
 
-/** 格式化金额：分 → 元（带千分位，保留2位小数） */
+/**
+ * 格式化金额：分 → 元（千分位，2 位小数）
+ *
+ * 反假 0 原则：**缺失值返回「—」，不返回 0.00**。
+ * 0.00 会被财务误读成「本期无发生额」，而 null/undefined 只代表「没有值」。
+ * 后端明确给 0 时才显示 0.00（那是真实零发生）。
+ */
 function formatAmount(fen: number | undefined | null): string {
-  return fenToYuanNumber(fen).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (fen === null || fen === undefined) return '—'
+  const num = Number(fen)
+  if (!Number.isFinite(num)) return '—'
+  return fenToYuanNumber(num).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 /** 将后端状态（数字或字符串）映射为前端语义字符串 */
@@ -64,12 +78,14 @@ function getStatusTag(status: VoucherStatus): { type: string; label: string } {
     audited: { type: 'info', label: '已审核' },
     cancelled: { type: 'info', label: '已作废' },
   }
-  return map[status] ?? { type: 'info', label: '未知' }
+  // 未知状态必须回显原始码，「未知」两个字等于信息丢失
+  return map[status] ?? { type: 'info', label: '未知状态(' + status + ')' }
 }
 
 /** 加载凭证列表 */
 async function loadData(): Promise<void> {
   loading.value = true
+  loadError.value = ''
   try {
     const params: VoucherQueryForm = {
       page: pagination.current,
@@ -99,6 +115,7 @@ async function loadData(): Promise<void> {
     records.value = []
     displayRecords.value = []
     pagination.total = 0
+    loadError.value = error instanceof Error ? error.message : '凭证列表接口不可用'
   } finally {
     loading.value = false
   }
@@ -109,11 +126,13 @@ const statsCards = computed(() => {
   const posted = records.value.filter(r => mapVoucherStatus(r.status) === 'posted').length
   const draft = records.value.filter(r => mapVoucherStatus(r.status) === 'draft').length
   const audited = records.value.filter(r => mapVoucherStatus(r.status) === 'audited').length
+  // 加载失败时一律显「—」，绝不把「没取到数」渲染成 0
+  const dash = loadError.value ? '—' : undefined
   return [
-    { icon: 'TrendCharts', label: '本月凭证数', value: pagination.total, colorType: '' as StatColorType },
-    { icon: 'Document', label: '已过账', value: posted, colorType: '' as StatColorType },
-    { icon: 'EditPen', label: '草稿', value: draft, colorType: '' as StatColorType },
-    { icon: 'CircleClose', label: '待审核', value: audited, colorType: '' as StatColorType },
+    { icon: 'TrendCharts', label: '本月凭证数', value: dash ?? pagination.total, colorType: '' as StatColorType },
+    { icon: 'Document', label: '已过账', value: dash ?? posted, colorType: '' as StatColorType },
+    { icon: 'EditPen', label: '草稿', value: dash ?? draft, colorType: '' as StatColorType },
+    { icon: 'CircleClose', label: '待审核', value: dash ?? audited, colorType: '' as StatColorType },
   ]
 })
 
@@ -275,9 +294,9 @@ const detailVoucher = ref<FinanceVoucherNew | null>(null)
 /** 详情分录展示数据（金额已转为格式化字符串） */
 const detailEntries = ref<Array<Record<string, string>>>([])
 /** 详情借方合计（元，格式化字符串） */
-const detailDebitTotal = ref('0.00')
-/** 详情贷方合计（元，格式化字符串） */
-const detailCreditTotal = ref('0.00')
+const detailDebitTotal = ref('—')
+/** 详情贷方合计（元，格式化字符串；缺失显示「—」） */
+const detailCreditTotal = ref('—')
 
 /** 打开详情对话框（从列表行） */
 function handleViewDetail(row: Record<string, unknown>): void {
@@ -336,6 +355,25 @@ const detailEntryColumns = [
         </el-button>
       </template>
     </PageHeader>
+    <!-- 反假 0：取不到数据时显式说明，不展示任何金额 -->
+    <div v-if="loadError" class="ledger-error" data-test="ledger-load-error">
+      <el-alert
+        type="error"
+        :closable="false"
+        show-icon
+        title="总账数据加载失败：未展示任何金额"
+      >
+        <template #default>
+          <div class="ledger-error__body">
+            <span>{{ loadError }}</span>
+            <span class="ledger-error__hint">
+              为避免误导，本页不显示 0.00（0.00 会被误读为「本期无发生额」）。可稍后重试或前往已有数据的「统计概览」核对。
+            </span>
+          </div>
+          <el-button link type="primary" size="small" data-test="ledger-retry" @click="loadData">重试</el-button>
+        </template>
+      </el-alert>
+    </div>
     <div class="stats-section" :style="{ gridTemplateColumns: 'repeat(4, 1fr)' }">
       <StatCard v-for="stat in statsCards" :key="stat.label" :icon="stat.icon" :label="stat.label" :value="String(stat.value)" :color-type="stat.colorType" variant="bordered" />
     </div>
@@ -433,6 +471,22 @@ const detailEntryColumns = [
 </template>
 
 <style scoped lang="scss">
+.ledger-error {
+  margin-bottom: var(--fts-space-4, 16px);
+}
+
+.ledger-error__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.ledger-error__hint {
+  color: var(--el-color-info, #909399);
+  font-size: 12px;
+}
+
 .detail-entries {
   margin-top: var(--fts-space-4);
 

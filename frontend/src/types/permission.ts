@@ -470,6 +470,15 @@ export interface SubMenuItem {
    * 与权限中心模板联动，渲染层根据 currentTemplate 推导当前规模自动过滤
    */
   scaleLevel?: ScaleLevel[]
+  /**
+   * 置灰不可点（V2.0 等未上线功能用）。
+   * 置灰优于隐藏：让用户看到「有此功能，暂未上线」而不是以为系统没有。
+   */
+  disabled?: boolean
+  /** 未上线标记：菜单置灰 + tooltip「V2.0 功能」，直达路由时页面显示「该功能将于 V2.0 上线」 */
+  comingSoon?: boolean
+  /** 子菜单角标文字（如 'V2.0'） */
+  badge?: string
 }
 
 /** 一级菜单组配置 */

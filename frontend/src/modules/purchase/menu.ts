@@ -13,6 +13,15 @@ export const purchaseMenu: MenuGroupConfig = {
     { title: '商品分类', icon: 'Folder', path: '/purchase/material-category' },
     { title: '商品档案', icon: 'Files', path: '/purchase/archive' },
     { title: '供应商档案', icon: 'OfficeBuilding', path: '/purchase/supplier' },
+    // ===== 供应商评估（V2.0 未上线：后端 supplier_evaluations 表已建但无接口） =====
+    {
+      title: '供应商评估',
+      icon: 'DataAnalysis',
+      path: '/purchase/supplier-evaluation',
+      disabled: true,
+      comingSoon: true,
+      badge: 'V2.0',
+    },
     { title: '采购申请', icon: 'Edit', path: '/purchase/request' },
     { title: '采购计划', icon: 'Calendar', path: '/purchase/plan' },
     { title: '采购订单', icon: 'Document', path: '/purchase/orders' },
