@@ -3053,3 +3053,54 @@ SELECT count(*) FROM orders o WHERE o.deleted=0
 
 > 判断某个功能**是否存在**，必须 `grep` 全类 / 全项目（同目录、同文件、相近命名如 `Import`/`Commit`/`Sync`/`Job`/`Converter`），
 > **不能只看一个方法或一个端点**；结论里必须写明检索范围（命令 + 命中文件清单），否则视为未验证。
+
+## 68. bug-③ 落地：订单幂等键落库 + 重复提交语义（2026-10-27 21:00–21:45）
+
+### 68.1 改动位置
+
+| 文件 | 改动 |
+|------|------|
+| `entity/OrderNew.java` | 新增 `@TableField("idempotency_key") private String idempotencyKey;` + **手写 getter/setter**（该实体不用 Lombok，只用 `@Data` 会编译不过） |
+| `dto/OrderResultDTO.java` | 新增 `private Boolean reused;` + 手写 `getReused/setReused`（同类无 Lombok） |
+| `service/impl/PosOrderCreateServiceImpl.java` | ① 幂等前置查询 `findOrderByIdempotencyKey`（命中→`[METRIC] order_idempotent_replay` + 返回原单）；② `orderNew.setIdempotencyKey(...)` 与订单/订单项/支付**同一 `@Transactional`** 内落库；③ `catch DuplicateKeyException` → 回查原单（并发双创建不会 500）；④ `buildReplayResult` 返回同形 body + `reused=true` |
+| `resources/db/migration/V20261027_001__orders_idempotency_key_unique.sql` | 唯一**部分**索引（见 68.2） |
+
+### 68.2 索引 DDL
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS uk_orders_idempotency_key
+    ON orders (idempotency_key)
+ WHERE idempotency_key IS NOT NULL;
+COMMENT ON INDEX uk_orders_idempotency_key IS 'bug-③ 幂等键唯一（部分索引：仅非 NULL 生效；重复提交返回首次订单）';
+```
+
+建索引前核对：`dup_groups = 0`，`orders` 6 行 / `with_key = 0`（历史 6 行全 NULL，Owner 裁定**不补**——没有原始 key 可回溯）。
+
+### 68.3 语义（Owner 定，已按此实现）
+
+- 同一 key 第二次提交 → **HTTP 200 + code=0 + 同一 `orderId`/`orderNumber`**，附 `reused=true`；
+- **不用 409**：重复提交是正常重试，客户端应拿到同一结果；409 只留给「同 key 正在处理中（in-flight）」；
+- 换 key → 正常新建。
+
+### 68.4 实测（真打接口 `POST /v1/pos/orders/order`，vcashier01）
+
+```
+① 同 key 连发两次（key=bug3-48d0981cf6）
+   第1次 → HTTP 200 code=0 orderId=O1793106220700 orderNumber=W20261027031 reused=None
+   第2次 → HTTP 200 code=0 orderId=O1793106220700 orderNumber=W20261027031 reused=True
+   orders 行数 7 → 7（增加 0）｜ DB 该 key 行数=1
+② 换 key（bug3-…）→ code=0 orderId=O1793106220702 reused=None ｜ orders 7 → 8
+③ 并发两线程同 key → req1 code=0 reused=True ｜ req2 code=0 ｜ 同一 orderId ｜ orders 8 → 9（+1）｜ 无 500 ｜ 该 key 行数=1
+（清理：3 张测试单及其 order_items/kitchen_order 已删，orders 回到 6 行、带 key=0）
+```
+
+### 68.5 E2E 断言（④）
+
+落在 `scripts/qa/e2e_cash_recon.py::CashRecon.check_order_idempotency()`，在 `run()` 里紧跟登录之后调用（早于班次夹具）。
+**为什么选它不选 POS 套件**：仓里没有独立 POS 套件；本脚本是唯一「POS 下单 → 支付 → 退款 → 缴款单」全链套件，
+`idempotencyKey` 就在这里由 `next_idem()` 生成（`E2E-<tag>-<n>`）——幂等语义必须与下单路径同源验证，否则 tag 锚点会分叉。
+三条断言：① 同 key 重放 → 同单 + `reused=1` + orders 不增；② 换 key → 新单（防「无脑返回上一单」）；③ 并发同 key → 同一单 + 只增 1 行 + 无 500 + 该 key 仅 1 行。
+
+### 68.6 连带更新
+
+`scripts/qa/e2e_cleanup.py` 顶部「已知缺陷 bug-③…key 为 NULL 不能当定位依据」已改为「bug-③ 已修，`E2E-<tag>-<n>` 现在是可靠锚点；退款反查保留为旧数据兜底」。
