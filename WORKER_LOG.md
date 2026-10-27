@@ -3856,3 +3856,32 @@ e5db54ae…(overtime)     同上
 265808cf…(reimbursement) 同上
 ```
 三条**未删除**（验收证据）。
+
+## 81. 测试判定表（8 类）+ selectEffectSummary 验证（2026-10-27 23:55–00:10）
+
+### 81.1 判定表（`git log -1 --format=%ci`，只取最近一次提交）
+
+| 测试类 | 测试文件上次改 | 被测类上次改 | 失败断言首行 | 判定 | 依据 |
+|--------|----------------|--------------|--------------|------|------|
+| `PosOrderQueryServiceImplTest` | 2026-10-23 11:45 | 2026-10-24 02:41 | expected 现金 but was 微信支付 | **修测试** | 被测类晚 1 天（10-24 支付方式统一为单轨：1=现金/2=微信）；测试仍按旧编码 `setPaymentMethod(2)` 注释写「2=现金」→ 断言必失败。改 `setPaymentMethod(1)` 后 11/11 绿 |
+| `PositionSortingTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | NPE `Page.getRecords()` because resultPage is null | **环境** | 两侧同日期；断言里没有任何业务值，直接 NPE —— 分页拦截器在单测上下文未装配，属测试环境缺失 |
+| `PositionCodeGeneratorTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | expected MGR but was GM（另：编码耗尽 1000） | **修测试** | 两侧同日期、之后未改动；实现稳定返回 GM，断言仍写 MGR —— 以实现为准更新断言（**需产品确认 GM/MGR 口径**） |
+| `FoodCodeGeneratorTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | expected D00006 but was D00001 / 期望抛异常未抛 | **修测试** | 同日期；断言假设「按 DB 最大值+1」，实现改为「独立序列」后未同步 |
+| `CostRecordServiceImplTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | costNo 前缀 CR20260626 vs CR202610270001 | **修测试** | 同日期；断言把日期写死成 20260626，实现用当前日期 → 时间相关断言过期 |
+| `InvoiceReimbursementServiceImplTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | 支付状态期望 1 实得 0 | **修测试** | 同日期；mock 未覆盖新状态流转分支 |
+| `PayableServiceImplTest` | 2026-08-02 15:04 | **2026-10-23 04:59** | 应付账款 VO 字段校验 1 failure | **修测试** | **被测类晚于测试**（10-23 改过）→ 实现新增/调整字段，测试快照未同步 |
+| `SysDictServiceImplTest` | 2026-08-02 15:04 | 2026-08-02 15:04 | dict stats 期望 10 实得 8；`SysDictItem.getDeleted()` NPE | **修代码** | 同日期；NPE 是**实体默认值缺失**（deleted 未初始化成 0）导致 `intValue()` 空指针 —— 这是生产代码健壮性问题，不该靠测试兜 |
+
+**已修**：`PosOrderQueryServiceImplTest`（判定修测试，当场改 `setPaymentMethod(1)` → 11/11 绿）。
+其余 7 类判定如上；本轮**只修了这一处**（时间用尽），剩余判定为「修测试」的 5 类与「修代码」的 1 类在下一轮执行。
+
+### 81.2 `selectEffectSummary` 两处调用实测
+
+| 调用点 | 端点 | HTTP | code | data | 500? |
+|--------|------|------|------|------|------|
+| `PromotionServiceImpl:184` | `GET /v1/promotions/statistics/effect` | 200 | 0 | `{"totalparticipants":0,"activitycount":0,"totaldiscount":0,"totalsales":0}` | 否 |
+| `MarketingAnalysisServiceImpl:124` | `GET /v1/marketing/analysis/overview` | 200 | **500** | **null** | 是（但**不是** selectEffectSummary 本身失败） |
+
+第一处：表 0 行 → 返回全 0 结构（**有值不是 null**），契约正常。
+第二处：500 的根因是**另一条 SQL 的类型错误**（日志：`Caused by: PSQLException: 操作符不存在: timestamp without time zone >= character varying`），
+属新发现 **bug-⑮**（MarketingAnalysis 概览接口把 varchar 参数直接和 timestamp 列比较）→ 与 selectEffectSummary 无关，但该端点整体不可用。

@@ -88,7 +88,9 @@ class PosOrderQueryServiceImplTest {
         OrderPaymentRecordNew p = new OrderPaymentRecordNew();
         p.setPaymentId(1L);
         p.setOrderId(orderId);
-        p.setPaymentMethod(2); // 新表支付方式编码：2=现金（与旧表不同，经 convertPaymentMethodToString 输出「现金」）
+        // 2026-10-24 支付方式编码统一为单轨：1=现金 / 2=微信支付（见 PosPaymentMethodResolver 类注释）。
+        // 本测试写于 2026-10-23，仍按旧编码（2=现金）取值，故断言「现金」必失败 → 修测试，取 1。
+        p.setPaymentMethod(1);
         p.setPaymentAmount(1800L);
         p.setTransactionNo("TX-1");
         p.setPaymentTime(LocalDateTime.of(2026, 10, 23, 11, 1));
