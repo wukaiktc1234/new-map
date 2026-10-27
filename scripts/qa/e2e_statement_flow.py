@@ -24,6 +24,14 @@ AC-52 四眼门禁（前端 + 后端双层，两层都要验）
 用法：python scripts/qa/e2e_statement_flow.py [--statement-id 23]
 退出码：0 全绿 / 1 断言失败 / 2 环境未就绪（页面路由/接口未落地）
 """
+# 覆盖说明（2026-10-27 Owner 批准）：
+#   · 本套件额外覆盖两个【真实运营必现的停留态】，不是为了凑绿：
+#       ① 调节表停在 DRAFT（草稿待复核）：生成后不 submit；断言 A27 分母>0；随后再走 submit 流程，两态都覆盖；
+#       ② recon_run 收口到 FINALIZED：R1 跑批；A10 抓的正是「FINALIZED 但无 recon_items」；
+#     原因：原套件一路 submit 到底、跳过停留态，导致巡检 A10/A27 长期 skipped（分母=0）。
+#   · 已知限制：bank_transactions 只有查询服务、没有写入/导入接口 → E2E 无法造银行流水，
+#     因此 FINALIZED run 的 items 恒为 0，A10 会判红（空窗口口径待定），本套件按 NOT_READY 上报而非伪造数据。
+#   · 路径坑：ReconController 类级映射是 /v1/finance（不是 /v1/finance/recon），写错会得到裸 404「资源不存在」。
 from __future__ import annotations
 
 import argparse
@@ -115,6 +123,9 @@ class StatementE2E:
         self.page = None
         self.sid = None
         self.submitter_id = None
+        # 统一标记（供 e2e_cleanup.py 按 remark 定位本套件生成的调节表）
+        self.tag = "SF" + datetime.now().strftime("%m%d%H%M%S")
+        self.mark = "[E2E:%s]" % self.tag
         SHOT_DIR.mkdir(parents=True, exist_ok=True)
 
     def step(self, name, okk, detail, state=None):
@@ -218,7 +229,9 @@ class StatementE2E:
             for _ in range(4):
                 st, b = http("POST", self.a.api + "/v1/finance/recon/statements", self.tokens["admin"],
                              {"accountId": int(self.a.bank_account), "periodStart": ps, "periodEnd": pe,
-                              "bankStatementBalanceFen": int(target), "remark": "e2e-stmt generate"})
+                              "bankStatementBalanceFen": int(target),
+                              # remark 带 tag → 可被 e2e_cleanup 按 remark 清理（此前是裸写，清不掉）
+                              "remark": "%s e2e-stmt generate" % self.mark})
                 if not ok(b):
                     return st, b
                 d = data_of(b) or {}
@@ -482,6 +495,85 @@ class StatementE2E:
                       "未抓到日志（仅以 data=null 为判据）：期望后端日志含 skip cash account=%s (out of scope by design)"
                       % self.a.cash_account)
 
+
+    # ---------------- 停留态覆盖：DRAFT 调节表 / FINALIZED recon_run ----------------
+    def section_parking_states(self):
+        """覆盖两个**真实运营必现的停留态**（不是为了让断言变绿造数据）：
+
+        ① 调节表停在 DRAFT（草稿待复核）：原套件一路 submit 到底，从不观察停留态；
+           这里生成一张后**不提交**，断言库里确实是 DRAFT，且巡检 A27 分母 > 0。
+        ② 对账运行收口到 FINALIZED：R1 跑批本身会 FINALIZE，且必须先有 recon_items
+           （A10 抓的正是「FINALIZED 但无 items」）→ 断言 status=FINALIZED 且 items>0，
+           巡检 A10 分母 > 0。
+
+        缺口来源：2026-10-27 巡检 A10/A27 长期 skipped（分母=0），根因就是这两个停留态无人覆盖。
+        """
+        # ① DRAFT 停留：复用 gen_statement 的「找空期间 + 配平」逻辑，但**不 submit**
+        #    注意：期间不能取太早 —— S3 要求「期间末及之前有非豁免资金流水」，
+        #    否则报「账户 X 在 YYYY-MM-DD 及之前没有任何非豁免资金流水」。gen_statement 用
+        #    [today-10..today-40, today] 的窗口，正好躲开这个约束。
+        today = date.today()
+        draft_sid = None
+        st, b = self.gen_statement()
+        if ok(b):
+            draft_sid = int((data_of(b) or {}).get("statementId") or 0) or None
+        if not draft_sid:
+            self.not_ready("A27 停留态：DRAFT 调节表", "无法生成空期间调节表（近 40~80 天窗口都被占用？）")
+        else:
+            row = self.rows("SELECT status FROM reconciliation_statements WHERE statement_id=%d" % draft_sid)
+            self.step("A27 停留态：生成后不 submit，调节表确实停在 DRAFT",
+                      bool(row) and row[0][0] == "DRAFT",
+                      "statementId=%s status=%s（remark 带 tag，可被 cleanup 按 remark 清）"
+                      % (draft_sid, row[0][0] if row else "?"))
+            self._assert_inspection_denominator("A27", "A27 巡检分母 > 0（DRAFT 单存在）")
+
+        # ② FINALIZED recon_run：R1 跑批（先确认有 items）
+        # 路径注意：ReconController 类级映射是 /v1/finance（不是 /v1/finance/recon），
+        # 写错会命中 NoHandlerFoundException → 返回裸 404「资源不存在」（2026-10-27 踩过）
+        st, rb = http("POST", self.a.api + "/v1/finance/recon-runs", self.tokens["admin"],
+                      {"accountId": int(self.a.bank_account), "businessDate": today.strftime("%Y-%m-%d"),
+                       "force": True})
+        d = data_of(rb) or {}
+        run = (d.get("run") or d) if isinstance(d, dict) else {}
+        run_id = run.get("runId")
+        if not ok(rb) or not run_id:
+            return self.not_ready("A10 停留态：FINALIZED recon_run",
+                                  "R1 HTTP %s code=%s msg=%s" % (st, (rb or {}).get("code"),
+                                                                 str((rb or {}).get("message"))[:90]))
+        rrow = self.rows("SELECT status FROM recon_runs WHERE run_id=%d" % int(run_id))
+        status = rrow[0][0] if rrow else "?"
+        items = int(self.rows("SELECT COUNT(*) FROM recon_items WHERE run_id=%d" % int(run_id))[0][0])
+        if status == "FINALIZED" and items > 0:
+            self.step("A10 停留态：recon_run 收口到 FINALIZED 且有 items", True,
+                      "runId=%s status=%s items=%d" % (run_id, status, items))
+        else:
+            # items=0 的现实原因（2026-10-27 查证）：recon_items 由「银行流水 ↔ 资金流水」配对产生，
+            # 而 **bank_transactions 只有查询服务、没有写入/导入接口**（BankTransactionQueryService），
+            # E2E 无法通过 API 造银行流水 → 该窗口必然 0 items。
+            # 此时巡检 A10 会判红（「FINALIZED 但无 recon_items」）——
+            # 这是「空窗口 run」口径问题，需 lead/Owner 定：要么 A10 豁免 0 流水窗口，
+            # 要么允许 E2E 直插 bank_transactions 夹具（可 tag 清理）。在此之前按未就绪上报，不伪造。
+            self.not_ready("A10 停留态：recon_run 收口到 FINALIZED 且有 items",
+                           "runId=%s status=%s items=0 —— bank_transactions 无写接口（仅查询），"
+                           "E2E 造不出银行流水→配不出 items；A10 判红属「空窗口 run」口径待定" % (run_id, status))
+        self._assert_inspection_denominator("A10", "A10 巡检分母 > 0（FINALIZED run 存在）")
+        return True
+
+    def _assert_inspection_denominator(self, code, name):
+        """跑一次巡检，断言指定断言行不是 skipped_no_data（即分母 > 0）。"""
+        try:
+            here = Path(__file__).resolve().parent
+            o = subprocess.run([sys.executable, str(here / "consistency_check.py")],
+                               capture_output=True, text=True, timeout=900, encoding="utf-8",
+                               errors="replace", cwd=str(here.parent.parent))
+            txt = (o.stdout or "") + (o.stderr or "")
+            line = next((l.strip() for l in txt.splitlines()
+                         if code in l and ("[PASS]" in l or "[FAIL]" in l or "[INFO]" in l)), "")
+            denom_ok = bool(line) and ("skipped_no_data" not in line)
+            self.step(name, denom_ok, "原文=%s" % line[:170])
+            return denom_ok
+        except Exception as e:
+            return self.not_ready(name, "consistency_check 执行失败：%s" % str(e)[:120])
     # ---------------- 主流程 ----------------
     def run(self):
         print("=" * 90)
@@ -499,6 +591,7 @@ class StatementE2E:
         self.ac51_api_sql()
         self.ac52_backend()
         self.ac52c_approve_flow()
+        self.section_parking_states()   # A27 DRAFT 停留态 + A10 FINALIZED recon_run
         try:
             with sync_playwright() as pw:
                 self.ac51_page(pw)
