@@ -20,6 +20,8 @@ SRC = ROOT / 'backend' / 'src' / 'main' / 'java'
 PSQL = str(ROOT / 'PostgreSQL' / '18' / 'bin' / 'psql.exe')
 AUTH_RE = re.compile(r"hasAuthority\s*\(\s*'([^']+)'\s*\)")
 ANY_AUTH_RE = re.compile(r"hasAnyAuthority\s*\(([^)]*)\)")
+ROLE_RE = re.compile(r"hasRole\s*\(\s*'([^']+)'\s*\)")
+ANY_ROLE_RE = re.compile(r"hasAnyRole\s*\(([^)]*)\)")
 STR_RE = re.compile(r"'([^']+)'")
 
 
@@ -66,6 +68,12 @@ def main():
         for m in ANY_AUTH_RE.finditer(text):
             for code in STR_RE.findall(m.group(1)):
                 used.setdefault(code, set()).add(rel)
+        # hasRole('X') 里 X 不带 ROLE_ 前缀，比对时补上
+        for m in ROLE_RE.finditer(text):
+            used.setdefault('ROLE_' + m.group(1).upper(), set()).add(rel)
+        for m in ANY_ROLE_RE.finditer(text):
+            for code in STR_RE.findall(m.group(1)):
+                used.setdefault('ROLE_' + code.upper(), set()).add(rel)
     perms = {x for x in have if not x.startswith('ROLE_') and not x.startswith('ROLE')}
     roles = {x for x in have if x not in perms}
     missing = {k: v for k, v in used.items() if k not in have and k != '*'}

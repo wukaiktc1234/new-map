@@ -382,6 +382,17 @@ def check_deploy_gap(db='food_traceability_test'):
     return 0 if r.returncode == 0 else 2
 
 
+def check_permission_code():
+    """A46 固定 gate：代码声明的权限码 ↔ permissions 目录，缺失不为 0 → EXIT=2。"""
+    script = ROOT / 'scripts' / 'qa' / 'permission_code_audit.py'
+    r = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=600)
+    lines = [x for x in (r.stdout or '').splitlines() if x.strip()]
+    for line in lines[:2]:
+        print('  ' + line)
+    return 0 if r.returncode == 0 else 2
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -450,6 +461,9 @@ def main():
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
         passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
     print("[RESULT] " + summary)
+    if perm_rc != 0:
+        print("[RESULT] BLOCKED：A46 权限码 ↔ 目录不一致（代码要求了目录里没有的权限）→ exit 2")
+        return 2
     if deploy_gap_rc != 0:
         print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
         return 2
@@ -531,6 +545,7 @@ def main():
         warn = True
 
     deploy_gap_rc = check_deploy_gap() if a.full else 0
+    perm_rc = check_permission_code()
 
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
         passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
