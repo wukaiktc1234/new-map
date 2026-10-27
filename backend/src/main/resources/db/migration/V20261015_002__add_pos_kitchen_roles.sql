@@ -22,6 +22,11 @@
 -- ------------------------------------------------------------
 -- 1. 4 个角色
 -- ------------------------------------------------------------
+-- 从零建库修复（bug-⑦ 同族）：本文件 INSERT 引用了 roles.org_level，
+-- 但历史库该列是演进出来的、任何迁移都没创建它 → 新库跑到这里报「roles.org_level 字段不存在」。
+-- 处置：先确保列存在（与活库一致 varchar(30)），再照旧插入；对活库是无操作（IF NOT EXISTS）。
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_level varchar(30);
+
 INSERT INTO roles (role_id_str, role_name, role_code, description, status, data_scope, org_level,
                    deleted, version, create_time, update_time)
 SELECT 'ROLE_CASHIER', '收银员', 'cashier', 'POS 收银员（前台收款）', 'active', 'store', 'STORE_STAFF',

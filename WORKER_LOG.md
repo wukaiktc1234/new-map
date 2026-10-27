@@ -3295,3 +3295,59 @@ METRIC：import_commit_claimed / import_commit_reused_concurrent 均已打出
 **保留**：`mapper/DishRecipeMapper.java` + `DishRecipeMapper.xml` + `entity/DishRecipe.java` —— `InventoryDeductionServiceImplTest` 仍注入 `@Mock DishRecipeMapper`（历史 mock，不影响生产；扣料链路已用 `DishRecipeNewMapper`）。
 
 验证：`mvn -o -B test-compile` BUILD SUCCESS；`mvn -o -B test` 35 用例（Deduct 28 + OrderNumberA1 3 + JsonCanonicalHashUtil 4）**Failures 0 / Errors 0**；服务重启不再需要 `-Dmaven.test.skip=true`。
+
+## 72. bug-⑦ 从零建库断点 + bug-⑥ 裸异常兜 500（2026-10-27 22:20–22:35）
+
+### 72.1 bug-⑦（P1）：`V20260728_001` 引用不存在的 `onboarding_archive.contract_id`
+
+**根因**：迁移第四段（原 131–235 行）向 `onboarding_archive` 插入了 `contract_id` 列与 `elc.id` 取值，
+但**新环境从零建库时该表没有 `contract_id` 列**（实测 `information_schema` 命中 0）→ 整条迁移失败 → 后续 89 条迁移全部无法执行。
+**为何活库没暴露**：活库的 `onboarding_archive.contract_id` 是历史演进加上的列，活库从不重跑这条迁移（`validate-on-migrate: false` + 该文件早已 applied）。
+
+**改法（防御式，不静默）**：整段包进 `DO $$ ... $$`，开头查 `information_schema.columns`；
+· 列在 → 照旧带 `contract_id` 插入（`EXECUTE $ins1$ … $ins1$`）；
+· 列不在 → 走不含该列的等价插入，并 `RAISE NOTICE 'skip contract_id: onboarding_archive.contract_id 不存在，本次插入不含该列'`。
+引用点（改前）：第 141–163 行列清单含 `contract_id`、第 180 行取值 `elc.id`；第 198–233 行 VALUES 两行含 `contract_id`。
+
+**同族第 2 处（本次新发现并已修）**：`V20261015_002__add_pos_kitchen_roles.sql` 的 4 条 `INSERT INTO roles` 引用 `roles.org_level`，
+而任何迁移都没创建该列（活库同样是演进出来的，varchar(30)）。已在文件头加 `ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_level varchar(30);`（活库为无操作）。
+
+**同族第 3 处（未修，待裁）**：修掉 `org_level` 后，从零建库继续跑到同一文件报 `重复键违反唯一约束 "roles_pkey"` ——
+该迁移用固定 `role_id` 插入，与更早的 seed 冲突，**不具备幂等性**。这需要改 seed 策略，属独立问题（建议单开 bug-⑧）。
+
+### 72.2 验证
+
+```
+① 全新库 food_traceability_test（drop + create，TEMPLATE template0）：
+   Flyway 从零迁移 → V20260728_001 通过（installed_rank=150 success=t）
+   onboarding_archive 现状：has_contract_id=0、oa_rows=2（走的是「无该列」分支，NOTICE 已打出）
+   applied=214 后停在 V20261015_002（org_level 修复前）→ 修复后继续推进
+② 活库：flyway repair → repairActions=2「Aligned applied migration checksums」
+   checksum：20260728.001  -288156950 → -324698331
+             20261015.002  → -1466961461
+   validate → Successfully validated 239 migrations（无 checksum 错误）
+   migrate  → up to date，migrationsExecuted=0
+   info     → applied=239 pending=0 failed=0 ｜ latest=20261027.001
+```
+
+### 72.3 bug-⑥（P2）：`GET /v1/orders/search` 被 `{orderId}` 吞 → 裸异常 → 500
+
+改法：`OrderNewServiceImpl.getAndValidateOrder` 的「订单不存在」由 `throw new RuntimeException("订单不存在，ID: " + orderId)`
+改为 `throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在，ID: " + orderId)`（第 1871 行附近），并补 import。
+
+验证（qa_store_b，具备 `order:view`）：
+```
+GET /v1/orders/999999              → HTTP 200 code=404「订单不存在，ID: 999999」   （原 500）
+GET /v1/orders/search              → HTTP 200 code=404「订单不存在，ID: search」  （原 500；不再是兜底异常）
+GET /v1/orders/{真实ID}            → HTTP 200 code=0 操作成功
+```
+注：`/search` **路由遮蔽**这个产品问题仍在（字面量路径要先声明），但已不再产生裸 500；要不要加 `/search` 端点属产品决定。
+
+### 72.4 全库 `throw new RuntimeException(` 盘点（只列不改）
+
+```
+总数 526 处；其中**疑似业务语义**（不存在/不能为空/状态不允许/非法）约 272 处
+重灾区（示例）：EmployeeApprovalServiceImpl(8+)、ApprovalWorkflowServiceImpl、各类 *ServiceImpl 的「XX不存在」
+典型：「审批记录不存在」「审批流程不存在」「请假信息不能为空」「当前审批状态不允许通过操作」
+```
+这些一旦从 Controller 抛出都会被 `GlobalExceptionHandler` 兜成 500，建议按模块分批改为 `BusinessException(ErrorCode.X, msg)`。

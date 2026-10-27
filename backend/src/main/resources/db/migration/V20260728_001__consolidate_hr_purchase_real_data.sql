@@ -125,111 +125,147 @@ WHERE applicant_name LIKE '%?%'
 -- ============================================================
 -- 四、初始化入职档案（仅在 onboarding_archive 无有效记录时执行）
 -- 说明：从 employees / users / positions / departments / employee_labor_contract
---       汇总生成，并回填 contract_id。
+--       汇总生成；**contract_id 列按存在性防御**：
+--       历史库里 onboarding_archive 有 contract_id，但新环境（从零建库）该表**没有**该列，
+--       若直接写列名会让整条迁移失败（实测：新库迁到本文件报 "contract_id 字段不存在"）。
+--       故：列在 → 照旧带 contract_id 插入；列不在 → 去掉该列插入，并 RAISE NOTICE 显式留痕（**不是静默跳过**）。
 -- ============================================================
 
 DO $$
 DECLARE
     v_count INTEGER;
+    v_has_contract_id BOOLEAN;
 BEGIN
     SELECT COUNT(*) INTO v_count
     FROM onboarding_archive
     WHERE deleted = 0;
 
     IF v_count = 0 THEN
-        -- 4.1 从现有员工/用户/部门/岗位/劳动合同初始化真实入职档案
-        INSERT INTO onboarding_archive (
-            candidate_id,
-            candidate_name,
-            email,
-            phone,
-            id_card,
-            position,
-            position_level,
-            department_id,
-            department_name,
-            expected_salary,
-            final_salary,
-            onboard_date,
-            employee_code,
-            preset_username,
-            user_id,
-            contract_id,
-            status,
-            create_by,
-            create_time,
-            update_time,
-            deleted
-        )
-        SELECT
-            replace(gen_random_uuid()::text, '-', ''),
-            e.employee_name,
-            lower(u.username) || '@company.com',
-            '138' || lpad((u.user_id % 100000000)::text, 8, '0'),
-            '11010119900101' || lpad((u.user_id % 10000)::text, 4, '0'),
-            p.position_name,
-            CASE WHEN p.position_code LIKE '%MANAGER%' THEN 'MANAGER' ELSE 'STAFF' END,
-            e.department_id::text,
-            d.dept_name,
-            8000 + (u.user_id % 10) * 500,
-            8000 + (u.user_id % 10) * 500,
-            '2026-01-01'::date + ((u.user_id % 30)::integer),
-            e.employee_code,
-            u.username,
-            u.user_id,
-            elc.id,
-            'REGISTERED',
-            1,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP,
-            0
-        FROM employees e
-        JOIN users u ON u.employee_code = e.employee_code
-        JOIN positions p ON p.position_id = e.position_id
-        JOIN departments d ON d.department_id = e.department_id
-        LEFT JOIN employee_labor_contract elc
-            ON elc.employee_id = e.employee_id::text
-            AND elc.deleted = 0
-        WHERE e.deleted = 0
-          AND u.deleted = 0
-        ON CONFLICT DO NOTHING;
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'onboarding_archive'
+               AND column_name = 'contract_id'
+        ) INTO v_has_contract_id;
 
-        -- 4.2 补充 2 条过渡态候选人数据（待入职 / 待签合同）
-        INSERT INTO onboarding_archive (
-            candidate_id,
-            candidate_name,
-            email,
-            phone,
-            id_card,
-            position,
-            position_level,
-            department_id,
-            department_name,
-            expected_salary,
-            final_salary,
-            onboard_date,
-            employee_code,
-            preset_username,
-            user_id,
-            contract_id,
-            status,
-            create_by,
-            create_time,
-            update_time,
-            deleted
-        ) VALUES
-        (
-            replace(gen_random_uuid()::text, '-', ''), '候选人O', 'candidate.o@company.com',
-            '13800138015', '110101199501011234', '服务员', 'STAFF', '7', '服务部',
-            5000, 5200, '2026-08-01', NULL, NULL, NULL, NULL, 'APPROVED',
-            1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
-        ),
-        (
-            replace(gen_random_uuid()::text, '-', ''), '候选人P', 'candidate.p@company.com',
-            '13800138016', '110101199202021234', '厨师', 'STAFF', '6', '后厨部',
-            6500, 6800, '2026-08-05', NULL, NULL, NULL, NULL, 'CONTRACT_PENDING',
-            1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
-        )
-        ON CONFLICT DO NOTHING;
+        IF v_has_contract_id THEN
+            -- 4.1 带 contract_id（历史库路径）
+            EXECUTE $ins1$
+                INSERT INTO onboarding_archive (
+                    candidate_id, candidate_name, email, phone, id_card, position, position_level,
+                    department_id, department_name, expected_salary, final_salary, onboard_date,
+                    employee_code, preset_username, user_id, contract_id, status, create_by,
+                    create_time, update_time, deleted
+                )
+                SELECT
+                    replace(gen_random_uuid()::text, '-', ''),
+                    e.employee_name,
+                    lower(u.username) || '@company.com',
+                    '138' || lpad((u.user_id % 100000000)::text, 8, '0'),
+                    '11010119900101' || lpad((u.user_id % 10000)::text, 4, '0'),
+                    p.position_name,
+                    CASE WHEN p.position_code LIKE '%MANAGER%' THEN 'MANAGER' ELSE 'STAFF' END,
+                    e.department_id::text,
+                    d.dept_name,
+                    8000 + (u.user_id % 10) * 500,
+                    8000 + (u.user_id % 10) * 500,
+                    '2026-01-01'::date + ((u.user_id % 30)::integer),
+                    e.employee_code,
+                    u.username,
+                    u.user_id,
+                    elc.id,
+                    'REGISTERED',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                FROM employees e
+                JOIN users u ON u.employee_code = e.employee_code
+                JOIN positions p ON p.position_id = e.position_id
+                JOIN departments d ON d.department_id = e.department_id
+                LEFT JOIN employee_labor_contract elc
+                    ON elc.employee_id = e.employee_id::text
+                    AND elc.deleted = 0
+                WHERE e.deleted = 0 AND u.deleted = 0
+                ON CONFLICT DO NOTHING
+            $ins1$;
+
+            -- 4.2 过渡态候选人（带 contract_id = NULL）
+            EXECUTE $ins2$
+                INSERT INTO onboarding_archive (
+                    candidate_id, candidate_name, email, phone, id_card, position, position_level,
+                    department_id, department_name, expected_salary, final_salary, onboard_date,
+                    employee_code, preset_username, user_id, contract_id, status, create_by,
+                    create_time, update_time, deleted
+                ) VALUES
+                (
+                    replace(gen_random_uuid()::text, '-', ''), '候选人O', 'candidate.o@company.com',
+                    '13800138015', '110101199501011234', '服务员', 'STAFF', '7', '服务部',
+                    5000, 5200, '2026-08-01', NULL, NULL, NULL, NULL, 'APPROVED',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                ),
+                (
+                    replace(gen_random_uuid()::text, '-', ''), '候选人P', 'candidate.p@company.com',
+                    '13800138016', '110101199202021234', '厨师', 'STAFF', '6', '后厨部',
+                    6500, 6800, '2026-08-05', NULL, NULL, NULL, NULL, 'CONTRACT_PENDING',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                )
+                ON CONFLICT DO NOTHING
+            $ins2$;
+        ELSE
+            -- 4.1' 无 contract_id（新环境路径）：去掉该列，语义等价
+            RAISE NOTICE 'skip contract_id: onboarding_archive.contract_id 不存在，本次插入不含该列';
+            EXECUTE $ins3$
+                INSERT INTO onboarding_archive (
+                    candidate_id, candidate_name, email, phone, id_card, position, position_level,
+                    department_id, department_name, expected_salary, final_salary, onboard_date,
+                    employee_code, preset_username, user_id, status, create_by,
+                    create_time, update_time, deleted
+                )
+                SELECT
+                    replace(gen_random_uuid()::text, '-', ''),
+                    e.employee_name,
+                    lower(u.username) || '@company.com',
+                    '138' || lpad((u.user_id % 100000000)::text, 8, '0'),
+                    '11010119900101' || lpad((u.user_id % 10000)::text, 4, '0'),
+                    p.position_name,
+                    CASE WHEN p.position_code LIKE '%MANAGER%' THEN 'MANAGER' ELSE 'STAFF' END,
+                    e.department_id::text,
+                    d.dept_name,
+                    8000 + (u.user_id % 10) * 500,
+                    8000 + (u.user_id % 10) * 500,
+                    '2026-01-01'::date + ((u.user_id % 30)::integer),
+                    e.employee_code,
+                    u.username,
+                    u.user_id,
+                    'REGISTERED',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                FROM employees e
+                JOIN users u ON u.employee_code = e.employee_code
+                JOIN positions p ON p.position_id = e.position_id
+                JOIN departments d ON d.department_id = e.department_id
+                WHERE e.deleted = 0 AND u.deleted = 0
+                ON CONFLICT DO NOTHING
+            $ins3$;
+
+            EXECUTE $ins4$
+                INSERT INTO onboarding_archive (
+                    candidate_id, candidate_name, email, phone, id_card, position, position_level,
+                    department_id, department_name, expected_salary, final_salary, onboard_date,
+                    employee_code, preset_username, user_id, status, create_by,
+                    create_time, update_time, deleted
+                ) VALUES
+                (
+                    replace(gen_random_uuid()::text, '-', ''), '候选人O', 'candidate.o@company.com',
+                    '13800138015', '110101199501011234', '服务员', 'STAFF', '7', '服务部',
+                    5000, 5200, '2026-08-01', NULL, NULL, NULL, 'APPROVED',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                ),
+                (
+                    replace(gen_random_uuid()::text, '-', ''), '候选人P', 'candidate.p@company.com',
+                    '13800138016', '110101199202021234', '厨师', 'STAFF', '6', '后厨部',
+                    6500, 6800, '2026-08-05', NULL, NULL, NULL, 'CONTRACT_PENDING',
+                    1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0
+                )
+                ON CONFLICT DO NOTHING
+            $ins4$;
+        END IF;
     END IF;
 END $$;

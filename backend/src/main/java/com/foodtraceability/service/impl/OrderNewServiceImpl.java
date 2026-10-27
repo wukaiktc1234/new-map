@@ -1868,7 +1868,8 @@ public class OrderNewServiceImpl implements OrderNewService {
     private OrderNew getAndValidateOrder(String orderId) {
         OrderNew order = orderNewMapper.selectById(orderId);
         if (order == null) {
-            throw new RuntimeException("订单不存在，ID: " + orderId);
+            // bug-⑥：业务语义必须用业务异常（404），裸 RuntimeException 会被 GlobalExceptionHandler 兜成 500
+            throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在，ID: " + orderId);
         }
         return order;
     }
