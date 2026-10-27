@@ -81,3 +81,22 @@
 | 2026-10-28 | `/contracts/list` | contract_document | `employee_labor_contract` | 移除，403（权限）而非 501 |
 | 2026-10-28 | `/salary/records` | salary_adjustment / salary_rule | `salary_record` | 移除 2 条，保留 salary_record |
 | 2026-10-28 | `/operation-logs` | operation_logs | **`sys_operation_logs`（生产库已存在！）** | 移除，实测 200 |
+
+## 实体指向空表（**登记，不修**）—— 2026-10-28
+
+原则（Lead 2026-10-28 裁定）：**这类不修比修了安全**。
+改了可能让「死代码变成活代码」——原本因为列名对不上而必然报错的路径，一旦修好就会被某条链路真正调用，
+在没有任何测试覆盖的情况下开始写生产数据。**登记、冻结、等立项时一起做**。
+
+| 实体 | 映射表 | 表行数 | 症状 | 处置 |
+|------|--------|--------|------|------|
+| `Order.java` | `orders_legacy` | **0** | 列名全大写（`USER_ID`/`ORDER_NUMBER`…），与真实 `orders`（小写）对不上，但指向的是一张空 legacy 表 | **不修** |
+| `DishRecipe.java` | `dish_recipe` | **0** | 实体 `dish_code`/`ingredient_id`/`ingredient_name`/`ingredient_code` 在库中不存在 | **不修** |
+| `BackupRestoreLog.java` | `backup_restore_log` | 0 | 实体声明 `deleted`，库中无该列 | **不修** |
+| `ApprovalRecord.java` | `approval_record` | 0 | `review_type` 缺失；`created_at/updated_at` vs 实体 `createTime/updateTime` | **不修** |
+| `ComboInventory` / `DishInventory` | 同名表 | 0 | `create_by/update_by` vs 真实 `created_by/updated_by` | **不修** |
+| `VoucherHeader` / `VoucherLine` / `VoucherSignatureLog` | 同名表 | 0 | 多个列不匹配 | **不修** |
+
+**判据**：表行数 = 0 且实体只被自身 Mapper 引用 → 冻结；一旦某功能立项，先补测试再修列名。
+
+> `payment` 类表（`payment`/`payments`）属同一族，已在 `deploy_gap` 清单中，不动。

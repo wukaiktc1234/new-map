@@ -67,6 +67,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
     /** bug-㉒：独立事务回查（外层事务被 PG 标记 aborted 时使用） */
     @org.springframework.beans.factory.annotation.Autowired
     private OrderIdempotencyLookup orderIdempotencyLookup;
+
+    /** bug-㉒：保存点级插入（撞唯一键时外层事务不被中止） */
+    @org.springframework.beans.factory.annotation.Autowired
+    private OrderInsertAttempt orderInsertAttempt;
     /** W1-EC-01: canonical 订单明细表 Mapper（order_items 表） */
     private final OrderItemNewMapper orderItemNewMapper;
 
@@ -410,7 +414,13 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 orderNew.setIdempotencyKey(idempotencyKey);
             }
             try {
-                orderNewMapper.insert(orderNew);
+                // bug-㉒：走保存点（NESTED）插入 —— 撞 uk_orders_idempotency_key 时只回滚保存点，
+                // 外层事务**不会被 PG 标记 aborted**，后续叫号号/明细/库存仍可正常写。
+                if (orderInsertAttempt != null) {
+                    orderInsertAttempt.insertWithinSavepoint(orderNew);
+                } else {
+                    orderNewMapper.insert(orderNew);
+                }
             } catch (org.springframework.dao.DuplicateKeyException duplicateKeyException) {
                 // 并发双创建：另一请求已用同一 key 落库 → 回查并返回它的订单（不是 500）
                 if (idempotencyKey != null && !idempotencyKey.isEmpty()) {

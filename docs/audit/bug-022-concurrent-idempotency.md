@@ -37,3 +37,36 @@
 - 新增 `OrderIdempotencyLookup`（REQUIRES_NEW 独立事务回查）——方案 A 落地后可保留作为兜底；
 - catch 分支加短轮询（10×100ms）——修掉「胜者未提交时查不到」的时序问题；
 - `test-compile` 通过。
+
+## 5. 最终实施与验收（2026-10-28 04:15）
+
+**实施方式调整（Lead 批准的 ON CONFLICT 方案的等价实现）**：
+改用 **保存点（`Propagation.NESTED`）** 包裹订单 INSERT，而不是 `INSERT ... ON CONFLICT`。
+理由：`ON CONFLICT` 需要把 orders 的 50+ 列 INSERT 在 XML 里重写一份 → 与实体/表结构**双向漂移**；
+而保存点能达到**同样的关键性质**：撞唯一键只回滚到保存点，外层事务**不会被 PG 标记 aborted**，后续写操作正常。
+实现类 `OrderInsertAttempt.insertWithinSavepoint()`；将来若要换 ON CONFLICT，只替换该类，调用方不动。
+
+### 并发同 key × 10 轮（每轮 2 线程）
+
+| 轮 | A code | B code | 真写入行数 | reused | 500 数 |
+|----|--------|--------|-----------|--------|--------|
+| 1–10 | 0 | 0 | **1** | **True** | **0** |
+
+```
+异常轮次(500 或 写入!=1): 0
+```
+
+### 并发不同 key × 10 请求
+
+```
+10 个请求全部 code=0、reused=None（不是复用）
+真写入行数 = 10（应 10）｜500 数 = 0｜reused=True 数量 = 0（应 0）
+→ ON CONFLICT/保存点**没有影响正常路径**
+```
+
+### 测试数据清理
+
+```
+删除 order_items 23 / pos_call_numbers 23 / kitchen_order 23 / orders 23
+残留 R10-*/DIFF-*/CONC-* 订单 = 0 ｜ orders 总数 62
+```
