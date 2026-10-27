@@ -25,6 +25,7 @@ import {
   type DepositSlipVO,
   type PendingAttributionPayload,
 } from '@/api/finance-deposit-slip'
+import { bankAccountApi } from '@/api/finance/bank-account'
 import { usePermissionStore } from '@/stores/permission'
 import { formatFen } from '@/types/finance-recon'
 
@@ -184,12 +185,60 @@ const dailySummary = ref<DepositDailySummaryVO | null>(null)
 const summaryLoading = ref(false)
 const summaryError = ref('')
 
+/* ===== 多户歧义（bankInflowAccountAmbiguous） ===== */
+/** 选中的银行账户（歧义时由用户选择；选定后请求带 accountId） */
+const selectedAccountId = ref<number | null>(null)
+/** 本店基本户列表（accountType=basic → 后端 1） */
+const basicAccounts = ref<Array<{ id: number; label: string }>>([])
+const accountsLoading = ref(false)
+/** 账户列表取不到时的错误文案（此时下拉禁用，指标保持歧义提示） */
+const accountsError = ref('')
+
+const bankInflowAmbiguous = computed<boolean>(() => dailySummary.value?.bankInflowAccountAmbiguous === true)
+
+async function loadBasicAccounts(): Promise<void> {
+  accountsLoading.value = true
+  accountsError.value = ''
+  try {
+    const page = await bankAccountApi.getList({
+      accountType: 'basic',
+      status: 'active',
+      page: 1,
+      size: 50,
+    } as never)
+    // 后端返回的是 accountId（没有 id 字段）；accountNo 由 accountNumber 兜底映射
+    basicAccounts.value = (page.records || [])
+      .map((acc) => {
+        const raw = acc as unknown as Record<string, unknown>
+        const idNum = Number(raw.accountId ?? raw.id)
+        const name = String(raw.accountName ?? raw.bankName ?? '账户')
+        const no = String(raw.accountNo ?? raw.accountNumber ?? '')
+        return { id: idNum, label: name + (no ? ' …' + no.slice(-4) : '') }
+      })
+      .filter((acc) => Number.isFinite(acc.id) && acc.id > 0)
+  } catch (error) {
+    basicAccounts.value = []
+    accountsError.value = '银行账户列表加载失败：'
+      + (error instanceof Error ? error.message : '请检查 finance:bank:view 权限')
+  } finally {
+    accountsLoading.value = false
+  }
+}
+
+/** 选择账户后重新请求（带 accountId） */
+function handleSelectAccount(value: number | null): void {
+  selectedAccountId.value = value
+  void loadSummary()
+}
+
 const unmatchedCount = computed<number>(() => dailySummary.value?.unmatchedCount ?? 0)
 
 /** 「人工确认一致」可用条件：unmatchedCount=0 且 合计应存现金 === 银行当日进账 */
 const manualConfirmEnabled = computed<boolean>(() => {
   const s = dailySummary.value
   if (!s) return false
+  // 多户歧义：银行进账未确定，禁止确认一致
+  if (s.bankInflowAccountAmbiguous === true) return false
   // 空日守卫：当天没有任何存行记录时不允许「确认一致」（0 === 0 属于伪一致）
   if ((s.depositedSlips ?? []).length === 0) return false
   if ((s.unmatchedCount ?? 0) !== 0) return false
@@ -201,6 +250,7 @@ const manualConfirmEnabled = computed<boolean>(() => {
 const manualConfirmHint = computed<string>(() => {
   const s = dailySummary.value
   if (!s) return '尚未加载本日存行汇总'
+  if (s.bankInflowAccountAmbiguous === true) return '请先选择银行账户'
   if ((s.depositedSlips ?? []).length === 0) return '本日无存行记录，无需确认一致'
   if ((s.unmatchedCount ?? 0) > 0) {
     return '有 ' + s.unmatchedCount + ' 笔存行未匹配银行流水（合计 ' + money(s.unmatchedFen) + ' 元），无法确认一致'
@@ -219,7 +269,7 @@ async function loadSummary(): Promise<void> {
   summaryLoading.value = true
   summaryError.value = ''
   try {
-    dailySummary.value = await getDailySummary(summaryDate.value)
+    dailySummary.value = await getDailySummary(summaryDate.value, selectedAccountId.value)
   } catch (error) {
     dailySummary.value = null
     summaryError.value = error instanceof Error ? error.message : '本日存行汇总加载失败'
@@ -249,6 +299,7 @@ function reset(): void {
 
 onMounted(() => {
   void load()
+  void loadBasicAccounts()
   void loadSummary()
 })
 
@@ -314,8 +365,49 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
         </div>
         <div class="daily__metric">
           <div class="daily__label">银行当日进账（元）</div>
-          <div class="daily__value" data-test="daily-bank-inflow-fen" :data-fen="dailySummary?.bankInflowFen ?? ''">
-            {{ money(dailySummary?.bankInflowFen) }}
+          <!-- 多户歧义：绝不允许把 null 渲染成 0.00 -->
+          <div
+            class="daily__value"
+            data-test="daily-bank-inflow-fen"
+            :data-fen="bankInflowAmbiguous ? '' : (dailySummary?.bankInflowFen ?? '')"
+            :data-ambiguous="bankInflowAmbiguous ? 'true' : 'false'"
+          >
+            <span v-if="bankInflowAmbiguous" data-test="daily-bank-inflow-ambiguous">请选择银行账户</span>
+            <template v-else>{{ money(dailySummary?.bankInflowFen) }}</template>
+          </div>
+          <div v-if="bankInflowAmbiguous" class="daily__account">
+            <span
+              data-test="daily-bank-inflow-account-select"
+              :data-account-count="basicAccounts.length"
+            >
+              <el-select
+                v-model="selectedAccountId"
+                placeholder="选择银行账户"
+                size="small"
+                style="width: 100%"
+                :disabled="accountsLoading || basicAccounts.length === 0"
+                :loading="accountsLoading"
+                @change="handleSelectAccount"
+              >
+                <el-option
+                  v-for="acc in basicAccounts"
+                  :key="acc.id"
+                  :label="acc.label"
+                  :value="acc.id"
+                  :data-account-id="acc.id"
+                />
+              </el-select>
+            </span>
+            <div
+              v-if="accountsError"
+              class="daily__account-error"
+              data-test="daily-bank-inflow-account-error"
+            >{{ accountsError }}</div>
+            <div
+              v-else-if="!accountsLoading && basicAccounts.length === 0"
+              class="daily__account-error"
+              data-test="daily-bank-inflow-account-error"
+            >本店没有可用的基本户（accountType=1），请先在账户管理维护</div>
           </div>
         </div>
       </div>
@@ -550,6 +642,23 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--fts-text-primary, #303133);
+}
+
+.daily__ambiguous {
+  color: var(--el-color-warning, #e6a23c);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.daily__account {
+  margin-top: 8px;
+}
+
+.daily__account-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-color-danger, #f56c6c);
+  line-height: 1.4;
 }
 
 .daily__banner {

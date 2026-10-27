@@ -367,8 +367,13 @@ export interface DepositDailySummaryVO {
   /** 分：未匹配银行流水合计 */
   unmatchedFen: number | null
   unmatchedCount: number
-  /** 分：银行当日进账 */
+  /** 分：银行当日进账（多户歧义时为 null，**不是 0**） */
   bankInflowFen: number | null
+  /**
+   * 多户歧义：当日存行单跨多个基本户且未指定 accountId → true，此时 bankInflowFen=null。
+   * 前端必须显式提示「请选择银行账户」，不得把 null 当 0 渲染。
+   */
+  bankInflowAccountAmbiguous: boolean
 }
 
 function normalizeDailySlip(raw: Record<string, unknown>): DepositDailySlipVO {
@@ -395,8 +400,10 @@ function normalizeDailySlip(raw: Record<string, unknown>): DepositDailySlipVO {
 }
 
 /** 本日存行汇总（date 默认由调用方给今天） */
-export async function getDailySummary(date: string): Promise<DepositDailySummaryVO> {
-  const data = await get<Record<string, unknown> | null>('/v1/finance/deposit-slips/daily-summary', { date })
+export async function getDailySummary(date: string, accountId?: number | null): Promise<DepositDailySummaryVO> {
+  const params: Record<string, unknown> = { date }
+  if (accountId !== undefined && accountId !== null && (accountId as unknown) !== '') params.accountId = accountId
+  const data = await get<Record<string, unknown> | null>('/v1/finance/deposit-slips/daily-summary', params)
   const rawRows = Array.isArray(data?.depositedSlips) ? data!.depositedSlips : []
   const rows = (rawRows as Array<Record<string, unknown>>).map(normalizeDailySlip)
   return {
@@ -408,6 +415,7 @@ export async function getDailySummary(date: string): Promise<DepositDailySummary
     // 后端未给 unmatchedCount 时，按行上的 matched 兜底计数（仍是后端行数据）
     unmatchedCount: toNum(data?.unmatchedCount) ?? rows.filter((r) => !r.matched).length,
     bankInflowFen: toNum(data?.bankInflowFen),
+    bankInflowAccountAmbiguous: Boolean(data?.bankInflowAccountAmbiguous ?? data?.bank_inflow_account_ambiguous),
   }
 }
 
