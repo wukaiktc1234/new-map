@@ -9,11 +9,20 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * bug-㉒：订单插入的**保存点级**尝试（NESTED 事务）。
  *
- * <p>为什么不是 ON CONFLICT：那需要把 orders 的 50+ 列 INSERT 在 XML 里重写一遍，
- * 与实体/表结构**双向漂移**风险高；而 NESTED 保存点能达到同样的关键性质 ——
- * 撞唯一键时只回滚到保存点，**外层事务不会被 PG 标记 aborted**，后续取叫号号/建明细/扣库存可正常执行。</p>
+ * <h2>⚠ 为什么不用 INSERT ... ON CONFLICT（请勿「优化」回来）</h2>
  *
- * <p>若将来改为 ON CONFLICT，只需替换本类实现，调用方不动。</p>
+ * <p>ON CONFLICT 要在 Mapper XML 里把 orders 的 <b>50+ 列 INSERT 重写一份</b>，等于手工维护<b>第二份列清单</b>。
+ * 2026-10-28 当天刚因「实体与表列不一致」修了 12 处（roles / employees 全大写列名、accounting_subject 缺
+ * create_by / update_by、permission_assignment_log 缺 deleted、dish_combo.combo_name 写错）——
+ * <b>为避免一个 bug 而制造一个更隐蔽的 bug，不值得。</b></p>
+ *
+ * <p>本类要达到的<b>关键性质只有一个</b>：撞唯一键时<b>外层事务不被 PG 标记 aborted</b>（SQLState 25P02），
+ * 从而后续「取叫号号 / 建明细 / 扣库存」仍能正常写。Propagation.NESTED（保存点）一行注解即可做到，
+ * 且<b>不引入任何列清单</b>。</p>
+ *
+ * <h2>将来若要换成 ON CONFLICT</h2>
+ * <p>只替换本类实现即可，调用方（PosOrderCreateServiceImpl）不动；但请先补测试：
+ * 并发同 key × N 轮「主表 1 行 + 子表不多行」断言（见 docs/audit/bug-022-concurrent-idempotency.md）。</p>
  */
 @Component
 public class OrderInsertAttempt {
