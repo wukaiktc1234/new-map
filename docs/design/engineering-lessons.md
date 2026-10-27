@@ -71,3 +71,10 @@
 - 查法（唯一可靠）：SELECT to_regclass('public.<表名>') 逐个确认；不要凭命名习惯猜单复数，也不要用 information_schema.tables WHERE table_name LIKE 的模糊匹配下结论。
 - 规则：表名相似对（x vs xs、x_new vs x）必须用 to_regclass + information_schema.columns 双向核对再下结论；与第 5 条（同名表核语义）合并执行。
 
+
+## 11. 用子集结果代表全量
+
+- 事故：只跑 `-Dtest=SystemSettingsDatabaseTest,InventoryDeductionServiceImplTest`（2 个类 27 用例）就报「SysSettingServiceTest 已转绿」，而全量清单里该类 4F **一直在**——它从未绿过。同一错误我（Lead）也犯过一次：据 16F 推断「14F/7E」，实测是 15F/8E。
+- 危害：**局部绿 ≠ 整体绿**。若按这个结论继续开发，欠账会被永久掩盖，且在发版前才爆。
+- 规则：**凡报「已修/已绿」，必须贴全量 `mvn test` 的最后两行（`Tests run: N, Failures: F, Errors: E, Skipped: S` 与 `BUILD SUCCESS/FAILURE`）**；不许用子集、单类、`-Dtest=` 的结果代表全量。推断必须标注「推断，未实测」。
+
