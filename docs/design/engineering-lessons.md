@@ -64,3 +64,10 @@
   构造器参数个数不匹配而**测试编译失败**（他人改构造器加 `PosRefundFlowRecorder` 未同步测试），
   导致 `spring-boot:run` 连带失败、本地只能 `-Dmaven.test.skip=true` —— 这本身就是「测试假装存在」的静默失效。
   已补 mock + 构造器参数，`mvn -o -B test-compile` BUILD SUCCESS，34 个用例全绿。
+
+## 10. 表名相似对：单数 vs 复数必须核对 to_regclass
+
+- 事故：判断「MarketingPromotion 声明 promotion_code，但表里没这列」——错在查了复数表名 marketing_promotions（不存在），实际表是单数 marketing_promotion 且该列一直存在。结论差点变成「给已有列补迁移」。
+- 查法（唯一可靠）：SELECT to_regclass('public.<表名>') 逐个确认；不要凭命名习惯猜单复数，也不要用 information_schema.tables WHERE table_name LIKE 的模糊匹配下结论。
+- 规则：表名相似对（x vs xs、x_new vs x）必须用 to_regclass + information_schema.columns 双向核对再下结论；与第 5 条（同名表核语义）合并执行。
+
