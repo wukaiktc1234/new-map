@@ -310,6 +310,132 @@ def check_result_error_ratchet():
     return 0
 
 
+MVN_BASELINE = ROOT / 'scripts' / 'qa' / 'mvn-test-baseline.txt'
+FAIL_LINE_RE = re.compile(r"^\[ERROR\]\s{3}([\w.$]+)\.(\w+)(?::\d+)?\s*(.*)")
+def parse_mvn_test_failures(log_path):
+    items = {}
+    path = Path(log_path)
+    if not path.exists():
+        return items
+    for raw in path.read_text(encoding='utf-8', errors='replace').splitlines():
+        line = raw.strip()
+        m = FAIL_LINE_RE.match(line)
+        if not m or 'Tests run:' in line:
+            continue
+        key = '%s#%s' % (m.group(1), m.group(2))
+        rest = m.group(3) or ''
+        is_error = ('NullPointer' in rest) or ('IllegalState' in rest) or rest.startswith('?') or ('Runtime' in rest)
+        items[key] = 'Error' if is_error else 'Failure'
+    return items
+def _short(key):
+    """类名去包名：# 前的最后一段（含内部类 $），保证日志短名与基线 FQCN 可比。"""
+    if '#' not in key:
+        return key
+    cls, method = key.split('#', 1)
+    return cls.split('.')[-1] + '#' + method
+
+
+def load_mvn_baseline():
+    allowed = {}
+    if not MVN_BASELINE.exists():
+        return allowed
+    for line in MVN_BASELINE.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [x.strip() for x in line.split('|')]
+        if len(parts) < 2:
+            continue
+        allowed[_short(parts[0])] = parts[1]
+    return allowed
+def check_mvn_test_baseline(log_path):
+    current = parse_mvn_test_failures(log_path)
+    baseline = load_mvn_baseline()
+    if not baseline:
+        print('[WARN] mvn-test 基线缺失或为空：%s' % MVN_BASELINE)
+        return 3
+    if not current:
+        print('[BLOCK] mvn test 全绿 —— 请把基线降为 0 条并恢复硬闸门（EXIT=2）')
+        return 2
+    new_items = {k: v for k, v in current.items() if _short(k) not in baseline}
+    if new_items:
+        print('[BLOCK] mvn test 出现基线外新增失败（新回归）→ 阻断')
+        for k, v in sorted(new_items.items()):
+            print('        + %s (%s)' % (k, v))
+        return 2
+    print('[GATE] mvn test 红点全在基线内：%d 条（警告，正在还欠账）' % len(current))
+    return 3
+def main():
+    ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
+    ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
+    ap.add_argument("--verbose", action="store_true", help="打印 mvn 与巡检完整输出")
+    ap.add_argument("--skip-compile", action="store_true", help="跳过 mvn（仅看巡检）")
+    a = ap.parse_args()
+    print("=" * 86)
+    print("PREFLIGHT GATE   mode=%s" % ("FULL(mvn test)" if a.full else "FAST(test-compile)"))
+    print("  提醒：本脚本是开工闸门，不是系统健康证明；分母不足时 PASS 不可信。")
+    print("=" * 86)
+    ratchet_rc = check_runtime_exception_ratchet()
+    result_error_rc = check_result_error_ratchet()
+    warn = False
+    compile_rc = 0
+    if not a.skip_compile:
+        compile_rc = mvn(["test-compile"], a.verbose)
+        if compile_rc != 0:
+            print("[WARN] test-compile 失败（rc=%s）→ 注意：test-compile≠test，但连编译都不过就不该开工" % compile_rc)
+            warn = True
+    clean_db_rc = 0
+    if a.full:
+        print("-" * 86)
+        clean_db_rc = check_clean_db_migration()
+    test_rc = None
+    if a.full:
+        test_rc = mvn(["test"], a.verbose)
+        if test_rc != 0:
+            print("[WARN] mvn test 失败（rc=%s）—— 这是真验证档，失败必须修" % test_rc)
+            warn = True
+    print("-" * 86)
+    print("[GATE] 巡检：%s" % CHECK)
+    rc, out = run([sys.executable, str(CHECK)], ROOT, timeout=1800)
+    if a.verbose:
+        print(out)
+    stats = parse_inspection(out)
+    if stats is None:
+        print("[WARN] 巡检输出无法解析（未找到「汇总: N PASS / M FAIL」），原文尾 20 行：")
+        for l in out.splitlines()[-20:]:
+            print("       " + l)
+        print("[RESULT] INCONCLUSIVE（无法判定）")
+        return 3
+    passed, failed, skipped = stats["pass"], stats["fail"], stats["skipped"]
+    judged = passed + skipped if (passed + skipped) else stats["judged"]
+    ratio = (skipped / judged) if judged else 0.0
+    print("[GATE] 巡检统计：PASS=%d  skipped_no_data=%d  FAIL=%d  判定项=%d"
+          % (passed, skipped, failed, stats["judged"]))
+    print("[GATE] skipped 占比：%d/%d = %.0f%%（阈值 %.0f%%）"
+          % (skipped, judged, ratio * 100, WARN_RATIO * 100))
+    print("[GATE] 巡检原始汇总：%s" % stats["raw"])
+    if failed > 0:
+        print("[RESULT] BLOCKED：巡检 FAIL=%d > 0 → exit 2" % failed)
+        return 2
+    if ratchet_rc != 0:
+        print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
+        return 2
+    if result_error_rc != 0:
+        print("[RESULT] BLOCKED：Result.error(字面量) 棘轮上升 → exit 2")
+        return 2
+    if clean_db_rc != 0:
+        print("[RESULT] BLOCKED：干净库迁移 gate 未通过 → exit 2")
+        return 2
+    if ratio > WARN_RATIO:
+        print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
+              % (skipped, judged, ratio * 100, WARN_RATIO * 100))
+        warn = True
+    summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
+        passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
+    print("[RESULT] " + summary)
+    return 3 if warn else 0
+if __name__ == "__main__":
+    sys.exit(main())
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -392,3 +518,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

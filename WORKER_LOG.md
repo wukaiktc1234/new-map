@@ -3932,3 +3932,58 @@ Mapper 参数类型 String → java.time.LocalDateTime（两处 mapper、共 3 �
 判「修测试」的 5 类（PositionCodeGenerator / FoodCodeGenerator / CostRecord / InvoiceReimbursement / Payable）**本轮未改**：
 时间全部用于 ②（含一次服务重启）与 SysDict 修代码；这 5 类按 Lead 要求「断言里写一行注释说明为何以实现为准」的改法留到下一轮，
 其中 `CostRecordServiceImplTest` 按裁定改成**正则匹配** `^CR\d{8}\d+$`（不改成当前日期，避免时间依赖）。
+
+## 83. 测试基线落地 + SysSettingServiceTest 回潮归因（2026-10-28 00:25–00:50）
+
+### 83.1 我上轮的错：把「子集绿」当「全量绿」
+
+上轮我写「`SysSettingServiceTest` 4 个转绿」是**推断**：当时唯一的实测是
+`-Dtest=SystemSettingsDatabaseTest,InventoryDeductionServiceImplTest`（27 用例 0 失败）—— 只覆盖 2 个类；
+而紧接着那次全量（16F/7E）的清单里 **`SysSettingServiceTest` 4F 一直在**（已从 `.verify-tmp/mvn-test-after.txt` 复核到该类 4 条）。
+→ 结论：`SysSettingServiceTest` **从未绿过**，不存在「回潮」；是我把子集结果当全量报了。已按 Lead 纪律改为「只贴全量最后两行」。
+
+### 83.2 三次全量实测（同一台机、同一 JDK21）
+
+| 时间 | Tests run | Failures | Errors | Skipped |
+|------|-----------|----------|--------|---------|
+| 23:44 | 766 | 23 | 20 | 5 |（会话起点）
+| 00:05 | 766 | 16 | 7 | 5 |
+| 00:19 | 766 | 15 | 14 | 5 |（+`SystemSettingsIntegrationTest` 8E 抖动）
+| 00:41 | 766 | 11 | 5 | 5 |（本轮修完 `PositionCodeGeneratorTest` 后）
+
+**15F/7E 与 15F/14E 的差异解释**：多出的 7 个 = `SystemSettingsIntegrationTest`。
+该类 Spring `ApplicationContext` 首次加载失败后，其余用例按 *failure threshold* 被跳过并逐条计 Error，
+于是「一处配置失败」会放大成 1~8 条 Error —— **条数不稳定，属环境抖动**，这也是两份清单对不上的唯一原因。
+已写进基线文件头注释。
+
+### 83.3 SysSettingServiceTest 4F 归因
+
+4 条断言首行完全相同：`expected: <true> but was: <false>`（`assertTrue(result.isSuccess())`）。
+证据链：service 内 `catch (Exception e)` 把异常吞成 `Result.error`，所以 isSuccess=false → 断言假；
+测试 mock 的是 `sysSettingMapper.selectByGroup/selectGlobalSetting/selectOne/selectCount`，
+而 `SysSetting` 的 `@TableId` 已改成 `setting_id`（本轮改动只影响 SQL 列名，不影响 mock）。
+判定：**非本轮回归**（23:44 那次 23F 清单里就有它；`@TableId` 改动不影响 mock 层），属**测试与实现不一致**（修测试），排在 7 类里。
+
+### 83.4 `mvn-test-baseline.txt` 已落地（24 条逐条登记）
+
+格式：`测试类#方法 | Failure|Error | 登记日期 | 预计修复日期或理由`；文件头写判据、gate 逻辑、月度复核规则、抖动说明。
+
+gate 实现（`scripts/qa/preflight.py`）：
+```
+check_mvn_test_baseline(log)：
+  _short() 把日志里的短类名与基线里的 FQCN 归一（# 前取最后一段，保留内部类 $）
+  当前清单为空            → [BLOCK] + EXIT=2（提示降基线为 0、恢复硬闸门）
+  有基线外新增            → [BLOCK] 逐条打印 + EXIT=2
+  全部 ⊆ 基线              → [GATE] + EXIT=3
+```
+实测：`[GATE] mvn test 红点全在基线内：16 条（警告，正在还欠账）` rc=3。
+
+### 83.5 本轮 `PositionCodeGeneratorTest` 已修（全量 11F/5E 的成因之一）
+
+按 Owner 拍板「以实现为准」逐条对齐：
+```
+总经理=GM / 副总经理=DGM / 经理=MGR / 主管=SUP / 专员=SPE（对齐 PositionCodeGenerator:62-67 的映射表）
+testSequenceLimit：实现候选耗尽抛 RuntimeException → 改为 assertThrows（原断言期望返回合法编码）
+文件头注释：口径待产品确认，暂以实现为准
+```
+该次单类 9/9 绿；随后全量复测 **766 / 11F / 5E / 5S**（`PositionCodeGeneratorTest` 整类转绿）。

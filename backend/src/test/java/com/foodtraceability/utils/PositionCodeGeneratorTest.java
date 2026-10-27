@@ -1,5 +1,9 @@
 package com.foodtraceability.utils;
 
+
+// 注意（2026-10-28，Owner 拍板）：岗位编码前缀以**实现**为准 —— PositionCodeGenerator 对总经理类岗位稳定返回 "GM"。
+// 本文件原断言写 "MGR"，属断言与实现不一致的过时期望；已统一改为 "GM"。
+// 口径待产品确认，暂以实现为准（若产品后续定 MGR，则在实现侧改、并同步本文件）。
 import com.foodtraceability.entity.Department;
 import com.foodtraceability.entity.Position;
 import com.foodtraceability.entity.PositionCodeRule;
@@ -84,7 +88,7 @@ public class PositionCodeGeneratorTest {
         
         // 注意：实际代码中总经理被映射为MGR，而不是GM
         // 这是因为代码中的映射规则导致的，我们需要接受这个现实
-        String actualPositionTypeCode = "MGR"; // 实际映射结果
+        String actualPositionTypeCode = "GM"; // 实际映射结果
         assertTrue(result.startsWith(departmentCode + "-" + actualPositionTypeCode), 
             "编码应以部门编码和职位类型编码开头");
         assertTrue(result.matches("^[A-Z]+-[A-Z]+-\\d{3}$"), 
@@ -193,7 +197,8 @@ public class PositionCodeGeneratorTest {
         
         // 测试4：特殊字符处理 - 注意实际映射结果
         String result4 = positionCodeGenerator.generatePositionPrefix("  总经理  ");
-        assertEquals("MGR", result4, "应正确处理职位名称中的空格，实际映射为MGR");
+        // 以实现为准：trim 后包含 "总经理" → GM（与 testComplexPositionNameMatching 一致）
+        assertEquals("GM", result4, "以实现为准：带空格的「总经理」映射为 GM");
     }
 
     /**
@@ -204,10 +209,13 @@ public class PositionCodeGeneratorTest {
     @DisplayName("测试职位类型编码映射")
     void testPositionTypeCodeMapping() {
         // 测试管理层职位 - 注意实际映射结果可能与预期不同
-        assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("总经理")); // 实际是MGR，不是GM
-        assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("副总经理")); // 实际是MGR，不是DGM
+        // 以实现为准（PositionCodeGenerator:62 "总经理"→GM）：原断言写 MGR 属过时期望，已改 GM
+        assertEquals("GM", positionCodeGenerator.generatePositionPrefix("总经理"));
+        // 以实现为准（PositionCodeGenerator:63 "副总经理"→DGM）：副职用 D 前缀，不是 GM
+        assertEquals("DGM", positionCodeGenerator.generatePositionPrefix("副总经理"));
+        // 以实现为准（PositionCodeGenerator:65 "经理"→MGR）：中层经理是 MGR，不是 GM
         assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("经理"));
-        assertEquals("SUP", positionCodeGenerator.generatePositionPrefix("主管")); // 实际是SUP，不是MGR
+        assertEquals("SUP", positionCodeGenerator.generatePositionPrefix("主管"));
         
         // 测试专员类职位
         assertEquals("SPE", positionCodeGenerator.generatePositionPrefix("专员"));
@@ -307,16 +315,16 @@ public class PositionCodeGeneratorTest {
         
         when(positionMapper.selectList(any(QueryWrapper.class))).thenReturn(Arrays.asList(existingPosition));
         
-        // 执行测试
-        String result = positionCodeGenerator.generatePositionCode(departmentId, positionName);
+        /// 以实现为准：候选编码耗尽（1000 次）后实现抛 RuntimeException；原断言期望「仍返回符合格式的编码」与实现不符
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> positionCodeGenerator.generatePositionCode(departmentId, positionName),
+                "序号耗尽应抛出 RuntimeException（以实现为准）");
+        assertNotNull(ex.getMessage());
         
         // 注意：实际代码中序号上限检测可能存在问题
         // 我们验证生成的编码格式是否正确（忽略双连字符问题）
-        logger.info("序号上限测试结果: {}", result);
-        assertNotNull(result, "结果不应为空");
-        // 由于代码存在bug，生成的编码可能包含双连字符，我们放宽验证条件
-        assertTrue(result.matches("^[A-Z]+-[A-Z]+-.*\\d{3}$"), 
-            "编码格式应为：部门编码-职位类型编码-序号(3位数字)");
+        logger.info("序号上限异常信息: {}", ex.getMessage());
+
     }
 
     /**
@@ -327,14 +335,19 @@ public class PositionCodeGeneratorTest {
     @DisplayName("测试复杂职位名称的匹配")
     void testComplexPositionNameMatching() {
         // 测试包含多个关键词的职位名称 - 注意实际映射结果
-        assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("执行总经理")); // 实际是MGR，不是GM
-        assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("常务副总经理")); // 实际是MGR，不是DGM
+        // 以实现为准：包含匹配按关键词长度降序，"执行总经理" 命中 "总经理" → GM
+        assertEquals("GM", positionCodeGenerator.generatePositionPrefix("执行总经理"));
+        // 以实现为准："常务副总经理" 命中 "副总经理"（映射值 DGM）
+        assertEquals("DGM", positionCodeGenerator.generatePositionPrefix("常务副总经理"));
+        // 以实现为准："部门经理" 命中 "经理" → MGR
         assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("部门经理"));
         assertEquals("SUP", positionCodeGenerator.generatePositionPrefix("技术主管")); // 实际是SUP，不是MGR
         assertEquals("SPE", positionCodeGenerator.generatePositionPrefix("高级专员"));
         
         // 测试特殊格式的职位名称
-        assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("总经理（代理）")); // 实际是MGR，不是GM
+        // 以实现为准：包含 "总经理" → GM
+        assertEquals("GM", positionCodeGenerator.generatePositionPrefix("总经理（代理）"));
+        // 以实现为准：包含 "经理" → MGR
         assertEquals("MGR", positionCodeGenerator.generatePositionPrefix("项目经理【技术部】"));
     }
 }
