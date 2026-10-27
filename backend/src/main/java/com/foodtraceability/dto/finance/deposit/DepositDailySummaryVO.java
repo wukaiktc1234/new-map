@@ -17,7 +17,10 @@ public class DepositDailySummaryVO {
     public Long unmatchedFen = 0L;
     /** 未绑流水的单数 —— **不得静默**，必须 > 0 时被前端提示 */
     public Integer unmatchedCount = 0;
-    /** 当日该批账户 bank_transactions 方向=1 合计（银行进账） */
+    /** 门店存在多个基本户且未指定 accountId → true，且 bankInflowFen=null（前端提示「请选择银行账户」） */
+    public Boolean bankInflowAccountAmbiguous = Boolean.FALSE;
+
+    /** 当日本次汇总所用账户的 bank_transactions 方向=1 合计（银行进账；歧义时为 null） */
     public Long bankInflowFen = 0L;
 
     /** 明细行 */

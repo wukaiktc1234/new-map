@@ -131,8 +131,9 @@ public class DepositSlipController {
     @PreAuthorize("hasAuthority('finance:deposit-slip:view')")
     @Operation(summary = "存行日汇总（差异3）", description = "unmatchedCount 未绑流水单数不得静默；bankInflowFen=当日该批账户银行进账合计")
     public Result<com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO> dailySummary(
-            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
-        return Result.success(depositSlipService.dailySummary(date));
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestParam(required = false) Long accountId) {
+        return Result.success(depositSlipService.dailySummary(date, accountId));
     }
 
     /** N19-3b：待确认归属的数据源（空时返回空数组，不返回 404） */

@@ -65,7 +65,7 @@ public interface DepositSlipService {
     com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO pendingRefunds(Long slipId);
 
     /** 差异3：某营业日的存行汇总（含未绑流水的单，unmatchedCount 不得静默为 0） */
-    com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO dailySummary(java.time.LocalDate date);
+    com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO dailySummary(java.time.LocalDate date, Long accountId);
 
     /** SL11 导出 CSV */
     String exportCsv(DepositSlipQueryDTO query);

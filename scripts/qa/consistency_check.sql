@@ -137,7 +137,7 @@
 --       不在未清 A/B/C/D 明细中。期望 0。
 --   A37 （**参与判定**）退款流水 refund_time 落不进任何班次窗口（pos_shifts start/end 缺失或不覆盖）。期望 0。
 --   A38 （信息性）现金退款闭环率 + 近 24h RECON_SHIFT_BOUNDARY_PENDING 待人工确认笔数。只观测。
---   A39 （**参与判定**）缴款单恒等式：difference_net_fen = actual_amount - (expected_amount - refund_component_fen)
+--   A39 （**参与判定**）缴款单恒等式：difference_net_fen = (actual_amount − reserve_fen) − (expected_amount − refund_component_fen)
 --       且 refund_component_fen = 该 slip 已归属退款流水合计。期望 0。
 --   ⚠️ 四条**全部带分母**：分母 = 0 时输出 `[INFO] Axx skipped_no_data 分母=0`（不输出 PASS）。
 --
