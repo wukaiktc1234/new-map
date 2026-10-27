@@ -3507,3 +3507,64 @@ Tests run: 766, Failures: 23, Errors: 20, Skipped: 5 → BUILD FAILURE
 ```
 这些用例依赖真实库状态（清空/编码序列），与本轮改动无关；**建议单开一批修复**，
 否则 `preflight --full` 会长期停在 WARN，等于「真验证档」形同虚设。
+
+## 75. bug-⑫ 全库清单 + 实体列名审计 + 批次 1（2026-10-27 22:55–23:05）
+
+### 75.1 bug-⑫ 全库清单（只读扫描，脚本 `scripts/qa/catch_500_audit.py`）
+
+判据：`catch (RuntimeException …)` 且 catch 体内出现 `Result.error(`。
+结果：**107 处**，其中**无 BusinessException 前置分支**的 **101 处** —— 这些位置的业务异常一律被压成 500。
+报告：`.verify-tmp/catch500.md`（含 文件:行 / 前置分支 / 影响端点 / 方法 / 证据片段）。
+典型：`ApprovalWorkflowController` 4 处、`EmployeeApprovalController` 6 处（本轮已加前置分支）、
+`PosOrderController`（实测「支付不存在订单」仍 500 —— 就是这一类）。
+**结论（进 engineering-lessons 第 10 条）**：只改 service 不改 controller，业务异常会被 `Result.error(String)` 压回 500。
+
+### 75.2 实体列名审计（bug-⑪ 是否孤例）
+
+脚本：`scripts/qa/entity_column_audit.py`（只读；解析 `@TableName`/`@TableField` ↔ `information_schema.columns`）
+报告：`docs/audit/entity-column-audit.md`
+
+核对 `@TableField` 列名 **3521** 个，不一致 **171** 处，分三档：
+
+| 档位 | 数量 | 含义 |
+|------|------|------|
+| A. 高置信错列名（有相似真实列） | **23** | `created_time`→`create_time`、`updateBy`→`updated_by`、`created_at`→`create_time` 等，**必 500** |
+| B. 表不存在 | **69** | 实体指向的表在库里没有（legacy/未建表实体），调用即 500 |
+| C. 无相似列 | **79** | 多为实体声明了库里确实没有的列（同样必 500），需逐个看是不是死代码 |
+
+A 档清单（前 20）：`leave_requests/created_time`、`leave_requests/updated_time`、`overtime_requests/*`、`reimbursement_requests/*`、
+`approval_record/created_at`、`approval_record/updated_at`、`approval_record/step_name`、`combo_inventory/create_by`、`dish_inventory/create_by`、
+`dish_recipe/dish_code`、`event_outbox/created_at`、`loss_outbound/loss_quantity`、`loss_outbound/loss_date`、`notification_user_preference/notification_method`、
+`promotion/promotion_code`、`promotion/promotion_name` …（完整见报告）
+
+**这条印证了 bug-⑪ 不是孤例**：`SystemSettingsDatabaseTest BadSqlGrammar` 与 `SysDictServiceImplTest NPE` 很可能就落在 A/B 档里。
+按 Lead 指示：**先不改实体**，等裁定。
+
+### 75.3 批次 1：`OrderNewServiceImpl`（20 处业务语义 → BusinessException）
+
+| 语义 | 数量 | 改成 |
+|------|------|------|
+| 状态不允许（支付/取消/确认/完成） | 6 | `PARAM_ERROR` 400 |
+| 金额非法（必须>0 / 超应付） | 2 | `PARAM_ERROR` 400 |
+| 不存在（退款记录/订单/桌台/菜品/套餐） | 5 | `NOT_FOUND` 404 |
+| 参数非法（编号空/类型空/ID 空/未知类型/停售/库存不足） | 7 | `PARAM_ERROR` 400 |
+
+**保留的 5 处**（真失败，不是业务语义）：持久化订单成本失败、库存扣减失败、出餐扣料失败×2、退款回补库存失败。
+
+棘轮：**504 → 484（−20）**；`mvn -o -B test-compile` BUILD SUCCESS。
+
+接口实测（batch1.py）：
+```
+GET /v1/orders/999999                → 404 订单不存在（原 500）        ✔
+POST 下单 空 items                    → 400 订单项数量必须在1-50之间    ✔
+POST 下单 菜品不存在                   → 400 菜品映射失败（下单前映射校验先拦）✔
+POST 下单 数量超限                     → 400 数量不能超过9999           ✔
+POST 支付 不存在的订单                  → **500**  ← 又一处 bug-⑫（PosOrderController 兜底）
+POST 下单 缺 storeId                   → code=0（从登录上下文解析成功，非缺陷）
+```
+
+### 75.4 待 Lead 裁定
+
+1. bug-⑫ 101 处无前置分支，建议按模块顺序（先 POS/财务热路径）；
+2. 实体列名 A 档 23 处是否批量修（建议先修 A，B/C 先确认是否死代码）；
+3. `mvn test` 23F/20E 等 A 档修完再看剩余。

@@ -238,10 +238,10 @@ public class OrderNewServiceImpl implements OrderNewService {
 
         // 校验订单状态：必须是待确认或已确认且未完全支付
         if (!isPayableStatus(order.getOrderStatus())) {
-            throw new RuntimeException("当前订单状态不允许支付");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "当前订单状态不允许支付");
         }
         if (order.getPaymentStatus() != null && order.getPaymentStatus() == 2) {
-            throw new RuntimeException("订单已支付完成");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "订单已支付完成");
         }
 
         // 计算总支付金额
@@ -253,14 +253,14 @@ public class OrderNewServiceImpl implements OrderNewService {
         // 攻击场景：提交 +1000 和 -900 两笔，总和 100 元绕过校验，但造成数据混乱
         for (OrderPayDTO.PaymentDetail payment : payDTO.getPayments()) {
             if (payment.getAmount() <= 0) {
-                throw new RuntimeException("单笔支付金额必须大于0");
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "单笔支付金额必须大于0");
             }
         }
 
         // 验证支付金额不能超过应付金额
         long remainingAmount = order.getFinalAmount() - (order.getPaidAmount() != null ? order.getPaidAmount() : 0L);
         if (totalPayAmount > remainingAmount) {
-            throw new RuntimeException("支付金额超过应付金额");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "支付金额超过应付金额");
         }
 
         // 保存每笔支付记录
@@ -369,7 +369,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         // 校验是否可以取消：只有待确认和已确认状态的订单可以取消
         Integer status = order.getOrderStatus();
         if (status == null || (status != 0 && status != 1)) {
-            throw new RuntimeException("当前订单状态不允许取消");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "当前订单状态不允许取消");
         }
 
         // 如果已支付，需要退款逻辑
@@ -456,7 +456,7 @@ public class OrderNewServiceImpl implements OrderNewService {
 
         OrderRefundRecordNew refundRecord = orderRefundRecordNewMapper.selectById(refundId);
         if (refundRecord == null) {
-            throw new RuntimeException("退款记录不存在");
+            throw new BusinessException(ErrorCode.NOT_FOUND, "退款记录不存在");
         }
 
         if (approved) {
@@ -572,7 +572,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         log.info("确认订单, orderId: {}", orderId);
         OrderNew order = getAndValidateOrder(orderId);
         if (order.getOrderStatus() != null && order.getOrderStatus() != 0) {
-            throw new RuntimeException("只有待确认状态的订单才能确认");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "只有待确认状态的订单才能确认");
         }
         orderNewMapper.updateStatus(orderId, 1); // 1=已确认/制作中
     }
@@ -583,7 +583,7 @@ public class OrderNewServiceImpl implements OrderNewService {
         log.info("完成订单, orderId: {}", orderId);
         OrderNew order = getAndValidateOrder(orderId);
         if (order.getOrderStatus() == null || (order.getOrderStatus() != 1 && order.getOrderStatus() != 2)) {
-            throw new RuntimeException("当前订单状态无法标记完成");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "当前订单状态无法标记完成");
         }
 
         // 扣减门店库存并结转成本（仅当订单有关联门店时）
@@ -1501,12 +1501,12 @@ public class OrderNewServiceImpl implements OrderNewService {
     public OrderVO getPosOrderDetail(String orderNumber) {
         log.info("查询POS订单详情, orderNumber: {}", orderNumber);
         if (orderNumber == null || orderNumber.isEmpty()) {
-            throw new RuntimeException("订单编号不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "订单编号不能为空");
         }
         // W1-EC-04C: 改读 orders 表（通过 order_code 查询）
         OrderNew order = orderNewMapper.selectByOrderCode(orderNumber);
         if (order == null) {
-            throw new RuntimeException("POS订单不存在: " + orderNumber);
+            throw new BusinessException(ErrorCode.NOT_FOUND, "POS订单不存在: " + orderNumber);
         }
         // 转换为 OrderVO（含明细和支付记录）
         return getOrderDetail(order.getOrderId());
@@ -1880,10 +1880,10 @@ public class OrderNewServiceImpl implements OrderNewService {
     private void validateTableAvailable(Long tableId) {
         DiningTableNew table = diningTableNewMapper.selectById(tableId);
         if (table == null) {
-            throw new RuntimeException("桌台不存在");
+            throw new BusinessException(ErrorCode.NOT_FOUND, "桌台不存在");
         }
         if (table.getStatus() == null || table.getStatus() != 1) {
-            throw new RuntimeException("桌台当前不可用，状态: " + table.getStatus());
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "桌台当前不可用，状态: " + table.getStatus());
         }
     }
 
@@ -1941,35 +1941,35 @@ public class OrderNewServiceImpl implements OrderNewService {
      */
     private ValidatedFood validateAndPriceFood(Long productId, Integer productType, Integer quantity) {
         if (productType == null) {
-            throw new RuntimeException("商品类型不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "商品类型不能为空");
         }
         if (productId == null) {
-            throw new RuntimeException("商品ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "商品ID不能为空");
         }
         if (productType == 1) {
             FoodNew food = foodNewMapper.selectById(productId);
             if (food == null) {
-                throw new RuntimeException("菜品不存在: ID=" + productId);
+                throw new BusinessException(ErrorCode.NOT_FOUND, "菜品不存在: ID=" + productId);
             }
             if (food.getStatus() == null || food.getStatus() != 1) {
-                throw new RuntimeException("菜品当前不可购买（已停售/售罄）: " + food.getFoodName());
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "菜品当前不可购买（已停售/售罄）: " + food.getFoodName());
             }
             // 限量菜品库存校验（stock > 0 表示启用库存管理）
             if (food.getStock() != null && food.getStock() > 0 && quantity > food.getStock()) {
-                throw new RuntimeException("菜品库存不足: " + food.getFoodName() + " 剩余 " + food.getStock() + " 份");
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "菜品库存不足: " + food.getFoodName() + " 剩余 " + food.getStock() + " 份");
             }
             return new ValidatedFood(food.getFoodName(), food.getSalePrice());
         } else if (productType == 2) {
             DishComboNew combo = dishComboNewMapper.selectById(productId);
             if (combo == null) {
-                throw new RuntimeException("套餐不存在: ID=" + productId);
+                throw new BusinessException(ErrorCode.NOT_FOUND, "套餐不存在: ID=" + productId);
             }
             if (combo.getStatus() == null || combo.getStatus() != 1) {
-                throw new RuntimeException("套餐当前不可购买（已停售/售罄）: " + combo.getComboName());
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "套餐当前不可购买（已停售/售罄）: " + combo.getComboName());
             }
             return new ValidatedFood(combo.getComboName(), combo.getComboPrice());
         }
-        throw new RuntimeException("未知商品类型: " + productType);
+        throw new BusinessException(ErrorCode.PARAM_ERROR, "未知商品类型: " + productType);
     }
 
     /**
