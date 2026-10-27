@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'backend' / 'src' / 'main' / 'java'
 PSQL = str(ROOT / 'PostgreSQL' / '18' / 'bin' / 'psql.exe')
+REGISTRY = ROOT / 'scripts' / 'qa' / 'unfinished-features-registry.txt'
 TABLE_RE = re.compile(r'@TableName\(\s*"([^"]+)"\s*\)')
 
 
@@ -41,11 +42,25 @@ def load_sources():
     return out
 
 
+def load_registry():
+    """未完成功能登记册：返回 {表名: 原始行}；gate 会把它当 INFO 打印，不静默跳过。"""
+    out = {}
+    if not REGISTRY.exists():
+        return out
+    for line in REGISTRY.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        out[line.split('|')[0].strip()] = line
+    return out
+
+
 def main():
     db = 'food_traceability_test'
     if '--db' in sys.argv:
         db = sys.argv[sys.argv.index('--db') + 1]
     tables = query_tables(db)
+    registry = load_registry()
     if tables is None:
         return 2
     files = load_sources()
@@ -55,6 +70,8 @@ def main():
         for m in TABLE_RE.finditer(text):
             t = m.group(1)
             if t in tables:
+                continue
+            if t in registry:
                 continue
             # 严格口径：只算「Mapper 被别处真正使用」——找该实体的 Mapper 接口，
             # 再看除 Mapper 自身外是否还有文件提到这个 Mapper 类名（@Autowired/构造注入/调用）。
@@ -67,14 +84,20 @@ def main():
                         continue
                     if mapper_stem in txt:
                         refs.append(str(q.relative_to(ROOT)).replace(chr(92), '/'))
-            key = (t, path.stem)
+            key = (t, path.stem)  # 按表聚合，同一表只记一次
             if refs:
                 live[key] = refs
             else:
                 dead += 1
     print('# 部署缺口审计（库=%s）' % db)
     print('')
-    print('表不存在：活引用 %d 个实体，死代码 %d 个' % (len(live), dead))
+    print('[INFO] 未完成功能登记 %d 条（登记册 scripts/qa/unfinished-features-registry.txt，非白名单）：' % len(registry))
+    for k, v in sorted(registry.items()):
+        print('       - ' + v)
+    print('')
+    tables_live = {t for (t, _e) in live}
+    print('表不存在（按表计数）：活引用 %d 张表（涉及 %d 个实体），死代码实体 %d 个'
+          % (len(tables_live), len(live), dead))
     if live:
         print('')
         print('| 表 | 实体 | 活引用处（前 3） |')
@@ -83,7 +106,7 @@ def main():
             names = ', '.join(Path(x).name for x in refs[:3])
             print('| `%s` | %s | %s（共 %d 处） |' % (t, ent, names, len(refs)))
         print('')
-        print('[BLOCK] 部署缺口 %d 处：从零建的库会缺表，发版前必须补迁移' % len(live))
+        print('[BLOCK] 部署缺口 %d 张表：从零建的库会缺表，发版前必须补迁移' % len(tables_live))
         return 2
     print('')
     print('[GATE] 无部署缺口（表不存在且有活引用 = 0）')

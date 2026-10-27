@@ -4067,3 +4067,155 @@ PK position_code_rules_pkey(id) + idx_position_code_rules_code + idx_position_co
 （`position_code_rules` 因为补了迁移，已从缺口清单里消失。）
 
 **这个数字（61）说明：部署缺口不是个例，`position_code_rules` 只是被 context 日志偶然暴露的那一张。**
+
+## 86. 部署缺口分级（61→85 条明细：真活 51 / 半活 9 / 死代码 25）（2026-10-28 01:20–01:45）
+
+脚本：`scripts/qa/deploy_gap_grade.py`；报告：`docs/audit/deploy-gap-graded.md`
+列：`表名 | 实体 | Mapper | Service | Controller入口 | 分级 | 建议`
+
+| 分级 | 条数 | 判据 | 处置 |
+|------|------|------|------|
+| 真活 | **51** | 实体→Mapper→Service→Controller(`@*Mapping` 入口) 链完整 | 补迁移（逐列照抄生产库） |
+| 半活 | **9** | Service 存在、Mapper 被用，但无 Controller 入口、无 `@Scheduled`/Runner/MQ | 补迁移或确认弃用（逐张判） |
+| 死代码 | **25** | Mapper 无人引用 / 无 Service | **不补迁移**，标注「确认不建表」+ 进删除清单 |
+
+（条数从 61 涨到 85，是因为本轮把「同一实体映射多张表」也展开了，例如 `CostAllocation*` 系列；分母更完整。）
+
+**半活 9 张**：`data_change_history`、`department_permissions`、`finance_account`、`finance_approval`、
+`finance_report_detail`、`hardware_operation_log`、`inventory_movement`、`registration_code_log`、`user_sessions`
+
+**死代码 25 张**：`cost_allocation`、`cost_allocation_detail`、`cost_allocation_rule`、`cost_allocation_rules`、
+`data_link_event`、`finance_record_audit_log`、`finance_record_operation_log`、`finance_report`、`food_trace`、
+`inventory_transfer_detail`、`invitation_expense_record`、`invitation_reminder_log`、`ocr_record`、`operation_type`、
+`requisition_requests`、`sales_order_detail`、`swap_request_details`、`sys_devices`、`sys_permissions`、
+`sys_print_templates`、`sys_roles`、`sys_stores`、`trace_stage`、`traceability_code`、`travel_requests`
+
+### 86.1 优先级理由（Lead 要求写进日志）
+
+> 61 处部署缺口 = 「新环境/CI 跑不起来 61 个功能」，比「测试断言过时」严重一个数量级。
+> 因此顺序：① 分级清单（本轮，只分级不改）→ ② 按模块分批补迁移（每批 5–8 张，逐张贴生产库 `\d` 对照）→
+> ③ 死代码清单 + 标注「确认不建表」→ ④ 修测试 5 类 + 形态② 275 处 → ⑤ PositionSortingTest 分页装配。
+
+### 86.2 三条硬要求已记录
+
+1. 补迁移**只补结构不造数据**：`CREATE TABLE IF NOT EXISTS` + 索引 + 注释，与生产库逐列一致；
+2. 每张表补完**测试库验证**：`\d` 对照生产库，**列数 / 类型 / 默认值三者一致**；
+3. **gate 保持 EXIT=2 直到缺口为 0**，不许加白名单。
+
+### 86.3 已知风险（Lead 提醒，已采纳）
+
+项目历史上大量功能靠手工建表上线，补迁移时可能遇到「生产库表结构与实体不一致」；
+遇到**单独列出、不改生产库、不改实体**。`position_code_rules` 已按此口径处理（逐列照抄，未改实体）。
+
+## 87. 批 1（财务域 6 张表）补迁移完成：缺口 61 → 55（2026-10-28 01:45–02:15）
+
+### 87.1 口径统一（Lead ②）
+
+gate 与清单现在**都按「表」计数**：`表不存在（按表计数）：活引用 55 张表（涉及 55 个实体），死代码实体 24 个`。
+**数字变化解释**：上一版按「实体」61；分级清单展开「一实体多表」后为 85（51 真活 + 9 半活 + 25 死码）。
+本轮起统一 85/递减口径，报告里都会写明来源，避免看着像搞错。
+
+### 87.2 批 1：6 张财务域表（逐列对齐生产库）
+
+`backend/src/main/resources/db/migration/V20261028_002__finance_domain_tables.sql`
+```
+finance_audit_logs        14 列 + 4 索引
+finance_invoices          25 列 + 3 部分索引（WHERE deleted = 0）
+finance_voucher_details   14 列 + 2 部分索引
+profit_statements         15 列 + 1 部分索引
+receivables               20 列 + 3 部分索引 + UNIQUE(receivable_no)
+inventory_movement        13 列 + 2 索引 + CHECK ck_movement_source
+```
+
+**三方一致性验证（Lead 硬要求 ②）**：
+```
+列数        测试库 14/25/14/15/20/13  == 生产库 14/25/14/15/20/13  ✔
+列定义 diff  Compare-Object 测试库 vs 生产库 → 列定义完全一致（类型/默认值/可空性）✔
+索引 diff    Compare-Object → 索引完全一致（23 个）✔
+```
+只补结构、未造数据；全部 `CREATE TABLE/INDEX IF NOT EXISTS`，对生产/开发库无副作用。
+
+### 87.3 gate 递减
+
+```
+批 1 前：活引用 61 张表
+批 1 后：活引用 55 张表（−6）✔ 已补的 6 张不再出现在缺口清单里
+```
+
+### 87.4 半活 9 张的逐张判据（Lead ③ 要求，先给判据再动手）
+
+关键发现：**8 张半活表在生产库里也不存在**，只有 `inventory_movement` 有生产结构可抄。
+```
+生产库存在：inventory_movement ✔（本轮已补）
+生产库不存在：finance_account / finance_approval / finance_report_detail /
+              user_sessions / hardware_operation_log / registration_code_log /
+              data_change_history / department_permissions
+```
+按 Lead 判据分类（待你确认后执行）：
+| 表 | 类 | 判据 | 建议 |
+|----|----|------|------|
+| `finance_account` | 财务核心 | 生产库无表、无结构可抄 → 只能按实体反推 | **补迁移（按实体设计）+ 记「待接入口」功能债**，需你确认是否允许「无生产结构可抄时按实体建表」 |
+| `finance_approval` | 财务核心 | 同上 | 同上 |
+| `finance_report_detail` | 财务核心 | 同上 | 同上 |
+| `user_sessions` | 运维 | 需 grep insert/save | 若确无写入 → 不补，标「确认不建表」 |
+| `hardware_operation_log` | 运维/审计 | 同上 | 同上 |
+| `registration_code_log` | 审计 | 同上 | 同上 |
+| `data_change_history` | 审计 | 同上 | 同上 |
+| `department_permissions` | 权限 | 与 `role_permissions` 是否重复 | 若已覆盖 → 不补，标「重复设计」 |
+
+## 88. 批 2（6 张有生产结构的表）+ 三类清单（2026-10-28 00:45–01:10）
+
+### 88.1 批 2：`V20261028_003__invoice_template_tables.sql`
+
+```
+invoice_reimbursement                25 列 + 5 索引（含 UNIQUE(reimbursement_no)）
+invoice_reimbursement_item           16 列 + 3 索引
+receipt_print_log                     6 列 + 1 索引（保留 serial 序列 receipt_print_log_print_id_seq）
+tax_rate_configs                     15 列 + 2 部分索引
+standard_cost_cards                  14 列 + 2 部分索引
+summary_templates                    12 列 + 2 部分索引
+```
+验证（测试库 vs 生产库）：**列定义完全一致**；索引 diff 补齐 `idx_summary_templates_content` 后**完全一致**。
+
+gate 递减：**55 → 47 →（剔除未完成功能 8 张）41**。
+
+### 88.2 未完成功能清单（Lead ① 裁定：暂不建表，gate 不计入）
+
+`scripts/qa/deploy-gap-exclusions.txt`（gate 读取该文件排除）。三条判据同时成立才移出：
+| 表 | 生产库有表 | Controller 入口 | @Scheduled/MQ | 结论 |
+|----|-----------|----------------|---------------|------|
+| `finance_account` | 否 | 无 | 无 | 未完成功能（待产品确认是否立项） |
+| `finance_approval` | 否 | 无 | 无 | 同上 |
+| `finance_report_detail` | 否 | 无 | 无 | 同上 |
+| `department_permissions` | 否 | 无 | 无 | 重复设计（`role_permissions` 已覆盖） |
+| `user_sessions` | 否 | 无 | 无 | 半成品（Mapper 0 写入/0 读取调用） |
+| `hardware_operation_log` | 否 | 无 | 无 | 同上 |
+| `registration_code_log` | 否 | 无 | 无 | 同上 |
+| `data_change_history` | 否 | 无 | 无 | 同上 |
+
+**运维/审计 4 张的 grep 结果**（Lead ③ 要求「只读也要建表」——实测**读写皆 0**，所以不建）：
+```
+UserSessionMapper        insert/update/save 0 次 ｜ select 0 次 ｜ 引用仅 UserSessionServiceImpl 自身
+HardwareOperationLogMapper 0 / 0 ｜ 引用仅自身 ServiceImpl
+RegistrationCodeLogMapper  0 / 0 ｜ 引用仅 RegistrationCodeServiceImpl
+DataChangeHistoryMapper    0 / 0 ｜ 引用仅自身 ServiceImpl
+```
+→ 不是「只读查询会炸」，而是**根本没有查询调用**，属未接通半成品。
+
+### 88.3 `department_permissions` vs `role_permissions`
+
+```
+role_permissions      : id, role_id(varchar), permission_id(varchar), deleted, create_time   ← 1731 行，在用
+department_permissions: 生产库**不存在**（0 列）；实体存在，无 Controller、无调度；
+                        其语义（部门→权限）可由 role_permissions + role_departments 表达
+```
+结论：**重复设计，不建表**，标「已由 role_permissions（配合 role_departments）覆盖」。
+
+### 88.4 死代码 25 张：行数与存在性实测
+
+**重要发现：25 张里只有 2 张在生产库存在**：
+```
+cost_allocation_rules         存在（13 列），行数 0
+finance_record_operation_log  存在（ 9 列），行数 108   ← 有历史数据：保留表、只标死代码
+其余 23 张：生产库不存在（0 列）→ 无历史数据，可直接判死
+```

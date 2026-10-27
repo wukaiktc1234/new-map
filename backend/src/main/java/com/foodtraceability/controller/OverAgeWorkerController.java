@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -41,6 +43,8 @@ public class OverAgeWorkerController {
      * @return 分页结果
      */
     @Operation(summary = "分页查询超龄劳动者列表")
+    // P0-unfinished: over_age_worker 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "over_age_worker")
     @GetMapping("/page")
     @PreAuthorize("hasAuthority('*')")
     public Result<Page<OverAgeWorkerVO>> page(

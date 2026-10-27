@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.HardwareConfig;
 import com.foodtraceability.entity.HardwareConfigVersion;
@@ -52,6 +54,8 @@ public class HardwareConfigVersionController {
      * @param versionId 版本ID
      * @return 版本详情
      */
+    // P0-unfinished: hardware_config_version 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "hardware_config_version")
     @GetMapping("/{versionId}")
     @Operation(summary = "获取设备配置版本详情")
     @PreAuthorize("hasAuthority('hardware:view')")

@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.InventoryUnit;
@@ -47,6 +49,8 @@ public class InventoryUnitController {
     /**
      * 更新计量单位
      */
+    // P0-unfinished: inventory_unit 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "inventory_unit")
     @PutMapping("/{id}")
     @Operation(summary = "更新计量单位")
     @ApiResponse(responseCode = "200", description = "更新成功")

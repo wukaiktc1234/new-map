@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.service.TakeoutLockerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,6 +39,8 @@ public class TakeoutLockerController {
      * @param lockerId 取餐柜ID
      * @return 连接结果
      */
+    // P0-unfinished: takeout_locker 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "takeout_locker")
     @PostMapping("/locker/{lockerId}/connect")
     @Operation(summary = "连接取餐柜")
     @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")

@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.integration;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.annotation.AuditLog;
@@ -40,6 +42,8 @@ public class FileAttachmentController {
     private final FileAttachmentService fileAttachmentService;
 
     @Operation(summary = "上传单个文件")
+    // P0-unfinished: file_attachment 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "file_attachment")
     @PostMapping("/upload")
     @PreAuthorize("isAuthenticated()")
     @AuditLog(value = "上传文件", operationType = OperationType.CREATE, module = "文件管理")

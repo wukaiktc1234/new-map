@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -40,6 +42,8 @@ public class SalaryBatchController {
      * @return 生成的记录数
      */
     @Operation(summary = "生成薪资批次")
+    // P0-unfinished: salary_record 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "salary_record")
     @PostMapping("/generate")
     @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<Integer> generateBatch(@RequestParam String year, @RequestParam String month) {

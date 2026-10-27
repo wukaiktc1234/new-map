@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.PlanItemRequest;
 import com.foodtraceability.entity.PlanItem;
@@ -45,6 +47,8 @@ public class PlanItemController {
      * @param request 计划项请求DTO
      * @return 更新后的计划项
      */
+    // P0-unfinished: plan_item 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "plan_item")
     @PutMapping("/{id}")
     public Result<PlanItem> updatePlanItem(@PathVariable Long id, @RequestBody PlanItemRequest request) {
         PlanItem planItem = planItemService.updatePlanItem(id, request);

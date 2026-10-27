@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.entity.WeighingRecord;
 import com.foodtraceability.service.WeighingDeviceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +39,8 @@ public class WeighingDeviceController {
      * @param deviceId 设备ID
      * @return 连接结果
      */
+    // P0-unfinished: weighing_device 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "weighing_device")
     @PostMapping("/device/{deviceId}/connect")
     @Operation(summary = "连接设备")
     @PreAuthorize("hasAuthority('device:weighing:manage') or hasAuthority('*')")

@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.PrintFormatTemplate;
 import com.foodtraceability.service.PrintFormatTemplateService;
@@ -59,6 +61,8 @@ public class PrintFormatTemplateController {
      * @param storeId 门店ID
      * @return 默认模板
      */
+    // P0-unfinished: print_format_template 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "print_format_template")
     @GetMapping("/default")
     @Operation(summary = "获取默认打印格式模板")
     @PreAuthorize("hasAuthority('hardware:print-format:view') or hasAuthority('*')")

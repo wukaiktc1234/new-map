@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.DeviceTemplate;
 import com.foodtraceability.entity.HardwareConfig;
@@ -52,6 +54,8 @@ public class HardwareConfigController {
         this.deviceTemplateService = deviceTemplateService;
     }
     
+    // P0-unfinished: hardware_config 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "hardware_config")
     @GetMapping("/devices")
     @Operation(summary = "获取所有设备列表")
     @PreAuthorize("hasAuthority('hardware:config:view') or hasAuthority('*')")

@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.finance;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.finance.*;
@@ -33,6 +35,8 @@ public class ReceivableController {
     }
 
     @Operation(summary = "更新应收账款", description = "修改客户名称、原始金额、备注等信息")
+    // P0-unfinished: receivable 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "receivable")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance:receivable:update')")
     public Result<Boolean> update(@PathVariable Long id, @Valid @RequestBody ReceivableUpdateDTO dto) {

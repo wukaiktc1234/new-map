@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -24,6 +26,8 @@ public class SalesOrderController {
 
     private final SalesOrderService salesOrderService;
     
+    // P0-unfinished: sales_order 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "sales_order")
     @GetMapping("/page")
     @Operation(summary = "分页查询销售订单")
     public Result<IPage<SalesOrder>> getSalesOrderPage(

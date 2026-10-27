@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.CategoryOperationLog;
 import com.foodtraceability.service.CategoryOperationLogService;
@@ -48,6 +50,10 @@ public class CategoryOperationLogController {
     /**
      * 根据分类ID获取操作日志
      */
+    // P0-unfinished: category_operation_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "category_operation_log")
+    // P0-unfinished: operation_logs 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "operation_logs")
     @GetMapping("/category/{categoryId}")
     @Operation(summary = "按分类ID查询操作日志", description = "获取指定分类的所有操作日志")
     public Result<List<CategoryOperationLog>> getOperationLogsByCategoryId(

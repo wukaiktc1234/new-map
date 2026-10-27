@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.InventoryLogExportDTO;
@@ -33,6 +35,8 @@ public class InventoryLogController {
     /**
      * 根据ID获取库存日志
      */
+    // P0-unfinished: inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "inventory_log")
     @GetMapping("/{id}")
     @Operation(summary = "根据ID获取库存日志")
     @ApiResponse(responseCode = "200", description = "获取成功")

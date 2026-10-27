@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.hardware;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.entity.ScanRecord;
 import com.foodtraceability.service.ScanDeviceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,6 +40,8 @@ public class ScanDeviceController {
      * @param deviceId 设备ID
      * @return 连接结果
      */
+    // P0-unfinished: scan_device 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "scan_device")
     @PostMapping("/device/{deviceId}/connect")
     @Operation(summary = "连接设备")
     @PreAuthorize("hasAuthority('device:scan:manage') or hasAuthority('*')")

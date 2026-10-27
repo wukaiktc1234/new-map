@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.InventoryLog;
@@ -31,6 +33,8 @@ public class InventoryConsumptionController {
     /**
      * 分页查询库存消耗记录列表
      */
+    // P0-unfinished: inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "inventory_log")
     @GetMapping("/page")
     @Operation(summary = "分页查询库存消耗记录列表")
     @ApiResponse(responseCode = "200", description = "查询成功")

@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.pos;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.PosCouponApplyRequest;
 import com.foodtraceability.dto.PosCouponApplyResponse;
@@ -46,6 +48,8 @@ public class PosCouponController {
      * @param request 验证请求
      * @return 验证结果
      */
+    // P0-unfinished: coupon 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "coupon")
     @PostMapping("/verify")
     @Operation(summary = "验证优惠券")
     public Result<PosCouponVerifyResponse> verifyCoupon(@RequestBody PosCouponVerifyRequest request) {

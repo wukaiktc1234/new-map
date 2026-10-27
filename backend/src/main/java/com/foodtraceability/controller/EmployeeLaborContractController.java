@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -67,6 +69,8 @@ public class EmployeeLaborContractController {
     private final ContractDocumentService contractDocumentService;
     private final ElectronicSignatureService signatureService;
 
+    // P0-unfinished: contract_document 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "contract_document")
     @GetMapping("/list")
     @Operation(summary = "获取合同列表", description = "分页获取劳动合同列表，支持按员工ID筛选")
     @PreAuthorize("hasAnyRole(\'admin\', \'hr_director\', \'store_manager\')")

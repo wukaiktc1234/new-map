@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.entity.SelfPurchase;
 import com.foodtraceability.entity.SelfPurchaseItem;
 import com.foodtraceability.service.SelfPurchaseService;
@@ -50,6 +52,8 @@ public class SelfPurchaseController {
      * @param selfPurchaseId 自采记录ID
      * @return 入库结果
      */
+    // P0-unfinished: self_purchase 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "self_purchase")
     @PostMapping("/inbound/{selfPurchaseId}")
     @Operation(summary = "自采入库", description = "处理自采记录的入库操作")
     public Result inboundSelfPurchase(@PathVariable String selfPurchaseId) {

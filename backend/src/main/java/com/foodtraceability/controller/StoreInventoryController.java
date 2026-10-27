@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -49,6 +51,12 @@ public class StoreInventoryController {
 
     private final StoreService storeService;
 
+    // P0-unfinished: inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "inventory_log")
+    // P0-unfinished: store_inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "store_inventory_log")
+    // P0-unfinished: v_inventory_summary 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "v_inventory_summary")
     @GetMapping("/stores")
     @PreAuthorize("hasAuthority('warehouse:inventory:view') or hasAuthority('warehouse:overview:view') or hasAuthority('*')")
     @Operation(summary = "获取所有活跃门店")

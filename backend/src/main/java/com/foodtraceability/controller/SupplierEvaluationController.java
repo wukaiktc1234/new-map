@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.SupplierEvaluationCreateDTO;
 import com.foodtraceability.entity.SupplierEvaluation;
@@ -46,6 +48,8 @@ public class SupplierEvaluationController {
     }
 
     @Operation(summary = "自动计算评估结果")
+    // P0-unfinished: supplier_evaluations 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "supplier_evaluations")
     @PostMapping("/auto-calc")
     @PreAuthorize("hasAnyRole('admin', 'purchase_manager')")
     public Result<SupplierEvaluation> autoCalculate(

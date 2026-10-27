@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.entity.InventoryCategory;
@@ -48,6 +50,8 @@ public class InventoryCategoryController {
     /**
      * 更新库存分类
      */
+    // P0-unfinished: inventory_category 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "inventory_category")
     @PutMapping("/{id}")
     @Operation(summary = "更新库存分类")
     @ApiResponse(responseCode = "200", description = "更新成功")

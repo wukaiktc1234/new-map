@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.common.Result;
@@ -49,6 +51,8 @@ public class HealthCertificateController {
      * @return 健康证列表
      */
     @PreAuthorize("hasAnyRole('store_manager', 'hr_director', 'admin') or hasAuthority('hr:health-certificate:view')")
+    // P0-unfinished: operation_logs 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "operation_logs")
     @GetMapping("/list")
     public Result<Page<HealthCertificate>> getHealthCertificateList(
             @RequestParam(defaultValue = "1") Integer page,

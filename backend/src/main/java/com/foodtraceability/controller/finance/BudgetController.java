@@ -1,5 +1,7 @@
 package com.foodtraceability.controller.finance;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.finance.*;
@@ -33,6 +35,8 @@ public class BudgetController {
     }
 
     @Operation(summary = "更新预算")
+    // P0-unfinished: budget 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "budget")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance:budget:update')")
     public Result<Boolean> update(@PathVariable Long id, @Valid @RequestBody BudgetUpdateDTO dto) {

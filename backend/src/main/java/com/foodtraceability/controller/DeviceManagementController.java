@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+import com.foodtraceability.common.annotation.UnfinishedFeature;
+
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.DevicePrintRequest;
 import com.foodtraceability.entity.DeviceStatus;
@@ -53,6 +55,8 @@ public class DeviceManagementController {
      * @param deviceType 设备类型
      * @return 设备配置
      */
+    // P0-unfinished: hardware_config 两边均无表，见 docs/audit/broken-endpoints-prod.md
+    @UnfinishedFeature(table = "hardware_config")
     @GetMapping("/config")
     @Operation(summary = "获取设备配置")
     @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
