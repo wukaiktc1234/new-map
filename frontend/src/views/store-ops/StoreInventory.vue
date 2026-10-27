@@ -480,14 +480,35 @@ async function handleExport(): Promise<void> {
   }
 }
 
-/** 获取变动类型标签状态 */
-function getLogTypeStatus(type: string): string {
-  const map: Record<string, string> = {
-    IN: 'success',
-    OUT: 'error',
-    ADJUST: 'warning',
-  }
-  return map[type] || 'default'
+/**
+ * 门店库存日志操作类型（后端 /v1/store-inventory/logs 的 `type` 现返回**数值码**）
+ * 1=入库 / 2=出库 / 3=调整
+ * 未知码必须显示「未知(type)」——空白等于信息丢失。
+ */
+const OPERATION_TYPE_NAME: Record<number, string> = {
+  1: '入库',
+  2: '出库',
+  3: '调整',
+}
+
+/** 数值码/字符串码 → 中文名；未知码回显原始码，绝不返回空串 */
+function operationTypeName(type: string | number | null | undefined): string {
+  const raw = type === null || type === undefined ? '' : String(type).trim()
+  if (!raw) return '未知(type)'
+  const code = Number(raw)
+  if (!Number.isFinite(code)) return '未知(' + raw + ')'
+  return OPERATION_TYPE_NAME[code] ?? '未知(' + code + ')'
+}
+
+/** 获取变动类型标签状态（按数值码；兼容历史字符串码） */
+function getLogTypeStatus(type: string | number | null | undefined): string {
+  const numericMap: Record<number, string> = { 1: 'success', 2: 'error', 3: 'warning' }
+  const legacyMap: Record<string, string> = { IN: 'success', OUT: 'error', ADJUST: 'warning' }
+  const raw = type === null || type === undefined ? '' : String(type).trim()
+  if (!raw) return 'default'
+  const code = Number(raw)
+  if (Number.isFinite(code)) return numericMap[code] ?? 'default'
+  return legacyMap[raw.toUpperCase()] ?? 'default'
 }
 
 // 页面挂载时加载选项数据（门店选项由 useStoreOptions autoLoad 自动加载）
@@ -939,13 +960,15 @@ onMounted(() => {
             style="width: 100%"
           >
             <el-table-column prop="createTime" label="时间" min-width="160" />
-            <el-table-column prop="operationTypeName" label="类型" min-width="100" align="center">
+            <el-table-column prop="operationType" label="类型" min-width="100" align="center">
               <template #default="{ row }">
-                <StatusTag
-                  :status="getLogTypeStatus(row.operationType)"
-                  :label="row.operationTypeName"
-                  size="small"
-                />
+                <span data-test="log-type" :data-type="row.operationType">
+                  <StatusTag
+                    :status="getLogTypeStatus(row.operationType)"
+                    :label="operationTypeName(row.operationType)"
+                    size="small"
+                  />
+                </span>
               </template>
             </el-table-column>
             <el-table-column prop="beforeStock" label="变动前" min-width="80" align="right" />
