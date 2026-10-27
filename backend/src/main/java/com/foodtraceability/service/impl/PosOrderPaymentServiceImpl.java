@@ -940,14 +940,14 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     public Result<OrderResultDTO> confirmQrPayment(String qrTransactionId) {
         log.info("确认扫码支付完成: transactionId={}", qrTransactionId);
         if (qrTransactionId == null || qrTransactionId.isBlank()) {
-            return Result.error("交易号不能为空");
+            return Result.error(ErrorCode.PARAM_ERROR.getCode(), "交易号不能为空");
         }
 
         // 安全校验：transactionId 必须符合生成格式（QR-前缀 + 时间戳 + 随机数），
         // 拒绝直接传入 orderId 的请求，防止越权确认他人订单
         if (!qrTransactionId.startsWith("QR-")) {
             log.warn("非法交易号格式: transactionId={}", qrTransactionId);
-            return Result.error("交易号格式非法");
+            return Result.error(ErrorCode.PARAM_ERROR.getCode(), "交易号格式非法");
         }
 
         // 通过 transactionId 反查订单（生产环境应以 transactionId 为唯一索引）

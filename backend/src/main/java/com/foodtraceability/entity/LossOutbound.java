@@ -18,7 +18,7 @@ public class LossOutbound {
     private Long productId;
     @TableField("product_name")
     private String productName;
-    @TableField("loss_quantity")
+    @TableField("quantity")
     private Integer lossQuantity;
     @TableField("unit")
     private String unit;
@@ -28,7 +28,7 @@ public class LossOutbound {
     private Long warehouseId;
     @TableField("warehouse_name")
     private String warehouseName;
-    @TableField("loss_date")
+    @TableField("loss_time")
     private String lossDate;
     @TableField("loss_amount")
     private BigDecimal lossAmount;

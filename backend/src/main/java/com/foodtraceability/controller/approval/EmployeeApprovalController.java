@@ -1,6 +1,8 @@
 package com.foodtraceability.controller.approval;
 
 
+
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.exception.BusinessException;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.foodtraceability.common.Result;
@@ -54,7 +56,7 @@ public class EmployeeApprovalController {
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
         try {
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
             
             // 设置默认分页参数
@@ -91,7 +93,7 @@ public class EmployeeApprovalController {
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
         try {
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
 
             if (query.getCurrent() == null || query.getCurrent() <= 0) {
@@ -155,7 +157,7 @@ public class EmployeeApprovalController {
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
         try {
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
 
             EmployeeApprovalVO vo = employeeApprovalService.submitApproval(dto, userId);
@@ -261,7 +263,7 @@ public class EmployeeApprovalController {
                 return Result.error("审批ID不能为空");
             }
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
 
             employeeApprovalService.withdrawApproval(approvalId, userId);
@@ -293,7 +295,7 @@ public class EmployeeApprovalController {
                 return Result.error("审批ID不能为空");
             }
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
 
             employeeApprovalService.urgeApproval(approvalId, userId);
@@ -321,7 +323,7 @@ public class EmployeeApprovalController {
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
         try {
             if (userId == null || userId.isEmpty()) {
-                return Result.error("用户ID不能为空");
+                return Result.error(ErrorCode.PARAM_ERROR.getCode(), "用户ID不能为空");
             }
 
             ApprovalStatsVO stats = employeeApprovalService.getMyApprovalStats(userId);

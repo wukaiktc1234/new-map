@@ -112,7 +112,11 @@ class CashRecon:
         elapsed = _t.monotonic() - getattr(self, "_t0", _t.monotonic())
         print("  [BEAT +%6.1fs] %s" % (elapsed, stage), flush=True)
         if getattr(self, "_max_seconds", None) and elapsed > self._max_seconds:
-            raise SystemExit("  [BEAT] 超过 --max-seconds=%s，主动中止（防止无限挂起）" % self._max_seconds)
+            # 退出码必须非 0：否则 CI 会把「超时中断」当成「跑完通过」
+            print("  [BEAT] 超过 --max-seconds=%s（超时于 stage=%s 之后 %.1fs），主动中止（防止无限挂起）"
+                  % (self._max_seconds, getattr(self, "_last_stage", "(unknown)"), elapsed),
+                  file=sys.stderr, flush=True)
+            raise SystemExit(3)
 
     def step(self, name, okk, detail, state=None):
         st = state or ("PASS" if okk else "FAIL")

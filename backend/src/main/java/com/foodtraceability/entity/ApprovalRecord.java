@@ -24,7 +24,7 @@ public class ApprovalRecord {
     @TableField("step_number")
     private Integer stepNumber;
     @Schema(description = "步骤名称（如：HR形式审查、直接主管实质审查）")
-    @TableField("step_name")
+    @TableField("step_number")
     private String stepName;
     @Schema(description = "审批类型：FORMAL-形式审查, SUBSTANTIVE-实质审查")
     @TableField("review_type")

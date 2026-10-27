@@ -3625,3 +3625,120 @@ PosOrderPaymentServiceImpl:956 return Result.error("订单不存在或交易号�
 [BEAT +   4.8s] login done
 ```
 以后再长跑，外部能直接看出「走到哪一段、卡在哪一段」。
+
+## 77. 形态②清单（841 处）+ 形态③修复 + 实体语义判定 + 心跳退出码（2026-10-27 23:20–23:35）
+
+### 77.1 形态②全量清单（`scripts/qa/result_error_string_audit.py`）
+
+判据：`Result.error("字面量")`（非 ErrorCode 重载）。报告：`docs/audit/result-error-string-audit.md`
+
+```
+合计 841 处，按语义分布：
+  不存在(404)      162   → 建议 ErrorCode.NOT_FOUND
+  参数(400)         69   → ErrorCode.PARAM_ERROR
+  状态非法(400)     44   → ErrorCode.PARAM_ERROR
+  未判定           566   → 需人工判定（多为「查询失败/操作失败」这类真失败，可保持 500）
+```
+**这个数字推翻了「只治 controller 101 处就够」的假设**：形态②是 841 处、命中面更广。
+首批按 Lead 要求只动 1 个文件（`AIModelConfigController`，5 处「不存在」语义）：
+```
+GET /v1/ai-model-config/code/NOT_EXIST → code=404（原 500）
+GET /v1/ai-model-config/999999         → code=404（原 500）
+```
+
+### 77.2 形态③（参数校验抛非业务异常）：先定位再改
+
+抛点：`PosOrderPaymentServiceImpl:950  return Result.error("交易号格式非法")` —— 不是 NumberFormatException，
+而是**入口校验自己写成了 `Result.error(String)`**（默认 500）。
+修法：入口校验直接给业务码 `Result.error(ErrorCode.PARAM_ERROR.getCode(), …)`（同文件 :943「交易号不能为空」一并改）。
+实测：`POST /v1/pos/orders/order/pay/confirm?qrTransactionId=NOT-EXIST` → **code=400 交易号格式非法**（原 500）。
+
+### 77.3 实体「错列涉业务语义」：判定表（未改）
+
+| 实体字段 | 实体声明列名 | 表实际列名 | 是否笔误 | 改是否影响业务语义 | 建议 |
+|----------|--------------|------------|----------|--------------------|------|
+| LeaveRequest.createdTime | created_time | **create_time** | 是（仅少个 d） | 否 | **已改** |
+| OvertimeRequest.createdTime | created_time | create_time | 是 | 否 | **已改** |
+| ReimbursementRequest.createdTime | created_time | create_time | 是 | 否 | **已改** |
+| ApprovalRecord.createTime | created_at | create_time | 可能（命名体系不同） | 否 | 待裁：同一实体还有 step_name |
+| ApprovalRecord.stepName | step_name | **step_number** | **否**（name vs number 是不同语义） | **是** | **不改** → 真缺陷（代码在用不存在的列） |
+| Promotion.promotionCode | promotion_code | **promotion_id** | **否** | **是** | **不改** → 真缺陷 |
+| Promotion.promotionName | promotion_name | promotion_id | **否** | **是** | **不改** → 真缺陷 |
+| LossOutbound.lossQuantity | loss_quantity | quantity | 否（语义收窄） | 是 | 不改 → 真缺陷 |
+| LossOutbound.lossDate | loss_date | loss_time | 否（date vs time） | 是 | 不改 → 真缺陷 |
+
+结论：只有「仅少/多个字母」的算笔误（已修 3 个实体 6 列，审计 171→165）；
+`step_name`/`promotion_code`/`loss_date` 这类**不是笔误**，是代码在用不存在的列 —— 记为真缺陷，等 Lead 按影响面决定「补列/改代码/确认死代码」。
+
+### 77.4 三个实体的接口级验证：**被无关 500 卡住（必须如实报）**
+
+为打这三个实体，需要走 `POST /v1/approvals`（leave/overtime/reimbursement 会 insert 对应表）。
+临时给 `vcashier01` 补 `ROLE_EMPLOYEE`（验后已撤回，user_roles 23 行不变），结果：
+```
+POST /v1/approvals {type:leave/overtime/reimbursement} → code=500「用户ID不能为空」
+```
+→ 又一处 500：**controller/service 取当前用户 ID 为空时直接 `Result.error(String)`**（形态②同类），
+与实体列名无关，但**挡住了这条验证路径**。已记入待修清单，未擅自改（不在本轮裁定的 3-5 文件内）。
+
+### 77.5 心跳超限退出码（Lead ⑤）
+
+`beat()` 超 `--max-seconds` 时：先 `print(..., file=sys.stderr)` 再 `raise SystemExit(3)` —— **退出码非 0**，
+避免 CI 把「超时中断」当「跑完通过」。
+
+## 78. 四项裁定执行（2026-10-27 23:20–23:35）
+
+### 78.1 形态②棘轮（841 只降不升）
+
+```
+scripts/qa/result-error-string-baseline.txt   基线 841（头注释写明：可操作 275，其余 566 暂不动）
+preflight.py: check_result_error_ratchet()    超基线 → [BLOCK] + EXIT=2
+实测：[GATE] 形态②棘轮通过：Result.error("字面量) = 828（基线 841，减少 13）
+```
+本轮形态②改动：`PosOrderPaymentServiceImpl` 3 处 + `AIModelConfigController` 5 处 + `PosOrderPaymentServiceImpl` 交易号 2 处 + `EmployeeApprovalController` 6 处 = **13 处**。
+
+### 78.2 「用户ID不能为空」必修项（Lead ②）→ 已修
+
+`EmployeeApprovalController` 6 处 `return Result.error("用户ID不能为空")` → `Result.error(ErrorCode.PARAM_ERROR.getCode(), …)`。
+实测：`POST /v1/approvals`（无 X-User-Id）→ **code=400**（原 500）。
+
+### 78.3 三个实体列名修复的接口级验证：**仍被两个真缺陷挡住（如实报）**
+
+为了验证 leave/overtime/reimbursement 三个实体，链路必须走 `POST /v1/approvals`：
+（临时补 `ROLE_EMPLOYEE` 给 vcashier01，验后已撤回，user_roles 23 行不变）
+
+```
+POST /v1/approvals {type:leave} → 500「null value in column "employee_id" of relation "leave_requests" violates not-null constraint」
+  失败行内容（节选）：(..., annual, 2026-11-01, 2026-11-02, 2.0, x, null, null, null, null, null, 2026-10-27 23:23:22.73844, ...)
+  ↑ 倒数第 5 个字段就是 create_time，**已经有值** → 证明本轮列名修复生效（旧写法这里会是 created_time 报错）
+POST /v1/approvals {type:reimbursement} → 400「审批表单数据格式错误：Unrecognized field "amount"」（我给的 formJson 字段名与该类型 DTO 不符）
+```
+
+**新发现（bug-⑬，P1）**：`EmployeeApprovalServiceImpl.saveLeaveDetail()` **从不设置 `employeeId`**
+（全目录 grep `setEmployeeId` = 0 处），而 `leave_requests.employee_id` 是 NOT NULL → 任何请假审批提交都会 500。
+这不是列名问题，是漏赋值。overtime/reimbursement 同理需要核对各自的 `employee_id` 赋值。
+
+**结论**：三个实体的列名修复**编译通过 + SQL 层已生效（失败行里 create_time 有值）**，
+但**没有 200 落库证据** —— 按 Lead 标准「只改列名不验证等于没改」，这条我不算达标，明确上报。
+
+### 78.4 语义判定后的实体改动（Lead ③）
+
+| 原判定 | 裁定 | 实际改动 |
+|--------|------|----------|
+| `ApprovalRecord.step_name ↔ step_number` | 语义相同 → 改代码 | `@TableField("step_number")` |
+| `LossOutbound.loss_quantity ↔ quantity` | 语义相同 → 改代码 | `@TableField("quantity")` |
+| `LossOutbound.loss_date ↔ loss_time` | 语义相同 → 改代码 | `@TableField("loss_time")` |
+| `Promotion.promotion_code ↔ promotion_id` | 语义不同 → 不改，报清单 | 未改（见下） |
+
+实体审计：171 → 165（+3 实体）→ 现 **162** 处不一致（本轮 3 处语义列已对齐真实列）。
+
+**Promotion.promotionCode 的调用面（供 Lead 定影响）**：`Promotion` 实体共 132 处引用 / 17 个文件，
+其中 mapper/serviceImpl 命中 49 处；典型读写：`PromotionServiceImpl`（按 promotionCode 查/判重）、`PromotionController`（按 code 查询详情）。
+要修必须二选一：① 给 `promotion` 表补 `promotion_code` 列（写迁移）；② 改接口契约把 code 换成 id（前端要跟着改）。
+
+### 78.5 心跳超时日志带 stage（Lead ④）
+
+```
+beat() 记录 self._last_stage；超 --max-seconds 时打印：
+  [BEAT] 超过 --max-seconds=1800（超时于 stage=section_confirm 之后 1802.3s），主动中止
+  并以 SystemExit(3) 退出
+```

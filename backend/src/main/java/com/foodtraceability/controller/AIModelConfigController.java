@@ -1,5 +1,7 @@
 package com.foodtraceability.controller;
 
+
+import com.foodtraceability.common.exception.ErrorCode;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.aimodel.AIModelConfigCreateDTO;
 import com.foodtraceability.dto.aimodel.AIModelConfigQueryDTO;
@@ -72,7 +74,7 @@ public class AIModelConfigController {
         log.info("根据业务编码查询 AI 模型配置: modelCode={}", modelCode);
         AIModelConfigVO vo = aiModelConfigService.getByCode(modelCode);
         if (vo == null) {
-            return Result.error("AI 模型配置不存在: " + modelCode);
+            return Result.error(ErrorCode.NOT_FOUND.getCode(), "AI 模型配置不存在: " + modelCode);
         }
         return Result.success(vo);
     }
@@ -85,7 +87,7 @@ public class AIModelConfigController {
         log.info("根据ID查询 AI 模型配置: id={}", id);
         AIModelConfigVO vo = aiModelConfigService.getById(id);
         if (vo == null) {
-            return Result.error("AI 模型配置不存在: id=" + id);
+            return Result.error(ErrorCode.NOT_FOUND.getCode(), "AI 模型配置不存在: id=" + id);
         }
         return Result.success(vo);
     }
@@ -130,7 +132,7 @@ public class AIModelConfigController {
         log.info("更新 AI 模型状态: id={}, status={}", id, status);
         try {
             boolean ok = aiModelConfigService.updateStatus(id, status);
-            return ok ? Result.success(null) : Result.error("更新状态失败：模型不存在或状态无效");
+            return ok ? Result.success(null) : Result.error(ErrorCode.NOT_FOUND.getCode(), "更新状态失败：模型不存在或状态无效");
         } catch (Exception e) {
             log.error("更新 AI 模型状态失败: {}", e.getMessage());
             return Result.error(e.getMessage());
@@ -145,7 +147,7 @@ public class AIModelConfigController {
         log.info("触发 AI 模型同步: id={}", id);
         try {
             boolean ok = aiModelConfigService.syncModel(id);
-            return ok ? Result.success(null) : Result.error("同步失败：模型不存在");
+            return ok ? Result.success(null) : Result.error(ErrorCode.NOT_FOUND.getCode(), "同步失败：模型不存在");
         } catch (Exception e) {
             log.error("触发 AI 模型同步失败: {}", e.getMessage());
             return Result.error(e.getMessage());
@@ -182,7 +184,7 @@ public class AIModelConfigController {
         log.info("删除 AI 模型配置: id={}", id);
         try {
             boolean ok = aiModelConfigService.delete(id);
-            return ok ? Result.success(null) : Result.error("删除失败：模型不存在");
+            return ok ? Result.success(null) : Result.error(ErrorCode.NOT_FOUND.getCode(), "删除失败：模型不存在");
         } catch (Exception e) {
             log.error("删除 AI 模型配置失败: {}", e.getMessage());
             return Result.error(e.getMessage());

@@ -274,6 +274,42 @@ def check_clean_db_migration():
     return 0
 
 
+RESULT_ERROR_BASELINE = ROOT / "scripts" / "qa" / "result-error-string-baseline.txt"
+RESULT_ERROR_PATTERN = 'Result.error("'
+
+
+def check_result_error_ratchet():
+    """棘轮（bug-⑫ 形态②）：Result.error("字面量") 只降不升。返回 0=通过，2=阻断。"""
+    current = 0
+    for path in sorted(JAVA_SRC.rglob("*.java")):
+        try:
+            current += path.read_text(encoding="utf-8", errors="replace").count(RESULT_ERROR_PATTERN)
+        except OSError:
+            continue
+    base = None
+    if RESULT_ERROR_BASELINE.exists():
+        for line in reversed(RESULT_ERROR_BASELINE.read_text(encoding="utf-8-sig", errors="replace").splitlines()):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                base = int(line)
+            except ValueError:
+                base = None
+            break
+    if base is None:
+        print("[WARN] 形态②棘轮基线缺失或不可解析：%s（按不阻断处理）" % RESULT_ERROR_BASELINE)
+        return 0
+    delta = current - base
+    if delta > 0:
+        print("[BLOCK] 形态②棘轮失败：Result.error(\"字面量) 由基线 %d 增加到 %d（+%d）" % (base, current, delta))
+        print("        业务语义请用 Result.error(ErrorCode.X.getCode(), msg)")
+        return 2
+    print("[GATE] 形态②棘轮通过：Result.error(\"字面量) = %d（基线 %d，%s）"
+          % (current, base, "减少 %d" % (-delta) if delta < 0 else "持平"))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -287,6 +323,7 @@ def main():
     print("=" * 86)
 
     ratchet_rc = check_runtime_exception_ratchet()
+    result_error_rc = check_result_error_ratchet()
 
     warn = False
     compile_rc = 0
@@ -335,6 +372,9 @@ def main():
         return 2
     if ratchet_rc != 0:
         print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
+        return 2
+    if result_error_rc != 0:
+        print("[RESULT] BLOCKED：Result.error(字面量) 棘轮上升 → exit 2")
         return 2
     if clean_db_rc != 0:
         print("[RESULT] BLOCKED：干净库迁移 gate 未通过 → exit 2")
