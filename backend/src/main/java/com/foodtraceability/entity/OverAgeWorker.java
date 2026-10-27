@@ -82,8 +82,11 @@ public class OverAgeWorker implements Serializable {
     private String healthCheckResult;
 
     /**
-     * 限制岗位（JSON数组字符串存储）
+     * 限制岗位（数据库列 jsonb，Java 侧为 JSON 文本）
+     * <p>必须带 typeHandler：否则 PG 报「column is of type jsonb but expression is of type character varying」。
      */
+    @com.baomidou.mybatisplus.annotation.TableField(value = "restricted_positions",
+            typeHandler = com.foodtraceability.common.mybatis.JsonbStringTypeHandler.class)
     private String restrictedPositions;
 
     /**

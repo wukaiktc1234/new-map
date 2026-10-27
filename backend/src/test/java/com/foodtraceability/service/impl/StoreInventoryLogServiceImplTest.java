@@ -199,17 +199,17 @@ class StoreInventoryLogServiceImplTest {
     @DisplayName("getLogPage：管理员保留入参 storeId（不收敛）")
     void getLogPage_adminKeepsRequestedStore() {
         Page<StoreInventoryLog> page = new Page<>(1, 10);
-        when(storeInventoryLogMapper.selectLogPage(page, "999", 100L, 1)).thenReturn(page);
+        when(storeInventoryLogMapper.selectLogPage(page, "999", null, 100L, 1)).thenReturn(page);
 
         try (MockedStatic<SecurityUtils> mocked = Mockito.mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::isAdmin).thenReturn(true);
             mocked.when(SecurityUtils::hasStorePermission).thenReturn(true);
             mocked.when(SecurityUtils::getCurrentUserStoreId).thenReturn("576");
 
-            IPage<StoreInventoryLog> result = service.getLogPage(page, "999", 100L, 1);
+            IPage<StoreInventoryLog> result = service.getLogPage(page, "999", null, 100L, 1);
 
             assertSame(page, result);
-            verify(storeInventoryLogMapper).selectLogPage(page, "999", 100L, 1);
+            verify(storeInventoryLogMapper).selectLogPage(page, "999", null, 100L, 1);
         }
     }
 
@@ -217,16 +217,16 @@ class StoreInventoryLogServiceImplTest {
     @DisplayName("getLogPage：非管理员且有门店权限时强制收敛到本人门店")
     void getLogPage_nonAdminForcedToOwnStore() {
         Page<StoreInventoryLog> page = new Page<>(1, 10);
-        when(storeInventoryLogMapper.selectLogPage(page, "576", null, null)).thenReturn(page);
+        when(storeInventoryLogMapper.selectLogPage(page, "576", null, null, null)).thenReturn(page);
 
         try (MockedStatic<SecurityUtils> mocked = Mockito.mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::isAdmin).thenReturn(false);
             mocked.when(SecurityUtils::hasStorePermission).thenReturn(true);
             mocked.when(SecurityUtils::getCurrentUserStoreId).thenReturn("576");
 
-            service.getLogPage(page, "999", null, null);
+            service.getLogPage(page, "999", null, null, null);
 
-            verify(storeInventoryLogMapper).selectLogPage(page, "576", null, null);
+            verify(storeInventoryLogMapper).selectLogPage(page, "576", null, null, null);
         }
     }
 
@@ -234,15 +234,15 @@ class StoreInventoryLogServiceImplTest {
     @DisplayName("getLogPage：无门店权限时保留入参（由上游鉴权兜底）")
     void getLogPage_noStorePermissionKeepsRequestedStore() {
         Page<StoreInventoryLog> page = new Page<>(1, 10);
-        when(storeInventoryLogMapper.selectLogPage(page, "999", 100L, null)).thenReturn(page);
+        when(storeInventoryLogMapper.selectLogPage(page, "999", null, 100L, null)).thenReturn(page);
 
         try (MockedStatic<SecurityUtils> mocked = Mockito.mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::isAdmin).thenReturn(false);
             mocked.when(SecurityUtils::hasStorePermission).thenReturn(false);
 
-            service.getLogPage(page, "999", 100L, null);
+            service.getLogPage(page, "999", null, 100L, null);
 
-            verify(storeInventoryLogMapper).selectLogPage(page, "999", 100L, null);
+            verify(storeInventoryLogMapper).selectLogPage(page, "999", null, 100L, null);
         }
     }
 

@@ -45,7 +45,7 @@ public class OverAgeWorkerController {
     @Operation(summary = "分页查询超龄劳动者列表")
     // P0-unfinished: over_age_worker 两边均无表，见 docs/audit/broken-endpoints-prod.md
     @GetMapping("/page")
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<Page<OverAgeWorkerVO>> page(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size,
@@ -64,7 +64,7 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "获取超龄劳动者详情")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<OverAgeWorkerVO> getById(@PathVariable Long id) {
         OverAgeWorker entity = overAgeWorkerService.getById(id);
         if (entity == null) {
@@ -80,7 +80,7 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "创建超龄劳动者记录")
     @PostMapping
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<OverAgeWorkerVO> create(@Valid @RequestBody OverAgeWorkerCreateDTO createDTO) {
         OverAgeWorker entity = new OverAgeWorker();
         entity.setEmployeeId(createDTO.getEmployeeId());
@@ -109,7 +109,7 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "更新超龄劳动者记录")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<OverAgeWorkerVO> update(@PathVariable Long id, @RequestBody OverAgeWorkerUpdateDTO updateDTO) {
         OverAgeWorker existing = overAgeWorkerService.getById(id);
         if (existing == null) {
@@ -142,7 +142,7 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "删除超龄劳动者记录")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<String> delete(@PathVariable Long id) {
         boolean result = overAgeWorkerService.delete(id);
         return result ? Result.success("删除成功") : Result.error("删除失败，记录不存在");
@@ -154,7 +154,7 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "获取合规预警列表")
     @GetMapping("/compliance-warnings")
-    @PreAuthorize("hasAuthority('*')")
+    @PreAuthorize("hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')")
     public Result<List<OverAgeWorkerVO>> getComplianceWarnings() {
         List<OverAgeWorker> warnings = overAgeWorkerService.getComplianceWarnings();
         List<OverAgeWorkerVO> voList = warnings.stream().map(this::convertToVO).collect(Collectors.toList());

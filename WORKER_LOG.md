@@ -4337,3 +4337,22 @@ SQL 真实条数 location_id=4 → 33   ｜ API locationId=4 → total=0   ← �
 API storeId=STORE_A（兼容）→ total=109 ✔ 与 locationId=1 一致
 ```
 → 详情页可以用「库存行.locationId」直接拉同库位流水，不再跨门店。
+
+## 92. 更正：财务总账 0.00 的真实原因（2026-10-28 03:45，Lead 撤回其结论、我同步更正）
+
+**我上轮在方案文档里写的**「前端在调 4 个不存在的接口（general-ledger / accounts / reports-trial-balance / overview-summary）」
+—— **这条结论错误，已撤回**。
+
+证据（pos-ux 实测 grep，含 8 个前端目录）：
+```
+general-ledger / reports-trial-balance / overview-summary / finance-accounts → 前端 **0 命中**
+真实总账页 frontend/src/views/finance/FinanceLedger.vue 调用的是 /v1/finance/vouchers（**该接口存在**）
+```
+我只验证了「这 4 个 URL 后端 404」这一点（那部分是真的），但**没有验证前端是否真的调它们**就下了结论。
+这是同一个错误的第二次：**用「我构造的请求 404」推断「前端在调它」**，中间缺了前端 grep 这一步。
+
+**真实原因（待前端确认）**：`formatAmount(null)` / `formatYuan(undefined)` 这类**兜底渲染**把空值画成 0.00。
+定位动作：在前端 `formatAmount` 里打日志或断点，看传入值到底是 null 还是 0 —— 若是 null，属**展示兜底**而非数据错误。
+
+**教训**：跨层结论（前端在某处调某接口）必须**两层都取证**：后端 404 只证明接口不存在，不证明调用方；
+前端 grep 只证明引用，不证明运行时真的发请求。缺任一层都不能下结论。

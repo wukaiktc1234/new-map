@@ -182,7 +182,9 @@ class CashRecon:
         """
         def _create(key):
             dish = self.pick_dish_for_fen(1000) if hasattr(self, "pick_dish_for_fen") else None
-            item = {"productId": "1", "productName": "生菜串", "quantity": 1,
+            # bug-③ 根因（2026-10-28 实测）：下单 dish 映射键是 food_code（如 FD202608010001）；旧夹具传 productId="1"
+            #   → 后端返回 400「菜品[1]映射失败: food_code 不存在，拒绝下单」。属**夹具过期**，非产品缺陷。
+            item = {"foodId": "FD202608010001", "foodName": "生菜串", "quantity": 1,
                     "price": 80.0, "dishType": "single"}
             st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
                          {"orderType": "dinein", "items": [item], "idempotencyKey": key})
