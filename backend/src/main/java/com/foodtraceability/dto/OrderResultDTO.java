@@ -9,6 +9,9 @@ import java.util.List;
  */
 @Schema(description = "POS订单创建结果DTO")
 public class OrderResultDTO {
+    /** 重复提交命中：true 表示本次未新建订单，返回的是首次创建的订单 */
+    private Boolean reused;
+
     @Schema(description = "订单ID")
     private String orderId;
     @Schema(description = "订单编号")
@@ -355,4 +358,7 @@ public class OrderResultDTO {
     public java.lang.String toString() {
         return "OrderResultDTO(orderId=" + this.getOrderId() + ", orderNumber=" + this.getOrderNumber() + ", pickupNumber=" + this.getPickupNumber() + ", pickupCode=" + this.getPickupCode() + ", status=" + this.getStatus() + ", message=" + this.getMessage() + ", orderType=" + this.getOrderType() + ", tableNumber=" + this.getTableNumber() + ", totalAmount=" + this.getTotalAmount() + ", createTime=" + this.getCreateTime() + ", orderItems=" + this.getOrderItems() + ")";
     }
+
+    public Boolean getReused() { return reused; }
+    public void setReused(Boolean reused) { this.reused = reused; }
 }

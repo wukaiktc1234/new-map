@@ -29,6 +29,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import sys
 import time
 import urllib.error
@@ -122,6 +123,68 @@ class CashRecon:
     def num(self, sql):
         v = self.psql(sql).strip()
         return int(v) if v.lstrip("-").isdigit() else 0
+
+
+    # ---------- bug-③ 幂等键（判定：同 key 重放返回同一单；并发同 key 只建一单） ----------
+    def check_order_idempotency(self):
+        """bug-③ 落地断言：同一 idempotencyKey 重放 → 200/code=0 且同一 orderId，orders 不增行；
+        并发同 key → 恰好建一单、另一请求返回同一单（不是 500）。
+        为什么放在本脚本：本脚本是唯一「走 POS 下单 → 支付 → 退款」全链的套件，
+        idempotencyKey 就在这里生成（next_idem），幂等语义必须与下单路径同源验证。
+        """
+        def _create(key):
+            dish = self.pick_dish_for_fen(1000) if hasattr(self, "pick_dish_for_fen") else None
+            item = {"productId": "1", "productName": "生菜串", "quantity": 1,
+                    "price": 80.0, "dishType": "single"}
+            st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
+                         {"orderType": "dinein", "items": [item], "idempotencyKey": key})
+            return st, b, (data_of(b) or {})
+
+        # ① 同 key 连发两次
+        k1 = self.next_idem()
+        before = self.num("SELECT count(*) FROM orders")
+        s1, b1, d1 = _create(k1)
+        mid = self.num("SELECT count(*) FROM orders")
+        s2, b2, d2 = _create(k1)
+        after = self.num("SELECT count(*) FROM orders")
+        same = bool(d1.get("orderId")) and d1.get("orderId") == d2.get("orderId") \
+            and d1.get("orderNumber") == d2.get("orderNumber")
+        self.step("bug-③ ① 同 key 重放返回同一单（key=%s）" % k1,
+                  ok(b1) and ok(b2) and same and after == mid and int(d2.get("reused") or 0) == 1,
+                  "第1次 code=%s id=%s ｜ 第2次 code=%s id=%s reused=%s ｜ orders %d→%d→%d"
+                  % ((b1 or {}).get("code"), d1.get("orderId"), (b2 or {}).get("code"),
+                     d2.get("orderId"), d2.get("reused"), before, mid, after))
+
+        # ② 换 key 必须新建（防止「无脑返回上一单」）
+        k2 = self.next_idem()
+        s3, b3, d3 = _create(k2)
+        self.step("bug-③ ② 换 key 新建订单（key=%s）" % k2,
+                  ok(b3) and bool(d3.get("orderId")) and d3.get("orderId") != d1.get("orderId"),
+                  "code=%s id=%s（原单 %s）" % ((b3 or {}).get("code"), d3.get("orderId"), d1.get("orderId")))
+
+        # ③ 并发同 key
+        k3 = self.next_idem()
+        before2 = self.num("SELECT count(*) FROM orders")
+        res = {}
+
+        def _worker(i):
+            res[i] = _create(k3)
+
+        ts = [threading.Thread(target=_worker, args=(i,)) for i in (1, 2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        ids = {(res.get(i, (0, {}, {}))[2] or {}).get("orderId") for i in (1, 2)}
+        codes = [(res.get(i, (0, {}, {}))[1] or {}).get("code") for i in (1, 2)]
+        after2 = self.num("SELECT count(*) FROM orders")
+        key_rows = self.num("SELECT count(*) FROM orders WHERE idempotency_key='%s'" % k3)
+        self.step("bug-③ ③ 并发同 key 只建一单（key=%s）" % k3,
+                  len(ids) == 1 and None not in ids and 500 not in codes
+                  and after2 - before2 == 1 and key_rows == 1,
+                  "codes=%s ｜ orderId=%s ｜ orders %d→%d ｜ 该 key 行数=%d"
+                  % (codes, list(ids)[0] if ids else None, before2, after2, key_rows))
+        return d1
 
     # ---------- 登录 ----------
     def login(self):
@@ -640,6 +703,8 @@ class CashRecon:
             self.not_ready("AC-58 班次内夹具", "无法开班（POS /v1/pos/auth/shift/start 失败）")
         else:
             self.section_in_shift(i_shift, boundary_min)
+        # bug-③：幂等键语义（同 key 重放 / 换 key 新建 / 并发同 key）
+        self.check_order_idempotency()
         self.section_confirm()
         self.section_idempotent_and_change()
         self.section_forbidden()

@@ -220,6 +220,10 @@ public class OrderNew {
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
 
+    /** 幂等键：同一 key 重复提交返回同一订单（唯一部分索引 uk_orders_idempotency_key） */
+    @TableField("idempotency_key")
+    private String idempotencyKey;
+
     /** 逻辑删除标记 */
     @TableLogic
     @TableField("deleted")
@@ -227,6 +231,8 @@ public class OrderNew {
     private Integer deleted;
 
     // Getter方法
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public String getOrderId() { return orderId; }
     public String getOrderCode() { return orderCode; }
     public String getOrderNumber() { return orderNumber; }

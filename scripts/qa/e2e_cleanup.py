@@ -12,10 +12,10 @@
     · order_refund_records.refund_reason / refund_shift_attribution.reason / 关班 remark = 前缀 [E2E:<tag>]
     · deposit_slips            = 经 shift_id 关联（generate 未传 remark，无独立 tag）
 
-⚠ **已知后端缺陷（bug-③）**：POS 下单接口**不落** orders.idempotency_key（实测库内 NULL），
-   所以 "E2E-<tag>-<n>" 目前只是传参标记，**不能**当 orders 的定位依据；
-   本脚本因此用「带 tag 的退款记录 → order_id」反查（两套件每单必经退款），
-   幂等键条件保留，等 bug-③ 修好后自动生效。
+✅ **bug-③ 已修（2026-10-27）**：POS 下单接口现在**落库** orders.idempotency_key（PosOrderCreateServiceImpl），
+   并有唯一部分索引 uk_orders_idempotency_key（WHERE idempotency_key IS NOT NULL）。
+   ⇒ "E2E-<tag>-<n>" 现在是**可靠的 orders 定位锚点**，本脚本可直接按它清理；
+   退款记录反查作为兼容旧数据（修复前下的单，key 为 NULL）的兜底路径保留。
 
 ⚠ **fund_flows.remark 由后端生成**（PosRefundFlowRecorder:132 "POS退款：退款单#… [POS]"），
    **不含 tag** → 流水只能经 order_id / refund_record_id 外键定位，**绝不能按 remark 找**，

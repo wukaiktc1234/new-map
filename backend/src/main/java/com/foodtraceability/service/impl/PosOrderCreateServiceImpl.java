@@ -208,6 +208,28 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * @param command 统一订单创建命令（金额单位：元，canonical 内部转分）
      * @return 订单创建结果
      */
+    /** 按幂等键查既有订单（partial unique index 只对非 NULL 生效，查不到返回 null） */
+    private OrderNew findOrderByIdempotencyKey(String idempotencyKey) {
+        List<OrderNew> found = orderNewMapper.selectList(new LambdaQueryWrapper<OrderNew>()
+                .eq(OrderNew::getIdempotencyKey, idempotencyKey)
+                .eq(OrderNew::getDeleted, 0)
+                .orderByAsc(OrderNew::getOrderId)
+                .last("LIMIT 1"));
+        return found == null || found.isEmpty() ? null : found.get(0);
+    }
+
+    /** 重复提交的返回体：与首次创建同形，reused=true 便于客户端识别 */
+    private OrderResultDTO buildReplayResult(OrderNew existing) {
+        OrderResultDTO dto = new OrderResultDTO();
+        dto.setOrderId(String.valueOf(existing.getOrderId()));
+        dto.setOrderNumber(existing.getOrderNumber());
+        dto.setStatus(existing.getOrderStatus() == null ? null : String.valueOf(existing.getOrderStatus()));
+        dto.setMessage("重复提交：返回首次创建的订单（幂等命中）");
+        dto.setOrderSource(existing.getOrderSource());
+        dto.setReused(Boolean.TRUE);
+        return dto;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public Result<OrderResultDTO> createCanonicalOrder(CanonicalOrderCommand command) {
         log.info("开始创建统一订单, orderType={}, items={}", command.getOrderType(),
@@ -222,10 +244,16 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 return Result.error(validationResult.getMessage());
             }
 
-            // 2. 幂等性检查（W1-EC-01: orders 表无 idempotencyKey 字段，暂跳过；依赖前端防重复提交）
-            // TODO: 后续考虑在 orders 表增加 idempotency_key 列或使用 Redis 幂等键
-            if (command.getIdempotencyKey() != null && !command.getIdempotencyKey().isEmpty()) {
-                log.info("幂等性键已提供（orders 表暂不支持，跳过检查）: idempotencyKey={}", command.getIdempotencyKey());
+            // 2. 幂等性检查（bug-③）：同一 idempotencyKey 第二次提交 → 返回第一次创建的同一订单
+            //    语义（Owner 裁定）：HTTP 200 + code=0 + 同一 orderId/orderNumber，非 409（重复提交是正常重试）
+            final String idempotencyKey = command.getIdempotencyKey() == null ? null : command.getIdempotencyKey().trim();
+            if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+                OrderNew replayed = findOrderByIdempotencyKey(idempotencyKey);
+                if (replayed != null) {
+                    log.info("[METRIC] order_idempotent_replay idempotencyKey={} orderId={} orderNumber={}",
+                            idempotencyKey, replayed.getOrderId(), replayed.getOrderNumber());
+                    return Result.success(buildReplayResult(replayed));
+                }
             }
 
             // 3. 库存预检（批量查询避免 N+1）
@@ -373,7 +401,24 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             orderNew.setCreateTime(LocalDateTime.now());
             orderNew.setUpdateTime(LocalDateTime.now());
             orderNew.setDeleted(0);
-            orderNewMapper.insert(orderNew);
+            // bug-③：幂等键随订单在同一事务落库（有值才写），唯一部分索引 uk_orders_idempotency_key 兜底并发
+            if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+                orderNew.setIdempotencyKey(idempotencyKey);
+            }
+            try {
+                orderNewMapper.insert(orderNew);
+            } catch (org.springframework.dao.DuplicateKeyException duplicateKeyException) {
+                // 并发双创建：另一请求已用同一 key 落库 → 回查并返回它的订单（不是 500）
+                if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+                    OrderNew concurrent = findOrderByIdempotencyKey(idempotencyKey);
+                    if (concurrent != null) {
+                        log.info("[METRIC] order_idempotent_replay_concurrent idempotencyKey={} orderId={} orderNumber={}",
+                                idempotencyKey, concurrent.getOrderId(), concurrent.getOrderNumber());
+                        return Result.success(buildReplayResult(concurrent));
+                    }
+                }
+                throw duplicateKeyException;
+            }
 
             // 10.5 生成 POS 叫号号（独立号段：门店 + 自然日 + 类型前缀，每天从 1 自增，跨天重置）
             //      入口刻意放在状态机之外：本服务是 POS 下单收尾方法，只追加叫号号字段，不改订单状态。
