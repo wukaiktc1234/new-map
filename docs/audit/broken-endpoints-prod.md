@@ -122,3 +122,17 @@ GET  /v1/contracts/list            → {"code":403,"message":"权限不足"}    
 | `/v1/finance/*` | 1 | 财务后台（budgets） |
 | `/v1/hr/*` | 2 | HR 后台（contract-template 等） |
 | `/v1/product-center/*`、`/v1/device-management/*`、`/v1/files/*`、`/v1/inventory/*`、`/v1/weighing/*` 等 | 30 | 后台/设备侧 |
+
+## 已修复（2026-10-28，反推建表后）
+
+| 表 | 接口 | 状态 | 说明 |
+|----|------|------|------|
+| `coupon` | `POST /v1/pos/coupons/verify` | **已修复** | V20261028_004 建表；实测 200 code=0（空表返回 valid:false「请输入券码」） |
+| `budget` | `GET /v1/finance/budgets` | **已修复** | V20261028_004 建表；实测 200 code=0 空分页 |
+| `contract_template` | `GET /v1/hr/contract-template/*` | **已修复（表）/ 权限已补** | V20261028_004 建表 + V20261028_005 补 `hr:contract-template:view/manage` 权限并绑 hr_director/admin/owner；表 count(*)=0 正常 |
+
+> 这三张由**实体反推**生成（生产库原无结构），字段以实体为准；业务需录入数据后才有内容，空表返回空结构属正常。
+
+## 维护提示
+
+本清单里凡标注「已修复」的行**遇到即删**，不要留过时结论；剩余仍为 501 的 25 条等产品逐条定「做 or 下线」。

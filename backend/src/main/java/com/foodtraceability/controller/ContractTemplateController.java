@@ -1,6 +1,5 @@
 package com.foodtraceability.controller;
 
-import com.foodtraceability.common.annotation.UnfinishedFeature;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -49,8 +48,6 @@ public class ContractTemplateController {
         return Result.success(template);
     }
 
-    // P0-unfinished: contract_template 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "contract_template")
     @PutMapping("/{id}")
     @Operation(summary = "更新合同模板")
     @PreAuthorize("hasAuthority('hr:contract-template:manage') or hasAuthority('*')")

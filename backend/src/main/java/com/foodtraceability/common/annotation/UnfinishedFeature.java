@@ -12,6 +12,8 @@ import java.lang.annotation.Target;
  * <p>由 UnfinishedFeatureInterceptor 在进入业务前短路，直接返回 code=501 + 文案；
  * 不改 SQL、不补表、不删代码；功能上线后删掉注解即可恢复。</p>
  *
+ * <p><b>恢复方式：删掉本注解即恢复原逻辑</b>（门禁只做入口短路，不改 SQL、不补表、不删代码）。</p>
+ *
  * <p>登记来源：scripts/qa/unfinished-features-registry.txt；明细 docs/audit/broken-endpoints-prod.md。</p>
  */
 @Repeatable(UnfinishedFeatures.class)

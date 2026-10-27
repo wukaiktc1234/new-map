@@ -57,7 +57,7 @@ public class FinancePeriodController {
 
     @Operation(summary = "反结账（仅财务总监；只允许最后一个已结账期间）")
     @PostMapping("/{periodCode}/reopen")
-    @PreAuthorize("hasAuthority('finance:bank:view') and hasAnyAuthority('ROLE_FINANCE_DIRECTOR','ROLE_finance_director')")
+    @PreAuthorize("hasAuthority('finance:bank:view') and hasAnyAuthority('ROLE_FINANCE_DIRECTOR')  /* A46：原写法含 'ROLE_finance_director' 大小写错误码，已删（roles 表只有 ROLE_FINANCE_DIRECTOR） */")
     public Result<FinancePeriodVO> reopen(@PathVariable String periodCode,
                                           @RequestBody(required = false) Map<String, String> body) {
         return Result.success(financePeriodService.reopen(periodCode, body == null ? null : body.get("reason")));
