@@ -52,3 +52,27 @@
 - 其余 **23 张生产库不存在** → 无历史数据，可进入删除流程（仍需满足前置条件）；
 - 其中 **4 张 `sys_*`** 属「已被现役表取代」，不按删除处理，等映射决策；
 - `travel_requests` 需产品确认：出差审批当前存 form_json，是否需要独立明细表。
+
+---
+
+## 确认不删（有活引用）—— 2026-10-28 复核
+
+以下三张曾被本清单列为候选删除，经 grep 全仓复核**存在活引用**，撤回删除建议。
+
+| 表 | 活引用（文件:行） | 用途 | 若要删的前置条件 |
+|----|------------------|------|------------------|
+| `dish_ingredient` | `FoodTraceabilityServiceImpl:599-613`（按 ingredient_id 反查 dish_id）；`DishIngredientMapper:26/35/44` 三条 @Select | **召回影响面反查**：原料 → 用到它的菜品 → 受影响订单/批次 | 召回链路改造（改为直接从 order_items/recipe 反查），否则召回范围会算不全 |
+| `role_departments` | `DataPermissionServiceImpl:546`；`SystemInitServiceImpl:333/343`；`RoleDepartmentMapper:24/32/47/58` | **数据权限**：角色可见部门范围 | 数据权限换实现（如改用 roles.data_scope 字段），否则权限范围失效 |
+| `role_stores` | `DataPermissionServiceImpl:517`；`SystemInitServiceImpl:318/328`；`RoleStoreMapper:24/32/47/58`；调用方 5 处（OperationsDashboard:241 / LiveMonitor:280 / DecisionBoard:352 / OperationsReport:64 / PurchaseRequest:550） | **数据权限**：角色可见门店范围 | 同上；删了会「看到全部门店」 |
+
+**判定原则**：删代码的收益是「少几张表」，代价是「召回算不全 / 数据权限失效」，**收益远小于代价**。
+
+## 误标注解移除记录（自动打标翻车）
+
+| 日期 | 位置 | 误标的表 | 实际查的表 | 处置 |
+|------|------|----------|------------|------|
+| 2026-10-28 | `/store-inventory/stores` | inventory_log / store_inventory_log / v_inventory_summary | `stores`（存在） | 移除 3 条注解，实测 200 |
+| 2026-10-28 | `/store-inventory/summary` | v_inventory_summary | 自写 SQL 查真实表 | 移除，实测 200 有数据 |
+| 2026-10-28 | `/contracts/list` | contract_document | `employee_labor_contract` | 移除，403（权限）而非 501 |
+| 2026-10-28 | `/salary/records` | salary_adjustment / salary_rule | `salary_record` | 移除 2 条，保留 salary_record |
+| 2026-10-28 | `/operation-logs` | operation_logs | **`sys_operation_logs`（生产库已存在！）** | 移除，实测 200 |

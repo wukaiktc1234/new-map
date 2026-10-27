@@ -20,8 +20,6 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/v1/operation-logs")
 @Tag(name = "操作日志管理", description = "系统操作日志查询与管理")
-// P0-unfinished: operation_logs 两边均无表，见 docs/audit/broken-endpoints-prod.md
-@UnfinishedFeature(table = "operation_logs")
 public class OperationLogController {
 
     private final OperationLogService operationLogService;

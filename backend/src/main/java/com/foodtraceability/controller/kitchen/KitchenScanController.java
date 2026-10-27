@@ -50,8 +50,6 @@ public class KitchenScanController {
     /** POS 叫号号服务：出餐叫号记录必须带 A001 式叫号号，叫号屏才不用播订单号 */
     private final com.foodtraceability.service.PosCallNumberService posCallNumberService;
 
-    // P0-unfinished: material_usage_record 两边均无表；该入口经 KitchenScanServiceImpl.recordUsageAndUpdateRequirement 写该表
-    @UnfinishedFeature(table = "material_usage_record")
     @PostMapping("")
     @Operation(summary = "扫描追溯码")
     public Result<ScanMatchResultDTO> scanTraceCode(@RequestParam String traceCode, @RequestParam(required = false) String operatorId, @RequestParam(required = false) String operatorName) {
@@ -65,8 +63,6 @@ public class KitchenScanController {
         }
     }
 
-    // P0-unfinished: 同上（scanAndMatchWithQuantity 同样写 material_usage_record）
-    @UnfinishedFeature(table = "material_usage_record")
     @PostMapping("/scan-with-quantity")
     @Operation(summary = "扫描追溯码并指定使用数量")
     public Result<ScanMatchResultDTO> scanTraceCodeWithQuantity(@RequestParam String traceCode, @RequestParam java.math.BigDecimal quantity, @RequestParam(required = false) String operatorId, @RequestParam(required = false) String operatorName) {
@@ -201,8 +197,6 @@ public class KitchenScanController {
         return Result.success(result);
     }
 
-    // P0-unfinished: material_usage_record 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "material_usage_record")
     @GetMapping("/usage-records/{kitchenOrderId}")
     @Operation(summary = "获取订单的原料使用记录")
     public Result<List<MaterialUsageRecord>> getUsageRecords(@PathVariable String kitchenOrderId) {
