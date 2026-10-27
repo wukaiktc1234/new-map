@@ -8,5 +8,5 @@ public interface StoreInventoryLogService {
 
     StoreInventoryLog createLog(StoreInventoryLog log);
 
-    IPage<StoreInventoryLog> getLogPage(Page<StoreInventoryLog> page, String storeId, Long productId, Integer type);
+    IPage<StoreInventoryLog> getLogPage(Page<StoreInventoryLog> page, String storeId, Long locationId, Long productId, Integer type);
 }

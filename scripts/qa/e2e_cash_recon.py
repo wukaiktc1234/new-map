@@ -298,7 +298,7 @@ class CashRecon:
             return int(row[0][0])
         return self.open_shift()
 
-    def ensure_inshift(self, boundary_min, max_wait_min=16):
+    def ensure_inshift(self, boundary_min, max_wait_min=None):
         """距 start > boundary 的 OPEN 班次；没有就开一个并等待越过边界"""
         row = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND status IN ('open','OPEN','OPENED','OPENING')"
                         " AND start_time < now() - interval '%d minutes' ORDER BY shift_id DESC LIMIT 1"
@@ -311,6 +311,13 @@ class CashRecon:
         sid = self.open_shift()
         if not sid:
             return 0
+        max_wait_min = int(max_wait_min if max_wait_min is not None else getattr(self, "_boundary_wait_min", 16) or 0)
+        if getattr(self, "_skip_boundary_wait", False) or max_wait_min <= 0:
+            # CI/快速回归：跳过设计内等待。**必须显式标识**，否则又是一次「分母=0 却报 PASS」
+            self.step("AC-58 ① 班次越界（设计内等待被跳过）", False,
+                      "INFO skipped_design_wait：shift_id=%d 当前 %d 分钟（需 >%d）；相关断言不计入 PASS/FAIL"
+                      % (sid, self.shift_minutes(sid), boundary_min), state="INFO")
+            return sid
         for i in range(max_wait_min * 6):
             mins = self.shift_minutes(sid)
             if mins > boundary_min:
@@ -796,6 +803,10 @@ def main():
     p.add_argument("--user", default="qa_admin")
     p.add_argument("--timeout", type=int, default=120, help="单次 HTTP 超时（秒，默认 120）")
     p.add_argument("--max-seconds", type=int, default=1800, help="整套件最长耗时（秒，默认 1800；超时主动中止）")
+    p.add_argument("--boundary-wait-min", type=int, default=16,
+                   help="等待班次越过边界的最长分钟数（默认 16，与原行为一致）")
+    p.add_argument("--skip-boundary-wait", action="store_true",
+                   help="跳过「等班次越界」这一段（CI/快速回归用）；跳过会显式打印 INFO skipped_design_wait，既不算 PASS 也不算 FAIL")
     p.add_argument("--password", default="Admin@123456")
     p.add_argument("--pos-user", default="vcashier01")
     p.add_argument("--pos-password", default="123456")
@@ -818,6 +829,8 @@ def main():
         runner = CashRecon(a)
         runner._max_seconds = a.max_seconds
         runner._stage_holder = {"stage": "(not started)"}
+        runner._boundary_wait_min = a.boundary_wait_min
+        runner._skip_boundary_wait = a.skip_boundary_wait
         _install_watchdog(a.max_seconds, runner._stage_holder)
         print("  [BEAT] 套件启动，单次 HTTP 超时 %ds，整套上限 %ds" % (a.timeout, a.max_seconds), flush=True)
         return runner.run()

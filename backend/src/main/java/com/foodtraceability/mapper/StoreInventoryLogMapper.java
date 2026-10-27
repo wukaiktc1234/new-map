@@ -12,6 +12,7 @@ public interface StoreInventoryLogMapper extends BaseMapper<StoreInventoryLog> {
 
     IPage<StoreInventoryLog> selectLogPage(Page<StoreInventoryLog> page,
                                            @Param("storeId") String storeId,
+                                           @Param("locationId") Long locationId,
                                            @Param("productId") Long productId,
                                            @Param("type") Integer type);
 }

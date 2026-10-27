@@ -41,7 +41,12 @@
         FROM inventory_movement m
         JOIN locations l ON l.location_id = m.location_id AND l.deleted = 0
         WHERE l.location_type = 'STORE'
-        <if test="storeId != null and storeId != ''">
+        <!-- bug-⑳（P2，数据口径）：优先按 locationId 过滤 —— 库存行与流水本来就都挂在 location 上；
+             storeId 保留兼容（内部换算成 location_code）。今天的事故：前端拿不到 storeId → 显示跨门店日志。 -->
+        <if test="locationId != null">
+            AND m.location_id = #{locationId}
+        </if>
+        <if test="(locationId == null) and storeId != null and storeId != ''">
             AND l.location_code = #{storeId}
         </if>
         <if test="productId != null">

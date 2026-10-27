@@ -104,7 +104,7 @@ public class StoreInventoryLogServiceImpl extends ServiceImpl<StoreInventoryLogM
     }
 
     @Override
-    public IPage<StoreInventoryLog> getLogPage(Page<StoreInventoryLog> page, String storeId, Long productId, Integer type) {
+    public IPage<StoreInventoryLog> getLogPage(Page<StoreInventoryLog> page, String storeId, Long locationId, Long productId, Integer type) {
         String actualStoreId = storeId;
 
         if (!SecurityUtils.isAdmin() && SecurityUtils.hasStorePermission()) {
@@ -114,6 +114,6 @@ public class StoreInventoryLogServiceImpl extends ServiceImpl<StoreInventoryLogM
             }
         }
 
-        return storeInventoryLogMapper.selectLogPage(page, actualStoreId, productId, type);
+        return storeInventoryLogMapper.selectLogPage(page, actualStoreId, locationId, productId, type);
     }
 }

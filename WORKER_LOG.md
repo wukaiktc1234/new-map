@@ -4300,3 +4300,40 @@ inventory_id=1 数量：48.0000 → 30.0000（回到基线）✔
 这正是当初加心跳的目的。但注意：`--max-seconds 420` 的主动中止**没有生效**（进程挂在某次阻塞调用里，没走到 `beat()` 的检查点）。
 → 待改进：超时保护不能只放在 `beat()` 里，应放到每次 HTTP 调用的 timeout + 一个独立看门狗线程。
 本次为拿到护栏第 4 条证据，改用**定向链路验证**替代（下单→支付→退款→流水核对），结果见下。
+
+## 91. BOOT 身份日志 + e2e 参数化 + bug-⑳（2026-10-28 02:15–02:35）
+
+### 91.1 `[BOOT]` 启动身份日志
+
+新增 `config/BuildInfoLogger.java`：`ApplicationRunner` 启动时打一行
+```
+[BOOT] build=f2cfb5c at 2026-10-25T10:08:38.896Z
+```
+git 只读（`git rev-parse --short HEAD`，3s 超时）；任何异常退化为 `build=unknown`，**不影响启动**。
+用途：验证前先看这行，防「旧进程冒充新代码」。
+
+### 91.2 e2e 参数化：`--boundary-wait-min` / `--skip-boundary-wait`
+
+```
+--boundary-wait-min N   等待班次越界的最长分钟（默认 16，与原行为一致）
+--skip-boundary-wait    跳过该段；打 INFO skipped_design_wait，既不算 PASS 也不算 FAIL
+```
+跳过分支在 `ensure_inshift()` 内，**先打标识再 return**：
+`INFO skipped_design_wait：shift_id=X 当前 N 分钟（需 >boundary）；相关断言不计入 PASS/FAIL`
+另修了 `max_wait_min` 为 None 时的 `TypeError: NoneType * int`（`int(... or 0)` 归一）。
+
+### 91.3 bug-⑳（P2 数据口径）已修：`/logs` 支持 locationId
+
+```
+Mapper XML：<if test="locationId != null"> AND m.location_id = #{locationId} </if>
+            storeId 仅在 locationId 为空时生效（兼容旧调用，内部仍按 locations.location_code 换算）
+Mapper/Service/Impl/Controller 四层加 locationId 参数；Controller 文档标注「推荐用 locationId」
+```
+实测（临时授权 view，验后已撤）：
+```
+SQL 真实条数 location_id=1 → 109 ｜ API locationId=1 → total=109 ✔（逐条相等）
+SQL 真实条数 location_id=4 → 33   ｜ API locationId=4 → total=0   ← 说明：该库位 location_type=DEPOT，
+                                                      XML 里 WHERE l.location_type='STORE' 按设计排除仓库
+API storeId=STORE_A（兼容）→ total=109 ✔ 与 locationId=1 一致
+```
+→ 详情页可以用「库存行.locationId」直接拉同库位流水，不再跨门店。

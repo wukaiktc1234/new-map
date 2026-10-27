@@ -194,12 +194,13 @@ public class StoreInventoryController {
     public Result<IPage<StoreInventoryLog>> getStoreInventoryLogPage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int pageSize,
-            @Parameter(description = "门店ID") @RequestParam(required = false) String storeId,
+            @Parameter(description = "门店ID（兼容参数，内部换算 location_code）") @RequestParam(required = false) String storeId,
+            @Parameter(description = "库位ID（推荐：与库存行同一维度，bug-⑳）") @RequestParam(required = false) Long locationId,
             @Parameter(description = "产品ID") @RequestParam(required = false) Long productId,
             @Parameter(description = "变动类型") @RequestParam(required = false) Integer type) {
         try {
             Page<StoreInventoryLog> pageParam = new Page<>(page, pageSize);
-            IPage<StoreInventoryLog> logPage = storeInventoryLogService.getLogPage(pageParam, storeId, productId, type);
+            IPage<StoreInventoryLog> logPage = storeInventoryLogService.getLogPage(pageParam, storeId, locationId, productId, type);
             return Result.success(logPage, "查询门店库存日志成功");
         } catch (Exception e) {
             return Result.error(500, "查询门店库存日志失败：" + e.getMessage());
