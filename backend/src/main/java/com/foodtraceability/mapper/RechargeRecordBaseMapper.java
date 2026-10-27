@@ -34,7 +34,7 @@ public interface RechargeRecordBaseMapper extends BaseMapper<RechargeRecord> {
     @Select("SELECT COALESCE(SUM(recharge_amount), 0) FROM recharge_record " +
             "WHERE payment_status = 1 AND deleted = 0 " +
             "AND create_time >= #{startDate} AND create_time < #{endDate}")
-    long sumRechargeAmount(@Param("startDate") String startDate, @Param("endDate") String endDate);
+    long sumRechargeAmount(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
 
     /**
      * 统计今日充值金额

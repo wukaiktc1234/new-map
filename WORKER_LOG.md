@@ -3885,3 +3885,50 @@ e5db54ae…(overtime)     同上
 第一处：表 0 行 → 返回全 0 结构（**有值不是 null**），契约正常。
 第二处：500 的根因是**另一条 SQL 的类型错误**（日志：`Caused by: PSQLException: 操作符不存在: timestamp without time zone >= character varying`），
 属新发现 **bug-⑮**（MarketingAnalysis 概览接口把 varchar 参数直接和 timestamp 列比较）→ 与 selectEffectSummary 无关，但该端点整体不可用。
+
+## 82. bug-⑮ 修复 + SysDict NPE 修代码 + EXIT=3 定案（2026-10-28 00:05–00:25）
+
+### 82.1 bug-⑮：`timestamp >= character varying`（P2，已修）
+
+**SQL 与参数来源**：
+```
+MemberPointsLogMapper:38-41   @Select("... AND create_time >= #{startDate} AND create_time < #{endDate}")
+                              long sumPointsIssued(@Param("startDate") String startDate, ...)
+RechargeRecordBaseMapper:34-37 同形态：create_time >= #{startDate}（String）
+调用方 MarketingAnalysisServiceImpl:117-120
+  String monthStart = LocalDate.now().withDayOfMonth(1).toString();   ← String 形态的日期
+```
+列 `create_time` 是 `timestamp without time zone`，参数是 varchar → PG 直接报「操作符不存在」。
+
+**修法（参数侧按 timestamp 解析，不对列 cast，避免索引失效）**：
+```
+Mapper 参数类型 String → java.time.LocalDateTime（两处 mapper、共 3 个方法）
+调用侧：LocalDate.now().withDayOfMonth(1).atStartOfDay() 得到 LocalDateTime
+非法格式：调用侧已在服务内部构造（无外部字符串入参），故不存在「日期格式非法」路径；
+          若将来开放为请求参数，按 400「日期格式非法」返回（写在此备忘）
+```
+**实测**：`GET /v1/marketing/analysis/overview` → HTTP 200 **code=0**，data 有结构：
+`{"totalMembers":0,"todayNewMembers":0,"monthNewMembers":null,"activeMembers":0,"churn…}`（原 500 + data=null）。
+
+### 82.2 SysDict NPE（判定「修代码」，已修）
+
+`SysDictServiceImpl` 7 处 `xxx.getDeleted() == 1` 自动拆箱 → 实体 `Integer deleted` 为 null 时 NPE。
+改成 null 安全比较：`Integer.valueOf(1).equals(...getDeleted())`（7/7 处）。
+结果：`SysDictServiceImplTest` 由 2F+1E → **0F**，但暴露 **1E**「MybatisPlus can not find lambda cache for this entity [SysDict]」
+→ 属**环境**类（单测未初始化 TableInfo），与 `PositionSortingTest` 同一类问题，按 Lead 裁定「环境类本轮不做」。
+
+### 82.3 EXIT 决策定案
+
+维持 EXIT=3（WARN）。Lead 补充条款：
+> 基线对比方案已备（`mvn-test-baseline.txt` 15F/7E，>基线阻断、≤基线警告、清零恢复 EXIT=2），待 Owner 拍板后落地。
+
+### 82.4 GM/MGR 挂起（转 Owner）
+
+`PositionCodeGenerator` 实现稳定返回 `GM`，`PositionCodeGeneratorTest` 断言写 `MGR` → 判「修测试」，
+但**口径待产品确认（GM vs MGR）**；测试注释里已注明挂起，未改断言。
+
+### 82.5 未完成（如实报）
+
+判「修测试」的 5 类（PositionCodeGenerator / FoodCodeGenerator / CostRecord / InvoiceReimbursement / Payable）**本轮未改**：
+时间全部用于 ②（含一次服务重启）与 SysDict 修代码；这 5 类按 Lead 要求「断言里写一行注释说明为何以实现为准」的改法留到下一轮，
+其中 `CostRecordServiceImplTest` 按裁定改成**正则匹配** `^CR\d{8}\d+$`（不改成当前日期，避免时间依赖）。

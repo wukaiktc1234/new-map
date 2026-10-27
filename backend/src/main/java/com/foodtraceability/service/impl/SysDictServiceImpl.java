@@ -84,7 +84,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean updateDict(Long dictId, DictUpdateDTO dto, String userId, String username) {
         SysDict dict = sysDictMapper.selectById(dictId);
-        if (dict == null || dict.getDeleted() == 1) {
+        if (dict == null || Integer.valueOf(1).equals(dict.getDeleted())) {
             throw new BusinessException(400, "字典不存在或已被删除");
         }
 
@@ -125,7 +125,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteDict(Long dictId) {
         SysDict dict = sysDictMapper.selectById(dictId);
-        if (dict == null || dict.getDeleted() == 1) {
+        if (dict == null || Integer.valueOf(1).equals(dict.getDeleted())) {
             throw new BusinessException(400, "字典不存在或已被删除");
         }
 
@@ -188,7 +188,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean enableDict(Long dictId) {
         SysDict dict = sysDictMapper.selectById(dictId);
-        if (dict == null || dict.getDeleted() == 1) {
+        if (dict == null || Integer.valueOf(1).equals(dict.getDeleted())) {
             throw new BusinessException(400, "字典不存在或已被删除");
         }
 
@@ -207,7 +207,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean disableDict(Long dictId) {
         SysDict dict = sysDictMapper.selectById(dictId);
-        if (dict == null || dict.getDeleted() == 1) {
+        if (dict == null || Integer.valueOf(1).equals(dict.getDeleted())) {
             throw new BusinessException(400, "字典不存在或已被删除");
         }
 
@@ -239,7 +239,7 @@ public class SysDictServiceImpl implements SysDictService {
     public SysDictItem createDictItem(DictItemCreateDTO dto, String userId, String username) {
         // 检查字典是否存在且启用
         SysDict dict = sysDictMapper.selectById(dto.getDictId());
-        if (dict == null || dict.getDeleted() == 1) {
+        if (dict == null || Integer.valueOf(1).equals(dict.getDeleted())) {
             throw new BusinessException(400, "关联的字典不存在或已被删除");
         }
 
@@ -292,7 +292,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean updateDictItem(Long itemId, DictItemUpdateDTO dto, String userId, String username) {
         SysDictItem item = sysDictItemMapper.selectById(itemId);
-        if (item == null || item.getDeleted() == 1) {
+        if (item == null || Integer.valueOf(1).equals(item.getDeleted())) {
             throw new BusinessException(400, "字典项不存在或已被删除");
         }
 
@@ -341,7 +341,7 @@ public class SysDictServiceImpl implements SysDictService {
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteDictItem(Long itemId) {
         SysDictItem item = sysDictItemMapper.selectById(itemId);
-        if (item == null || item.getDeleted() == 1) {
+        if (item == null || Integer.valueOf(1).equals(item.getDeleted())) {
             throw new BusinessException(400, "字典项不存在或已被删除");
         }
 

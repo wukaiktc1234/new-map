@@ -114,8 +114,10 @@ public class MarketingAnalysisServiceImpl implements MarketingAnalysisService {
         vo.setChurnRiskMembers(churnCount);
 
         // 积分统计（本月）
-        String monthStart = LocalDate.now().withDayOfMonth(1).toString();
-        String monthEnd = LocalDate.now().plusMonths(1).withDayOfMonth(1).toString();
+        // bug-⑮：列是 timestamp，参数必须也是 timestamp（否则 PG 报「操作符不存在: timestamp >= character varying」）。
+        // 参数侧转换，**不对列做 cast**（cast 会让索引失效）。
+        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        LocalDateTime monthEnd = LocalDate.now().plusMonths(1).withDayOfMonth(1).atStartOfDay();
         vo.setMonthPointsIssued(pointsLogMapper.sumPointsIssued(monthStart, monthEnd));
         vo.setMonthRechargeAmount(rechargeRecordMapper.sumRechargeAmount(monthStart, monthEnd));
         vo.setTodayRechargeAmount(rechargeRecordMapper.sumTodayRecharge());

@@ -38,7 +38,8 @@ public interface MemberPointsLogMapper extends BaseMapper<MemberPointsLog> {
     @Select("SELECT COALESCE(SUM(change_points), 0) FROM member_points_log " +
             "WHERE change_type IN (1, 3, 4, 7, 8) AND change_points > 0 " +
             "AND create_time >= #{startDate} AND create_time < #{endDate}")
-    long sumPointsIssued(@Param("startDate") String startDate, @Param("endDate") String endDate);
+    long sumPointsIssued(@Param("startDate") java.time.LocalDateTime startDate,
+                      @Param("endDate") java.time.LocalDateTime endDate);
 
     /**
      * 统计指定时间范围内积分消耗总量（取绝对值）
@@ -46,7 +47,7 @@ public interface MemberPointsLogMapper extends BaseMapper<MemberPointsLog> {
     @Select("SELECT COALESCE(SUM(ABS(change_points)), 0) FROM member_points_log " +
             "WHERE change_type IN (2, 6) AND change_points < 0 " +
             "AND create_time >= #{startDate} AND create_time < #{endDate}")
-    long sumPointsConsumed(@Param("startDate") String startDate, @Param("endDate") String endDate);
+    long sumPointsConsumed(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
 
     /**
      * 查询即将过期的积分记录
