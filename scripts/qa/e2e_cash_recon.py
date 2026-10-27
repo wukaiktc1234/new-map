@@ -545,6 +545,64 @@ class CashRecon:
             self.step("AC-58-⑥ A39 可见性计数（still_open/stale/legacy_null，不进判定）", True,
                       " | ".join(vis[:3]))
 
+    # ---------- 第 30 条：人工汇总模式存行（A43 分母） ----------
+    def section_deposit_manual(self):
+        """把本轮某张缴款单走完 submit → receive(actual>0) → deposit(bankAccountId, 不带 bankTransactionId)。
+
+        动机：A43「DEPOSITED 缴款单恒等式」长期 skipped（分母=0）→ 需要一个稳定 DEPOSITED 夹具；
+        不用 bankTransactionId 是为了覆盖「人工汇总」这条真实分支（deposit_bank_txn_id 留空、审计 matched=false）。
+        """
+        ctx = getattr(self, "in_shift", None) or getattr(self, "boundary", None)
+        if not ctx:
+            return self.not_ready("AC-58-30 人工汇总存行", "缺少缴款单上下文")
+        sid = ctx["slipId"]
+        row = self.slip_row(sid)
+        exp = int(row[2]) if row else 0
+        st, b = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/submit" % sid, self.admin_token,
+                     {"remark": "%s AC-58-30 submit" % self.mark})
+        self.step("AC-58-30 缴款单 submit（->SUBMITTED）", ok(b),
+                  "slip=%d HTTP %s code=%s msg=%s" % (sid, st, (b or {}).get("code"),
+                                                     str((b or {}).get("message"))[:70]))
+        if not ok(b):
+            # 权限模型断裂（实测 2026-10-27）：role_permissions 里 submit 只以
+            # PERM_FINANCE_DEPOSIT_SLIP_SUBMIT 授予 ROLE_CASHIER，而 permissions 表只有数字 id
+            # (33495) + 权限码 → join 丢弃，所有账号 submit 均 403 → A43 无法造数。
+            # 这是产品/授权数据缺陷，不当业务断言失败；后续三步必然级联失败，直接跳过。
+            return self.not_ready(
+                "AC-58-30 人工汇总存行（A43 分母）",
+                "submit 一律 403：role_permissions 用 PERM_FINANCE_DEPOSIT_SLIP_SUBMIT（仅授予 ROLE_CASHIER），"
+                "permissions 表只有数字 id=33495 + 权限码 finance:deposit-slip:submit → join 匹配不上，"
+                "任何角色都拿不到 submit 权限。evidence: %s" % str((b or {}).get("message"))[:60])
+        received = max(exp, 1)
+        st2, b2 = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/receive" % sid, self.admin_token,
+                       {"receivedAmountFen": received, "remark": "%s AC-58-30 receive" % self.mark})
+        self.step("AC-58-30 收款（->RECEIVED，actual=%d 分 >0）" % received, ok(b2),
+                  "slip=%d HTTP %s code=%s msg=%s" % (sid, st2, (b2 or {}).get("code"),
+                                                     str((b2 or {}).get("message"))[:70]))
+        st3, b3 = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/deposit" % sid, self.admin_token,
+                       {"bankAccountId": int(self.a.bank_account_id),
+                        "depositRefNo": "E2E-%s" % self.tag,
+                        "remark": "%s AC-58-30 人工汇总存行" % self.mark})
+        self.step("AC-58-30 人工汇总存行（不带 bankTransactionId，bankAccountId=%d）" % self.a.bank_account_id,
+                  ok(b3), "slip=%d HTTP %s code=%s msg=%s" % (
+                      sid, st3, (b3 or {}).get("code"), str((b3 or {}).get("message"))[:90]))
+        stt = self.rows("SELECT COALESCE(status,'') FROM deposit_slips WHERE slip_id=%d" % sid)
+        self.step("AC-58-30 缴款单状态 = DEPOSITED", bool(stt) and stt[0][0] == "DEPOSITED",
+                  "slip=%d status=%s" % (sid, stt[0][0] if stt else "?"))
+        try:
+            o = subprocess.run([sys.executable, str(HERE / "consistency_check.py")],
+                               capture_output=True, text=True, timeout=900, encoding="utf-8",
+                               errors="replace", cwd=str(HERE.parent.parent))
+            txt = (o.stdout or "") + (o.stderr or "")
+            line = next((l.strip() for l in txt.splitlines()
+                         if "A43" in l and ("[PASS]" in l or "[FAIL]" in l or "[INFO]" in l)), "")
+            denom_ok = ("skipped_no_data" not in line) and ("跳过" not in line) and bool(line)
+            rows_ok = ("rows=0" in line)
+            self.step("AC-58-30 巡检 A43：分母>0 且 rows=0", denom_ok and rows_ok, "原文=%s" % line[:170])
+        except Exception as e:
+            self.not_ready("AC-58-30 巡检 A43", "consistency_check 执行失败：%s" % str(e)[:120])
+        return True
+
     # ---------- ⑦ 清理 ----------
     def cleanup(self):
         # 【库存约定·NEW-32】本用例下单会消耗 foods.stock，清理阶段**故意不回补**：
@@ -586,6 +644,7 @@ class CashRecon:
         self.section_idempotent_and_change()
         self.section_forbidden()
         self.section_inspection()
+        self.section_deposit_manual()
         self.cleanup()
         return self.summary()
 
@@ -622,6 +681,8 @@ def main():
     p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--store-id", type=int, default=1)
     p.add_argument("--shift-id", type=int, default=0, help="0=自动取最近 OPEN 班次")
+    p.add_argument("--bank-account-id", type=int, default=24,
+                   help="人工汇总存行用的收款银行户（本店 account_type=1 status=1，默认 24）")
     p.add_argument("--opening-cash", type=float, default=100.0,
                    help="开班备用金（元）；第29条断言要求 >0，故默认 100 元 = 10000 分")
     p.add_argument("--psql", default=DEFAULT_PSQL)

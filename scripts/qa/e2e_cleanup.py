@@ -163,6 +163,27 @@ class Cleaner:
         self.delete("orders", "orders", inl("order_id", order_ids))
         self.delete("pos_shifts", "pos_shifts", "terminal_id LIKE '%s%%'" % term)
 
+        # APPLY 后自动复查：锚点必须归零，否则 exit 2（不靠人眼看）
+        if self.a.apply:
+            left = {
+                "pos_shifts(terminal)": self.scalar("SELECT count(*) FROM pos_shifts"
+                                                    " WHERE terminal_id LIKE '%s%%'" % term),
+                "refunds(reason)": self.scalar("SELECT count(*) FROM order_refund_records"
+                                               " WHERE refund_reason LIKE '%s%%'"
+                                               " OR refund_reason LIKE '%%%s%%'" % (m, t))
+                if (self.exists("order_refund_records")
+                    and self.has_col("order_refund_records", "refund_reason")) else 0,
+                "slips(remark)": self.scalar("SELECT count(*) FROM deposit_slips"
+                                             " WHERE remark LIKE '%s%%'" % m)
+                if (self.exists("deposit_slips") and self.has_col("deposit_slips", "remark")) else 0,
+            }
+            dirty = {k: v for k, v in left.items() if v}
+            print("-" * 86)
+            print("复查（APPLY 后锚点应为 0）：%s" % left)
+            if dirty:
+                print("!! 复查不通过：仍有残留 %s → exit 2（不算清理成功）" % dirty)
+                return 2
+
         print("-" * 86)
         if self.a.apply:
             total = sum(v for v in self.applied.values() if isinstance(v, int) and v > 0)
