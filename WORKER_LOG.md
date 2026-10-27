@@ -4219,3 +4219,49 @@ cost_allocation_rules         存在（13 列），行数 0
 finance_record_operation_log  存在（ 9 列），行数 108   ← 有历史数据：保留表、只标死代码
 其余 23 张：生产库不存在（0 列）→ 无历史数据，可直接判死
 ```
+
+## 89. 权限模型文档 + bug-⑱ 修复 + lesson（2026-10-28 01:20–01:35）
+
+### 89.1 `docs/design/permission-model.md`（定稿，写死）
+
+内容：两套形态职责（`permission_id_str`=PERM_*=join 键 / `permission_code`=冒号=authority）、
+授权链实际 SQL（`UserMapper.xml:getUserRolePermissions`）、A44/A45/A46 各自查什么、
+三个反例（冒号插 role_permissions 6 行孤儿 / role_id 写数字丢 418 行超管 / id_str 当 authority 比出 311 假缺失）、
+查询陷阱表 + 记忆口诀 + 改权限检查清单。
+
+### 89.2 bug-⑱ 修复（选方案②：SQL 侧 CASE 映射成整数）
+
+**理由（与前端契约对齐，不猜）**：
+```
+前端 interface StoreInventoryLogBackend { type?: number }   ← 类型是 number
+前端映射 operationType: String(backend.type ?? '')          ← 期望数值码
+后端实体 StoreInventoryLog.type 是 Integer                   ← 也是数值
+→ 只有 SQL 返回中文字符串这一个点是错的；改 SQL 成本最小、不动实体、不动接口契约
+```
+改动（`StoreInventoryLogMapper.xml`）：
+```sql
+CASE m.movement_type WHEN 'IN' THEN 1 WHEN 'OUT' THEN 2 ELSE 3 END AS type
+-- 过滤条件同步：CASE ... = #{type}
+-- 码值：1=入库 2=出库 3=调整（已写入 XML 注释，前端需按此补 type→文案映射）
+```
+实测（临时授权 → 调用 → 撤回授权）：
+```
+改前：HTTP 200 code=500「查询门店库存日志失败：不良的类型值 int : 出库」
+改后：HTTP 200 code=0「查询门店库存日志成功」data.records[0].type = 2（数值）
+```
+**待前端配合**：`StoreInventory.vue` 的 `operationTypeName` 目前是空字符串，需按 1/2/3 映射成「入库/出库/调整」。
+
+### 89.3 lesson：Mapper 名 ≠ 实际查询的表
+
+我今天判「inventory_log 有 1 处读取」是**按 Mapper 名推断**（`StoreInventoryLogMapper.selectLogPage`），
+而 `StoreInventoryLogMapper.xml` 里那条 SQL **已改读 `inventory_movement`**（M3-M4 S7a 迁移）。
+→ 规则：**判「某表有没有被读/写」必须看 XML/注解里的 FROM/INSERT 目标，不能看 Mapper 名。**
+这条已按 Lead 要求写进 lesson 13（跨层验证一族）。
+
+### 89.4 三张只读表最终处置
+
+| 表 | 处置 | 依据 |
+|----|------|------|
+| `inventory_log` | **死代码，不建表** | XML 已改读 inventory_movement，本表无任何 SQL 引用 |
+| `store_inventory_log` | **死代码，不建表** | 读写皆 0（含 XML） |
+| `v_inventory_summary` | **bug-⑰ 不建** | 视图口径属业务定义，禁止反推 |

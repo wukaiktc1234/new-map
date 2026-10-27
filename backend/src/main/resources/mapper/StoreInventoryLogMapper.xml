@@ -8,10 +8,14 @@
             m.movement_id AS id,
             m.material_id AS product_id,
             l.location_code AS store_id,
+            /* bug-⑱：实体 StoreInventoryLog.type 是 Integer，前端 interface 亦为 number；
+               原 SQL 返回 '入库/出库/调整' 中文字符串 → PSQLException 不良的类型值 int : 出库。
+               改法②（SQL 侧映射成整数枚举），码值定义：1=入库 2=出库 3=调整。
+               前端 StoreInventory.vue 需按该码值补 type→文案映射（不在此仓库本次改动范围）。 */
             CASE m.movement_type
-                WHEN 'IN' THEN '入库'
-                WHEN 'OUT' THEN '出库'
-                ELSE '调整'
+                WHEN 'IN' THEN 1
+                WHEN 'OUT' THEN 2
+                ELSE 3
             END AS type,
             m.change_qty AS change_amount,
             m.balance_after AS after_stock,
