@@ -3231,3 +3231,67 @@ sha256HexCanonical(w) == sha256HexCanonical(r)        两用例均相等
 
 `docs/design/engineering-lessons.md` 第 9 条补充记忆锚点 **「2888 : 0」**（2888 个 Java 文件 / Lombok 0 命中，0.0%），
 并把「附带发现」改成事实陈述（两个测试已修、34 用例全绿），避免后人以为 `mvn test` 天然不可用。
+
+## 71. 哈希两端纪律 / 批次 commit 幂等 / P3 删 legacy 签名（2026-10-27 21:40–22:00）
+
+### 71.1 哈希两端必须同一规范形式（防篡改校验，不是缓存 key）
+
+| 问题 | 事实 |
+|------|------|
+| ① 写入路径调用点 | **无**。全仓 grep `JsonCanonicalHashUtil` 只命中测试类与注释（`util/JsonCanonicalHashUtilTest.java`、`JsonbStringTypeHandler` 注释、类自身注释）——业务代码 0 引用 |
+| ② 读取路径调用点 | **无**（同上） |
+| ③ 两端一致的单测 | `JsonCanonicalHashUtilTest.writeThenReadBackHashEqual`（新增）：写入 `[{"a":1}]`(9 字节) vs 读回 `[{"a": 1}]`(10 字节) → 规范化哈希相等；反证：直接对原始串取 SHA-256 则两端**不等**（假篡改告警的根源） |
+
+**结论（照实写）**：`JsonCanonicalHashUtil` **工具已就绪，接入点待定** —— 当前没有任何业务路径调用它，
+不存在「一端原始串一端规范串」的现实风险，但也**不能声称已接入**。接入硬规则已写进类注释「⚠ 使用方纪律」：
+写入时算一次、读回后算一次，两处都必须走 `sha256HexCanonical`。
+
+### 71.2 bug-⑤③：批次 commit 幂等（幂等键 = 批次 ID 单键）
+
+**为何不是「批次 ID + 文件 sha256」**：补导（门店当天补录）会产生不同文件内容，若把文件哈希并入 key，
+补导就被判成「新 key」，与「同批次重复提交」混淆；批次 ID 单键语义最干净：**同一批次重复 commit 必幂等**，
+补导走新批次（批次不可变，`cancel` 对已提交批次直接拒绝）。批次行本身按 `(batch_id, row_no)` 去重。
+
+实现（`BankImportServiceImpl.commit`）：
+```java
+// ① 已 COMMITTED / PARTIAL / COMMITTING → 直接回执，统计从 bank_transactions 按批次重算
+if (ST_COMMITTED.equals(status) || ST_PARTIAL.equals(status) || ST_COMMITTING.equals(status)) {
+    return rebuildCommittedResult(batch, true);   // reused = true
+}
+// ② 条件更新抢占：只有把 PARSED_OK 改成 COMMITTING 的那一个请求才真正落库
+int claimed = batchMapper.update(null, new LambdaUpdateWrapper<ImportBatch>()
+        .eq(ImportBatch::getBatchId, batchId).eq(ImportBatch::getStatus, ST_PARSED_OK)
+        .set(ImportBatch::getStatus, ST_COMMITTING));
+if (claimed != 1) { return rebuildCommittedResult(latest, true); }   // 没抢到 → reused=true，不落库
+```
+`rebuildCommittedResult` 统计来源：`bank_transactions WHERE batch_id=? AND deleted=0`（inserted）、同条件 `needs_review=1`（review）、`batch.dup_rows/error_rows`（解析期事实）。
+返回语义与 bug-③ 统一：`200 code=0` + 同结果 + `reused=true`。
+
+### 71.3 实测（import → commit）
+
+```
+③ 首次 commit（batch 168，2 行 CSV）
+   code=0 inserted=2 dup=0 review=0 error=0 reused=false ｜ bank_transactions(batch) 0 → 2
+① 同批次第二次 commit
+   code=0 inserted=2 reused=TRUE ｜ 行数 2 → 2（不变）｜ 统计与首次一致
+② 并发两线程同批次（batch 169）
+   req1 code=0 inserted=2 reused=TRUE ｜ req2 code=0 inserted=2 reused=false
+   行数 0 → 2（只 +2，未双写）｜ 无 500 ｜ reused 数=1
+③ 补导（新批次 170，1 行）→ code=0 inserted=1 reused=false ｜ 落库 1 行
+METRIC：import_commit_claimed / import_commit_reused_concurrent 均已打出
+```
+
+### 71.4 P3 第一项：删 DishRecipeService / DishRecipeServiceImpl（legacy 签名）
+
+**零调用方证据（三路 grep，全部 0 命中）**：
+```text
+1) Get-ChildItem -Recurse -Include *.java,*.xml | Select-String 'DishRecipeService'（排除自身两文件）→ 0 行
+2) @Autowired / 构造注入 'DishRecipeService <name>;' → 0 行
+3) mapper XML namespace/resultType 引用 → 0 行
+旁证：getByIngredientId / saveOrUpdateRecipe / batchSaveRecipes / calculateEstimatedCost 各只在本接口+实现内出现
+```
+
+**删除清单**：`service/DishRecipeService.java`（49 行）、`service/impl/DishRecipeServiceImpl.java`（103 行）。
+**保留**：`mapper/DishRecipeMapper.java` + `DishRecipeMapper.xml` + `entity/DishRecipe.java` —— `InventoryDeductionServiceImplTest` 仍注入 `@Mock DishRecipeMapper`（历史 mock，不影响生产；扣料链路已用 `DishRecipeNewMapper`）。
+
+验证：`mvn -o -B test-compile` BUILD SUCCESS；`mvn -o -B test` 35 用例（Deduct 28 + OrderNumberA1 3 + JsonCanonicalHashUtil 4）**Failures 0 / Errors 0**；服务重启不再需要 `-Dmaven.test.skip=true`。

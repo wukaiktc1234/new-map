@@ -241,6 +241,35 @@ public class BankImportServiceImpl implements BankImportService {
     // ------------------------------------------------------------------
     // I4：提交落库（两段式的第二段）
     // ------------------------------------------------------------------
+    /** 提交中标记（并发抢占用；不落库状态语义，只在 commit 内部短暂存在） */
+    private static final String ST_COMMITTING = "COMMITTING";
+
+    /**
+     * 已提交批次的回执：统计**从 bank_transactions 按批次重算**（不依赖上次的内存/返回值），
+     * 保证「重复 commit 返回同一结果」与库内事实一致。
+     */
+    private ImportCommitResultVO rebuildCommittedResult(ImportBatch batch, boolean reused) {
+        Long batchId = batch.getBatchId();
+        Long txnCount = txnMapper.selectCount(new LambdaQueryWrapper<BankTransaction>()
+                .eq(BankTransaction::getBatchId, batchId)
+                .eq(BankTransaction::getDeleted, 0));
+        Long reviewCount = txnMapper.selectCount(new LambdaQueryWrapper<BankTransaction>()
+                .eq(BankTransaction::getBatchId, batchId)
+                .eq(BankTransaction::getDeleted, 0)
+                .eq(BankTransaction::getNeedsReview, Boolean.TRUE));
+        ImportCommitResultVO vo = new ImportCommitResultVO();
+        vo.setBatchId(batchId);
+        vo.setStatus(batch.getStatus());
+        vo.setTotalRows(batch.getTotalRows());
+        vo.setOkRows(batch.getOkRows());
+        vo.setInsertedRows(txnCount == null ? 0 : txnCount.intValue());
+        vo.setDupRows(batch.getDupRows());
+        vo.setReviewRows(reviewCount == null ? 0 : reviewCount.intValue());
+        vo.setErrorRows(batch.getErrorRows());
+        vo.setReused(reused);
+        return vo;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ImportCommitResultVO commit(Long batchId) {
@@ -248,21 +277,36 @@ public class BankImportServiceImpl implements BankImportService {
         if (batch == null) {
             throw new BusinessException("导入批次不存在: " + batchId);
         }
-        // 幂等：已提交的批次再提交 → 返回既有结果，不重复落库
-        if (ST_COMMITTED.equals(batch.getStatus()) || ST_PARTIAL.equals(batch.getStatus())) {
-            ImportCommitResultVO again = new ImportCommitResultVO();
-            again.setBatchId(batchId);
-            again.setStatus(batch.getStatus());
-            again.setTotalRows(batch.getTotalRows());
-            again.setInsertedRows(0);
-            again.setDupRows(batch.getDupRows());
-            again.setReviewRows(0);
-            again.setErrorRows(batch.getErrorRows());
-            return again;
+        // 幂等（bug-⑤③）：幂等键 = **批次 ID 单键**。
+        //   为什么不是「批次 ID + 文件 sha256」：同一批次允许**补导新行**（门店当天补录），
+        //   用文件哈希当 key 会把补导当成新批次而重复建批次；而重复 commit 同一批次必须幂等。
+        //   统计不存内存/不靠上次返回值，而是从 bank_transactions 按批次**重算**，与库内事实一致。
+        if (ST_COMMITTED.equals(batch.getStatus()) || ST_PARTIAL.equals(batch.getStatus())
+                || ST_COMMITTING.equals(batch.getStatus())) {
+            if (ST_COMMITTING.equals(batch.getStatus())) {
+                // 另一请求正在提交中：直接按当前库内事实返回（不阻塞、不重复落库）
+                log.info("[METRIC] import_commit_inflight batchId={}", batchId);
+            }
+            return rebuildCommittedResult(batch, true);
         }
         if (!ST_PARSED_OK.equals(batch.getStatus())) {
             throw new BusinessException("批次状态 " + batch.getStatus() + " 不允许提交（需 PARSED_OK）");
         }
+
+        // 条件更新抢占（CAS）：只有把 PARSED_OK 改成 COMMITTING 的那一个请求才真正落库，
+        // 并发第二个请求命中 0 行 → 按已提交结果返回 reused=true（不会双写、不会 500）
+        int claimed = batchMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ImportBatch>()
+                .eq(ImportBatch::getBatchId, batchId)
+                .eq(ImportBatch::getStatus, ST_PARSED_OK)
+                .set(ImportBatch::getStatus, ST_COMMITTING)
+                .set(ImportBatch::getUpdateTime, LocalDateTime.now()));
+        if (claimed != 1) {
+            ImportBatch latest = batchMapper.selectById(batchId);
+            log.info("[METRIC] import_commit_reused_concurrent batchId={} status={}", batchId,
+                    latest == null ? null : latest.getStatus());
+            return rebuildCommittedResult(latest == null ? batch : latest, true);
+        }
+        log.info("[METRIC] import_commit_claimed batchId={}", batchId);
 
         List<ImportRow> rows = rowMapper.selectList(new LambdaQueryWrapper<ImportRow>()
                 .eq(ImportRow::getBatchId, batchId)
@@ -371,6 +415,7 @@ public class BankImportServiceImpl implements BankImportService {
         vo.setDupRows(dup);
         vo.setReviewRows(review);
         vo.setErrorRows(error);
+        vo.setReused(Boolean.FALSE);
         return vo;
     }
 

@@ -2,6 +2,9 @@ package com.foodtraceability.dto.finance.recon;
 
 /** 提交结果（§1.5 I4 响应） */
 public class ImportCommitResultVO {
+    /** 重复提交命中：true = 本次未真正落库，返回的是上次 commit 的结果（bug-⑤③） */
+    private Boolean reused;
+
     private Long batchId;
     private String status;
     private Integer totalRows;
@@ -27,4 +30,7 @@ public class ImportCommitResultVO {
     public void setReviewRows(Integer v) { this.reviewRows = v; }
     public Integer getErrorRows() { return errorRows; }
     public void setErrorRows(Integer v) { this.errorRows = v; }
+
+    public Boolean getReused() { return reused; }
+    public void setReused(Boolean reused) { this.reused = reused; }
 }
