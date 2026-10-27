@@ -13,6 +13,11 @@ import java.time.LocalDateTime;
  * 角色门店关联实体
  * 用于定义角色可访问的门店列表（数据权限）
  */
+/**
+ * 【保留声明】`role_stores` 支撑 **数据权限拦截** 核心能力，不得删除。
+ * Owner 2026-10-28 拍板：撤销删除指令，保留（原「死代码」判定作废）。
+ * 依据见 docs/audit/dead-code-deletion-list.md「确认不删（有活引用）」。
+ */
 @TableName("role_stores")
 @Schema(description = "角色门店关联实体")
 public class RoleStore implements Serializable {

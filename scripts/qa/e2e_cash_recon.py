@@ -427,7 +427,13 @@ class CashRecon:
         if not rf:
             return self.not_ready("AC-58-① 造退款", err)
         # 关班才有 end_time；且要求「退款时刻距 end 也 > 边界」→ 等够边界分钟再关班
-        for i in range(16 * 6):
+        # CI/快速回归：本段「等退款距 end > 边界」也是设计内等待，同样可跳过；跳过时显式打印 INFO，不算 PASS/FAIL
+        skip_wait = getattr(self, "_skip_boundary_wait", False) or int(getattr(self, "_boundary_wait_min", 16) or 0) <= 0
+        if skip_wait:
+            self.step("AC-58 ① 退款距关班越界（设计内等待被跳过）", False,
+                      "INFO skipped_design_wait：需 >%d 分钟；相关断言不计入 PASS/FAIL（继续执行后续断言）"
+                      % self.shift_window_minutes(), state="INFO")
+        for i in ([] if skip_wait else range(16 * 6)):
             mins_from_refund = self.num(
                 "SELECT COALESCE(FLOOR(EXTRACT(EPOCH FROM (now() - create_time))/60)::int, 0)"
                 " FROM fund_flows WHERE flow_id=%d" % rf["flowId"])

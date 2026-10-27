@@ -259,6 +259,10 @@ public class ScanDeviceServiceImpl extends ServiceImpl<ScanDeviceMapper, ScanDev
             scanRecord.setScanLocation(location);
             scanRecord.setScanResult(scanResult);
             scanRecord.setFailureReason(failureReason);
+            // ★V2.0：动作语义（区分 绑定/出餐），避免「只有 PROCESSED/ERROR」看不出做了什么
+            scanRecord.setActionType(resolveActionType(businessType));
+            scanRecord.setTargetType(resolveTargetType(businessType));
+            scanRecord.setTargetId(scanCode);
             scanRecord.setBusinessType(businessType);
             scanRecord.setProcessStatus(businessProcessed ? "PROCESSED" : "ERROR");
             scanRecord.setCreateTime(LocalDateTime.now());
@@ -287,6 +291,39 @@ public class ScanDeviceServiceImpl extends ServiceImpl<ScanDeviceMapper, ScanDev
             result.put("message", "处理扫码失败: " + e.getMessage());
         }
         return result;
+    }
+
+    /** V2.0：businessType → action_type（BIND/OUTBOUND/QUERY），无法判定时 UNKNOWN，不猜 */
+    private String resolveActionType(String businessType) {
+        if (businessType == null) {
+            return "QUERY";
+        }
+        String t = businessType.toUpperCase();
+        if (t.contains("OUT") || t.contains("PRODUCE") || t.contains("FINISH")) {
+            return "OUTBOUND";
+        }
+        if (t.contains("BIND") || t.contains("BATCH") || t.contains("STOCK")) {
+            return "BIND";
+        }
+        return "UNKNOWN";
+    }
+
+    /** V2.0：businessType → target_type（ORDER/DISH/TRAY），无法判定留空，不猜 */
+    private String resolveTargetType(String businessType) {
+        if (businessType == null) {
+            return null;
+        }
+        String t = businessType.toUpperCase();
+        if (t.contains("ORDER")) {
+            return "ORDER";
+        }
+        if (t.contains("DISH") || t.contains("FOOD")) {
+            return "DISH";
+        }
+        if (t.contains("TRAY")) {
+            return "TRAY";
+        }
+        return null;
     }
 
     @Override

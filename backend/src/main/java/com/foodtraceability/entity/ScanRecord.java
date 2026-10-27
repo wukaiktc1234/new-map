@@ -28,6 +28,18 @@ public class ScanRecord {
     /**
      * 设备ID
      */
+    /** ★V2.0 新增：动作类型 —— BIND(绑定) / OUTBOUND(出餐) / QUERY(查询) / UNKNOWN */
+    @TableField("action_type")
+    private String actionType;
+
+    /** ★V2.0 新增：扫的对象类型 —— ORDER(订单) / DISH(菜品) / TRAY(托盘) */
+    @TableField("target_type")
+    private String targetType;
+
+    /** ★V2.0 新增：对象 ID（订单号/菜品ID/托盘码） */
+    @TableField("target_id")
+    private String targetId;
+
     @TableField("device_id")
     private Long deviceId;
     /**
@@ -399,5 +411,30 @@ public class ScanRecord {
         final java.lang.Object $updateBy = this.getUpdateBy();
         result = result * PRIME + ($updateBy == null ? 43 : $updateBy.hashCode());
         return result;
+    }
+
+    // ★V2.0 新增字段访问器（本实体不用 Lombok，需手写）
+    public String getActionType() {
+        return actionType;
+    }
+
+    public void setActionType(String actionType) {
+        this.actionType = actionType;
+    }
+
+    public String getTargetType() {
+        return targetType;
+    }
+
+    public void setTargetType(String targetType) {
+        this.targetType = targetType;
+    }
+
+    public String getTargetId() {
+        return targetId;
+    }
+
+    public void setTargetId(String targetId) {
+        this.targetId = targetId;
     }
 }

@@ -10,6 +10,11 @@ import java.util.Date;
  * @author demo
  * @since 2025-12-29
  */
+/**
+ * 【保留声明】`dish_ingredient` 支撑 **食品安全召回** 核心能力，不得删除。
+ * Owner 2026-10-28 拍板：撤销删除指令，保留（原「死代码」判定作废）。
+ * 依据见 docs/audit/dead-code-deletion-list.md「确认不删（有活引用）」。
+ */
 @TableName("dish_ingredient")
 public class DishIngredient {
     /**

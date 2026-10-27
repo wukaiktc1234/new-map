@@ -44,7 +44,6 @@ public class OverAgeWorkerController {
      */
     @Operation(summary = "分页查询超龄劳动者列表")
     // P0-unfinished: over_age_worker 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "over_age_worker")
     @GetMapping("/page")
     @PreAuthorize("hasAuthority('*')")
     public Result<Page<OverAgeWorkerVO>> page(
