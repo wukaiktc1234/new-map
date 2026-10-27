@@ -16,7 +16,7 @@ import java.util.*;
 public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequirementService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OrderMaterialRequirementServiceImpl.class);
     private final OrderMaterialRequirementMapper requirementMapper;
-    private final DishRecipeMapper dishRecipeMapper;
+    private final DishRecipeNewMapper dishRecipeNewMapper;
     private final ComboIngredientNewMapper comboIngredientNewMapper;
     private final FoodMapper foodMapper;
     private final FoodNewMapper foodNewMapper;
@@ -35,14 +35,22 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
     public List<OrderMaterialRequirement> generateRequirementsForDish(String dishId, String dishName, Integer quantity, String orderId, String kitchenOrderId, String orderNumber) {
         log.info("为菜品生成原料需求: dishId={}, dishName={}, quantity={}", dishId, dishName, quantity);
         List<OrderMaterialRequirement> requirements = new ArrayList<>();
-        LambdaQueryWrapper<DishRecipe> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(DishRecipe::getDishId, dishId);
-        List<DishRecipe> recipes = dishRecipeMapper.selectList(queryWrapper);
+        // P1-RECIPE-LEGACY-CLEANUP-001：读新表 dish_recipes（替代 legacy dish_recipe，旧表 0 行）
+        Long foodId;
+        try {
+            foodId = Long.parseLong(dishId == null ? "" : dishId.trim());
+        } catch (NumberFormatException e) {
+            log.warn("菜品ID非法，跳过原料需求生成：dishId={}", dishId);
+            return requirements;
+        }
+        LambdaQueryWrapper<DishRecipeNew> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(DishRecipeNew::getFoodId, foodId);
+        List<DishRecipeNew> recipes = dishRecipeNewMapper.selectList(queryWrapper);
         if (recipes == null || recipes.isEmpty()) {
             log.warn("菜品 {} 没有配方数据", dishName);
             return requirements;
         }
-        for (DishRecipe recipe : recipes) {
+        for (DishRecipeNew recipe : recipes) {
             OrderMaterialRequirement requirement = new OrderMaterialRequirement();
             requirement.setRequirementId("REQ" + System.currentTimeMillis() + UUID.randomUUID().toString().substring(0, 4));
             requirement.setOrderId(orderId);
@@ -52,9 +60,10 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
             requirement.setDishName(dishName);
             requirement.setDishQuantity(quantity);
             requirement.setIsCombo(0);
-            requirement.setMaterialId(recipe.getIngredientId());
-            requirement.setMaterialName(recipe.getIngredientName());
-            requirement.setRequiredQuantity(recipe.getQuantity().multiply(BigDecimal.valueOf(quantity)));
+            requirement.setMaterialId(recipe.getMaterialId() == null ? null : String.valueOf(recipe.getMaterialId()));
+            requirement.setMaterialName(recipe.getMaterialName());
+            requirement.setRequiredQuantity((recipe.getRequiredQuantity() == null ? BigDecimal.ZERO : recipe.getRequiredQuantity())
+                    .multiply(BigDecimal.valueOf(quantity)));
             requirement.setUnit(recipe.getUnit());
             requirement.setLockedQuantity(BigDecimal.ZERO);
             requirement.setUsedQuantity(BigDecimal.ZERO);
@@ -105,9 +114,9 @@ public class OrderMaterialRequirementServiceImpl implements OrderMaterialRequire
         return requirementMapper.findByKitchenOrderId(kitchenOrderId);
     }
 
-    public OrderMaterialRequirementServiceImpl(final OrderMaterialRequirementMapper requirementMapper, final DishRecipeMapper dishRecipeMapper, final ComboIngredientNewMapper comboIngredientNewMapper, final FoodMapper foodMapper, final FoodNewMapper foodNewMapper, final ObjectMapper objectMapper) {
+    public OrderMaterialRequirementServiceImpl(final OrderMaterialRequirementMapper requirementMapper, final DishRecipeNewMapper dishRecipeNewMapper, final ComboIngredientNewMapper comboIngredientNewMapper, final FoodMapper foodMapper, final FoodNewMapper foodNewMapper, final ObjectMapper objectMapper) {
         this.requirementMapper = requirementMapper;
-        this.dishRecipeMapper = dishRecipeMapper;
+        this.dishRecipeNewMapper = dishRecipeNewMapper;
         this.comboIngredientNewMapper = comboIngredientNewMapper;
         this.foodMapper = foodMapper;
         this.foodNewMapper = foodNewMapper;

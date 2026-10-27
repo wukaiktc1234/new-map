@@ -21,7 +21,7 @@ import java.util.Map;
 public class InventoryDeductionServiceImpl implements InventoryDeductionService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(InventoryDeductionServiceImpl.class);
     private final MaterialTraceCodeMapper materialTraceCodeMapper;
-    private final DishRecipeMapper dishRecipeMapper;
+    private final DishRecipeNewMapper dishRecipeNewMapper;
     private final FoodTraceCodeMapper foodTraceCodeMapper;
     private final MaterialUsageRecordMapper materialUsageRecordMapper;
     private final ObjectMapper objectMapper;
@@ -78,18 +78,39 @@ public class InventoryDeductionServiceImpl implements InventoryDeductionService 
     @Transactional
     public void deductByRecipe(String dishId, Integer quantity, String kitchenOrderId, String foodTraceCodeId) {
         log.info("模式B扣减：菜品={}, 数量={}, 后厨订单={}", dishId, quantity, kitchenOrderId);
-        List<DishRecipe> recipes = dishRecipeMapper.selectList(new LambdaQueryWrapper<DishRecipe>().eq(DishRecipe::getDishId, dishId));
-        if (recipes.isEmpty()) {
-            log.warn("菜品{}没有配方信息", dishId);
+        // P1-RECIPE-LEGACY-CLEANUP-001：读新表 dish_recipes（替代 legacy dish_recipe，旧表 0 行）
+        Long foodId = parseFoodId(dishId);
+        if (foodId == null) {
+            log.warn("菜品ID非法，无法按配方扣料：dishId={}", dishId);
             return;
         }
-        for (DishRecipe recipe : recipes) {
-            BigDecimal requiredQty = recipe.getQuantity().multiply(new BigDecimal(quantity));
-            String materialName = recipe.getIngredientName();
-            addModeBDeduction(kitchenOrderId, recipe.getIngredientId(), materialName, null, requiredQty, recipe.getUnit());
-            log.info("模式B扣减：原料={}, 数量={}", materialName, requiredQty);
+        List<DishRecipeNew> recipes = dishRecipeNewMapper.selectList(
+                new LambdaQueryWrapper<DishRecipeNew>().eq(DishRecipeNew::getFoodId, foodId));
+        if (recipes == null || recipes.isEmpty()) {
+            log.warn("菜品{}没有配方信息（dish_recipes 无 food_id={} 的行）", dishId, foodId);
+            return;
+        }
+        for (DishRecipeNew recipe : recipes) {
+            BigDecimal perUnit = recipe.getRequiredQuantity() == null ? BigDecimal.ZERO : recipe.getRequiredQuantity();
+            BigDecimal requiredQty = perUnit.multiply(new BigDecimal(quantity));
+            String materialName = recipe.getMaterialName();
+            String materialId = recipe.getMaterialId() == null ? null : String.valueOf(recipe.getMaterialId());
+            addModeBDeduction(kitchenOrderId, materialId, materialName, null, requiredQty, recipe.getUnit());
+            log.info("模式B扣减：原料={}, 数量={} {}", materialName, requiredQty, recipe.getUnit() == null ? "" : recipe.getUnit());
         }
         saveDeductionToFoodTraceCode(kitchenOrderId, foodTraceCodeId);
+    }
+
+    /** 菜品ID（pos 侧是字符串）→ dish_recipes.food_id（bigint）；非数值返回 null */
+    private Long parseFoodId(String dishId) {
+        if (dishId == null || dishId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(dishId.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Override
@@ -215,9 +236,9 @@ public class InventoryDeductionServiceImpl implements InventoryDeductionService 
         log.info("混合模式B扣减完成：原料={}, 数量={}", materialName, quantity);
     }
 
-    public InventoryDeductionServiceImpl(final MaterialTraceCodeMapper materialTraceCodeMapper, final DishRecipeMapper dishRecipeMapper, final FoodTraceCodeMapper foodTraceCodeMapper, final MaterialUsageRecordMapper materialUsageRecordMapper, final ObjectMapper objectMapper) {
+    public InventoryDeductionServiceImpl(final MaterialTraceCodeMapper materialTraceCodeMapper, final DishRecipeNewMapper dishRecipeNewMapper, final FoodTraceCodeMapper foodTraceCodeMapper, final MaterialUsageRecordMapper materialUsageRecordMapper, final ObjectMapper objectMapper) {
         this.materialTraceCodeMapper = materialTraceCodeMapper;
-        this.dishRecipeMapper = dishRecipeMapper;
+        this.dishRecipeNewMapper = dishRecipeNewMapper;
         this.foodTraceCodeMapper = foodTraceCodeMapper;
         this.materialUsageRecordMapper = materialUsageRecordMapper;
         this.objectMapper = objectMapper;

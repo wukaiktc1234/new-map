@@ -31,7 +31,8 @@ public class KitchenScanServiceImpl implements KitchenScanService {
     private final OrderMaterialRequirementMapper requirementMapper;
     private final MaterialUsageRecordMapper usageRecordMapper;
     private final KitchenOrderMapper kitchenOrderMapper;
-    private final DishRecipeMapper dishRecipeMapper;
+    /** P1-RECIPE-LEGACY-CLEANUP-001：改注入新表 Mapper（原 legacy Mapper 在本类中从未使用） */
+    private final DishRecipeNewMapper dishRecipeNewMapper;
     private final FoodMapper foodMapper;
     private final FoodTraceCodeService foodTraceCodeService;
     private final ObjectMapper objectMapper;
@@ -375,12 +376,12 @@ public class KitchenScanServiceImpl implements KitchenScanService {
         }
     }
 
-    public KitchenScanServiceImpl(final MaterialTraceCodeMapper traceCodeMapper, final OrderMaterialRequirementMapper requirementMapper, final MaterialUsageRecordMapper usageRecordMapper, final KitchenOrderMapper kitchenOrderMapper, final DishRecipeMapper dishRecipeMapper, final FoodMapper foodMapper, final FoodTraceCodeService foodTraceCodeService, final ObjectMapper objectMapper, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher) {
+    public KitchenScanServiceImpl(final MaterialTraceCodeMapper traceCodeMapper, final OrderMaterialRequirementMapper requirementMapper, final MaterialUsageRecordMapper usageRecordMapper, final KitchenOrderMapper kitchenOrderMapper, final DishRecipeNewMapper dishRecipeNewMapper, final FoodMapper foodMapper, final FoodTraceCodeService foodTraceCodeService, final ObjectMapper objectMapper, final OrderWebSocketController orderWebSocketController, final ApplicationEventPublisher eventPublisher) {
         this.traceCodeMapper = traceCodeMapper;
         this.requirementMapper = requirementMapper;
         this.usageRecordMapper = usageRecordMapper;
         this.kitchenOrderMapper = kitchenOrderMapper;
-        this.dishRecipeMapper = dishRecipeMapper;
+        this.dishRecipeNewMapper = dishRecipeNewMapper;
         this.foodMapper = foodMapper;
         this.foodTraceCodeService = foodTraceCodeService;
         this.objectMapper = objectMapper;
