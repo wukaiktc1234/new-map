@@ -88,6 +88,14 @@ class CashRecon:
         self.a = a
         self.results = []
         self.tag = "HIK" + datetime.now().strftime("%m%d%H%M%S")
+        # 统一标记（Owner 2026-10-27 批准）：可写文本字段统一带此前缀，供 e2e_cleanup.py 定位
+        self.mark = "[E2E:%s]" % self.tag
+        self.seq = 0
+
+    def next_idem(self):
+        """确定性幂等键：E2E-<tag>-<n>（订单侧 tag 锚点）"""
+        self.seq += 1
+        return "E2E-%s-%d" % (self.tag, self.seq)
 
     def step(self, name, okk, detail, state=None):
         st = state or ("PASS" if okk else "FAIL")
@@ -140,7 +148,7 @@ class CashRecon:
         """POS 开班接口（vcashier01）"""
         uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
         st, b = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
-                     {"terminalId": "T-%s" % self.tag, "employeeId": str(uid or self.a.pos_user),
+                     {"terminalId": "T-E2E-%s" % self.tag, "employeeId": str(uid or self.a.pos_user),
                       "employeeName": self.a.pos_user, "shiftType": "morning",
                       # 第 29 条断言需要 reserve_fen > 0：开班带备用金 100 元（=10000 分）
                       "openingCash": float(self.a.opening_cash)})
@@ -157,7 +165,7 @@ class CashRecon:
 
     def end_shift(self, terminal_id):
         st, b = http("POST", self.a.api + "/v1/pos/auth/shift/end", self.cash_token,
-                     {"terminalId": terminal_id, "remark": "AC-58 关闭夹具班次 %s" % self.tag})
+                     {"terminalId": terminal_id, "remark": "%s AC-58 关闭夹具班次" % self.mark})
         return self.step("AC-58 关班（POS /v1/pos/auth/shift/end）", ok(b),
                          "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
                                                      str((b or {}).get("message"))[:70]))
@@ -224,7 +232,9 @@ class CashRecon:
                 "dishType": dish.get("dishType") or "single"}
         st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
                      {"orderType": "dinein", "items": [item],
-                      "idempotencyKey": "hik-%s" % uuid.uuid4().hex[:12]})
+                      # 确定性幂等键 E2E-<tag>-<n>：订单侧唯一 tag 锚点
+                      # （fund_flows.remark 由后端生成、不含 tag → 流水只能经订单/退款外键定位）
+                      "idempotencyKey": self.next_idem()})
         if not ok(b):
             code, msg = (b or {}).get("code"), str((b or {}).get("message") or "")
             if is_stock_short(code, msg):
@@ -380,7 +390,7 @@ class CashRecon:
         sid, rf, shift_id = ctx["slipId"], ctx["refund"], (ctx.get("shiftId")
                                                           or (self.in_shift["row"][1] if hasattr(self, "in_shift") else None))
         before = self.slip_row(sid)
-        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "AC-58 归属确认 %s" % self.tag)
+        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "%s AC-58 归属确认" % self.mark)
         if not ok(b):
             return self.step("AC-58-③ confirm-attribution 成功", False,
                              "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
@@ -439,7 +449,7 @@ class CashRecon:
         n_before = self.num("SELECT COUNT(*) FROM refund_shift_attribution WHERE refund_record_id=%d"
                             % rf["refundRecordId"])
         v_before = self.slip_row(sid)[7]
-        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "AC-58 重复确认（同班次）%s" % self.tag)
+        st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "%s AC-58 重复确认（同班次）" % self.mark)
         n_after = self.num("SELECT COUNT(*) FROM refund_shift_attribution WHERE refund_record_id=%d"
                            % rf["refundRecordId"])
         v_after = self.slip_row(sid)[7]
@@ -465,7 +475,7 @@ class CashRecon:
                                   " WHERE shift_id=%d AND deleted=0 ORDER BY slip_id DESC LIMIT 1" % other_id)
         rcf_old_before = int(self.slip_row(old_shift_slip)[5])
         rcf_new_before = int(self.slip_row(new_shift_slip)[5]) if new_shift_slip else 0
-        st2, b2 = self.confirm_attribution(sid, rf["refundRecordId"], other_id, "AC-58 改归属 %s" % self.tag)
+        st2, b2 = self.confirm_attribution(sid, rf["refundRecordId"], other_id, "%s AC-58 改归属" % self.mark)
         av1 = self.num("SELECT COALESCE(MAX(version),0) FROM refund_shift_attribution"
                        " WHERE refund_record_id=%d" % rf["refundRecordId"])
         changed = self.num("SELECT COUNT(*) FROM finance_audit_logs"

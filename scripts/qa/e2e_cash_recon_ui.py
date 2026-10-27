@@ -102,6 +102,13 @@ class SlipUi:
         self.a = a
         self.results = []
         self.tag = "SUI" + datetime.now().strftime("%m%d%H%M%S")
+        # 统一标记（Owner 2026-10-27 批准）：供 e2e_cleanup.py 定位
+        self.mark = "[E2E:%s]" % self.tag
+        self._seq = 0
+
+    def next_seq(self):
+        self._seq += 1
+        return self._seq
 
     def step(self, name, okk, detail, state=None):
         st = state or ("PASS" if okk else "FAIL")
@@ -145,7 +152,7 @@ class SlipUi:
     # ---------- 夹具：边界班次 + 退款 + generate ----------
     def make_fixture(self):
         st, b = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
-                     {"terminalId": "T-%s" % self.tag, "employeeId": "e2e",
+                     {"terminalId": "T-E2E-%s" % self.tag, "employeeId": "e2e",
                       "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
         d = data_of(b) or {}
         shift_id = int((d.get("shiftId") if isinstance(d, dict) else 0) or 0)
@@ -166,7 +173,8 @@ class SlipUi:
                 "dishType": dish.get("dishType") or "single"}
         st, b = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
                      {"orderType": "dinein", "items": [item],
-                      "idempotencyKey": "sui-%s" % uuid.uuid4().hex[:12]})
+                      # 确定性幂等键 E2E-<tag>-<n>（订单侧 tag 锚点）
+                      "idempotencyKey": "E2E-%s-%d" % (self.tag, self.next_seq())})
         dd = data_of(b) or {}
         if not ok(b):
             self.not_ready("夹具：下单", "HTTP %s code=%s" % (st, (b or {}).get("code")))
@@ -175,13 +183,13 @@ class SlipUi:
         http("POST", self.a.api + "/v1/pos/orders/order/pay", self.cash_token,
              {"orderId": dd.get("orderId"), "paymentMethod": "现金", "amount": amt})
         st, b = http("POST", self.a.api + "/v1/pos/orders/order/%s/refund?refundReason=%s"
-                     % (dd.get("orderNumber"), urllib.parse.quote("N19-3b UI 夹具 %s" % self.tag)),
+                     % (dd.get("orderNumber"), urllib.parse.quote("%s N19-3b UI 夹具" % self.mark)),
                      self.manager_token)
         self.step("夹具：退款", ok(b), "HTTP %s code=%s" % (st, (b or {}).get("code")))
         # 关班（产生 end_time）
         term = self.rows("SELECT COALESCE(terminal_id,'') FROM pos_shifts WHERE shift_id=%d" % shift_id)
         http("POST", self.a.api + "/v1/pos/auth/shift/end", self.cash_token,
-             {"terminalId": term[0][0] if term else "", "remark": "N19-3b UI 夹具关班"})
+             {"terminalId": term[0][0] if term else "", "remark": "%s N19-3b UI 夹具关班" % self.mark})
         # generate
         st, b = http("POST", self.a.api + "/v1/finance/deposit-slips/generate", self.admin_token,
                      {"shiftId": shift_id, "storeId": int(self.a.store_id)})
