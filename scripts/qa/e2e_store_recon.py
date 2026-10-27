@@ -459,12 +459,97 @@ class StoreReconE2E:
         browser.close()
         return okk
 
+
+    # ---------- store 2 的 DEPOSITED 缴款单夹具（AC-49d 自造数据，不依赖种子） ----------
+    def ensure_store2_deposited_slip(self):
+        """为 AC-49d 自造一张 store 2 的 DEPOSITED 缴款单（口径：E2E 自造 + tag 清理，不回填种子）。
+
+        链路：qa_store_b 开 store 2 班次(T-E2E-<tag>) → 现金下单 → 关班 → generate(store 2)
+              → submit → receive(actual=expected) → deposit(store 2 的银行户，人工汇总不带 bankTransactionId)
+        说明：本步骤会消耗库存（由 e2e_setup.ensure_ready 幂等重置，清理阶段不回补）。
+        """
+        import uuid as _uuid
+        tag = "SR" + datetime.now().strftime("%m%d%H%M%S")
+        mark = "[E2E:%s]" % tag
+        term = "T-E2E-%s" % tag
+        self.fixture_tag = tag
+        acct = self.rows("SELECT account_id FROM bank_accounts WHERE deleted=0 AND store_id=%d"
+                         " AND account_type=1 AND status=1 ORDER BY account_id LIMIT 1" % self.a.store_b)
+        if not acct:
+            return self.not_ready("store %d 夹具：银行户" % self.a.store_b,
+                                  "store %d 没有可用的收款银行户（account_type=1 status=1）→ 真数据缺口，需 lead 处理"
+                                  % self.a.store_b), None
+        bank_acct = int(acct[0][0])
+        st, b = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.store_b,
+                     {"terminalId": term, "employeeId": "e2e", "employeeName": "qa_store_b",
+                      "shiftType": "morning", "openingCash": 0})
+        if not ok(b):
+            return self.not_ready("store %d 夹具：开班" % self.a.store_b,
+                                  "HTTP %s code=%s msg=%s" % (st, (b or {}).get("code"),
+                                                              str((b or {}).get("message"))[:90])), None
+        # 菜品必须走 POS 菜品接口（含 food_code 映射；直接读库会缺 food_code → 下单 400）
+        st, db = http("GET", self.a.api + "/v1/pos/api/dishes", self.store_b)
+        dishes = (data_of(db) or []) if ok(db) else []
+        priced = [d for d in dishes if d.get("dishId") and float(d.get("price") or 0) > 0]
+        if not priced:
+            return self.not_ready("store %d 夹具：菜品" % self.a.store_b,
+                                  "POS 菜品接口无可用菜品（HTTP %s code=%s）" % (st, (db or {}).get("code"))), None
+        dish = priced[0]
+        item = {"productId": str(dish["dishId"]), "productName": dish.get("dishName") or "",
+                "quantity": 1, "price": float(dish.get("price") or 0),
+                "dishType": dish.get("dishType") or "single"}
+        st, ob = http("POST", self.a.api + "/v1/pos/orders/order", self.store_b,
+                      {"orderType": "dinein", "items": [item], "idempotencyKey": "E2E-%s-1" % tag})
+        if not ok(ob):
+            return self.not_ready("store %d 夹具：下单" % self.a.store_b,
+                                  "HTTP %s code=%s msg=%s" % (st, (ob or {}).get("code"),
+                                                              str((ob or {}).get("message"))[:90])), None
+        dd = data_of(ob) or {}
+        pay = {"orderId": dd.get("orderId"), "paymentMethod": "现金", "amount": dd.get("totalAmount")}
+        http("POST", self.a.api + "/v1/pos/orders/order/pay", self.store_b, pay)
+        http("POST", self.a.api + "/v1/pos/auth/shift/end", self.store_b,
+             {"terminalId": term, "remark": "%s store2 夹具关班" % mark})
+        shift = self.rows("SELECT shift_id FROM pos_shifts WHERE terminal_id='%s' AND deleted=0"
+                          " ORDER BY shift_id DESC LIMIT 1" % term)
+        if not shift:
+            return self.not_ready("store %d 夹具：班次" % self.a.store_b, "开班后查不到 shift"), None
+        shift_id = int(shift[0][0])
+        st, sb = http("POST", self.a.api + "/v1/finance/deposit-slips/generate", self.store_b,
+                      {"shiftId": shift_id, "storeId": self.a.store_b})
+        slip = ((data_of(sb) or {}).get("slip") or {}) if ok(sb) else {}
+        slip_id = slip.get("slipId") or (data_of(sb) or {}).get("slipId")
+        if not slip_id:
+            return self.not_ready("store %d 夹具：generate 缴款单" % self.a.store_b,
+                                  "HTTP %s code=%s msg=%s" % (st, (sb or {}).get("code"),
+                                                              str((sb or {}).get("message"))[:90])), None
+        exp = int(slip.get("expectedAmount") or 0)
+        st, s1 = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/submit" % int(slip_id),
+                      self.admin, {"remark": "%s store2 submit" % mark})
+        if not ok(s1):
+            return self.not_ready("store %d 夹具：submit" % self.a.store_b,
+                                  "slip=%s HTTP %s code=%s msg=%s（submit 403 时属权限模型断裂，见 fund-500 P0）"
+                                  % (slip_id, st, (s1 or {}).get("code"),
+                                     str((s1 or {}).get("message"))[:70])), None
+        http("POST", self.a.api + "/v1/finance/deposit-slips/%d/receive" % int(slip_id), self.admin,
+             {"receivedAmountFen": max(exp, 1), "remark": "%s store2 receive" % mark})
+        st, s3 = http("POST", self.a.api + "/v1/finance/deposit-slips/%d/deposit" % int(slip_id),
+                      self.admin, {"bankAccountId": bank_acct, "depositRefNo": "E2E-%s" % tag,
+                                   "remark": "%s store2 人工汇总存行" % mark})
+        if not ok(s3):
+            return self.not_ready("store %d 夹具：deposit" % self.a.store_b,
+                                  "slip=%s HTTP %s code=%s msg=%s" % (slip_id, st, (s3 or {}).get("code"),
+                                                                      str((s3 or {}).get("message"))[:80])), None
+        return "%s/store %d 夹具 slip=%s shift=%s bankAcct=%d" % (tag, self.a.store_b, slip_id, shift_id, bank_acct), int(slip_id)
     def run(self):
         print("=" * 88)
         print("P3-2 E2E：门店勾稽越权（AC-49） / 渠道手续费汇总对拍（AC-50）")
         print("=" * 88)
         if not self.preflight():
             return self.summary()
+        # AC-49d 自造 store 2 的 DEPOSITED 缴款单（不依赖种子；带 tag 可清理）
+        made, slip_id = self.ensure_store2_deposited_slip() or (None, None)
+        if made and slip_id:
+            self.step("store %d 夹具：自造 DEPOSITED 缴款单（tag 可清理）" % self.a.store_b, True, made)
         self.ac49_api()
         vals = self.ac50_api()
         try:
