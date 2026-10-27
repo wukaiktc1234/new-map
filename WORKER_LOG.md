@@ -4265,3 +4265,38 @@ CASE m.movement_type WHEN 'IN' THEN 1 WHEN 'OUT' THEN 2 ELSE 3 END AS type
 | `inventory_log` | **死代码，不建表** | XML 已改读 inventory_movement，本表无任何 SQL 引用 |
 | `store_inventory_log` | **死代码，不建表** | 读写皆 0（含 XML） |
 | `v_inventory_summary` | **bug-⑰ 不建** | 视图口径属业务定义，禁止反推 |
+
+## 90. bug-⑲ 完成 + 测试流水反向补偿 + lesson（2026-10-28 02:00–02:20）
+
+### 90.1 15 条测试流水：反向补偿（不删除）
+
+```
+基线       inventory 18 行 / 合计 718.7000 ｜ movement 129 行
+测试后     inventory 合计 736.7000（+18）｜ movement 144 行（+15，1400~1414 区间含 1390~1404）
+补偿后     inventory 合计 718.7000 ✔ ｜ movement 159 行（+15，**只增不减**）
+补偿流水 id 1405~1419，remark 前缀 '[E2E:revert] bug-19 验证回滚'
+inventory_id=1 数量：48.0000 → 30.0000（回到基线）✔
+```
+做法：为每条测试流水插入等量反向流水（正↔负、IN↔OUT），同时把 `inventory.quantity` 拨回 —— **不 DELETE**，审计链保持完整。
+
+### 90.2 lesson：「旧进程冒充新代码」= 假验证
+
+今天第二次同类事故：改完 `movementType` 透传后**没重启**就调 `/adjust`，看到 5 条流水全是 `IN`，误判「实现失败」；
+实际是旧 JVM 还在跑旧 class，重启后一次通过。
+规则（写进 lesson）：**验证前必须确认进程是新代码** —— 看 target/classes 的 class 文件时间戳，或让启动日志打版本号/GIT 短哈希。
+与「子集冒充全量」是同一类：**证据链没闭环就当没验证**。
+
+### 90.3 `e2e_cash_recon` 实测结果：**挂起**（心跳定位）
+
+```
+[BEAT] 套件启动，单次 HTTP 超时 120s，整套上限 420s
+[BEAT +   0.0s] start: 前置就绪检查
+[READY] api=http://localhost:8081/api admin=http://localhost:3002 pos=http://localhost:3001
+[PASS] 登录 qa_admin / vcashier01 / qa_store_b 均 HTTP 200
+[BEAT +   4.9s] login done
+→ 之后 ~7 分钟无任何心跳（文件最后写入 02:01:26），进程未退出、也无新 stage
+```
+结论：**E2E 卡在 `login done` 之后的第一段（开班/班次窗口逻辑）**，心跳把「死在哪一段」定位出来了——
+这正是当初加心跳的目的。但注意：`--max-seconds 420` 的主动中止**没有生效**（进程挂在某次阻塞调用里，没走到 `beat()` 的检查点）。
+→ 待改进：超时保护不能只放在 `beat()` 里，应放到每次 HTTP 调用的 timeout + 一个独立看门狗线程。
+本次为拿到护栏第 4 条证据，改用**定向链路验证**替代（下单→支付→退款→流水核对），结果见下。

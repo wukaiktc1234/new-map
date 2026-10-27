@@ -406,6 +406,23 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     public void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
                                         BigDecimal quantity, String unit, Long unitCost,
                                         String batchNo, String sourceType, String sourceRef) {
+        increaseStockAtLocation(locationId, materialId, materialName, quantity, unit, unitCost,
+                batchNo, sourceType, sourceRef, null);
+    }
+
+    /**
+     * bug-⑲：带流水类型覆盖的重载（手动调整时保留入参语义）。
+     * 默认入库流水固定写 IN，导致 adjust 传的 type=3/4/5 在流水里看不到；
+     * 这里允许调用方指定 movementType，**仍然只写一条流水**（不是补写第二条，避免双计数）。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
+                                        BigDecimal quantity, String unit, Long unitCost,
+                                        String batchNo, String sourceType, String sourceRef,
+                                        String movementTypeOverride) {
+        final String mvType = (movementTypeOverride != null && !movementTypeOverride.isBlank())
+                ? movementTypeOverride : "IN";
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "增加数量必须大于0");
         }
@@ -434,7 +451,7 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             log.debug("新建统一库存行：locationId={}, materialId={}, 数量={}, 单位成本={}分",
                     locationId, materialId, quantity, incomingUnitCost);
             writeMovement(locationId, materialId, materialName,
-                    BigDecimal.ZERO, quantity, quantity, "IN", sourceType, sourceRef,
+                    BigDecimal.ZERO, quantity, quantity, mvType, sourceType, sourceRef,
                     incomingUnitCost, incomingTotalCost);
             return;
         }
@@ -472,7 +489,7 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             int rows = inventoryMapper.updateById(fresh);
             if (rows > 0) {
                 writeMovement(locationId, materialId, materialName,
-                        beforeStock, newStock, quantity, "IN", sourceType, sourceRef,
+                        beforeStock, newStock, quantity, mvType, sourceType, sourceRef,
                         incomingUnitCost, incomingTotalCost);
                 return;
             }
@@ -488,6 +505,18 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
     public Long decreaseStockAtLocation(Long locationId, Long materialId,
                                         BigDecimal quantity,
                                         String sourceType, String sourceRef) {
+        return decreaseStockAtLocation(locationId, materialId, quantity, sourceType, sourceRef, null);
+    }
+
+    /** bug-⑲：带流水类型覆盖的扣减重载（见上方 increase 的同名说明）。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long decreaseStockAtLocation(Long locationId, Long materialId,
+                                        BigDecimal quantity,
+                                        String sourceType, String sourceRef,
+                                        String movementTypeOverride) {
+        final String mvType = (movementTypeOverride != null && !movementTypeOverride.isBlank())
+                ? movementTypeOverride : "OUT";
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "扣减数量必须大于0");
         }
@@ -525,7 +554,7 @@ public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory
             int rows = inventoryMapper.updateById(current);
             if (rows > 0) {
                 writeMovement(locationId, materialId, current.getMaterialName(),
-                        beforeStock, afterStock, quantity.negate(), "OUT", sourceType, sourceRef,
+                        beforeStock, afterStock, quantity.negate(), mvType, sourceType, sourceRef,
                         currentUnitCost, outgoingTotalCost);
                 // 返回出库成本，供成本结转使用
                 return outgoingTotalCost;

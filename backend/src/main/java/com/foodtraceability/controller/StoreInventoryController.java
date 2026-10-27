@@ -132,7 +132,8 @@ public class StoreInventoryController {
 
             BigDecimal changeQty = new BigDecimal(quantity);
 
-            // 根据调整数量正负调用增加或扣减（S5 统一流水：sourceType=OTHER，手动调整）
+            // bug-⑲：把入参 type 映射成 movement_type 覆盖值，**只写一条流水**（不补写第二条，避免双计数）
+            String movementType = toMovementType(type, changeQty);
             if (changeQty.compareTo(BigDecimal.ZERO) > 0) {
                 // 入库调整：如果未传单位成本，沿用当前单位成本（保持成本不变，现状口径）
                 Long effectiveUnitCost = unitCost != null ? unitCost : inventory.getUnitCost();
@@ -143,15 +144,18 @@ public class StoreInventoryController {
                         changeQty,
                         inventory.getUnit(),
                         effectiveUnitCost,
+                        null,
                         "OTHER",
-                        buildAdjustRef(inventoryId, remark));
+                        buildAdjustRef(inventoryId, remark),
+                        movementType);
             } else if (changeQty.compareTo(BigDecimal.ZERO) < 0) {
                 inventoryService.decreaseStockAtLocation(
                         inventory.getLocationId(),
                         inventory.getMaterialId(),
                         changeQty.negate(),
                         "OTHER",
-                        buildAdjustRef(inventoryId, remark));
+                        buildAdjustRef(inventoryId, remark),
+                        movementType);
             } else {
                 return Result.error(400, "调整数量不能为0");
             }
@@ -163,6 +167,25 @@ public class StoreInventoryController {
         } catch (Exception e) {
             return Result.error(500, "调整门店库存失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * bug-⑲：入参 type（1入库/2出库/3调拨/4盘点/5损耗）→ inventory_movement.movement_type。
+     *
+     * <p>映射规则：1→IN、2→OUT、3→按正负取 TRANSFER_IN/TRANSFER_OUT、4→ADJUST、5→LOSS。</p>
+     */
+    private String toMovementType(Integer type, BigDecimal changeQty) {
+        if (type == null) {
+            return changeQty.compareTo(BigDecimal.ZERO) > 0 ? "IN" : "OUT";
+        }
+        return switch (type) {
+            case 1 -> "IN";
+            case 2 -> "OUT";
+            case 3 -> changeQty.compareTo(BigDecimal.ZERO) > 0 ? "TRANSFER_IN" : "TRANSFER_OUT";
+            case 4 -> "ADJUST";
+            case 5 -> "LOSS";
+            default -> changeQty.compareTo(BigDecimal.ZERO) > 0 ? "IN" : "OUT";
+        };
     }
 
     @GetMapping("/logs")

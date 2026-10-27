@@ -63,6 +63,22 @@ public interface InventoryService extends IService<Inventory> {
                                  String sourceType, String sourceRef);
 
     /**
+     * bug-⑲：带流水类型覆盖的入库重载（手动调整时保留入参 type 语义；仍只写一条流水）。
+     */
+    void increaseStockAtLocation(Long locationId, Long materialId, String materialName,
+                                 java.math.BigDecimal quantity, String unit, Long unitCost,
+                                 String batchNo, String sourceType, String sourceRef,
+                                 String movementTypeOverride);
+
+    /**
+     * bug-⑲：带流水类型覆盖的扣减重载（同上）。
+     */
+    Long decreaseStockAtLocation(Long locationId, Long materialId,
+                                 java.math.BigDecimal quantity,
+                                 String sourceType, String sourceRef,
+                                 String movementTypeOverride);
+
+    /**
      * 按位置分页查库存（统一账维度）
      */
     IPage<Inventory> getStockPageAtLocation(Page<Inventory> page, Long locationId,

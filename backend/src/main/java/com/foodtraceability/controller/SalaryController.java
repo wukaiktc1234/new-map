@@ -52,12 +52,8 @@ public class SalaryController {
     }
 
     @Operation(summary = "获取薪资记录列表")
-    // P0-unfinished: salary_adjustment 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "salary_adjustment")
     // P0-unfinished: salary_record 两边均无表，见 docs/audit/broken-endpoints-prod.md
     @UnfinishedFeature(table = "salary_record")
-    // P0-unfinished: salary_rule 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "salary_rule")
     @GetMapping("/records")
     @PreAuthorize("hasAnyRole('admin', 'hr_director', 'finance_director')")
     public Result<IPage<SalaryRecord>> getSalaryRecords(Page<SalaryRecord> page, @RequestParam(required = false) String employeeName, @RequestParam(required = false) String salaryMonth) {
