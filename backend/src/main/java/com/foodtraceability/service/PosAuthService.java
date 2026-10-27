@@ -61,4 +61,7 @@ public interface PosAuthService {
      * @return 今日班次列表
      */
     List<PosShift> getTodayShifts(String terminalId);
+    /** ② POS「上一班」默认值：当前登录人所属门店最近一条已结束班次；无历史返回 null */
+    Map<String, Object> lastEndedShiftOfMyStore();
+
 }

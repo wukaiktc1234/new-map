@@ -37,12 +37,14 @@ public class PosAuthServiceImpl implements PosAuthService {
 
     public PosAuthServiceImpl(PosShiftMapper posShiftMapper, UserMapper userMapper,
                               PasswordEncoder passwordEncoder, JwtUtils jwtUtils,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              com.foodtraceability.mapper.OrderNewMapper orderNewMapper) {
         this.posShiftMapper = posShiftMapper;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
         this.objectMapper = objectMapper;
+        this.orderNewMapper = orderNewMapper;
     }
 
     private final JwtUtils jwtUtils;
@@ -62,6 +64,9 @@ public class PosAuthServiceImpl implements PosAuthService {
 
     private final UserMapper userMapper;
 
+    /** ② 门店归属推导用（pos_shifts 无 store_id，只能经订单窗取门店） */
+    private final com.foodtraceability.mapper.OrderNewMapper orderNewMapper;
+
     private final PasswordEncoder passwordEncoder;
 
     /**
@@ -69,6 +74,105 @@ public class PosAuthServiceImpl implements PosAuthService {
      * 与 POS 控制器白名单对齐：ROLE_ADMIN / ROLE_STORE_MANAGER / ROLE_CASHIER / ROLE_POS_OPERATOR。
      * owner 由 admin 同级授权一并放行（超级管理员）。
      */
+    /**
+     * ② POS「上一班备用金」默认值：当前登录人所属门店的**最近一条已结束班次**。
+     *
+     * <p>门店归属推导（pos_shifts 无 store_id 列）：
+     * 先用「当前登录人自己最近一条已结束班次」的时间窗内订单所属门店作为其门店；
+     * 再在同门店中取 end_time 最大的一条已结束班次。</p>
+     *
+     * <p>无历史 / 找不到门店 → 返回 null（控制器回 code=0 data=null，不 404），并打 WARN。</p>
+     */
+    @Override
+    public Map<String, Object> lastEndedShiftOfMyStore() {
+        Long userId = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            logger.warn("[METRIC] last_shift_no_current_user");
+            return null;
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            logger.warn("[METRIC] last_shift_user_not_found userId={}", userId);
+            return null;
+        }
+        String employeeId = user.getEmployeeCode() != null && !user.getEmployeeCode().isBlank()
+                ? user.getEmployeeCode() : user.getUsername();
+        // 1) 本人最近一条已结束班次
+        List<PosShift> mine = posShiftMapper.selectList(new LambdaQueryWrapper<PosShift>()
+                .eq(PosShift::getDeleted, 0)
+                .eq(PosShift::getEmployeeId, employeeId)
+                .in(PosShift::getStatus, Arrays.asList("CLOSED", "completed"))
+                .isNotNull(PosShift::getEndTime)
+                .orderByDesc(PosShift::getEndTime)
+                .last("LIMIT 1"));
+        if (mine == null || mine.isEmpty()) {
+            logger.warn("[METRIC] last_shift_none employeeId={}", employeeId);
+            return null;
+        }
+        Long myStore = storeOfShift(mine.get(0));
+        if (myStore == null) {
+            logger.warn("[METRIC] last_shift_store_unresolved employeeId={} shiftId={}",
+                    employeeId, mine.get(0).getShiftId());
+            return null;
+        }
+        // 2) 同门店最近一条已结束班次（扫最近 60 条，逐条按订单窗推导门店）
+        List<PosShift> recent = posShiftMapper.selectList(new LambdaQueryWrapper<PosShift>()
+                .eq(PosShift::getDeleted, 0)
+                .in(PosShift::getStatus, Arrays.asList("CLOSED", "completed"))
+                .isNotNull(PosShift::getEndTime)
+                .orderByDesc(PosShift::getEndTime)
+                .last("LIMIT 60"));
+        PosShift picked = null;
+        if (recent != null) {
+            for (PosShift ps : recent) {
+                Long store = storeOfShift(ps);
+                if (store != null && store.equals(myStore)) {
+                    picked = ps;
+                    break;
+                }
+            }
+        }
+        if (picked == null) {
+            logger.warn("[METRIC] last_shift_none_for_store storeId={}", myStore);
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("shiftId", picked.getShiftId());
+        out.put("terminalId", picked.getTerminalId());
+        out.put("openingCash", picked.getOpeningCash());
+        out.put("startTime", picked.getStartTime());
+        out.put("endTime", picked.getEndTime());
+        logger.info("[METRIC] last_shift_ok storeId={} shiftId={} openingCash={}",
+                myStore, picked.getShiftId(), picked.getOpeningCash());
+        return out;
+    }
+
+    /** 班次所属门店：取其时间窗内订单的 store_id（取出现次数最多的一个）；无订单 → null */
+    private Long storeOfShift(PosShift shift) {
+        if (shift == null || shift.getStartTime() == null || shift.getEndTime() == null) {
+            return null;
+        }
+        List<com.foodtraceability.entity.OrderNew> orders = orderNewMapper.selectList(
+                new LambdaQueryWrapper<com.foodtraceability.entity.OrderNew>()
+                        .eq(com.foodtraceability.entity.OrderNew::getDeleted, 0)
+                        .ge(com.foodtraceability.entity.OrderNew::getCreateTime, shift.getStartTime())
+                        .le(com.foodtraceability.entity.OrderNew::getCreateTime, shift.getEndTime())
+                        .isNotNull(com.foodtraceability.entity.OrderNew::getStoreId)
+                        .select(com.foodtraceability.entity.OrderNew::getStoreId));
+        if (orders == null || orders.isEmpty()) {
+            return null;
+        }
+        Map<Long, Integer> counts = new HashMap<>();
+        for (com.foodtraceability.entity.OrderNew o : orders) {
+            if (o.getStoreId() != null) {
+                counts.merge(o.getStoreId(), 1, Integer::sum);
+            }
+        }
+        return counts.isEmpty() ? null
+                : counts.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
+    }
+
+
     /** POS 终端基础权限集：终端运行必需、且部分码未入 DB 目录的业务码；另含菜品只读三码。 */
     private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiableList(Arrays.asList(
             "pos:order:create", "pos:order:pay", "pos:order:query",
@@ -573,3 +677,4 @@ public class PosAuthServiceImpl implements PosAuthService {
         logger.info("Token存储容量已满，已清理{}个最旧Token", removeCount);
     }
 }
+

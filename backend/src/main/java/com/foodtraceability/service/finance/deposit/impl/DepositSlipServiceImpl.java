@@ -238,7 +238,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         slip.setCashCountedFen(0L - reserveFen);
         // N19-2②：difference_net = actual − (expected − refund_component)
         //   generate 阶段 actual=0 → difference_net = refund_component − expected
-        slip.setDifferenceNetFen(differenceNetOf(0L, expected, component.fen));
+        // 差异1：generate 阶段的 difference_net 也必须按「计现额」口径（cashCouned − (expected − rcf)）
+        slip.setDifferenceNetFen((0L - reserveFen) - (expected - component.fen));
         slip.setStatus(ST_DRAFT);
         Long operatorId = currentOperatorId();
         slip.setCreateUserId(operatorId == null ? 0L : operatorId);

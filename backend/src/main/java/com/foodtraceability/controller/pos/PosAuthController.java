@@ -51,6 +51,20 @@ public class PosAuthController {
     /**
      * 获取当前活跃班次
      */
+    /**
+     * ② POS「上一班备用金」默认值：当前登录人所属门店最近一条已结束班次。
+     *    无历史 / 找不到门店 → code=0 data=null（不 404）。
+     */
+    @GetMapping("/shift/last")
+    @Operation(summary = "上一班（备用金默认值）", description = "返回当前登录人所属门店最近一条已结束班次的 shiftId/terminalId/openingCash/startTime/endTime；无历史返回 data=null")
+    public Result<Map<String, Object>> lastShift() {
+        Map<String, Object> last = posAuthService.lastEndedShiftOfMyStore();
+        if (last == null) {
+            return Result.success(null, "没有历史班次");
+        }
+        return Result.success(last);
+    }
+
     @GetMapping("/current-shift")
     @Operation(summary = "获取当前班次", description = "获取指定终端当前进行中的班次信息")
     public Result<PosShift> getCurrentShift(@RequestParam String terminalId) {
