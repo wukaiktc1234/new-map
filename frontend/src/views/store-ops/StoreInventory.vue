@@ -481,14 +481,19 @@ async function handleExport(): Promise<void> {
 }
 
 /**
- * 门店库存日志操作类型（后端 /v1/store-inventory/logs 的 `type` 现返回**数值码**）
- * 1=入库 / 2=出库 / 3=调整
- * 未知码必须显示「未知(type)」——空白等于信息丢失。
+ * 门店库存日志操作类型（后端 /v1/store-inventory/logs 的 `type` 为**数值码**）
+ *
+ * 码值以后端契约为准（StoreInventoryLog.type 注释 / StoreInventoryController#adjust 参数注释）：
+ *   1=入库 / 2=出库 / 3=调拨 / 4=盘点 / 5=损耗
+ * 3 在门店口语里常被叫「调整」，故展示为「调拨/调整」，但**不脱离后端契约只写调整**。
+ * 未知码必须显示「未知(code)」——空白等于信息丢失。
  */
 const OPERATION_TYPE_NAME: Record<number, string> = {
   1: '入库',
   2: '出库',
-  3: '调整',
+  3: '调拨/调整',
+  4: '盘点',
+  5: '损耗',
 }
 
 /** 数值码/字符串码 → 中文名；未知码回显原始码，绝不返回空串 */
@@ -502,7 +507,8 @@ function operationTypeName(type: string | number | null | undefined): string {
 
 /** 获取变动类型标签状态（按数值码；兼容历史字符串码） */
 function getLogTypeStatus(type: string | number | null | undefined): string {
-  const numericMap: Record<number, string> = { 1: 'success', 2: 'error', 3: 'warning' }
+  // 4=盘点 / 5=损耗 走 info，避免与 3=调拨 的 warning 混淆
+  const numericMap: Record<number, string> = { 1: 'success', 2: 'error', 3: 'warning', 4: 'info', 5: 'info' }
   const legacyMap: Record<string, string> = { IN: 'success', OUT: 'error', ADJUST: 'warning' }
   const raw = type === null || type === undefined ? '' : String(type).trim()
   if (!raw) return 'default'
