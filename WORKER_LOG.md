@@ -2788,3 +2788,103 @@ A37 原用 `COALESCE(s.end_time, NOW())`，隐式依赖会话时区（服务器 
 ```
 汇总: 16 PASS / 0 FAIL（判定项 16 条（其中 12 条 skipped_no_data，分母=0））；共 42 条断言（含 26 条 INFO，不计入 TOTAL）；SQL 自报 TOTAL FAIL=0
 ```
+
+## 65. E2E 数据口径（Owner 定稿）+ bug-② 追溯码补 seed（2026-10-27 16:40–17:10）
+
+### 65.1 口径原文（Owner 定稿，逐字照抄，不得改写）
+
+> 当前阶段无真实业务数据，断言分母由 E2E 受控数据撑起；E2E 数据带 tag、可复现、验收后清理，不作为生产数据。
+
+### 65.2 三个条件的落地方式
+
+**① 可复现（seed 脚本 + E2E 脚本可重建）**
+
+| 类别 | 脚本路径 | 说明 |
+|------|----------|------|
+| 追溯码 seed | `scripts/seed/2026-10-27-seed-food-trace-codes.sql` | 幂等（按 `trace_code` 判重），建 3 条 `TC-E2E-SEED-00x` |
+| 追溯码清理 | `scripts/seed/2026-10-27-clean-food-trace-codes.sql` | 按 tag 幂等清理 |
+| 财务/对账 E2E | `scripts/qa/e2e_recon_workbench.py` / `e2e_statement_flow.py` / `e2e_store_recon.py` | 各自建夹具并在结束时清理（脚本内清理段） |
+| 巡检 | `scripts/qa/consistency_check.py`（+ `.sql`） | 断言裁决，分母=0 时输出 `[INFO] skipped_no_data` |
+
+**② 有来源标记（E2E tag 命名规则与落点）**
+
+| 落点字段 | tag 规则 | 示例 |
+|----------|----------|------|
+| `pos_shifts.terminal_id` | 前缀 `T-E2E-` | `T-E2E-DEMO202610271700` |
+| `orders.order_number` | 前缀 `W-E2E-` | `W-E2E-20261027-001` |
+| `fund_flows.remark` | 含 `[E2E:<tag>]` | `缴款单存行：... [E2E:trace-seed]` |
+| `food_trace_codes.trace_code` | 前缀 `TC-E2E-` | `TC-E2E-SEED-001` |
+| `food_trace_codes.extra_info` | 含 `[E2E:<tag>]` | `[E2E:trace-seed]` |
+| `deposit_slips.slip_no` | 前缀 `DS-E2E-` | `DS-E2E-20261027-001` |
+
+**③ 可清理（按 tag 幂等）**
+
+- 追溯码：`scripts/seed/2026-10-27-clean-food-trace-codes.sql`（`trace_code LIKE 'TC-E2E-%'` 或 `extra_info LIKE '%[E2E:...]%'`）
+- 财务夹具：各 E2E 脚本自带清理段，且清理前走「备份 → `BEGIN..ROLLBACK` 试跑 → 正式执行 + 审计 `FIXTURE_ROLLBACK`」
+- 清理必须**同一个事务内**再查一次「之后是否还有新流水」，否则会与并发 agent 抢同一账户（见 §64.3 事故）
+
+### 65.3 现状报告：历史 E2E 数据没有统一 tag（只报告，未批量改）
+
+清空后残留的班次（`pos_shifts` 86 行）按 `terminal_id` 前缀分布：
+
+```
+T-P3SEED*            50 条   2026-10-25（P3 seed 期）
+T-HIK<时间戳>*       14 条   2026-10-26~27（AC-58 hinge 用）
+T-SUI<时间戳>*       12 条   2026-10-26（对账工作台用）
+T-N194*               4 条   2026-10-27（N194 轮）
+T-RB / T-RA           2 条   2026-10-26
+T-E2E-DEMO*           1 条   2026-10-27（已符合新规范）
+pos-127.0.0.1         1 条   2026-10-27（POS 前端默认 terminalId，无 tag）
+```
+
+历史 tag 形态**四类混杂**：① 完全无 tag（`pos-127.0.0.1`、`T-RB`）；② 轮次前缀（`T-N194`、`T-P3SEED`）；
+③ 工具/人名缩写 + 时间戳（`T-HIK*`=hinge 用例、`T-SUI*`=对账工作台）；④ 新规范（`T-E2E-*`）。
+`orders` / `fund_flows` / `deposit_slips` 当前已清空（0 行），故不带 tag 的历史数据已随 §64.3 一并清除。
+
+**建议（未执行，等 Owner 裁定）**：
+1. 制定统一规范：`pos_shifts.terminal_id` 前缀 `T-E2E-`、`orders.order_number` 前缀 `W-E2E-`、`deposit_slips.slip_no` 前缀 `DS-E2E-`、`fund_flows.remark` 带 `[E2E:<tag>]`；
+2. 写一次性归一脚本 `scripts/db-fix/2026-10-27-normalize-e2e-tags.sql`：按上表把 `T-HIK*`/`T-SUI*`/`T-N194*`/`T-P3SEED*` 映射成 `T-E2E-<原标识>`，并在 `remark` 追加 `[E2E:legacy-<原前缀>]`；
+3. 归一脚本同样要「备份 → 试跑 → 执行 + 审计」，且**只改 tag 字段，不动金额/时间**。
+
+### 65.4 bug-②：`food_trace_codes` 不是「同表异名」，是两代不同模型
+
+| 维度 | `food_trace_code`（80 行，活） | `food_trace_codes`（本次清空后 0 行） |
+|------|-------------------------------|--------------------------------------|
+| 业务语义 | 出餐 / 菜品追溯码（后厨链路） | 供应链追溯码（批次 / 供应商 / 物流 / 检验） |
+| 主键 | `id` bigint + `trace_code_id` **varchar** | `trace_code_id` **bigint** |
+| 关键列 | `order_id`/`dish_id`/`kitchen_station`/`make_status`/`serve_time`/`inventory_deduction` | `trace_type`/`target_type`/`supplier_id`/`batch_no`/`chain_data` jsonb |
+| 实体 / Mapper | `entity/FoodTraceCode` + `FoodTraceCodeMapper` | `entity/TraceCode` + `TraceCodeMapper` |
+
+→ 两者字段集**几乎不重叠**（varchar vs bigint 主键、`dish_id` vs `target_type/target_id`），不存在「改错表名」，
+所以**不能靠切 Mapper 修**；真相是 `food_trace_codes` 从未有数据（供应链追溯链路没跑过）→ **补 seed**。
+
+**验证（真实接口，qa_store_b / ROLE_STORE_MANAGER 已具备 `PERM_TRACE_QUERY`）**
+
+```
+GET /v1/trace-codes/TC-E2E-SEED-001 → HTTP 200 code=0
+  data={"traceCodeId":3,"traceCode":"TC-E2E-SEED-001","traceType":2,"traceTypeName":"原料批次追溯码",
+        "targetType":3,"targetTypeName":"原材料","targetId":1,"targetName":"生菜",
+        "batchNo":"BATCH-E2E-001","productionDate":"2026-10-26","expiryDate":"2026-11-02",
+        "supplierId":1,"supplierName":"E2E 测试供应商","status":1,"statusName":"正常",…}
+GET /v1/trace-codes?pageNum=1&pageSize=3 → HTTP 200 code=0  total=3  records=3
+SELECT count(*) FROM food_trace_codes;        -- 3
+SELECT count(*) FROM food_trace_code;         -- 80（另一代模型，不受影响）
+```
+
+**seed 过程中踩到并修掉的两处**（写进 seed 脚本注释）：
+1. `chk_ftc_risk_level_domain` 要求 `risk_level ∈ {1,2,3}`，初版写 0 → 违反约束；
+2. `chain_data` 是 **jsonb** 但实体用 `JacksonTypeHandler` 反序列化成 String，写 `'[]'::jsonb` 会让 `GET /v1/trace-codes/{code}` **500**
+   （`MismatchedInputException: Cannot deserialize value of type String from Array value`）→ seed 里置 `NULL`。
+
+### 65.5 ⚠️ 权限绑定 id 格式的坑（本轮踩到，必须记）
+
+`role_permissions.permission_id` 必须等于 `permissions.permission_id_str`（形如 `PERM_INVENTORY_DEDUCT`），
+**不是**权限码字符串（`inventory:deduct`）。用权限码插入的行在 `UserMapper.getUserRolePermissions` 的 join 中**匹配不上**，等于没授权。
+本轮先前两次授权脚本（`inventory:deduct`）用的正是权限码形态 → 无效；已修正脚本并清掉冗余行：
+
+```
+PERM_INVENTORY_DEDUCT → 1, ROLE_ADMIN, ROLE_FINANCE_DIRECTOR, ROLE_OWNER, ROLE_STORE_MANAGER, ROLE_WAREHOUSE_MANAGER
+（ROLE_FINANCE_DIRECTOR 为本轮新增；ROLE_CASHIER 未绑，符合裁定）
+```
+
+另：`trace:*` 五个权限码在 `role_permissions` 里本就是 `PERM_TRACE_QUERY` 形态且已绑 4 个角色，无需新增授权。
