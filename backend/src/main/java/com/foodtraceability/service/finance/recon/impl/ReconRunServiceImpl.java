@@ -120,13 +120,18 @@ public class ReconRunServiceImpl implements ReconRunService {
                     }
                     throw new BusinessException(ErrorCode.PARAM_ERROR,
                             "该账户当日已有空的 FINALIZED 对账批次（runId=" + existing.getRunId()
-                                    + "，items=0），属异常遗留，请先清理后再跑批");
+                                    + "，items=0），属历史遗留（旧版允许空窗口 FINALIZE，现已被 ReconBatchExecutor 空窗口守卫杜绝），请先清理后再跑批");
                 }
                 rebuild = true;
             } else if (ReconDictionary.RUN_FAILED.equals(status)) {
-                rebuild = true;
+                // 原地重跑：先 CAS 抢占（UPDATE ... WHERE run_id=? AND status='FAILED'）
+                if (!reconRunTxSupport.claimForRebuild(existing.getRunId(), ReconDictionary.RUN_FAILED, existing.getStartedAt())) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR,
+                            "该批次已被其他请求重建（runId=" + existing.getRunId() + "），请刷新后再试");
+                }
                 log.info("[METRIC] recon_run_rebuild_failed accountId={} date={} oldRunId={}",
                         dto.getAccountId(), businessDate, existing.getRunId());
+                return executeInPlace(existing, account);
             } else {
                 boolean stale = existing.getStartedAt() == null
                         || existing.getStartedAt().isBefore(LocalDateTime.now().minusMinutes(RUNNING_STALE_MINUTES));
@@ -135,9 +140,14 @@ public class ReconRunServiceImpl implements ReconRunService {
                             "该账户当日已有进行中的对账批次（runId=" + existing.getRunId()
                                     + "，status=" + status + "），请稍后重试或传 force=true 重建");
                 }
-                rebuild = true;
+                // 僵死 RUNNING：同样 CAS 抢占，只有抢到的那一个请求能跑批
+                if (!reconRunTxSupport.claimForRebuild(existing.getRunId(), status, existing.getStartedAt())) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR,
+                            "该批次已被其他请求重建（runId=" + existing.getRunId() + "），请刷新后再试");
+                }
                 log.info("[METRIC] recon_run_rebuild_stale accountId={} date={} oldRunId={} status={} stale={}",
                         dto.getAccountId(), businessDate, existing.getRunId(), status, stale);
+                return executeInPlace(existing, account);
             }
         }
         Long rebuildOf = existing == null ? null : existing.getRunId();
@@ -152,7 +162,8 @@ public class ReconRunServiceImpl implements ReconRunService {
                 throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
                         "对账批次创建冲突且未查到既有批次：runKey=" + run.getRunKey());
             }
-            return new ReconRunCreateResultVO(true, toVO(concurrent, account.getAccountName()));
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "该批次已被其他请求重建（runId=" + concurrent.getRunId() + "），请刷新后再试");
         }
 
         try {
@@ -171,6 +182,22 @@ public class ReconRunServiceImpl implements ReconRunService {
         if (finalized == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "对账批次不存在：runId=" + run.getRunId());
         }
+        return new ReconRunCreateResultVO(false, toVO(finalized, account.getAccountName()));
+    }
+
+    /** 原地重跑已抢占的 run（不新建行 → 不存在 run_key 撞库与「双跑」窗口） */
+    private ReconRunCreateResultVO executeInPlace(ReconRun claimed, BankAccount account) {
+        try {
+            reconBatchExecutor.execute(claimed.getRunId());
+        } catch (RuntimeException e) {
+            reconRunTxSupport.markFailed(claimed.getRunId(), e.getMessage());
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR,
+                    "对账跑批失败（runId=" + claimed.getRunId() + "）：" + e.getMessage());
+        }
+        ReconRun finalized = reconRunMapper.selectById(claimed.getRunId());
         return new ReconRunCreateResultVO(false, toVO(finalized, account.getAccountName()));
     }
 

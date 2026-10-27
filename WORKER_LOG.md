@@ -2964,3 +2964,92 @@ if (externals.isEmpty()) {
 
 - 账户 24：`R1-E2E-TXN1`（12000 分 MANUAL 银行流水）+ run 154（FINALIZED，items=1）—— R1 证据，清理前需先报 Lead
 - 账户 25：`R1-REUSE-TXN1`（9000 分）+ run 155（FAILED）/156（FINALIZED）—— 复用规则三场景证据
+
+## 67. 收尾四件：FINALIZED 空 run 根因 / 并发双跑 / 三条 purge / bug-⑤ 根因（2026-10-27 19:55–20:40）
+
+### 67.1 FINALIZED + items=0 的根因：历史遗留（非现存代码 bug）
+
+**现状（收尾时全库）**：`recon_runs` 仅 3 行 —— 154 FINALIZED items=1、155 FAILED、156 FINALIZED items=1，**不存在 FINALIZED+items=0**。
+
+**历史上的那两条（151/152，已于 §66.2 清理，备份 `.verify-tmp/backup-empty-finalized-runs.csv`）**：
+`run_key=RECON-22-20261027`，create_time 18:46 / 19:17，均在 R1 空窗口守卫上线（19:22 重启）**之前**产生。
+
+三选一逐条排除：
+
+| 可能 | 证据 | 结论 |
+|------|------|------|
+| a) 事务边界（FINALIZE 先写、items 后写失败未回滚） | `ReconBatchExecutor.execute()` 单事务内顺序为 persistItems → persistDifferences → finalizeRun，FINALIZE 在**最后**一步；失败整体回滚（`@Transactional(rollbackFor=Exception.class)`），run 由独立事务置 FAILED | **排除** |
+| b) confirm-attribution 重算删了 items 没重建 | 全类 grep `recon_items`/`ReconItemMapper` **无任何 delete/remove**；confirm-attribution 只动 deposit_slips/attribution，不碰 recon_items | **排除** |
+| c) 历史遗留 | 旧版 `execute()` **无空窗口守卫** → externals=0 时 internals 也 0 → persistItems 写 0 行 → finalizeRun 照常置 FINALIZED。151/152 的 account=22 当日 `bank_transactions` 为 0，与 400 复现条件一致 | **成立（唯一解）** |
+
+**「此状态不再产生」的依据（代码位置）**：
+
+```java
+// ReconBatchExecutor.java:155-166
+List<ExternalSubject> externals = loadExternal(run.getAccountId(), businessDate);
+if (externals.isEmpty()) {
+    log.warn("[METRIC] recon_batch_empty_window runId={} accountId={} date={}", runId, run.getAccountId(), businessDate);
+    throw new BusinessException(ErrorCode.PARAM_ERROR, "窗口内无银行流水，无法对账…");
+}
+```
+
+**400 文案已按要求改成「历史遗留」**：
+`该账户当日已有空的 FINALIZED 对账批次（runId=X，items=0），属历史遗留（旧版允许空窗口 FINALIZE，现已被 ReconBatchExecutor 空窗口守卫杜绝），请先清理后再跑批`
+
+### 67.2 并发僵死重建：会双跑，已改条件更新（实测验证）
+
+**改前（缺陷）**：僵死 RUNNING 的 expectedStatus 与目标状态**同为 'RUNNING'** → 两个请求的 `UPDATE ... WHERE run_id=? AND status='RUNNING'` **同时命中**，各自 execute → 一个成功、另一个撞 `uk_recon_items_subject` → **500**（实测：req1 code=500 duplicate key、req2 code=0）。
+「有唯一约束」只保证不重复落库，**不保证只跑一次**。
+
+**改后（CAS 带 started_at）**：`ReconRunMapper.claimForRebuild`
+
+```sql
+UPDATE recon_runs SET status = #{status}, started_at = NOW(), finished_at = NULL, update_time = NOW()
+ WHERE run_id = #{runId} AND status = #{expectedStatus}
+   AND COALESCE(started_at, TIMESTAMP '1970-01-01 00:00:00')
+     = COALESCE(#{expectedStartedAt}, TIMESTAMP '1970-01-01 00:00:00')
+```
+
+· 命中 1 行 → 抢占成功 → `executeInPlace()` **原地重跑该 run（不新建行）**，不存在 run_key 撞库窗口；
+· 命中 0 行 → 抛 400 `该批次已被其他请求重建（runId=X），请刷新后再试`；
+· 并发 INSERT 撞 `uk_recon_runs_run_key` 的分支也**不再返回 reused=true**，同样改 400。
+
+**实测（account=23 / 2026-10-25，人造僵死 RUNNING run + 1 条银行流水，两线程并发 POST）**：
+
+```
+req1 → HTTP 200 code=400 该批次已被其他请求重建（runId=160），请刷新后再试
+req2 → HTTP 200 code=0   操作成功
+成功数=1 ｜ 400 数=1 ｜ run 160 = FINALIZED，items>0
+```
+
+### 67.3 三条 purge 执行结果（Owner 批准）
+
+| # | 对象 | 命中 | 删除 | 保留 | 审计 log_id | 备份 |
+|---|------|------|------|------|-------------|------|
+| a | 调节表 120~135 | 16 | **16** | 0（全部 items=0、remark 裸写 `e2e-stmt generate`，无 items>0 需保留者） | **2242** | `.verify-tmp/backup-statements-120-135.csv` |
+| b | 孤儿订单 O1793088866068（W20261027014） | 1 | **1**（orders 1 + order_items 1 + kitchen_order 1；payments 0） | 0 | **2243** | `.verify-tmp/backup-orphan-order-1793088866068.csv` |
+| c | 历史 shift（`terminal_id LIKE 'T-%'`） | 85 | **83** | **2**（307、309） | **2244** | `.verify-tmp/backup-pos-shifts-t-prefix.csv` |
+
+**③c 的 2 行不可 purge 的原因（判定 SQL）**：
+
+```sql
+SELECT count(*) FROM orders o WHERE o.deleted=0
+   AND o.create_time >= s.start_time AND o.create_time <= COALESCE(s.end_time, now());
+-- 307 T-HIK1026152847 active 窗口内订单=6
+-- 309 T-HIK1026153003 active 窗口内订单=6
+```
+两行都是 `status=active`、`end_time IS NULL` 的班次，窗口覆盖到 now()，**窗口内有 6 笔订单**（订单要留作证据链）→ 按判定规则必须保留。
+执行后 `pos_shifts` 有效行 = 3（307、309 + 1 条非 T- 前缀的 `pos-127.0.0.1`）。
+
+### 67.4 bug-⑤ 根因（Lead 认定三条全部成立，本处补写）
+
+| # | 根因 | 具体表现 |
+|---|------|----------|
+| ① | **只看只读端点就下结论** | 只确认了 `GET /v1/finance/bank-transactions`（BankImportController:95）就断言「没有写入」，没 grep 整个类（同一文件 :48/:77 就是 import/commit） |
+| ② | **上游回报不完整 + Lead 没追问** | ts-ops 报「只有 BankTransactionQueryService」，Lead 未追问「是否 grep 全项目 / 是否有 import 前缀端点」即采纳 |
+| ③ | **先入为主** | 预设「对账系统没有银行流水导入」，用这个预设去解释不完整证据，形成自我强化 |
+
+**新增规则（写入本日志，长期有效）**：
+
+> 判断某个功能**是否存在**，必须 `grep` 全类 / 全项目（同目录、同文件、相近命名如 `Import`/`Commit`/`Sync`/`Job`/`Converter`），
+> **不能只看一个方法或一个端点**；结论里必须写明检索范围（命令 + 命中文件清单），否则视为未验证。
