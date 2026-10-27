@@ -1455,6 +1455,46 @@ SELECT CASE WHEN count(*) = 0
 \endif
 
 -- ------------------------------------------------------------
+-- A43（**参与判定**）：DEPOSITED 缴款单必须有配对的存行内部转账流水
+--   **与 A14 互为反向覆盖，两个方向都要有：**
+--     · A14 以**流水**为起点：存在 [depositSlip=X] 键 → 该键下必须出/入各 1 条且净额 0；
+--     · A43 以**单据**为起点：status=DEPOSITED 的单 → 必须有与之配对、成对且净额 0 的流水。
+--   只保留 A14 会漏「单还在、流水被删/冲正」；只保留 A43 会漏「流水成对但单已不存在」。
+--   守卫：deposit_slips / fund_flows 缺失 → INFO 跳过（不计入 TOTAL）。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.deposit_slips') IS NOT NULL
+        AND to_regclass('public.fund_flows') IS NOT NULL) AS a43_ready
+\gset
+\if :a43_ready
+SELECT CASE WHEN count(*) = 0
+            THEN '[PASS] A43 DEPOSITED 缴款单缺配对存行流水 rows=0'
+            ELSE '[FAIL] A43 DEPOSITED 缴款单缺配对存行流水 rows=' || count(*)
+                 || ' —— 存在 status=DEPOSITED 但没有成对存行流水（出/入各 1 且金额相等）的缴款单，禁止接受'
+       END AS a43_line,
+       count(*) AS a43_n
+  FROM deposit_slips s
+ WHERE s.deleted = 0
+   AND s.status = 'DEPOSITED'
+   AND NOT EXISTS (
+       SELECT 1 FROM (
+           SELECT split_part(split_part(f.remark, '[depositSlip=', 2), ']', 1) AS slip_no,
+                  count(*) AS cnt,
+                  sum(CASE WHEN f.flow_direction = 2 THEN f.amount ELSE -f.amount END) AS net
+             FROM fund_flows f
+            WHERE f.deleted = 0
+              AND f.remark LIKE '%[depositSlip=%'
+            GROUP BY 1
+       ) k
+        WHERE k.slip_no = s.slip_no
+          AND k.cnt = 2
+          AND k.net = 0)
+\gset
+\else
+\set a43_line '[INFO] A43 跳过（deposit_slips / fund_flows 不存在）'
+\set a43_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1778,6 +1818,10 @@ SELECT line
     SELECT 43,
            :'a42_line'
     UNION ALL
+    -- A43 参与判定：DEPOSITED 单缺配对存行流水（>0 进 TOTAL）
+    SELECT 44,
+           :'a43_line'
+    UNION ALL
     SELECT 42,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
@@ -1805,7 +1849,8 @@ SELECT line
              + CASE WHEN :a36_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a37_n > 0 THEN 1 ELSE 0 END
              + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END
-              + CASE WHEN :a42_n > 0 THEN 1 ELSE 0 END)
+              + CASE WHEN :a42_n > 0 THEN 1 ELSE 0 END
+              + CASE WHEN :a43_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 
