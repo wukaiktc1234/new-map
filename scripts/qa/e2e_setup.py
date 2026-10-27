@@ -8,8 +8,10 @@ E2E 前置准备（可被其它 E2E 脚本 import 复用）
 
 做三件事：
   1) 探测 8081 / 3002 / 3001 是否就绪（不就绪 → exit 2，与其它脚本风格一致）
-  2) 库存重置：把参与 E2E 的菜品 stock 补到 >= 500（幂等：只在 stock < 100 时更新），
-     并把实际执行的 SQL 打进日志
+  2) 库存重置（NEW-32）：POS 菜品在 **foods** 表（旧实现错更新 food 表 → 1/5/7/8 长期 0）；
+     对 food_id IN (1,5,7,8) 或 food_name LIKE 'QA-%' 的行**幂等置为 STOCK_RESET_TARGET=900**
+     （= 单轮最大下单量 300 × 3），重置前后各打一行 food_id:stock 盘点；
+     **清理阶段不回补库存**，由下一次 ensure_ready 统一重置
   3) 打印 [READY] 摘要（各端口 + 库存重置条数），exit 0
 
 用法：
@@ -52,7 +54,18 @@ DEFAULT_PSQL = r"P:\my-new-project\PostgreSQL\18\bin\psql.exe"
 
 # 哨兵：表示「属性非空即就绪」。仅当调用方确认该元素在数据未到时不会渲染 0/占位值时才可用。
 READY_NONEMPTY = "__nonempty__"
-STOCK_TARGET = 500
+# ---------------------------------------------------------------------------
+# NEW-32：库存前置重置（POS 菜品在 **foods** 表，不是 food 表 —— 旧实现更新错表，
+#   导致 food_id 1/5/7/8 长期 stock=0，下单直接 500「库存不足」）
+#   充足值 = 「单轮用例最大下单量 × 3」的显式常量；不在用例里散落魔数。
+#   **清理阶段不回补库存**：库存由下一次 ensure_ready 统一重置（幂等）。
+# ---------------------------------------------------------------------------
+STOCK_RESET_TARGET = 900          # = 单轮最大下单量 300 × 3（足够跑 3 轮不重置）
+STOCK_PARTICIPANT_IDS = (1, 5, 7, 8)   # 已知历史被扣到 0 的测试菜
+STOCK_PARTICIPANT_NAME_LIKE = "QA-%"   # 其余 QA 系列测试菜
+
+# 兼容旧名（其它脚本可能 import）
+STOCK_TARGET = STOCK_RESET_TARGET
 STOCK_THRESHOLD = 100
 
 
@@ -154,25 +167,44 @@ def ensure_ready(api=DEFAULT_API, admin=DEFAULT_ADMIN, pos=DEFAULT_POS, reset_st
 
     updated = 0
     if reset_stock:
-        sql = ("UPDATE food SET stock = %d WHERE stock < %d AND deleted = 0"
-               % (STOCK_TARGET, STOCK_THRESHOLD))
+        where = ("deleted = 0 AND (food_id IN (%s) OR food_name LIKE '%s')"
+                 % (",".join(str(i) for i in STOCK_PARTICIPANT_IDS), STOCK_PARTICIPANT_NAME_LIKE))
+        # ① 重置前盘点（food_id / before），只为可追溯，不参与判定
+        rc0, before, err0 = psql("SELECT food_id || ':' || COALESCE(stock,0) FROM foods"
+                                 " WHERE %s ORDER BY food_id" % where,
+                                 psql_path, pg_host, pg_port, pg_user, pg_password, pg_db)
+        if rc0 != 0:
+            log("[NOT_READY] 库存盘点失败：rc=%s %s" % (rc0, (err0 or before)[:200]))
+            return False
+        log("[STOCK] before（参与 E2E 的菜品 food_id:stock）= %s" % (before.replace("\n", " ") or "(none)"))
+        # ② 幂等重置：一律置为显式常量（重复跑结果一致，不做「只补不足」的条件更新）
+        sql = ("UPDATE foods SET stock = %d WHERE %s" % (STOCK_RESET_TARGET, where))
         log("[SQL] %s" % sql)
         rc, out, err = psql(sql, psql_path, pg_host, pg_port, pg_user, pg_password, pg_db)
         if rc != 0:
             log("[NOT_READY] 库存重置失败：rc=%s %s" % (rc, (err or out)[:200]))
             return False
-        # psql 的 UPDATE 会输出 "UPDATE N"
         for tok in (out or "").split():
             if tok.isdigit():
                 updated = int(tok)
-        rc2, out2, _ = psql("SELECT COUNT(*) FROM food WHERE deleted=0 AND stock >= %d" % STOCK_TARGET,
-                            psql_path, pg_host, pg_port, pg_user, pg_password, pg_db)
-        enough = int(out2) if rc2 == 0 and out2.isdigit() else -1
-        log("[READY] api=%s admin=%s pos=%s ｜ 库存重置 %d 条（stock<%d → %d）；当前 stock>=%d 的菜品 %d 条"
-            % (api, admin, pos, updated, STOCK_THRESHOLD, STOCK_TARGET, STOCK_TARGET, enough))
+        # ③ 重置后盘点
+        rc2, after, _ = psql("SELECT food_id || ':' || COALESCE(stock,0) FROM foods"
+                             " WHERE %s ORDER BY food_id" % where,
+                             psql_path, pg_host, pg_port, pg_user, pg_password, pg_db)
+        log("[STOCK] after （food_id:stock）= %s" % (after.replace("\n", " ") or "(none)"))
+        log("[READY] api=%s admin=%s pos=%s ｜ 库存重置 %d 条（foods → %d，条件：food_id IN %s 或 food_name LIKE '%s'）"
+            % (api, admin, pos, updated, STOCK_RESET_TARGET, list(STOCK_PARTICIPANT_IDS),
+               STOCK_PARTICIPANT_NAME_LIKE))
+        # 清理约定：E2E 结束**不回补库存**，由下一次 ensure_ready 幂等重置
     else:
         log("[READY] api=%s admin=%s pos=%s ｜ 跳过库存重置" % (api, admin, pos))
     return True
+
+
+def is_stock_short(code, message):
+    """NEW-33（已知缺陷不改产品）：库存不足目前返回 code=500 + 「库存不足」文案，
+    这里集中识别，便于用例把它判成「环境未就绪」而不是业务断言失败。"""
+    return (code == 500 and "库存" in (message or "")) or ("库存不足" in (message or ""))
 
 
 def main():

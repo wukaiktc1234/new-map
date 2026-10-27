@@ -41,7 +41,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 try:
-    from e2e_setup import ensure_ready
+    from e2e_setup import ensure_ready, is_stock_short
 except Exception as e:  # pragma: no cover
     print("[FATAL] 无法导入 e2e_setup：%s" % e)
     sys.exit(2)
@@ -224,7 +224,13 @@ class CashRecon:
                      {"orderType": "dinein", "items": [item],
                       "idempotencyKey": "hik-%s" % uuid.uuid4().hex[:12]})
         if not ok(b):
-            return None, "下单 HTTP %s code=%s %s" % (st, (b or {}).get("code"), str((b or {}).get("message"))[:60])
+            code, msg = (b or {}).get("code"), str((b or {}).get("message") or "")
+            if is_stock_short(code, msg):
+                # NEW-33：库存不足当前返回 code=500（应为 400/409），产品不改；
+                # E2E 侧集中识别 → 报「环境未就绪（库存）」而不是业务断言失败
+                return None, ("环境未就绪：库存不足（NEW-33 已知缺陷 code=%s；已由 ensure_ready 前置重置，"
+                              "若仍报请检查 foods.stock）msg=%s" % (code, msg[:60]))
+            return None, "下单 HTTP %s code=%s %s" % (st, code, msg[:60])
         d = data_of(b) or {}
         amt = round(float(d.get("totalAmount") or 0), 2)
         st2, b2 = http("POST", self.a.api + "/v1/pos/orders/order/pay", self.cash_token,
@@ -492,6 +498,9 @@ class CashRecon:
 
     # ---------- ⑦ 清理 ----------
     def cleanup(self):
+        # 【库存约定·NEW-32】本用例下单会消耗 foods.stock，清理阶段**故意不回补**：
+        #   库存由下一次 e2e_setup.ensure_ready() 幂等重置为 STOCK_RESET_TARGET（900）。
+        #   避免各用例自行加减库存拼平衡，导致谁都不敢改。
         try:
             self.step("AC-58-⑦ 清理", True,
                       "只做 tag 标记清理：本段不写 bank_transactions；退款流水/订单按业务归属留档（tag=%s），"
