@@ -141,7 +141,9 @@ class CashRecon:
         uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
         st, b = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
                      {"terminalId": "T-%s" % self.tag, "employeeId": str(uid or self.a.pos_user),
-                      "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
+                      "employeeName": self.a.pos_user, "shiftType": "morning",
+                      # 第 29 条断言需要 reserve_fen > 0：开班带备用金 100 元（=10000 分）
+                      "openingCash": float(self.a.opening_cash)})
         d = data_of(b)
         sid = 0
         if isinstance(d, dict):
@@ -267,8 +269,11 @@ class CashRecon:
         return 0
 
     def slip_row(self, slip_id):
+        """列序：0 slip_id / 1 shift_id / 2 expected / 3 actual / 4 difference / 5 rcf / 6 dnet /
+        7 version / 8 reserve_fen / 9 cash_counted_fen"""
         r = self.rows("SELECT slip_id, shift_id, expected_amount, actual_amount, difference_amount,"
-                      " COALESCE(refund_component_fen,0), COALESCE(difference_net_fen,0), version"
+                      " COALESCE(refund_component_fen,0), COALESCE(difference_net_fen,0), version,"
+                      " COALESCE(reserve_fen,0), COALESCE(cash_counted_fen,0)"
                       " FROM deposit_slips WHERE slip_id=%d" % int(slip_id))
         return r[0] if r else None
 
@@ -319,13 +324,17 @@ class CashRecon:
             return self.not_ready("AC-58-① 缴款单", "未找到 slip_id=%s（generate data=%s）"
                                   % (sid, json.dumps(data_of(b), ensure_ascii=False)[:160]))
         exp, comp, dnet = int(row[2]), int(row[5]), int(row[6])
+        # 净值公式必须含备用金：dnet = (actual − reserve) − (expected − rcf)（第29条同口径）
+        act0 = int(row[3])
+        res0 = int(row[8]) if len(row) > 8 else 0
         self.step("AC-58-① refund_component_fen == 该笔退款", comp == rf["amountFen"],
                   "slip=%s shift=%s refund_component=%d 期望=%d（含本笔 refund_record=%s）" % (
                       sid, shift_id, comp, rf["amountFen"], rf["refundRecordId"]))
-        self.step("AC-58-① difference_net_fen == 0 − (expected − refund_component)",
-                  dnet == (0 - (exp - comp)),
-                  "expected=%d refund_component=%d → 期望 difference_net=%d 实际=%d" % (
-                      exp, comp, 0 - (exp - comp), dnet))
+        want_dnet = (act0 - res0) - (exp - comp)
+        self.step("AC-58-① difference_net_fen == (actual − reserve) − (expected − refund_component)",
+                  dnet == want_dnet,
+                  "actual=%d reserve=%d expected=%d refund_component=%d → 期望 difference_net=%d 实际=%d"
+                  % (act0, res0, exp, comp, want_dnet, dnet))
         self.in_shift = {"slipId": sid, "refund": rf, "row": row}
         return True
 
@@ -380,15 +389,45 @@ class CashRecon:
         self.step("AC-58-③ refund_component_fen 增加该笔金额",
                   after and int(after[5]) == int(before[5]) + rf["amountFen"],
                   "refund_component %s → %s（本笔 %d）" % (before[5], after[5], rf["amountFen"]))
-        self.step("AC-58-③ difference_net_fen 同步变化",
-                  after and int(after[6]) == (0 - (int(after[2]) - int(after[5]))),
-                  "expected=%s comp=%s → difference_net=%s（期望 %d）" % (
-                      after[2], after[5], after[6], 0 - (int(after[2]) - int(after[5]))))
+        # 【第29条·动机】2026-10-27 实测发现 differenceNetOf 漏了 reserve（备用金）：
+        #   ④ 之前用的缴款单 reserve=0，覆盖不到这条公式；本断言唯一作用就是防这类漏改复发。
+        reserve = int(after[8]) if after and len(after) > 8 else 0
+        self.step("AC-58-③ difference_net_fen 同步变化（含备用金 reserve）",
+                  after and int(after[6]) == (int(after[3]) - reserve) - (int(after[2]) - int(after[5])),
+                  "actual=%s reserve=%d expected=%s comp=%s → difference_net=%s（期望 %d）" % (
+                      after[3], reserve, after[2], after[5], after[6],
+                      (int(after[3]) - reserve) - (int(after[2]) - int(after[5]))))
         n_aud = self.num("SELECT COUNT(*) FROM finance_audit_logs"
                          " WHERE operation_type='REFUND_SHIFT_ATTRIBUTION_CONFIRMED' AND target_id=%d" % sid)
         self.step("AC-58-③ 审计 REFUND_SHIFT_ATTRIBUTION_CONFIRMED", n_aud > 0, "slip=%s 命中=%d" % (sid, n_aud))
         self.confirm_ctx = {"slipId": sid, "refund": rf, "shiftId": shift_id,
                             "version_before": int(after[7]) if after else -1}
+
+        # ---------- 第 29 条断言：reserve>0 时的净值公式 + rcf 变化量 ----------
+        # 【动机】2026-10-27 实测发现 differenceNetOf 漏了 reserve（备用金）这一项，
+        #   而 ④ 之前用的是 reserve=0 的缴款单，根本覆盖不到这条公式。
+        #   本断言的唯一作用就是「防止这类漏改复发」：只要有人把 reserve 从公式里拿掉，
+        #   这里立刻红（用 reserve>0 的夹具单，不是靠再加一条纯文本约束）。
+        act_b = int(before[3]); exp_b = int(before[2])
+        rcf_b = int(before[5]); dnet_b = int(before[6])
+        res_b = int(before[8]) if len(before) > 8 else 0
+        act_a = int(after[3]); exp_a = int(after[2])
+        rcf_a = int(after[5]); dnet_a = int(after[6])
+        res_a = int(after[8]) if len(after) > 8 else 0
+        self.step("AC-58-29 夹具前提：reserve_fen > 0（开班带备用金）", res_a > 0,
+                  "reserve_fen=%d（opening_cash=%s 元）；cash_counted_fen=%s" % (
+                      res_a, self.a.opening_cash, after[9] if len(after) > 9 else "?"))
+        self.step("AC-58-29 confirm 前 dnet == (actual − reserve) − (expected − rcf)",
+                  dnet_b == (act_b - res_b) - (exp_b - rcf_b),
+                  "actual=%d reserve=%d expected=%d rcf=%d → 期望 dnet=%d 实际=%d" % (
+                      act_b, res_b, exp_b, rcf_b, (act_b - res_b) - (exp_b - rcf_b), dnet_b))
+        self.step("AC-58-29 confirm 后 dnet == (actual − reserve) − (expected − rcf)",
+                  dnet_a == (act_a - res_a) - (exp_a - rcf_a),
+                  "actual=%d reserve=%d expected=%d rcf=%d → 期望 dnet=%d 实际=%d" % (
+                      act_a, res_a, exp_a, rcf_a, (act_a - res_a) - (exp_a - rcf_a), dnet_a))
+        self.step("AC-58-29 rcf 变化量 == 该笔退款金额",
+                  (rcf_a - rcf_b) == rf["amountFen"],
+                  "rcf %d → %d（Δ=%d，期望 %d）" % (rcf_b, rcf_a, rcf_a - rcf_b, rf["amountFen"]))
         return True
 
     # ---------- ④ 幂等 + 改归属 ----------
@@ -573,6 +612,8 @@ def main():
     p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--store-id", type=int, default=1)
     p.add_argument("--shift-id", type=int, default=0, help="0=自动取最近 OPEN 班次")
+    p.add_argument("--opening-cash", type=float, default=100.0,
+                   help="开班备用金（元）；第29条断言要求 >0，故默认 100 元 = 10000 分")
     p.add_argument("--psql", default=DEFAULT_PSQL)
     p.add_argument("--pg-host", default="localhost")
     p.add_argument("--pg-port", type=int, default=5432)
