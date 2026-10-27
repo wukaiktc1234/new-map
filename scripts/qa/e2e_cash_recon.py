@@ -84,6 +84,34 @@ def data_of(b):
     return b.get("data") if isinstance(b, dict) else None
 
 
+def _install_watchdog(max_seconds, stage_holder):
+    """独立看门狗：阻塞在任意调用里也能硬退，不依赖 beat() 检查点。
+
+    为什么必须独立线程：beat() 只在 stage 边界检查，进程挂在某次 read 上时永远走不到检查点
+    （2026-10-28 实测：卡在 login done 之后 7 分钟无输出，--max-seconds 形同摆设）。
+
+    到期动作：dump 当前 stage + 全线程栈（faulthandler），再 os._exit(3) 硬退
+    —— 不能用 sys.exit（阻塞中不会生效，它只抛异常给主线程）。
+    """
+    import faulthandler
+    import threading
+
+    faulthandler.enable()
+    def _hard_exit():
+        sys.stderr.write("\n[WATCHDOG] 超过 --max-seconds=%s，当前 stage=%s\n"
+                         % (max_seconds, stage_holder.get("stage", "(unknown)")))
+        sys.stderr.flush()
+        faulthandler.dump_traceback(file=sys.stderr)
+        sys.stderr.flush()
+        os._exit(3)
+    
+    t = threading.Timer(float(max_seconds), _hard_exit)
+    t.daemon = True
+    t.start()
+    return t
+
+
+
 class CashRecon:
     def __init__(self, a):
         self.a = a
@@ -290,7 +318,7 @@ class CashRecon:
                           "shift_id=%d 距 start=%d 分钟（>%d）" % (sid, mins, boundary_min))
                 return sid
             if i % 6 == 0:
-                print("    · 等待班次越过 %d 分钟边界：shift=%d 当前 %d 分钟" % (boundary_min, sid, mins))
+                self.beat("wait-inshift: 等待班次越过 %d 分钟边界（shift=%d 当前 %d 分钟，最长 %d 分钟）——这是设计内等待，不是卡死" % (boundary_min, sid, mins, max_wait_min))
             time.sleep(10)
         return sid
 
@@ -789,6 +817,8 @@ def main():
     try:
         runner = CashRecon(a)
         runner._max_seconds = a.max_seconds
+        runner._stage_holder = {"stage": "(not started)"}
+        _install_watchdog(a.max_seconds, runner._stage_holder)
         print("  [BEAT] 套件启动，单次 HTTP 超时 %ds，整套上限 %ds" % (a.timeout, a.max_seconds), flush=True)
         return runner.run()
     except Exception as e:
