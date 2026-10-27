@@ -67,6 +67,9 @@ public interface DepositSlipService {
     /** 差异3：某营业日的存行汇总（含未绑流水的单，unmatchedCount 不得静默为 0） */
     com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO dailySummary(java.time.LocalDate date, Long accountId);
 
+    /** NEW-34：人工确认当日存行汇总（只记录确认状态，不锁定数据；可重复确认，追加保留历史） */
+    com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO confirmDailySummary(java.time.LocalDate date, Long accountId);
+
     /** SL11 导出 CSV */
     String exportCsv(DepositSlipQueryDTO query);
 }

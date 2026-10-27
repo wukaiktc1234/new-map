@@ -2,6 +2,7 @@ package com.foodtraceability.controller.finance;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.foodtraceability.common.Result;
+import com.foodtraceability.dto.finance.deposit.ConfirmDailySummaryDTO;
 import com.foodtraceability.dto.finance.deposit.DepositSlipQueryDTO;
 import com.foodtraceability.dto.finance.deposit.DepositSlipVO;
 import com.foodtraceability.dto.finance.deposit.DepositToBankDTO;
@@ -126,6 +127,16 @@ public class DepositSlipController {
     public Result<DepositSlipVO> reverse(@PathVariable Long slipId, @Valid @RequestBody ReverseSlipDTO dto) {
         return Result.success(depositSlipService.reverse(slipId, dto));
     }
+    /** NEW-34：人工确认当日存行汇总（只记录确认状态，不锁定数据；可重复确认，追加保留历史） */
+    @PostMapping("/daily-summary/confirm")
+    @PreAuthorize("hasAuthority('finance:deposit-slip:verify')")
+    @Operation(summary = "存行日汇总人工确认（NEW-34）",
+            description = "前置校验：无存行单 / 有未匹配 / 账户歧义 均 400；accountId 必须在 candidateAccounts 内；确认后数据变化由 confirmedStale 提示")
+    public Result<com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO> confirmDailySummary(
+            @Valid @RequestBody ConfirmDailySummaryDTO dto) {
+        return Result.success(depositSlipService.confirmDailySummary(dto.getDate(), dto.getAccountId()));
+    }
+
     /** 差异3：日汇总（人工汇总模式）—— 当天已存行缴款单 + 绑/未绑流水拆分 + 银行进账 */
     @GetMapping("/daily-summary")
     @PreAuthorize("hasAuthority('finance:deposit-slip:view')")

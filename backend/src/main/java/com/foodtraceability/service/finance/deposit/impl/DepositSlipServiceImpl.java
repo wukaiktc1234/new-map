@@ -114,6 +114,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     /** N19-2④：退款单 → 班次归属 */
     private final com.foodtraceability.mapper.finance.recon.RefundShiftAttributionMapper refundShiftAttributionMapper;
 
+    /** NEW-34：存行日汇总确认记录 Mapper */
+    private final com.foodtraceability.mapper.finance.recon.DepositDailyConfirmationMapper depositDailyConfirmationMapper;
+
     /** N19-2④：班次边界容差（分钟），距 start/end ≤ N 的退款不自动计入任何班次，默认 10 */
     @org.springframework.beans.factory.annotation.Value("${finance.cash.shift-boundary-minutes:10}")
     private int shiftBoundaryMinutes;
@@ -135,7 +138,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                                   AtomicBalanceUpdater atomicBalanceUpdater,
                                   FinanceAuditLogService financeAuditLogService,
                                   SequenceAllocator sequenceAllocator,
-                                  FinancePeriodGuard financePeriodGuard) {
+                                  FinancePeriodGuard financePeriodGuard,
+                                  com.foodtraceability.mapper.finance.recon.DepositDailyConfirmationMapper depositDailyConfirmationMapper) {
         this.depositSlipMapper = depositSlipMapper;
         this.posShiftMapper = posShiftMapper;
         this.orderNewMapper = orderNewMapper;
@@ -148,6 +152,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         this.financeAuditLogService = financeAuditLogService;
         this.sequenceAllocator = sequenceAllocator;
         this.financePeriodGuard = financePeriodGuard;
+        this.depositDailyConfirmationMapper = depositDailyConfirmationMapper;
     }
 
     // ==================== SL1 生成 ====================
@@ -1299,6 +1304,48 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         vo.matchedFen = matched;
         vo.unmatchedFen = unmatched;
         vo.unmatchedCount = unmatchedCount;
+        // NEW-34 附带：候选账户 = 当日存行单涉及的账户 ∪ 本店启用基本户（去重、按 accountId 升序）
+        java.util.Set<Long> candidateIds = new java.util.LinkedHashSet<>();
+        if (!bankAccountIds.isEmpty()) {
+            candidateIds.addAll(bankAccountIds);
+        }
+        java.util.Set<Long> storeIdsOfDay = new java.util.LinkedHashSet<>();
+        if (slips != null) {
+            for (DepositSlip s : slips) {
+                if (s.getStoreId() != null) {
+                    storeIdsOfDay.add(s.getStoreId());
+                }
+            }
+        }
+        if (!storeIdsOfDay.isEmpty()) {
+            List<BankAccount> storeBanks = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                    .in(BankAccount::getStoreId, storeIdsOfDay)
+                    .eq(BankAccount::getAccountType, 1)
+                    .eq(BankAccount::getStatus, 1)
+                    .eq(BankAccount::getDeleted, 0)
+                    .orderByAsc(BankAccount::getAccountId));
+            if (storeBanks != null) {
+                for (BankAccount b : storeBanks) {
+                    candidateIds.add(b.getAccountId());
+                }
+            }
+        }
+        if (!candidateIds.isEmpty()) {
+            List<BankAccount> candidates = bankAccountMapper.selectList(new LambdaQueryWrapper<BankAccount>()
+                    .in(BankAccount::getAccountId, candidateIds)
+                    .eq(BankAccount::getDeleted, 0)
+                    .orderByAsc(BankAccount::getAccountId));
+            if (candidates != null) {
+                for (BankAccount c : candidates) {
+                    com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.CandidateAccount ca =
+                            new com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.CandidateAccount();
+                    ca.accountId = c.getAccountId();
+                    ca.accountName = c.getAccountName();
+                    ca.accountNo = null;   // bank_accounts 无账号列
+                    vo.candidateAccounts.add(ca);
+                }
+            }
+        }
 
         // 银行进账（NEW-35 P2）：显式 accountId 优先；未给且门店有多个基本户 → 歧义，返回 null 而不是错的数
         Long inflowAccountId = accountId;
@@ -1353,8 +1400,132 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         }
         log.info("[METRIC] deposit_daily_summary day={} slips={} totalCashCounted={} matched={} unmatched={} unmatchedCount={} bankInflow={}",
                 day, vo.depositedSlips.size(), totalCashCounted, matched, unmatched, unmatchedCount, vo.bankInflowFen);
+        // NEW-34：读取最近一次确认 → 回填 confirmedAt/ByName + stale 判定（不自动失效）
+        vo.snapshotHash = sha256Hex(buildSummarySnapshot(vo));
+        LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.DepositDailyConfirmation> cw =
+                new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.DepositDailyConfirmation>()
+                        .eq(com.foodtraceability.entity.finance.recon.DepositDailyConfirmation::getBusinessDate, day)
+                        .orderByDesc(com.foodtraceability.entity.finance.recon.DepositDailyConfirmation::getConfirmedAt)
+                        .orderByDesc(com.foodtraceability.entity.finance.recon.DepositDailyConfirmation::getId)
+                        .last("LIMIT 1");
+        if (accountId != null) {
+            cw.eq(com.foodtraceability.entity.finance.recon.DepositDailyConfirmation::getAccountId, accountId);
+        }
+        List<com.foodtraceability.entity.finance.recon.DepositDailyConfirmation> confirms =
+                depositDailyConfirmationMapper.selectList(cw);
+        if (confirms != null && !confirms.isEmpty()) {
+            com.foodtraceability.entity.finance.recon.DepositDailyConfirmation last = confirms.get(0);
+            vo.confirmedAt = last.getConfirmedAt() == null ? null : last.getConfirmedAt().toLocalDateTime();
+            vo.confirmedByName = last.getConfirmedByName();
+            vo.lastConfirmedSnapshot = last.getSnapshotJson();
+            vo.confirmedStale = last.getSnapshotHash() != null && !last.getSnapshotHash().equals(vo.snapshotHash);
+        }
         return vo;
     }
+    /**
+     * NEW-34：人工确认当日存行汇总。
+     *
+     * <p>语义（Owner 定案）：**只记录确认状态，不锁定数据**；可重复确认（覆盖式追加，历史行全留）。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO confirmDailySummary(java.time.LocalDate date, Long accountId) {
+        com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO summary = dailySummary(date, accountId);
+        java.time.LocalDate day = date == null ? java.time.LocalDate.now() : date;
+        if (summary.depositedSlips == null || summary.depositedSlips.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "本日无存行记录，不能确认：" + day);
+        }
+        if (summary.unmatchedCount != null && summary.unmatchedCount > 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR,
+                    "有 " + summary.unmatchedCount + " 笔存行未匹配银行流水，不能确认");
+        }
+        if (Boolean.TRUE.equals(summary.bankInflowAccountAmbiguous)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "门店存在多个银行账户，请指定 accountId");
+        }
+        // NEW-34 附带：accountId 必须在候选账户范围内（防止确认到别店账户）
+        if (accountId != null) {
+            boolean inCandidates = false;
+            for (com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.CandidateAccount ca : summary.candidateAccounts) {
+                if (accountId.equals(ca.accountId)) {
+                    inCandidates = true;
+                    break;
+                }
+            }
+            if (!inCandidates) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR,
+                        "账户不在候选范围：accountId=" + accountId + "（候选 " + summary.candidateAccounts.size() + " 个）");
+            }
+        }
+        String snapshotJson = buildSummarySnapshot(summary);
+        String snapshotHash = sha256Hex(snapshotJson);
+        com.foodtraceability.entity.finance.recon.DepositDailyConfirmation row =
+                new com.foodtraceability.entity.finance.recon.DepositDailyConfirmation();
+        row.setBusinessDate(day);
+        row.setAccountId(accountId);
+        row.setConfirmedBy(currentOperatorId());
+        row.setConfirmedByName(currentOperatorName());
+        row.setConfirmedAt(java.time.OffsetDateTime.now());
+        row.setTotalCashCountedFen(summary.totalCashCountedFen == null ? 0L : summary.totalCashCountedFen);
+        row.setBankInflowFen(summary.bankInflowFen);
+        row.setUnmatchedCount(summary.unmatchedCount == null ? 0 : summary.unmatchedCount);
+        row.setSnapshotHash(snapshotHash);
+        row.setSnapshotJson(snapshotJson);
+        depositDailyConfirmationMapper.insert(row);
+        auditRecon("DEPOSIT_DAILY_SUMMARY_CONFIRMED", row.getId(),
+                "存行日汇总人工确认：date=" + day + " accountId=" + (accountId == null ? "ALL" : accountId)
+                        + " 计现额=" + row.getTotalCashCountedFen() + "分 未匹配=" + row.getUnmatchedCount()
+                        + " 银行进账=" + (row.getBankInflowFen() == null ? "null" : row.getBankInflowFen() + "分")
+                        + " snapshotHash=" + snapshotHash,
+                "{\"date\":\"" + day + "\",\"accountId\":" + (accountId == null ? "null" : accountId)
+                        + ",\"totalCashCountedFen\":" + row.getTotalCashCountedFen()
+                        + ",\"matchedFen\":" + (summary.matchedFen == null ? 0 : summary.matchedFen)
+                        + ",\"unmatchedFen\":" + (summary.unmatchedFen == null ? 0 : summary.unmatchedFen)
+                        + ",\"unmatchedCount\":" + row.getUnmatchedCount()
+                        + ",\"bankInflowFen\":" + (row.getBankInflowFen() == null ? "null" : row.getBankInflowFen())
+                        + ",\"snapshotHash\":\"" + snapshotHash + "\"}");
+        log.info("[METRIC] deposit_daily_summary_confirmed id={} date={} accountId={} total={} unmatched={} hash={}",
+                row.getId(), day, accountId, row.getTotalCashCountedFen(), row.getUnmatchedCount(), snapshotHash);
+        return dailySummary(date, accountId);
+    }
+
+    /** NEW-34：把当前汇总序列化成确定性快照（用于比对「确认后数据是否变化」） */
+    private String buildSummarySnapshot(com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO s) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"totalCashCountedFen\":").append(s.totalCashCountedFen == null ? 0L : s.totalCashCountedFen);
+        sb.append(",\"matchedFen\":").append(s.matchedFen == null ? 0L : s.matchedFen);
+        sb.append(",\"unmatchedFen\":").append(s.unmatchedFen == null ? 0L : s.unmatchedFen);
+        sb.append(",\"unmatchedCount\":").append(s.unmatchedCount == null ? 0 : s.unmatchedCount);
+        sb.append(",\"bankInflowFen\":").append(s.bankInflowFen == null ? "null" : s.bankInflowFen.toString());
+        sb.append(",\"slips\":[");
+        boolean first = true;
+        for (com.foodtraceability.dto.finance.deposit.DepositDailySummaryVO.Row r : s.depositedSlips) {
+            if (!first) { sb.append(","); }
+            first = false;
+            sb.append("{\"slipId\":").append(r.slipId)
+              .append(",\"cashCountedFen\":").append(r.cashCountedFen == null ? 0L : r.cashCountedFen)
+              .append(",\"depositBankTxnId\":").append(r.depositBankTxnId == null ? "null" : r.depositBankTxnId.toString())
+              .append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+
+    /** NEW-34：SHA-256（十六进制小写） */
+    private static String sha256Hex(String text) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "快照哈希计算失败：" + e.getMessage());
+        }
+    }
+
+
 
 
     /**
