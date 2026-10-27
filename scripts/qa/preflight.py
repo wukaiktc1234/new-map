@@ -339,7 +339,13 @@ def load_mvn_baseline():
     allowed = {}
     if not MVN_BASELINE.exists():
         return allowed
+    in_stable = False
     for line in MVN_BASELINE.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+        if line.strip().startswith('## '):
+            in_stable = ('稳定红点' in line)
+            continue
+        if not in_stable:
+            continue
         line = line.strip()
         if not line or line.startswith('#'):
             continue
@@ -365,6 +371,17 @@ def check_mvn_test_baseline(log_path):
         return 2
     print('[GATE] mvn test 红点全在基线内：%d 条（警告，正在还欠账）' % len(current))
     return 3
+def check_deploy_gap(db='food_traceability_test'):
+    """部署缺口审计：实体表在目标库不存在且有活 Mapper 引用 → 阻断（发版前必须清零）。"""
+    script = ROOT / 'scripts' / 'qa' / 'deploy_gap_audit.py'
+    r = subprocess.run([sys.executable, str(script), '--db', db], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=600)
+    tail = [x for x in (r.stdout or '').splitlines() if x.strip()][-1:]
+    for line in tail:
+        print('  ' + line)
+    return 0 if r.returncode == 0 else 2
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -433,6 +450,9 @@ def main():
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
         passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
     print("[RESULT] " + summary)
+    if deploy_gap_rc != 0:
+        print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
+        return 2
     return 3 if warn else 0
 if __name__ == "__main__":
     sys.exit(main())
@@ -509,6 +529,8 @@ def main():
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
               % (skipped, judged, ratio * 100, WARN_RATIO * 100))
         warn = True
+
+    deploy_gap_rc = check_deploy_gap() if a.full else 0
 
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
         passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")

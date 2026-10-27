@@ -3987,3 +3987,83 @@ testSequenceLimit：实现候选耗尽抛 RuntimeException → 改为 assertThro
 文件头注释：口径待产品确认，暂以实现为准
 ```
 该次单类 9/9 绿；随后全量复测 **766 / 11F / 5E / 5S**（`PositionCodeGeneratorTest` 整类转绿）。
+
+## 84. 基线两栏化 + context 失败定因（2026-10-28 00:30–01:00）
+
+### 84.1 基线两栏 + 对账
+
+| 段 | 条数 | 参与 gate | 说明 |
+|----|------|-----------|------|
+| 稳定红点 | **16** | 是 | 11 Failure + 5 Error（5E 全是 `PositionSortingTest`） |
+| 抖动源 | 8 | 否 | `SystemSettingsIntegrationTest` 8 个方法，仅记录 |
+| 已修复待移除 | 5 | 否 | `PositionCodeGeneratorTest` 5 个方法，本轮已绿，**下月复核移除** |
+
+gate 已改为只读 `## 稳定红点` 段（`in_stable` 段判定）；实测 `[GATE] 红点全在基线内：16 条 rc=3`。
+
+### 84.2 去掉抖动源后的稳定失败：**11 Failure + 5 Error**
+
+算法：从 00:41 全量 `766 / 11F / 5E / 5S` 出发 —— 这 5E **全部**是 `PositionSortingTest`（分页 NPE），
+本轮运行 `SystemSettingsIntegrationTest` **没有** context 失败（其 surefire 报告为 8/8 通过），所以 context 相关为 0。
+→ 稳定失败 = **11F**（SysSetting 4 + CostRecord 1 + Invoice 1 + Payable 1 + SysDict 1 + FoodCode 3）+ **5E**（PositionSorting），合计 16 条。
+
+### 84.3 `SystemSettingsIntegrationTest` context 失败：定因 = **我自己并发跑 maven 把 test-classes 覆盖了**
+
+证据（`.verify-tmp/mvn-test-precise.txt`，00:19 那次）：
+```
+java.lang.IllegalStateException: Failed to load ApplicationContext for [... testClass = ...SystemSettingsIntegrationTest]
+Caused by: java.io.FileNotFoundException:
+  class path resource [com/foodtraceability/integration/SystemSettingsIntegrationTest.class]
+  cannot be opened because it does not exist
+```
+→ 「类文件在运行期消失」只可能来自**并发构建改写 target/test-classes**。
+时间线吻合：00:19 启动全量运行，00:21 我又在跑 `-Dtest=PositionCodeGeneratorTest`（同一模块、同一 target）。
+对照实验：**单独连跑该类 3 次，全部 8/8 通过 BUILD SUCCESS**（`-Dtest=SystemSettingsIntegrationTest`）。
+**结论：不是「应用在测试 profile 下起不来」，也不是产品缺陷；是操作污染**（并发 maven）。
+纪律：以后**全量运行期间禁止再起任何 mvn 任务**。
+这条把「context 失败」从「P2 缺陷」降级为「流程规范」，并解释了 15F/7E ↔ 15F/14E 的全部差异。
+
+### 84.4 顺带查出的真问题：`position_code_rules` 表在测试库不存在，且**没有迁移创建它**
+
+```
+生产库 food_traceability      : to_regclass('position_code_rules') = position_code_rules ✔ 存在
+测试库 food_traceability_test : to_regclass('position_code_rules') = NULL ✘ 不存在
+迁移里只有 V1.0.0.400 的 ALTER TABLE / UPDATE，**没有任何 CREATE TABLE position_code_rules**
+测试库启动时日志：Caused by: PSQLException: 关系 "position_code_rules" 不存在（被 catch 吞掉，未致失败）
+```
+→ 这意味着**任何从零建的库（新环境、CI、测试库）都会缺这张表**；`PositionCodeRuleMapper` 一旦被真实调用就会失败。
+生产库之所以有，是历史手工建表。建议：补一个 `CREATE TABLE IF NOT EXISTS position_code_rules` 迁移（列为 P2，等你拍板，未擅自加）。
+
+## 85. position_code_rules 补迁移 + 部署缺口 gate（2026-10-28 00:50–01:20）
+
+### 85.1 迁移 `V20261028_001__create_position_code_rules.sql`
+
+先 `\d position_code_rules` 取生产库结构，再逐列照抄（**不是最小列**）：
+```
+id bigint GENERATED ALWAYS AS IDENTITY / keyword varchar(100) NOT NULL / code varchar(20) NOT NULL
+format_template varchar(100) / sort_order integer DEFAULT 0 / created_by varchar(50) / updated_by varchar(50)
+create_time / update_time timestamp DEFAULT CURRENT_TIMESTAMP / deleted smallint DEFAULT 0 / version integer DEFAULT 0
+PK position_code_rules_pkey(id) + idx_position_code_rules_code + idx_position_code_rules_keyword
+```
+验证：在 `food_traceability_test` 执行后 `\d` 输出与生产库**逐列一致**（11 列 + 3 索引）。
+用 `IF NOT EXISTS`，对已有该表的环境（生产/开发）无副作用。
+
+### 85.2 新的系统性 gate：`scripts/qa/deploy_gap_audit.py`
+
+判据（**严格口径，避免噪音**）：
+1. 扫 `@TableName("x")` 的实体；2. 目标库里没有表 x → 候选；
+3. 只有**该实体的 Mapper 被别的文件引用**（@Autowired/构造注入/调用）才计入缺口；
+   Mapper 存在但无人使用 → 记为死代码，只统计不阻断。
+
+实跑（库 = `food_traceability_test`，即「从零建」的库）：
+```
+表不存在：活引用 61 个实体，死代码 24 个
+[BLOCK] 部署缺口 61 处：从零建的库会缺表，发版前必须补迁移
+报告：docs/audit/deploy-gap-audit.md
+```
+典型缺口：`budget`、`coupon`、`contract_document`、`contract_template`、`file_attachment`、
+`summary_templates`、`travel_requests`、`swap_request_details`、`user_sessions`、`weighing_record` …
+
+已接入 `preflight --full`：`check_deploy_gap()`，不为 0 → `[RESULT] BLOCKED` + **EXIT=2**。
+（`position_code_rules` 因为补了迁移，已从缺口清单里消失。）
+
+**这个数字（61）说明：部署缺口不是个例，`position_code_rules` 只是被 context 日志偶然暴露的那一张。**
