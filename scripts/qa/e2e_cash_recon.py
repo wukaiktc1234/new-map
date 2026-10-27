@@ -149,7 +149,7 @@ class CashRecon:
     def step(self, name, okk, detail, state=None):
         st = state or ("PASS" if okk else "FAIL")
         self.results.append((name, st, detail))
-        print("  [%s] %s -> %s" % (st, name, detail))
+        print("  [%s] %s -> %s" % (st, name, detail), flush=True)
         return okk
 
     def not_ready(self, name, detail):

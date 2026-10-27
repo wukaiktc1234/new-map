@@ -40,7 +40,15 @@
             m.create_time
         FROM inventory_movement m
         JOIN locations l ON l.location_id = m.location_id AND l.deleted = 0
-        WHERE l.location_type = 'STORE'
+        <!-- bug-⑳ 残留分支（2026-10-28 实测修正）：
+             库存表里确实存在非 STORE 库位的行（location_id=4 DEPOT 2 行、location_id=5 CENTRAL 12 行），
+             对应 movement 50 行。原写法无条件 WHERE location_type='STORE' 会让这些库位的详情页永远显示 0 条。
+             修正：**仅在未指定 locationId/storeId（即门店列表默认视图）时**限制 STORE；
+                   指定了具体库位/门店时按库位取，不再按类型过滤。
+             注：DEPOT/CENTRAL 库位的库存在仓库模块管理，本接口仍可查其流水（只读）。 -->
+        <if test="locationId == null and (storeId == null or storeId == '')">
+            AND l.location_type = 'STORE'
+        </if>
         <!-- bug-⑳（P2，数据口径）：优先按 locationId 过滤 —— 库存行与流水本来就都挂在 location 上；
              storeId 保留兼容（内部换算成 location_code）。今天的事故：前端拿不到 storeId → 显示跨门店日志。 -->
         <if test="locationId != null">
