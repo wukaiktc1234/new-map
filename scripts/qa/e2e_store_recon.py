@@ -394,9 +394,17 @@ class StoreReconE2E:
                 exp = wait_for_data_attr(self.page, '[data-test="store-recon-expected"]', "data-fen", READY_NONEMPTY, timeout=45000)
                 act = wait_for_data_attr(self.page, '[data-test="store-recon-actual"]', "data-fen", READY_NONEMPTY, timeout=45000)
                 dif = wait_for_data_attr(self.page, '[data-test="store-recon-difference"]', "data-fen", READY_NONEMPTY, timeout=45000)
-                rows = self.rows("SELECT expected_amount, actual_amount, difference_amount FROM deposit_slips"
-                                 " WHERE store_id=%d AND business_date='%s' AND deleted=0 AND status='DEPOSITED'"
-                                 " ORDER BY slip_id DESC LIMIT 1" % (self.a.store_b, self.a.business_date))
+                # 页面「门店三值卡」是**按 门店+营业日 汇总**（多张 DEPOSITED 缴款单相加），
+                # 因此 SQL 侧必须 SUM 全部同日 DEPOSITED 单，不能只取最新一张
+                # （2026-10-27 实测：store 2 当天有 2 张 DEPOSITED 单 → 取单张会假红：页面 3800/2000/-1800 vs 单张 2000/2000/0）
+                # 页面「门店三值卡」= 门店+营业日内**全部未删缴款单**汇总（含 DRAFT/SUBMITTED/RECEIVED/DEPOSITED），
+                # 不是只算 DEPOSITED。实测（2026-10-27 store 2 当天 3 张单）：
+                #   页面 6000/4200/-1800 == SUM(1800+2000+2200) / SUM(0+2000+2200) / SUM(-1800+0+0)
+                #   只看 DEPOSITED 会得到 4200/4200/0 → 假红
+                rows = self.rows("SELECT COALESCE(SUM(expected_amount),0), COALESCE(SUM(actual_amount),0),"
+                                 " COALESCE(SUM(difference_amount),0) FROM deposit_slips"
+                                 " WHERE store_id=%d AND business_date='%s' AND deleted=0"
+                                 % (self.a.store_b, self.a.business_date))
                 if not rows:
                     self.not_ready("AC-49d 门店三值卡 == SQL", "库里没有 store %d 当天 DEPOSITED 的缴款单" % self.a.store_b)
                 else:

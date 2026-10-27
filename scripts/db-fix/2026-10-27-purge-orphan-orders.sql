@@ -1,6 +1,12 @@
 -- ============================================================================
 -- 2026-10-27 清理「无退款、无缴款单、无 tag」的孤儿订单（**只准备，不执行**）
--- 来源：做 bug-③（orders.idempotency_key 不落库）实验时下的单，无退款 → 按 tag 无法定位
+-- 来源：做 bug-③（orders.idempotency_key 不落库）实验时下的单。
+-- **为什么没有 tag 可锚、只能按「无退款 + 无缴款单 + 实验时间窗」判定**：
+--   1) 这是「验证 idempotency_key 是否落库」的探针单，下单后**没有退款** →
+--      e2e_cleanup.py 的订单锚点（带 tag 的退款记录 → order_id）根本不存在；
+--   2) POS 下单接口**不落** orders.idempotency_key（bug-③，实测 NULL）→ E2E-<tag>-<n> 也查不到；
+--   3) orders 表无可写的 remark/来源字段 → 无法给订单本身上标签。
+--   ⇒ 三条 tag 通道全断，只能按弱判定兜底，因此**必须人工核对 DRY 明细后再执行**。
 -- 判定：orders.deleted=0 ∧ 无 order_refund_records ∧ 无关联缴款单 ∧ 无 tag 痕迹
 --       ∧ create_time 落在实验窗口（2026-10-27 16:40 ~ 17:10）
 -- 安全：只 DELETE orders/order_items/order_payment_records/kitchen_order 中该订单的行；

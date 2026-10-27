@@ -57,10 +57,10 @@ class Cleaner:
         self.idem = "E2E-%s-" % a.tag
         self.applied = {}
 
-    def sql(self, q):
-        o = subprocess.run([self.a.psql, "-h", self.a.pg_host, "-p", str(self.a.pg_port),
-                            "-U", self.a.pg_user, "-d", self.a.pg_db, "-t", "-A",
-                            "-c", q], capture_output=True, text=True, timeout=180,
+    def sql(self, q, extra=None):
+        argv = [self.a.psql, "-h", self.a.pg_host, "-p", str(self.a.pg_port),
+                "-U", self.a.pg_user, "-d", self.a.pg_db, "-t", "-A"] + (extra or []) + ["-c", q]
+        o = subprocess.run(argv, capture_output=True, text=True, timeout=180,
                            encoding="utf-8", errors="replace",
                            env=dict(os.environ, PGPASSWORD=self.a.pg_password, PGCLIENTENCODING="UTF8"))
         return o.returncode, (o.stdout or "").strip(), (o.stderr or "").strip()
@@ -124,8 +124,10 @@ class Cleaner:
         if not self.a.apply:
             print("  [DRY ] %-26s 命中 %d 行（--apply 时将同事务校准受影响账户余额）" % ("fund_flows", n))
             return n
+        # 注意：脚本走 psql -c，**不能**在 -c 里写 \set 元命令（语法错误 → 整笔回滚，
+        # 却只打印一条 [FAIL] 容易被忽略；2026-10-27 实测导致 4 条退款流水漏删、A31 判红）。
+        # ON_ERROR_STOP 改用 -v 传参。
         script = r"""
-\set ON_ERROR_STOP on
 BEGIN;
 CREATE TEMP TABLE aff ON COMMIT DROP AS
   SELECT DISTINCT account_id FROM fund_flows WHERE {where};
@@ -141,7 +143,7 @@ SELECT 'acct=' || a.account_id || '|' || a.balance || '|flows=' ||
   FROM bank_accounts a WHERE a.account_id IN (SELECT account_id FROM aff) ORDER BY a.account_id;
 COMMIT;
 """ .format(where=where)
-        rc, out, err = self.sql(script)
+        rc, out, err = self.sql(script, extra=["-v", "ON_ERROR_STOP=1"])
         if rc != 0:
             print("  [FAIL] %-26s 删除+校准事务失败（已回滚）：%s" % ("fund_flows", err[:160]))
             self.applied["fund_flows"] = -1
