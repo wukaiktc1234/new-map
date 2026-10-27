@@ -379,7 +379,8 @@ def check_deploy_gap(db='food_traceability_test'):
     tail = [x for x in (r.stdout or '').splitlines() if x.strip()][-1:]
     for line in tail:
         print('  ' + line)
-    return 0 if r.returncode == 0 else 2
+    # 棘轮语义：0=通过、3=警告（正在还账，不阻断）、2=阻断（基线外新增 / 已清零需删基线）
+    return r.returncode if r.returncode in (0, 3) else 2
 
 
 def check_permission_code():

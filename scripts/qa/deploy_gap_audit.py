@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'backend' / 'src' / 'main' / 'java'
 PSQL = str(ROOT / 'PostgreSQL' / '18' / 'bin' / 'psql.exe')
 REGISTRY = ROOT / 'scripts' / 'qa' / 'unfinished-features-registry.txt'
+BASELINE = ROOT / 'scripts' / 'qa' / 'deploy-gap-baseline.txt'  # DEF-GAP-RATCHET
 TABLE_RE = re.compile(r'@TableName\(\s*"([^"]+)"\s*\)')
 
 
@@ -52,6 +53,17 @@ def load_registry():
         if not line or line.startswith('#'):
             continue
         out[line.split('|')[0].strip()] = line
+    return out
+
+
+def load_baseline():
+    out = set()
+    if not BASELINE.exists():
+        return out
+    for line in BASELINE.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+        line = line.strip()
+        if line and not line.startswith('#'):
+            out.add(line)
     return out
 
 
@@ -106,11 +118,26 @@ def main():
             names = ', '.join(Path(x).name for x in refs[:3])
             print('| `%s` | %s | %s（共 %d 处） |' % (t, ent, names, len(refs)))
         print('')
-        print('[BLOCK] 部署缺口 %d 张表：从零建的库会缺表，发版前必须补迁移' % len(tables_live))
-        return 2
+        # 棘轮（Owner 2026-10-28）：缺口增加才阻断；⊆ 基线 → 警告；清零 → 要求删基线
+        base = load_baseline()
+        if not base:
+            print('[WARN] 缺基线文件 %s（按不阻断处理）' % BASELINE)
+            return 3
+        new_tables = sorted(tables_live - base)
+        paid = sorted(base - tables_live)
+        if new_tables:
+            print('[BLOCK] 部署缺口出现**基线外新增**（新缺口/新回归）→ 阻断')
+            for t in new_tables:
+                print('        + %s' % t)
+            return 2
+        print('[GATE] 部署缺口棘轮：剩余 %d 张（基线 %d，已还 %d 张）→ 警告，不阻断'
+              % (len(tables_live), len(base), len(paid)))
+        if paid:
+            print('       已还：' + ', '.join(paid))
+        return 3
     print('')
-    print('[GATE] 无部署缺口（表不存在且有活引用 = 0）')
-    return 0
+    print('[GATE] 无部署缺口（表不存在且有活引用 = 0）—— 请删除 scripts/qa/deploy-gap-baseline.txt 恢复硬闸门')
+    return 2
 
 
 if __name__ == '__main__':

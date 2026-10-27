@@ -51,12 +51,8 @@ public class StoreInventoryController {
 
     private final StoreService storeService;
 
-    // P0-unfinished: inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "inventory_log")
-    // P0-unfinished: store_inventory_log 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "store_inventory_log")
-    // P0-unfinished: v_inventory_summary 两边均无表，见 docs/audit/broken-endpoints-prod.md
-    @UnfinishedFeature(table = "v_inventory_summary")
+    // 注：本端点只查 stores（表存在）；此前被误标 inventory_log/store_inventory_log/v_inventory_summary 三条缺表注解 → 501，
+    //     属注解误伤（bug-㉑），已移除，恢复真实行为。
     @GetMapping("/stores")
     @PreAuthorize("hasAuthority('warehouse:inventory:view') or hasAuthority('warehouse:overview:view') or hasAuthority('*')")
     @Operation(summary = "获取所有活跃门店")

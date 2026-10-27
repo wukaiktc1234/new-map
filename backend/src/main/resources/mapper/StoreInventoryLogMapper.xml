@@ -8,14 +8,31 @@
             m.movement_id AS id,
             m.material_id AS product_id,
             l.location_code AS store_id,
-            /* bug-⑱：实体 StoreInventoryLog.type 是 Integer，前端 interface 亦为 number；
-               原 SQL 返回 '入库/出库/调整' 中文字符串 → PSQLException 不良的类型值 int : 出库。
-               改法②（SQL 侧映射成整数枚举），码值定义：1=入库 2=出库 3=调整。
-               前端 StoreInventory.vue 需按该码值补 type→文案映射（不在此仓库本次改动范围）。 */
+            /* bug-⑱：实体 StoreInventoryLog.type 是 Integer（前端 interface 亦为 number），
+               原 SQL 返回 '入库/出库/调整' 中文串 → PSQLException 不良的类型值 int : 出库。
+
+               码值契约（以后端注释为准，Lead 2026-10-28 确认）：
+                 1=入库 2=出库 3=调拨 4=盘点 5=损耗 0=未知
+
+               movement_type 实际取值（2026-10-28 生产库 SELECT DISTINCT）：
+                 IN(57) OUT(72) —— 目前只有这两种有数据；
+                 代码里还会写：ADJUST(调整/盘点) TRANSFER_OUT/TRANSFER_IN(调拨) LOSS(损耗)。
+               映射表（补全，不用 ELSE 一把压成 3，避免信息丢失）：
+                 IN            → 1 入库
+                 OUT           → 2 出库
+                 TRANSFER_OUT  → 3 调拨（出）
+                 TRANSFER_IN   → 3 调拨（入）
+                 ADJUST        → 4 盘点/调整
+                 LOSS          → 5 损耗
+                 其它          → 0 未知（保留可识别性，前端显示「未知」） */
             CASE m.movement_type
-                WHEN 'IN' THEN 1
-                WHEN 'OUT' THEN 2
-                ELSE 3
+                WHEN 'IN'           THEN 1
+                WHEN 'OUT'          THEN 2
+                WHEN 'TRANSFER_OUT' THEN 3
+                WHEN 'TRANSFER_IN'  THEN 3
+                WHEN 'ADJUST'       THEN 4
+                WHEN 'LOSS'         THEN 5
+                ELSE 0
             END AS type,
             m.change_qty AS change_amount,
             m.balance_after AS after_stock,
@@ -31,7 +48,10 @@
             AND m.material_id = #{productId}
         </if>
         <if test="type != null">
-            AND CASE m.movement_type WHEN 'IN' THEN '入库' WHEN 'OUT' THEN '出库' ELSE '调整' END = #{type}
+            AND (CASE m.movement_type
+                    WHEN 'IN' THEN 1 WHEN 'OUT' THEN 2
+                    WHEN 'TRANSFER_OUT' THEN 3 WHEN 'TRANSFER_IN' THEN 3
+                    WHEN 'ADJUST' THEN 4 WHEN 'LOSS' THEN 5 ELSE 0 END)::int = #{type}
         </if>
         ORDER BY m.create_time DESC
     </select>
