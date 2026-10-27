@@ -136,6 +136,8 @@
 --       business_date < CURRENT_DATE-1，且无 [slipPair] token、无 refund_shift_attribution 记录、
 --       不在未清 A/B/C/D 明细中。期望 0。
 --   A37 （**参与判定**）退款流水 refund_time 落不进任何班次窗口（pos_shifts start/end 缺失或不覆盖）。期望 0。
+--       窗口语义：班次窗口 = [start_time, COALESCE(end_time, NOW())] —— **进行中班次（end_time 为 NULL）也算覆盖到当前时刻**；
+--       旧版要求 end_time IS NOT NULL，会把「进行中班次里的退款」误判成落不进窗口（实测 refund 125/shift 375 即此例）。
 --   A38 （信息性）现金退款闭环率 + 近 24h RECON_SHIFT_BOUNDARY_PENDING 待人工确认笔数。只观测。
 --   A39 （**参与判定**）缴款单恒等式：difference_net_fen = (actual_amount − reserve_fen) − (expected_amount − refund_component_fen)
 --       且 refund_component_fen = 该 slip 已归属退款流水合计。期望 0。
@@ -1205,8 +1207,8 @@ WITH rf AS (
      WHERE NOT EXISTS (
              SELECT 1 FROM pos_shifts s
               WHERE s.deleted = 0
-                AND s.start_time IS NOT NULL AND s.end_time IS NOT NULL
-                AND (r.refund_time AT TIME ZONE 'Asia/Shanghai') BETWEEN s.start_time AND s.end_time)
+                 AND s.start_time IS NOT NULL
+                 AND (r.refund_time AT TIME ZONE 'Asia/Shanghai') BETWEEN s.start_time AND COALESCE(s.end_time, NOW()))
 )
 SELECT CASE WHEN (SELECT count(*) FROM rf) = 0
             THEN '[INFO] A37 skipped_no_data 分母=0（无 refund_time 已落的退款流水）'
