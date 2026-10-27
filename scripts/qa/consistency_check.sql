@@ -1544,6 +1544,38 @@ SELECT CASE WHEN (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0
 \endif
 
 -- ------------------------------------------------------------
+-- A45（**参与判定**）：role_permissions 的**引用可解析性**（与 A44 互补）
+--   A44 查「形态自洽」：permission_id 是否等于某个 permission_id_str；
+--   A45 查「引用可解析」：role_permissions 的两侧外键是否都能落到实体表——
+--     · permission 侧：permission_id 必须能在 permissions.permission_id_str 命中（与 A44 重叠，双保险）；
+--     · **role 侧（A45 独有）**：role_id 必须能在 roles.role_id_str 命中，否则该授权同样被 join 丢弃。
+--   分母 = role_permissions 有效行数；分母=0 → INFO 跳过。
+-- ------------------------------------------------------------
+SELECT (to_regclass('public.role_permissions') IS NOT NULL
+        AND to_regclass('public.permissions') IS NOT NULL
+        AND to_regclass('public.roles') IS NOT NULL) AS a45_ready
+\gset
+\if :a45_ready
+SELECT CASE WHEN (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0) = 0
+            THEN '[INFO] A45 skipped_no_data 分母=0（无 role_permissions 有效行）'
+            WHEN count(*) = 0 THEN '[PASS] A45 授权引用可解析 rows=0 分母=' || (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0)
+            ELSE '[FAIL] A45 授权引用不可解析 rows=' || count(*)
+                 || ' 分母=' || (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0)
+                 || ' —— permission_id 或 role_id 落不到实体表，授权会被 join 丢弃，禁止接受'
+       END AS a45_line,
+       CASE WHEN (SELECT count(*) FROM role_permissions WHERE COALESCE(deleted,0) = 0) = 0
+            THEN 0 ELSE count(*) END AS a45_n
+  FROM role_permissions rp
+ WHERE COALESCE(rp.deleted,0) = 0
+   AND ( NOT EXISTS (SELECT 1 FROM permissions p WHERE p.permission_id_str = rp.permission_id)
+         OR NOT EXISTS (SELECT 1 FROM roles r WHERE r.role_id_str = rp.role_id) )
+\gset
+\else
+\set a45_line '[INFO] A45 跳过（role_permissions / permissions / roles 不存在）'
+\set a45_n 0
+\endif
+
+-- ------------------------------------------------------------
 -- 汇总：三类 COUNT + TOTAL FAIL（tuples_only + unaligned，输出便于 grep/CI 判定）
 -- ------------------------------------------------------------
 \pset format unaligned
@@ -1888,6 +1920,10 @@ SELECT line
     SELECT 45,
            :'a44_line'
     UNION ALL
+    -- A45 参与判定：授权引用可解析（>0 进 TOTAL）
+    SELECT 46,
+           :'a45_line'
+    UNION ALL
     SELECT 42,
            'TOTAL FAIL=' || (
                CASE WHEN (SELECT n FROM a1) > 0 THEN 1 ELSE 0 END
@@ -1917,7 +1953,8 @@ SELECT line
              + CASE WHEN :a39_n > 0 THEN 1 ELSE 0 END
               + CASE WHEN :a42_n > 0 THEN 1 ELSE 0 END
               + CASE WHEN :a43_n > 0 THEN 1 ELSE 0 END
-              + CASE WHEN :a44_n > 0 THEN 1 ELSE 0 END)
+              + CASE WHEN :a44_n > 0 THEN 1 ELSE 0 END
+              + CASE WHEN :a45_n > 0 THEN 1 ELSE 0 END)
   ) s
  ORDER BY ord;
 

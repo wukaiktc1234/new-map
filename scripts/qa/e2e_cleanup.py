@@ -21,9 +21,22 @@
    **不含 tag** → 流水只能经 order_id / refund_record_id 外键定位，**绝不能按 remark 找**，
    否则会漏删（这是 tag 体系唯一缺口，写死在此防后人误用）。
 
+两条护栏（Owner 2026-10-27 定，别拆）：
+
+① 【--apply 前护栏】：锚点（shifts/orders/refunds/slips）全部为 0 时【拒绝执行并 exit 2】，
+   提示「无命中，可能 tag 写错」。理由：打错一个字的 tag 会让人误以为「已经清完了」。
+
+② 【清理后自动校准余额（口径 A）】：删完 fund_flows 后，在【同一事务内】对每个受影响账户执行
+   balance := 该账户最新未删流水的 balance_after。理由：bank_accounts.balance 是【派生值】，
+   fund_flows.balance_after 链才是事实源；只删流水不重算余额会让巡检 A7 直接判红
+   （2026-10-27 已实测踩过：账户 20 余额 19002 / 链尾 29002 / 差 10000 → A7 FAIL accounts=1）。
+   若某账户已被删到【没有任何流水】→ 余额置 0，并打印「该账户已无流水，余额置 0 需人工确认是否合理」。
+
+③ APPLY 后复查：锚点必须归零，任一非 0 → exit 2（不靠人眼看）。
+
 用法：
     python scripts/qa/e2e_cleanup.py --tag HIK1027152338            # 默认 dry-run
-    python scripts/qa/e2e_cleanup.py --tag HIK1027152338 --apply    # 真删（幂等）
+    python scripts/qa/e2e_cleanup.py --tag HIK1027152338 --apply    # 真删（幂等，含余额校准）
 """
 from __future__ import annotations
 
@@ -92,6 +105,62 @@ class Cleaner:
         rc, out, _ = self.sql("SELECT %s FROM %s WHERE %s" % (col, table, where))
         return [x.strip() for x in out.splitlines() if x.strip()] if rc == 0 else []
 
+
+    # ---------- 删流水 + 同一事务内校准余额（口径 A） ----------
+    def delete_flows_and_rebalance(self, where):
+        """删除符合条件的 fund_flows，并在**同一事务内**把受影响账户的 balance 重算为
+        「该账户最新未删流水的 balance_after」；没有剩余流水则置 0 并告警。
+
+        为什么必须同事务：bank_accounts.balance 是派生值（事实源是 fund_flows.balance_after 链）。
+        分开做会留下「余额已扣、流水已删」的中间态，巡检 A7 会当场判红（2026-10-27 实测踩过）。
+        """
+        if not self.exists("fund_flows"):
+            print("  [SKIP] %-26s 表不存在" % "fund_flows")
+            return 0
+        n = self.scalar("SELECT count(*) FROM fund_flows WHERE %s" % where)
+        if n is None:
+            print("  [SKIP] %-26s 条件无法评估" % "fund_flows")
+            return 0
+        if not self.a.apply:
+            print("  [DRY ] %-26s 命中 %d 行（--apply 时将同事务校准受影响账户余额）" % ("fund_flows", n))
+            return n
+        script = r"""
+\set ON_ERROR_STOP on
+BEGIN;
+CREATE TEMP TABLE aff ON COMMIT DROP AS
+  SELECT DISTINCT account_id FROM fund_flows WHERE {where};
+WITH del AS (DELETE FROM fund_flows WHERE {where} RETURNING 1)
+  SELECT 'deleted=' || count(*) FROM del;
+UPDATE bank_accounts b
+   SET balance = COALESCE((SELECT f.balance_after FROM fund_flows f
+                            WHERE f.account_id = b.account_id AND f.deleted = 0
+                            ORDER BY f.flow_id DESC LIMIT 1), 0)
+ WHERE b.account_id IN (SELECT account_id FROM aff);
+SELECT 'acct=' || a.account_id || '|' || a.balance || '|flows=' ||
+       (SELECT count(*) FROM fund_flows f WHERE f.account_id = a.account_id AND f.deleted = 0)
+  FROM bank_accounts a WHERE a.account_id IN (SELECT account_id FROM aff) ORDER BY a.account_id;
+COMMIT;
+""" .format(where=where)
+        rc, out, err = self.sql(script)
+        if rc != 0:
+            print("  [FAIL] %-26s 删除+校准事务失败（已回滚）：%s" % ("fund_flows", err[:160]))
+            self.applied["fund_flows"] = -1
+            return 0
+        deleted = 0
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("deleted="):
+                deleted = int(line.split("=")[1])
+            elif line.startswith("acct="):
+                aid, bal, fl = line[5:].split("|")
+                flows_n = int(fl.split("=")[1])
+                print("  [CAL ] %-26s account=%s → balance=%s（剩余流水 %d）" % (
+                    "余额校准(口径A)", aid, bal, flows_n))
+                if flows_n == 0:
+                    print("  [WARN] 账户 %s 已无流水，余额置 0 —— 需人工确认是否合理" % aid)
+        print("  [DEL ] %-26s 删除 %d 行（同事务已校准余额）" % ("fund_flows", deleted))
+        self.applied["fund_flows"] = deleted
+        return deleted
     def run(self):
         t, m, term, idem = self.tag, self.mark, self.term, self.idem
         print("=" * 86)
@@ -134,6 +203,12 @@ class Cleaner:
         print("锚点命中：shifts=%d orders=%d refunds=%d slips=%d" % (
             len(shift_ids), len(order_ids), len(refund_ids), len(slip_ids)))
 
+        # --apply 前护栏（Owner 2026-10-27）：锚点全 0 时拒绝执行 —— 打错一个字的 tag 会「静默清空」
+        if self.a.apply and not (shift_ids or order_ids or refund_ids or slip_ids):
+            print("!! 拒绝 --apply：锚点全部为 0，可能 --tag 写错（或该 tag 已清理过）。")
+            print("!! 请先不带 --apply 跑一次 dry-run 确认命中，再执行。")
+            return 2
+
         def lit(v):
             """数值型 id 不加引号，文本型（如 orders.order_id='O1793…'）必须加引号，
             否则会拼成 order_id IN (O1793…) → SQL 报列不存在，被误判成「列缺失」跳过。"""
@@ -152,8 +227,9 @@ class Cleaner:
         self.delete("deposit_slips", "deposit_slips",
                     " OR ".join([inl("slip_id", slip_ids), inl("shift_id", shift_ids),
                                  "remark LIKE '%s%%'" % m]))
-        self.delete("fund_flows", "fund_flows",
-                    " OR ".join([inl("order_id", order_ids), inl("refund_record_id", refund_ids)]))
+        # 删流水 + 同事务校准余额（口径 A：balance := 最新未删流水 balance_after）
+        self.delete_flows_and_rebalance(
+            " OR ".join([inl("order_id", order_ids), inl("refund_record_id", refund_ids)]))
         self.delete("order_refund_records", "order_refund_records",
                     " OR ".join([inl("refund_id", refund_ids), inl("order_id", order_ids)]))
         self.delete("order_payment_records", "order_payment_records", inl("order_id", order_ids))
