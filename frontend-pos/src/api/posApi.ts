@@ -402,6 +402,29 @@ export interface YoloRecognitionResult {
   errorMessage?: string;
 }
 
+/** 班次记录（/v1/pos/auth/*） */
+export interface PosShiftRecord {
+  shiftId?: number | string;
+  terminalId?: string;
+  employeeId?: string;
+  employeeName?: string;
+  shiftType?: string;
+  /** 开班现金（元，后端 BigDecimal） */
+  openingCash?: number | null;
+  startTime?: string;
+  endTime?: string | null;
+  status?: string;
+}
+
+/** 开班请求（openingCash 单位：元，最多 2 位小数） */
+export interface StartShiftPayload {
+  terminalId: string;
+  employeeId: string;
+  employeeName?: string;
+  shiftType?: string;
+  openingCash: number;
+}
+
 export const posApi = {
   // ========== 菜单/分类/套餐 API（后端 PosApiController: /v1/pos/api/*） ==========
 
@@ -595,5 +618,25 @@ export const posApi = {
   async listEnabledCategories(): Promise<Category[]> {
     const res = (await request.get<CategoryVO[]>('/v1/product-center/categories/tree/enabled')) as unknown as CategoryVO[];
     return categoryVOTreeToList(res || []);
+  },
+
+  // ========== 班次（开班备用金，N19-4） ==========
+
+  /** 当前终端进行中的班次（无则 null） */
+  getCurrentShift: async (terminalId: string): Promise<PosShiftRecord | null> => {
+    const res = await request.get<PosShiftRecord | null>('/v1/pos/auth/current-shift', { params: { terminalId } });
+    return (res as unknown as PosShiftRecord | null) ?? null;
+  },
+
+  /** 今日该终端的所有班次（用于「上一班 opening_cash」默认值） */
+  getTodayShifts: async (terminalId: string): Promise<PosShiftRecord[]> => {
+    const res = await request.get<PosShiftRecord[]>('/v1/pos/auth/shift/today', { params: { terminalId } });
+    return (res as unknown as PosShiftRecord[]) ?? [];
+  },
+
+  /** 开班（openingCash 单位：元，后端 BigDecimal） */
+  startShift: async (payload: StartShiftPayload): Promise<PosShiftRecord> => {
+    const res = await request.post<PosShiftRecord>('/v1/pos/auth/shift/start', payload);
+    return res as unknown as PosShiftRecord;
   },
 };

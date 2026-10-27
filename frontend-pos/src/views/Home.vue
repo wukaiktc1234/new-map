@@ -118,6 +118,15 @@
       v-model="showYoloCheckout"
       @add-to-cart="handleYoloAddToCart"
     />
+
+    <!-- 开班（备用金）对话框 -->
+    <StartShiftDialog
+      v-model="showStartShift"
+      :terminal-id="terminalId"
+      :employee-id="employeeId"
+      :employee-name="employeeName"
+      @success="handleShiftStarted"
+    />
   </div>
 </template>
 
@@ -138,6 +147,7 @@ import CouponDialog from '@/components/pos/dialogs/CouponDialog.vue'
 import OrderDetailDialog from '@/components/pos/dialogs/OrderDetailDialog.vue'
 import StockQueryDialog from '@/components/pos/dialogs/StockQueryDialog.vue'
 import YoloCheckoutDialog from '@/components/pos/YoloCheckoutDialog.vue'
+import StartShiftDialog from '@/components/pos/dialogs/StartShiftDialog.vue'
 import PosTopBar from '@/components/pos/PosTopBar.vue'
 import MenuSection from '@/components/pos/MenuSection.vue'
 import CartSection from '@/components/pos/CartSection.vue'
@@ -186,6 +196,36 @@ const {
 const { isDark, currentTime, toggleTheme, initTime, cleanupTime } = useTheme()
 const customerDisplayStore = useCustomerDisplayStore()
 const showOrderQuery = ref(false)
+
+/* ===== N19-4：开班（备用金） ===== */
+const showStartShift = ref(false)
+const terminalId = ref('')
+const employeeId = ref('')
+const employeeName = ref('')
+
+/** 登录后若无进行中的班次 → 弹出开班对话框（备用金必填/默认值见 StartShiftDialog） */
+async function maybeOpenStartShift(): Promise<void> {
+  try {
+    const terminal = localStorage.getItem('pos-terminal') || ''
+    const userRaw = localStorage.getItem('pos-user')
+    terminalId.value = terminal
+    if (userRaw) {
+      const user = JSON.parse(userRaw) as { employeeId?: string | number; employeeName?: string; name?: string }
+      employeeId.value = user?.employeeId != null ? String(user.employeeId) : ''
+      employeeName.value = user?.employeeName || user?.name || ''
+    }
+    if (!terminal) return
+    const current = await posApi.getCurrentShift(terminal)
+    if (!current) showStartShift.value = true
+  } catch (error) {
+    logger.errorMessage('[Home] 检查当前班次失败（不影响收银）', error)
+  }
+}
+
+function handleShiftStarted(): void {
+  ElMessage.success('班次已开始')
+  showStartShift.value = false
+}
 const showOrderDetail = ref(false)
 const showCoupon = ref(false)
 const showShiftHandover = ref(false)
@@ -495,6 +535,9 @@ onMounted(async () => {
   // 菜单加载
   loadMenu()
   
+  // 开班检查（无进行中班次时弹出备用金输入）
+  void maybeOpenStartShift()
+
   // 叫号统计
   loadCallNumberStats()
   callNumberStatsTimer = window.setInterval(loadCallNumberStats, 30000)

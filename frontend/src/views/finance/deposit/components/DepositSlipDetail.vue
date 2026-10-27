@@ -194,6 +194,22 @@ defineExpose({ localError })
         <div class="slip-amount__value">{{ money(slip.expectedAmount) }}</div>
       </div>
       <div class="slip-amount">
+        <div class="slip-amount__label" title="班次开班现金（pos_shifts.opening_cash），单位元">备用金（元）</div>
+        <div
+          class="slip-amount__value"
+          data-test="slip-reserve"
+          :data-fen="slip.reserveFen ?? ''"
+        >{{ money(slip.reserveFen) }}</div>
+      </div>
+      <div class="slip-amount">
+        <div class="slip-amount__label" title="应交 = 抽屉总额 − 备用金（后端 cash_counted_fen）">应交（计现，元）</div>
+        <div
+          class="slip-amount__value"
+          data-test="slip-cash-counted"
+          :data-fen="slip.cashCountedFen ?? ''"
+        >{{ money(slip.cashCountedFen) }}</div>
+      </div>
+      <div class="slip-amount">
         <div class="slip-amount__label">实交（元）</div>
         <div class="slip-amount__value">{{ money(slip.actualAmount) }}</div>
       </div>
@@ -368,7 +384,7 @@ defineExpose({ localError })
 
 .slip-amounts {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
 }
 

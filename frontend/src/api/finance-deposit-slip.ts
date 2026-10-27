@@ -37,6 +37,10 @@ export interface DepositSlipVO {
   refundComponentFen: number | null
   /** 分：净值 = actual − (expected − refundComponent)（N19-2） */
   differenceNetFen: number | null
+  /** 分：班次备用金（= pos_shifts.opening_cash 元 × 100，差异 1） */
+  reserveFen: number | null
+  /** 分：计现额 = actual − reserve_fen（抽屉总额 − 备用金） */
+  cashCountedFen: number | null
   /**
    * 后端口径的四项提示计数（**前端不再自算**，只消费后端值）：
    * - stillOpenCount：班次窗口未结束的数量（A39 口径）
@@ -177,6 +181,8 @@ function normalizeSlip(raw: Record<string, unknown>): DepositSlipVO {
     differenceAmount: toNum(raw.differenceAmount),
     refundComponentFen: toNum(raw.refundComponentFen),
     differenceNetFen: toNum(raw.differenceNetFen),
+    reserveFen: toNum(raw.reserveFen),
+    cashCountedFen: toNum(raw.cashCountedFen),
     stillOpenCount: toNum(raw.stillOpenCount),
     staleCount: toNum(raw.staleCount),
     legacyNullCount: toNum(raw.legacyNullCount),
