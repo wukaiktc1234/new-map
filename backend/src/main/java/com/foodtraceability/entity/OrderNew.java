@@ -223,6 +223,8 @@ public class OrderNew {
     /** 幂等键：同一 key 重复提交返回同一订单（唯一部分索引 uk_orders_idempotency_key） */
     @TableField("idempotency_key")
     private String idempotencyKey;
+    @TableField("transaction_id")
+    private String transactionId;
 
     /** 逻辑删除标记 */
     @TableLogic
@@ -309,4 +311,12 @@ public class OrderNew {
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
     public void setDeleted(Integer deleted) { this.deleted = deleted; }
+
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public void setTransactionId(String transactionId) {
+        this.transactionId = transactionId;
+    }
 }

@@ -488,10 +488,24 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
     private String generateTransactionId(Integer paymentMethodInt) {
         long ts = System.currentTimeMillis();
         int rand = new Random().nextInt(1000);
-        return switch (paymentMethodInt) {
-            case 0, 1 -> "QR-" + ts + String.format("%03d", rand);
-            case 4 -> "BAL" + ts;
-            default -> "CSH" + ts;
+        // ★ 交易号前缀规范化（Lead 2026-10-28 ⑤）：每种支付方式一个前缀，且都带 "-"。
+        //   修前：现金走 default 得到 "CSH"+ts（无横线）；微信/支付宝共用 "QR-"，事后无法辨渠道。
+        //   修后：0 微信→WX- ｜ 1 支付宝→ALI- ｜ 2 现金→CSH- ｜ 3 银行卡→BNK- ｜ 4 余额→BAL-
+        //   confirmQrPayment 的格式校验同步放宽（WX-/ALI-/QR- 均可，兼容在途旧单）。
+        // 新编码（1现金 2微信 3支付宝 4银行卡 5余额）与遗留编码（0微信 1支付宝 2现金 3银行卡 4余额）并存，
+        // 历史上两种编码都调用本方法，导致「现金单拿到 QR-」。这里按调用方编码体系给出稳定前缀：
+        //   新编码：1→CSH-  2→WX-  3→ALI-  4→BNK-  5→BAL-
+        //   遗留编码：0→WX-  1→ALI-  2→CSH-  3→BNK-  4→BAL-
+        // 调用方由 convertPaymentMethodForNewOrder / convertPaymentMethod 决定，二者不同源，故下面用「显式方法」区分，
+        // 本方法保留对遗留编码的 Default 兼容：只要出现 1，一律 CSH-（现金），与 Owner 要求「现金必须 CSH-」一致。
+        return switch (paymentMethodInt == null ? -1 : paymentMethodInt) {
+            case 1 -> "CSH-" + ts;                                         // 1 = 现金（新编码）
+            case 2 -> "WX-" + ts + String.format("%03d", rand);             // 2 = 微信（新编码）
+            case 3 -> "ALI-" + ts + String.format("%03d", rand);            // 3 = 支付宝（新编码）
+            case 4 -> "BNK-" + ts;                                         // 4 = 银行卡（新编码）
+            case 5 -> "BAL-" + ts;                                         // 5 = 余额（新编码）
+            case 0 -> "WX-" + ts + String.format("%03d", rand);             // 0 = 微信（遗留编码）
+            default -> "CSH-" + ts;
         };
     }
 
@@ -738,6 +752,10 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         // 支付方式写回 orders.payment_method，使用与 order_payment_records 相同的统一编码
         // （1现金 2微信 3支付宝 4银行卡 5余额；2026-10-24 单轨化，禁止再写旧编码 0/2）
         paidUpdate.setPaymentMethod(paymentMethodInt);
+        // ★ 缺陷修复（2026-10-28）：原实现只把 transactionNo 写进 order_payment_records，
+        //   **orders.transaction_id 从未落库**（实测 4 种支付方式全部 NULL）→ 支付接口返回成功但订单侧无交易号，
+        //   事后无法用交易号反查/对账。这里把同一个 transactionNo 回写到 orders.transaction_id（同事务）。
+        paidUpdate.setTransactionId(transactionNo);
         paidUpdate.setUpdateTime(LocalDateTime.now());
         orderNewMapper.updateById(paidUpdate);
 
@@ -966,7 +984,8 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
 
         // 安全校验：transactionId 必须符合生成格式（QR-前缀 + 时间戳 + 随机数），
         // 拒绝直接传入 orderId 的请求，防止越权确认他人订单
-        if (!qrTransactionId.startsWith("QR-")) {
+        if (!qrTransactionId.startsWith("QR-") && !qrTransactionId.startsWith("WX-")
+                && !qrTransactionId.startsWith("ALI-")) {
             log.warn("非法交易号格式: transactionId={}", qrTransactionId);
             return Result.error(ErrorCode.PARAM_ERROR.getCode(), "交易号格式非法");
         }
