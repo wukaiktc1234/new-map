@@ -35,7 +35,16 @@ public class DeviceCommunicationTestController {
     @PostMapping("/test")
     @Operation(summary = "测试设备通信")
     @PreAuthorize("hasAuthority('device:communication:manage')")
-    public Result<TestResult> testCommunication(@RequestBody HardwareConfig config) {
+    public Result<TestResult> testCommunication(
+            @RequestBody(required = false) HardwareConfig config) {
+        // bug-㉔：缺 body 属「缺参数」（400），不是系统繁忙（500）。
+        // 原来 @RequestBody 必填 → 无 body 时抛 HttpMessageNotReadableException → 被 GlobalExceptionHandler 兜成 500。
+        if (config == null) {
+            return Result.error(400, "缺少请求体：deviceType / deviceName 至少需要 deviceType");
+        }
+        if (config.getDeviceType() == null || config.getDeviceType().isBlank()) {
+            return Result.error(400, "deviceType 不能为空");
+        }
         log.info("测试设备通信: 设备类型={} 设备名称={}", config.getDeviceType(), config.getDeviceName());
         try {
             TestResult result = communicationTestService.testCommunication(config);
