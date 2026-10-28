@@ -95,3 +95,21 @@ cd frontend && npm install && npm run dev
 - 写操作必须 `@Transactional(rollbackFor = Exception.class)`
 - Entity 必须有 `@TableLogic` + `Integer deleted`
 - 前端禁止 `any` 类型，必须使用 `request` 实例发请求
+
+---
+
+## 📚 知识资产（Knowledge Base）
+
+> 新接手者 / 新 AI 会话的入职手册。四项，按需查阅。
+
+| 文档 | 内容 | 什么时候看 |
+|---|---|---|
+| [System-Map.md](docs/knowledge/System-Map.md) | 系统全景：业务时序图（POS→支付→扣库存→资金流水→交班→对账）、模块边界与**写入权归属**、核心表 ER 图（**金额列标元/分**）、9 条可直接跑的验证 SQL | 第一次接触这个项目时 |
+| [Gate-Baseline-and-Health.md](docs/knowledge/Gate-Baseline-and-Health.md) | 全部质量门禁清单、当前健康数字、**提交前必跑命令**、数字判读表（含「看到 52/2 算正常」） | 每次提交 / 发版前 |
+| [ADR-and-Danger-Zones.md](docs/knowledge/ADR-and-Danger-Zones.md) | **防雷指南**：财务红线 R1–R5、代码陷阱 C1–C5、验证陷阱 V1–V6、7 条核心铁律、按症状查原因的事故速查表 | 动手改任何东西之前 |
+| [Roadmap-and-Known-Issues.md](docs/knowledge/Roadmap-and-Known-Issues.md) | 缺表 59→45 的分批结论（含 skip 逐张理由）、6 项已知妥协设计、遗留缺陷、**试运行前 Checklist** | 排期 / 判断「能不能上线」时 |
+
+**三条最先要记住的**：
+1. **历史账绝不回溯重算**（口径变更只对新数据生效）；
+2. **验证必须用管理该对象的工具**（Flyway 迁移不能用 `psql -f` 裸跑；全量测试不能用子集代表）；
+3. **能不动数据就不动**；动数据只能因为它脏了，且**冲正优于删除**。
