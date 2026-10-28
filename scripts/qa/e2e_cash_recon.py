@@ -423,6 +423,39 @@ class CashRecon:
                       " FROM deposit_slips WHERE slip_id=%d" % int(slip_id))
         return r[0] if r else None
 
+
+    def _make_target_slip_after(self, refund_time, exclude_shift=None):
+        """造一张「create_time >= refund_time」的缴款单（as-of-create 合法），返回 (shift_id, slip_id)。
+
+        做法与三步② 的 fallback 一致：新开班次 → 造一笔已支付订单（generate 需窗口内有订单）
+        → 立刻关班 → generate。避免拿旧 slip 造成 A39 与断言打架。
+        """
+        t_term = "T-E2E-%s-C%d" % (self.tag, self.seq)
+        self.seq += 1
+        uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
+        sto, sb = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
+                       {"terminalId": t_term, "employeeId": str(uid or self.a.pos_user),
+                        "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
+        if not ok(sb):
+            return None
+        okp, _ = self.make_paid_order()
+        sleep_ok = wait_until(lambda: self.num(
+            "SELECT COUNT(*) FROM orders WHERE store_id=%d AND create_time >= now() - interval '2 minutes'"
+            % int(self.a.store_id)) > 0, timeout_sec=30, interval_sec=1.0)
+        t_shift = int((data_of(sb) or {}).get("shiftId") or self.num(
+            "SELECT shift_id FROM pos_shifts WHERE terminal_id='%s' ORDER BY shift_id DESC LIMIT 1" % t_term))
+        self.end_shift(t_term)
+        stg, bg = self.generate_slip(t_shift)
+        if not ok(bg):
+            return None
+        sid2 = self.slip_id_of(bg)
+        if not sid2:
+            return None
+        row = self.slip_row(int(sid2))
+        ct = row[10] if row and len(row) > 10 else None
+        if refund_time and ct and ct < refund_time:
+            return None
+        return (t_shift, int(sid2))
     def make_paid_order(self):
         """造一笔「已支付但不退款」的订单（供 generate 判定门店用）。返回 (ok, err)。"""
         st, b = http("GET", self.a.api + "/v1/pos/api/dishes", self.cash_token)
@@ -692,6 +725,58 @@ class CashRecon:
             self.step("三步③ 负向有效性（由 --no-confirm 单独演练）", True,
                       "本次为正向运行：确认后 grew=%s；负向证据见 --no-confirm 那次输出" % grew)
 
+
+        # ---- ④ 幂等：同 refund + 同 shift 再确认 → 400 + 契约文案 ----
+        if not negative_no_confirm:
+            sti, bi = self.confirm_attribution(sid, rf["refundRecordId"], prev_shift,
+                                               "%s TRIPLE 重复确认(同班次)" % self.mark)
+            code_i = (bi or {}).get("code")
+            msg_i = str((bi or {}).get("message") or "")
+            contract_ok = any(k in msg_i for k in ("重复", "已确认", "不可", "已归属"))
+            self.step("三步④ 幂等：同 refund 同 shift 再确认 → 400 + 契约文案",
+                      code_i not in (0, 200, None) and contract_ok,
+                      "HTTP %s code=%s msg=%s（要求非 0 且文案含 重复/已确认/不可/已归属）" % (
+                          sti, code_i, msg_i[:80]))
+            # 幂等确认后金额不得变化
+            rcf_after_dup = rcf_of(prev_slip)
+            self.step("三步④ 幂等确认后上一班 rcf 数值不变",
+                      rcf_after_dup == prev_before + amount,
+                      "prev_slip=%s rcf=%s（应等于 %d = 改前 %d + 本笔 %d）" % (
+                          prev_slip, rcf_after_dup, prev_before + amount, prev_before, amount))
+
+            # ---- ⑤ 改归属：换到另一张 as-of-create 合法的缴款单 → rcf 重算不累加 ----
+            other = self._make_target_slip_after(refund_time, exclude_shift=prev_shift)
+            if not other:
+                self.step("三步⑤ 改归属到另一张合法缴款单", False,
+                          "造不出第二张 create_time >= refund_time 的缴款单 → 无法验证「重算不累加」")
+            else:
+                o_shift, o_slip = other
+                stc2, bc2 = self.confirm_attribution(sid, rf["refundRecordId"], o_shift,
+                                                     "%s TRIPLE 改归属" % self.mark)
+                ok2 = wait_until(lambda: (rcf_of(o_slip) or 0) == amount,
+                                 timeout_sec=90, interval_sec=1.0)
+                rcf_o = rcf_of(o_slip)
+                rcf_old_after = rcf_of(prev_slip)
+                self.step("三步⑤ 改归属成功且新单 rcf 数值 == 单笔金额（不累加）",
+                          ok(bc2) and rcf_o == amount,
+                          "改归到 shift=%s slip=%s -> rcf=%s（要求 == %d）；HTTP %s code=%s" % (
+                              o_shift, o_slip, rcf_o, amount, stc2, (bc2 or {}).get("code")))
+                self.step("三步⑤ 改归属后旧单 rcf 回到改前值（不残留）",
+                          rcf_old_after == prev_before,
+                          "旧 slip=%s rcf=%s（要求回到改前 %d）" % (prev_slip, rcf_old_after, prev_before))
+                # 连改两次到同一目标：仍 == 单笔金额（显式数值相等，不是「有值即可」）
+                self.confirm_attribution(sid, rf["refundRecordId"], prev_shift,
+                                         "%s TRIPLE 再改回" % self.mark)
+                self.confirm_attribution(sid, rf["refundRecordId"], o_shift,
+                                         "%s TRIPLE 第二次改归" % self.mark)
+                wait_until(lambda: (rcf_of(o_slip) or 0) == amount, timeout_sec=90, interval_sec=1.0)
+                rcf_o2 = rcf_of(o_slip)
+                self.step("三步⑤ 连改两次后 rcf 仍 == 单笔金额（重算不累加）",
+                          rcf_o2 == amount, "slip=%s rcf=%s（要求 == %d，若累加会是 %d）" % (
+                              o_slip, rcf_o2, amount, amount * 2))
+        else:
+            self.step("三步④⑤ 幂等/改归属（负向模式跳过）", True,
+                      "--no-confirm：不执行确认，故不验幂等与改归属", state="INFO")
         self.triple_ctx = {"slipId": sid, "shiftId": shift_id, "prevShift": prev_shift,
                            "prevSlip": prev_slip, "amount": amount, "prevBefore": prev_before,
                            "negative": negative_no_confirm}

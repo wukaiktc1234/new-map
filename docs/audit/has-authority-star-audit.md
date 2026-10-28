@@ -1,61 +1,46 @@
 # `hasAuthority('*')` 全库审计（2026-10-28）
 
-## 事实
+## 事实（2026-10-28 13:35 重新逐行统计 —— **这是权威版本**）
 
 ```text
-全库 @PreAuthorize("hasAuthority('*')") 共 537 处，分布在 82 个 Controller
-permissions 表里 permission_code='*' 的行数 = 0  （SELECT count(*) 实测）
+含 hasAuthority('*') 的 @PreAuthorize 行：534
+  ├─ **只有 '*'**（true star-only）：  **2 行**
+  │    · POST /v1/admin/hr-migration/create-tables      (HrMigrationController.java:33)
+  │    · POST /v1/user-permission-overrides/refresh-expired (UserPermissionOverrideController.java:221)
+  └─ **'具体码' or '*'**：            **532 行**
+       例：hasAuthority('asset:view') or hasAuthority('*')
 ```
 
-**结论（Lead 2026-10-28 裁定）**：Spring Security 的 `hasAuthority` 是**精确字符串匹配**，`'*'` 从来不是通配符。
-这条注解在数据库层面**永远无法满足** —— 不是「数据缺失」，是**代码理解错误**。
-唯一能产生 `*` authority 的路径是 `SecurityUser.getAuthorities():73`（admin 角色硬编码添加），
-即 `hasAuthority('*')` 实际等价于「只有 admin 角色能进」，但写成了数据权限的样子。
+端点级快照（1439 个端点）：**star-only 2 个 ｜ 码+admin兜底 534 条记录**。
 
-## 清单（按 Controller 聚合，前 25）
+## ⚠ 更正记录（我上一轮报错了，留痕）
 
-| Controller | 处数 |
-|------------|------|
-| `OrderNew` | 18 |
-| `Asset` | 15 |
-| `DeviceAlert` | 15 |
-| `Coupon` | 14 |
-| `HardwareConfig` | 14 |
-| `Member` | 13 |
-| `Device` | 12 |
-| `EmployeeArchiveDetail` | 12 |
-| `PrintTask` | 11 |
-| `DeviceManagement` | 11 |
-| `TakeoutLocker` | 11 |
-| `DeviceCommunicationTest` | 11 |
-| `OnboardingArchive` | 11 |
-| `AIModelConfig` | 10 |
-| `ContractTemplate` | 10 |
-| `LabelPrinter` | 10 |
-| `MarketingMember` | 10 |
-| `Training` | 10 |
-| `Tray` | 10 |
-| `Approval` | 9 |
-| `PrintTemplate` | 9 |
-| `KitchenOrder` | 9 |
-| `Points` | 9 |
-| `Seal` | 9 |
-| `UserPermissionOverride` | 9 |
+| 我曾说 | 真实 | 影响 |
+|--------|------|------|
+| 「537 处 `hasAuthority('*')` 只有 admin 能进，属已知限制」 | **只有 2 处**是 star-only；其余 532 处 OR 了具体码，普通角色按码即可访问 | 该结论导致我们把「改造」误判成「放开 admin 专用接口」；实际是**收紧（拿掉 admin 兜底）** |
+| 「加 `permission_code='*'` 就能让超管进来」 | `'*'` 不是通配符，Spring `hasAuthority` 精确匹配；目录里也从未有该码 | 若照此做，会把「通配语义」塞进数据，换库即崩 |
 
-## 处置方案（Lead 裁定：方案②，不选「加一条 permission_code='*'」）
+**为什么会错**：我只统计了「含 `'*'` 的行数」，**没有看同一行里是否还有具体码** —— 少看一步就得出反了的结论。
 
-1. 逐模块替换为**真实权限码**（`模块:资源:动作`），并在 `permissions` 补码 + 绑角色；
-2. 若该 Controller 确实只给超管用 → 改 `hasRole('SUPER_ADMIN')`（Spring 会自动补 `ROLE_` 前缀）；
-3. **不要**往 `permissions` 插 `'*'`：那会把「通配语义」塞进数据，换库即崩。
+## 真实语义
 
-## 已处理
+```text
+'*' 的来源：SecurityUser:73 仅给 admin 角色硬加 SimpleGrantedAuthority("*")；
+permissions 目录里不存在 permission_code='*'（实测 count=0）。
+因此 `码 or '*'` 的实际准入集合 = { 持有该码的角色 } ∪ { admin }。
+→ 删掉 ` or hasAuthority('*')` 的效果是 **收紧**：admin 不再靠兜底，而是靠目录里的同名码。
+```
 
-| 位置 | 改动 | 状态 |
+## 处置方案（Lead 2026-10-28 批准）
+
+1. **Top3 模块（资产 15 / 设备 49 / 订单 18）**：逐处删除 ` or hasAuthority('*')`，**保留具体码**，不新增码、不改方法语义；
+2. **删前必须逐个核对：该具体码是否在 `permissions` 目录里**（admin 靠目录里的码进）——凡「只在硬编码 ALL、不在目录」的码，**先补目录再删**；
+3. **那 2 处 star-only 本轮不动**，标注「已知限制：仅 admin 可调用」，列入**需产品定权限**清单（凭空定义「谁能改用户权限覆盖 / 谁能跑 HR 迁移」不合适）；
+4. 验收三角：`admin → 200`、`有码角色 → 200`、`无码角色 → 403`，缺一不算通过。
+
+## 需产品定权限的清单（当前仅 admin 可调用）
+
+| 端点 | 文件 | 问题 |
 |------|------|------|
-| `OverAgeWorkerController`（6 处） | → `hasAnyAuthority('hr:over-age-worker:view','hr:over-age-worker:manage')`；`V20261028_011` 补两码并绑 `ROLE_HR_DIRECTOR` | 已改，待 200 验收 |
-
-## 已知限制（Lead 2026-10-28 裁定）
-
-> 除已改造的 `OverAgeWorkerController` 与本批 Top 3（资产/设备/订单）外，**其余 ~455 处 `hasAuthority('*')` 维持现状**。
-> **当前仅 admin 可调用，属已知限制，不是 bug** —— 这是「未细化的权限设计」，需要产品参与制定权限矩阵（模块 × 动作 × 角色）后才能逐处替换。
-> 排序与依据见 `docs/audit/has-authority-star-top10.md`。
+| `POST /v1/admin/hr-migration/create-tables` | HrMigrationController.java | 谁能执行 HR 迁移建表？ |
+| `POST /v1/user-permission-overrides/refresh-expired` | UserPermissionOverrideController.java | 谁能刷新过期的权限覆盖？ |
