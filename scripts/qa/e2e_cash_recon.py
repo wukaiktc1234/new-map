@@ -44,7 +44,7 @@ sys.path.insert(0, str(HERE))
 try:
     from e2e_setup import ensure_ready, is_stock_short
 except Exception as e:  # pragma: no cover
-    print("[FATAL] 无法导入 e2e_setup：%s" % e)
+    print("[FATAL] 无法导入 e2e_setup：%s" % e, flush=True)
     sys.exit(2)
 
 DEFAULT_API = "http://localhost:8081/api"
@@ -519,7 +519,7 @@ class CashRecon:
                 break
             if i % 6 == 0:
                 print("    · 等待「退款距 end > %d 分钟」：当前 %d 分钟" % (
-                    self.shift_window_minutes(), mins_from_refund))
+                    self.shift_window_minutes(), mins_from_refund), flush=True)
             time.sleep(10)
         self.end_shift(self.shift_terminal(shift_id))
         st, b = self.generate_slip(shift_id)
@@ -1054,9 +1054,9 @@ class CashRecon:
             self.step("AC-58-⑦ 清理", False, "异常：%s" % str(e)[:140])
 
     def run(self):
-        print("=" * 92)
-        print("N19-2 现金户退款构成 / 班次边界 / 归属确认 E2E  tag=%s" % self.tag)
-        print("=" * 92)
+        print("=" * 92, flush=True)
+        print("N19-2 现金户退款构成 / 班次边界 / 归属确认 E2E  tag=%s" % self.tag, flush=True)
+        print("=" * 92, flush=True)
         self.beat("start: 前置就绪检查")
         if not ensure_ready(api=self.a.api, admin=self.a.admin, pos=self.a.pos):
             self.not_ready("前置就绪", "服务/库存未就绪")
@@ -1121,18 +1121,18 @@ class CashRecon:
     def summary(self):
         fails = [r for r in self.results if r[1] == "FAIL"]
         nr = [r for r in self.results if r[1] == "NOT_READY"]
-        print("\n" + "=" * 92)
+        print("\n" + "=" * 92, flush=True)
         print("结果: %s  PASS=%d FAIL=%d%s" % (
             "全绿" if not fails and not nr else ("未就绪" if not fails else "存在失败"),
             len([r for r in self.results if r[1] == "PASS"]), len(fails),
-            ("  NOT_READY=%d" % len(nr)) if nr else ""))
+            ("  NOT_READY=%d" % len(nr)) if nr else ""), flush=True)
         for name, st, _ in self.results:
-            print("  %-72s %s" % (name, st))
+            print("  %-72s %s" % (name, st), flush=True)
         if fails or nr:
-            print("-" * 92)
+            print("-" * 92, flush=True)
             for name, st, detail in fails + nr:
-                print("  * [%s] %s\n    %s" % (st, name, detail))
-        print("=" * 92)
+                print("  * [%s] %s\n    %s" % (st, name, detail), flush=True)
+        print("=" * 92, flush=True)
         if fails:
             return 1
         return 2 if nr else 0
@@ -1182,7 +1182,7 @@ def main():
         print("  [BEAT] 套件启动，单次 HTTP 超时 %ds，整套上限 %ds" % (a.timeout, a.max_seconds), flush=True)
         return runner.run()
     except Exception as e:
-        print("执行错误: %s" % e, file=sys.stderr)
+        print("执行错误: %s" % e, file=sys.stderr, flush=True)
         return 2
 
 

@@ -289,10 +289,24 @@ SELECT flow_id, flow_category, flow_direction, amount FROM fund_flows
 
 ### 4.6 元/分混用体检（**最容易静默错的一类**）
 
+> ⚠ **2026-10-28 修正**：`orders.order_amount / actual_amount` 是**遗留列**——当前写路径用的实体是
+> `OrderNew`（`@TableName("orders")`），它**没有** `orderAmount/actualAmount` 字段，所以这两列恒为 0
+> （实测 48/48 行 = 0.00），而 `total_amount/final_amount` 有值。
+> 因此下面这条「元×100 == 分」的断言**两边都是 0 时永远通过（假绿）**，必须加 `order_amount <> 0` 过滤；
+> 真正的元/分一致性要**从明细反推**（第二条 SQL）。
+
 ```sql
--- 期望：0 行。orders 的分列必须等于元列×100
+-- ① 只对「元列确实有值」的订单做等值校验（否则是假绿）
 SELECT order_id, order_amount, total_amount FROM orders
- WHERE deleted = 0 AND total_amount IS DISTINCT FROM (order_amount * 100)::bigint;
+ WHERE deleted = 0 AND order_amount <> 0
+   AND total_amount IS DISTINCT FROM (order_amount * 100)::bigint;
+
+-- ② 真正的锚：订单总分 == 明细合计（两者都是分）
+SELECT o.order_id, o.total_amount, COALESCE(SUM(i.amount), 0) AS items_sum
+  FROM orders o LEFT JOIN order_items i ON i.order_id = o.order_number AND i.deleted = 0
+ WHERE o.deleted = 0
+ GROUP BY o.order_id, o.total_amount
+HAVING o.total_amount IS DISTINCT FROM COALESCE(SUM(i.amount), 0);
 ```
 
 ### 4.7 `*_fen` 影子列（当前未启用）
@@ -324,7 +338,7 @@ python scripts/qa/e2e_cash_recon.py --skip-boundary-wait  # 快速：预期 PASS
 ## 5. 权限模型要点（新人最常踩）
 
 - **两套形态并存**：`permissions.permission_id_str`（`PERM_*`，与 `role_permissions.permission_id` 连接）与 `permissions.permission_code`（`a:b:c`，Spring `hasAuthority` 用）。
-- **JWT 只装身份**：token 里只有 `userId` + `roleIds`；权限**服务端解析**（`UserPermissionCache`，45s TTL + 每秒版本比对主动失效），撤权实测 **1.1s** 生效。
+- **JWT 只装身份**：token 里只有 `userId` + `roleIds`（另有 **`locationId` 条件写入**：`JwtUtils.java:168-169` 仅当用户分配了归属位置时才 `claims.put("locationId", ...)`，未分配则无该 claim —— 读 token 时必须判空，不能假设恒存在）；权限**服务端解析**（`UserPermissionCache`，45s TTL + 每秒版本比对主动失效），撤权实测 **1.1s** 生效。
 - **admin 的 `'*'`**：`SecurityUser:73` 仅给 admin 硬加 `SimpleGrantedAuthority("*")`；目录里**不存在** `permission_code='*'`。历史 532 处是「具体码 or `'*'`」，真正 star-only 只有 **2 处**。
 - **改授权数据铁律**：授权行**永远不用 `DELETE`**，只用 `deleted=1`；去重前必须确认「另一条同权限授权是 `deleted=0`」（`deleted=1` 不算数）。
 
