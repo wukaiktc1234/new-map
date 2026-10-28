@@ -52,12 +52,14 @@ const detailLoading = ref(false)
 const confirming = ref(false)
 
 /**
- * 归属确认权限（正式契约 fund-500：finance:deposit-slip:attribution:confirm）
- * 同时兼容旧码 finance:deposit-slip:confirm-attribution，避免历史账号瞬间失去操作能力。
+ * 归属确认权限（契约 v2 / fund-500）：**只认** finance:deposit-slip:attribution:confirm。
+ *
+ * 曾经做过「新码 || 旧码」双检兼容；实测发现 qa_store_b 只剩旧码时仍会渲染按钮，
+ * 导致权限收回失效（验收 ④ 不通过），故改回单码判定。
+ * 旧码已列入下一版本移除计划，不再作为兜底。
  */
 const canConfirm = computed<boolean>(
-  () => permissionStore.hasPermission('finance:deposit-slip:attribution:confirm')
-    || permissionStore.hasPermission('finance:deposit-slip:confirm-attribution'),
+  () => permissionStore.hasPermission('finance:deposit-slip:attribution:confirm'),
 )
 
 /** 归属提交的业务错误（400 重复确认 / 403 无权限 等，由后端 code+message 给出） */

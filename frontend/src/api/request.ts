@@ -266,6 +266,12 @@ request.interceptors.response.use(
       // 导致silentPost对业务错误码（如461需要验证码）不静默，用户看到"登录失败次数过多"提示
       const silentError = (response.config as InternalAxiosRequestConfig & { _silentError?: boolean })?._silentError
 
+      // 退款归属确认（contract: fund-500 v2）：400「已确认过」/403「无权限」等错误
+      // 需要由「待确认归属」面板带上下文展示（哪笔退款、哪个班次），
+      // 拦截器不再 toast，避免同一错误弹两次。
+      const attrPath = String(response.config?.url || '')
+      const isAttributionConfirm = attrPath.includes('/confirm-attribution')
+
       // 特殊错误码处理
       switch (res.code) {
         case 401:
@@ -285,14 +291,14 @@ request.interceptors.response.use(
           // 原因：开发模式无真实 token，后端必然返回 401，若跳转会清空 tab-bar-tabs 导致标签页丢失
           break
         case 403:
-          if (!silentError) ElMessage.error('没有权限执行此操作')
+          if (!silentError && !isAttributionConfirm) ElMessage.error('没有权限执行此操作')
           break
         case 404:
           logger.warn('Response', `接口不存在: ${res.message || ''}`)
           return Promise.reject(new Error(res.message || '请求的资源不存在'))
         case 500:
           // 显示后端返回的实际错误信息（如"用户名或密码错误"），而非通用提示
-          if (!silentError) ElMessage.error(errorMessage)
+          if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
           break
         case 461:
           // 461表示"需要验证码"，不是真正的错误，返回data让调用方处理
@@ -301,7 +307,8 @@ request.interceptors.response.use(
           return res.data
         default:
           // 461（需要验证码）等其他业务错误：静默模式下不弹提示
-          if (!silentError) ElMessage.error(errorMessage)
+          // 归属确认（400 缺少参数 / 已确认过）由面板展示，不在此 toast
+          if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
       }
 
       // silentGet/silentPost 的契约就是「调用方自行处理」，这里不能再打 error 级日志，

@@ -105,7 +105,10 @@ export interface BoundaryShiftVO {
   endTime?: string | null
 }
 
-/** 待确认归属的退款行（正式契约字段已对齐 fund-500 契约） */
+/**
+ * 待确认归属的退款行（契约 v2，fund-500 / docs/design/api-deposit-slip-attribution.md）
+ * 备注：refundNo 为主名，flowNo 为历史别名（同值，下一版本删除）；前端两者都吃，展示统一用 refundNo。
+ */
 export interface PendingAttributionRefundVO {
   refundRecordId: number
   refundNo?: string | null
@@ -351,7 +354,8 @@ function normalizePendingRefund(raw: Record<string, unknown>): PendingAttributio
   const kind = (raw.boundaryKind as string) ?? null
   return {
     refundRecordId: Number(raw.refundRecordId ?? raw.id ?? 0),
-    refundNo: (raw.refundNo as string) ?? (raw.refund_no as string) ?? null,
+    // 契约 v2：后端主字段 = refundNo；flowNo 为历史别名（同值，下一版本删除）
+    refundNo: (raw.refundNo as string) ?? (raw.refund_no as string) ?? (raw.flowNo as string) ?? null,
     orderNumber: (raw.orderNumber as string) ?? (raw.order_no as string) ?? null,
     amountFen: toNum(raw.amountFen) ?? toNum(raw.amount),
     refundTime: (raw.refundTime as string) ?? (raw.refund_time as string) ?? null,

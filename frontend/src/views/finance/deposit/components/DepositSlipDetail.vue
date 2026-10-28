@@ -114,10 +114,13 @@ function candidatesOf(row: PendingAttributionRefundVO): ShiftCandidateVO[] {
   return rowList.length > 0 ? rowList : sharedCandidates.value
 }
 
-/** 候选班次展示文案：优先后端 label（如 "morning #352"），缺失时按位置给 上一/本/下一班次；避免 #id 重复 */
+/**
+ * 候选班次展示文案（契约 v2）：shiftNo（班次业务编号，权威）→ label（历史展示名）→ 位置兜底。
+ * 避免 #id 重复拼接。
+ */
 function candidateLabel(cand: ShiftCandidateVO, idx: number): string {
   const fallback = idx === 0 ? '上一班次' : idx === 1 ? '本班次' : '下一班次'
-  const base = (cand.label || '').trim() || fallback
+  const base = (cand.shiftNo || '').trim() || (cand.label || '').trim() || fallback
   return base.includes('#' + cand.shiftId) ? base : base + ' #' + cand.shiftId
 }
 
@@ -137,7 +140,13 @@ function minutesBetween(a: number, b: number): number {
 
 function toRef(cand: ShiftCandidateVO | undefined): BoundaryShiftRef | null {
   if (!cand) return null
-  return { shiftId: cand.shiftId, label: cand.label ?? null, startTime: cand.startTime ?? null, endTime: cand.endTime ?? null }
+  // 优先 shiftNo（业务编号），退回 label（历史展示名）
+  return {
+    shiftId: cand.shiftId,
+    label: cand.shiftNo ?? cand.label ?? null,
+    startTime: cand.startTime ?? null,
+    endTime: cand.endTime ?? null,
+  }
 }
 
 /**
@@ -154,10 +163,10 @@ const boundaryRows = computed<BoundaryRefundPending[]>(() => {
     const prevCand = candidates.find((c) => c.isPrevious === true) ?? candidates[0]
     const curCand = candidates.find((c) => c.isPrevious !== true) ?? candidates[1] ?? candidates[0]
     const previousShift = row.previousShift
-      ? { shiftId: row.previousShift.shiftId, label: row.previousShift.shiftNo ?? null, startTime: row.previousShift.startTime ?? null, endTime: row.previousShift.endTime ?? null }
+      ? { shiftId: row.previousShift.shiftId, label: row.previousShift.shiftNo ?? ('#' + row.previousShift.shiftId), startTime: row.previousShift.startTime ?? null, endTime: row.previousShift.endTime ?? null }
       : toRef(prevCand)
     const currentShift = row.currentShift
-      ? { shiftId: row.currentShift.shiftId, label: row.currentShift.shiftNo ?? null, startTime: row.currentShift.startTime ?? null, endTime: row.currentShift.endTime ?? null }
+      ? { shiftId: row.currentShift.shiftId, label: row.currentShift.shiftNo ?? ('#' + row.currentShift.shiftId), startTime: row.currentShift.startTime ?? null, endTime: row.currentShift.endTime ?? null }
       : (toRef(curCand) ?? toRef(prevCand))
 
     let boundaryDeltaMinutes: number | null = typeof row.boundaryDeltaMinutes === 'number' ? row.boundaryDeltaMinutes : null
