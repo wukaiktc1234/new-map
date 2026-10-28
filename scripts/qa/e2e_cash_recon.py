@@ -598,10 +598,44 @@ class CashRecon:
         if not shift_id:
             return self.not_ready("退款归属三步验证", "未传入边界班次")
 
+        # ---- 夹具隔离守卫（Lead 2026-10-28 要求）----
+        # 传入的 shift_id 是 section② 造的边界班次（terminal 由 POS 自动生成，非本 tag）——三步段**不复用**它，
+        # 而是自己新开 T-E2E-<tag>-T3 班次。这里只做「声明」，把忽略行为显式打出来，不静默跳过。
+        passed_term = self.shift_terminal(shift_id) if shift_id else ""
+        self.step("三步① 夹具隔离：不复用传入班次（将新开本 tag 班次）", True,
+                  "传入 shift=%s terminal=%s → 仅作参考，不参与断言" % (shift_id, passed_term), state="INFO")
+        want_prefix = "T-E2E-%s" % self.tag
+        bad = []  # 新开班次之后再做前缀自检（见下）
+
+        # ---- 强制新造夹具（Lead 拍板·修法一）----
+        # 「全新 slip、rcf 必为 0」是三步① 的前提；复用既有 slip 会破坏前提（full 模式实测 slip=403 已被
+        # 前序 section 归属过 → rcf=2500 → 假 FAIL）。故这里**新开班次 → 造退款 → 立刻关班 → generate**。
+        t_term = "%s-T3" % want_prefix
+        uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
+        sto, sb = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
+                       {"terminalId": t_term, "employeeId": str(uid or self.a.pos_user),
+                        "employeeName": self.a.pos_user, "shiftType": "morning",
+                        "openingCash": getattr(self.a, "opening_cash", 0.0)})
+        if not ok(sb):
+            return self.not_ready("三步① 新开班次", "HTTP %s code=%s msg=%s" % (
+                sto, (sb or {}).get("code"), str((sb or {}).get("message"))[:80]))
+        shift_id = int((data_of(sb) or {}).get("shiftId") or self.num(
+            "SELECT shift_id FROM pos_shifts WHERE terminal_id='%s' ORDER BY shift_id DESC LIMIT 1" % t_term))
+        # 新开班次必须是本 tag 的（前缀自检）——不是就立刻报错，绝不在别人的数据上跑
+        new_term = self.shift_terminal(shift_id)
+        if not str(new_term).startswith(want_prefix):
+            return self.not_ready("三步① 夹具隔离守卫",
+                                  "新开班次 shift=%s 的 terminal=%s 不以 %s- 开头 → 拒绝在其上跑三步段"
+                                  % (shift_id, new_term, want_prefix))
+        paid_ok, paid_err = self.make_paid_order()
         rf, err = self.make_refund(3000, "%s TRIPLE 边界退款" % self.mark)
         if not rf:
             return self.not_ready("三步验证·造退款", err)
-        self.end_shift(self.shift_terminal(shift_id))
+        # generate 之前先记录基线（若该班次已有 slip —— 不该有 —— 也如实记下，用于「增量」断言）
+        pre_rows = self.rows("SELECT slip_id, COALESCE(refund_component_fen,0) FROM deposit_slips"
+                             " WHERE shift_id=%d AND deleted=0" % int(shift_id))
+        rcf_before = int(pre_rows[0][1]) if pre_rows else 0
+        self.end_shift(t_term)
         st, b = self.generate_slip(shift_id)
         if not ok(b):
             return self.not_ready("三步验证·generate", "HTTP %s code=%s msg=%s" % (
@@ -615,11 +649,16 @@ class CashRecon:
             r = self.slip_row(slip)
             return None if not r else int(r[5] or 0)
 
-        # ---- ① 边界退款不计入任何班次 ----
+        # ---- ① 边界退款不计入任何班次（断言形式：rcf 增量 == 0，且显式打前后值）----
         wait_until(lambda: rcf_of(sid) is not None, timeout_sec=60, interval_sec=1.0)
-        rcf0 = rcf_of(sid)
-        self.step("三步① 边界退款不计入任何班次（refund_component_fen == 0）",
-                  rcf0 == 0, "slip=%s shift=%s rcf=%s（本笔=%d 分）" % (sid, shift_id, rcf0, amount))
+        rcf_after = rcf_of(sid)
+        delta = None if rcf_after is None else (rcf_after - rcf_before)
+        self.step("三步① 边界退款不计入任何班次（generate 前后 rcf 增量 == 0）",
+                  delta == 0,
+                  "slip=%s shift=%s rcf_before=%d → rcf_after=%s（增量=%s，要求 0；本笔=%d 分）" % (
+                      sid, shift_id, rcf_before, rcf_after, delta, amount))
+        self.step("三步① 新造 slip 绝对值为 0（夹具前提核实）",
+                  rcf_after == 0, "slip=%s rcf=%s（新开班次生成，应为 0）" % (sid, rcf_after))
         hit = wait_until(
             lambda: self.num("SELECT COUNT(*) FROM finance_audit_logs WHERE operation_type="
                              "'RECON_SHIFT_BOUNDARY_PENDING' AND target_id=%d" % int(shift_id)) > 0,
@@ -629,53 +668,33 @@ class CashRecon:
         self.step("三步① 审计 RECON_SHIFT_BOUNDARY_PENDING 已落（轮询等待）", bool(hit),
                   "shift_id=%s 命中=%d" % (shift_id, n_audit))
 
-        # ---- 归属目标：上一班（已关班）及其缴款单 ----
-        prev = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND shift_id<%d"
-                         " AND end_time IS NOT NULL ORDER BY shift_id DESC LIMIT 1" % int(shift_id))
-        prev_shift = int(prev[0][0]) if prev else None
-        if not prev_shift:
-            return self.not_ready("三步② 归属到上一班", "找不到上一班（shift<%d 且已关班）" % shift_id)
-        # ---- 归属目标必须满足 A39 as-of-create：slip.create_time >= refund_time ----
-        # 1) 退款时间（以资金流水的 refund_time 为准，缺失则用退款单创建时间）
+        # ---- 归属目标：本 tag 内「退款之后生成」的缴款单（as-of-create 合法）----
+        # Lead 2026-10-28：① 不得引用非本 tag 的数据；② 目标必须 slip.create_time >= refund_time。
+        # 因此这里不再找「上一班」（--only-triple 下本 tag 根本没有更早的班次），而是：
+        #   1) 先在本 tag 内找合规的既有 slip；2) 没有就新开班次→造订单→关班→generate 造一张。
         rt = self.rows("SELECT COALESCE(to_char(MAX(refund_time),'YYYY-MM-DD HH24:MI:SS'),"
                        " to_char(MAX(create_time),'YYYY-MM-DD HH24:MI:SS')) FROM fund_flows"
                        " WHERE refund_record_id=%d" % int(rf["refundRecordId"]))
         refund_time = rt[0][0] if rt and rt[0][0] else None
-        # 2) 优先复用「退款之后生成」的既有 slip
-        cand = self.rows("SELECT slip_id FROM deposit_slips WHERE shift_id=%d AND deleted=0"
-                         " AND (%s IS NULL OR create_time >= '%s'::timestamp)"
-                         " ORDER BY slip_id DESC LIMIT 1" % (prev_shift,
-                                                             "'%s'" % refund_time if refund_time else "NULL",
-                                                             refund_time or "1970-01-01"))
-        prev_slip = int(cand[0][0]) if cand else None
-        target_note = "复用既有 slip（create_time >= refund_time）"
-        # 3) 没有就**先退款、后关上一班再 generate**：新开一个班次→立刻关班→generate，
-        #    这样 slip.create_time 必然晚于退款时间（满足 as-of-create），不会与 A39 打架
-        if not prev_slip:
-            t_term = "T-E2E-%s-T" % self.tag
-            uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
-            sto, sb2 = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
-                            {"terminalId": t_term, "employeeId": str(uid or self.a.pos_user),
-                             "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
-            if ok(sb2):
-                # generate 要求「班次时间窗内有订单，能确定门店」→ 先造一笔已支付订单
-                paid, perr = self.make_paid_order()
-                t_shift = int((data_of(sb2) or {}).get("shiftId") or self.num(
-                    "SELECT shift_id FROM pos_shifts WHERE terminal_id='%s' ORDER BY shift_id DESC LIMIT 1" % t_term))
-                self.end_shift(t_term)
-                stg, bg2 = self.generate_slip(t_shift)
-                if ok(bg2):
-                    gen_id = self.slip_id_of(bg2)
-                    prev_slip = int(gen_id) if gen_id else None
-                    prev_shift = t_shift
-                    target_note = "新建班次 shift=%d 在退款后生成 slip（as-of-create 成立）" % t_shift
-                else:
-                    target_note = ("新建班次 shift=%s generate 失败：HTTP %s code=%s msg=%s"
-                                   % (t_shift, stg, (bg2 or {}).get("code"),
-                                      str((bg2 or {}).get("message"))[:90]))
-            else:
-                target_note = ("新建目标班次失败：HTTP %s code=%s msg=%s"
-                               % (sto, (sb2 or {}).get("code"), str((sb2 or {}).get("message"))[:80]))
+        cand = self.rows("SELECT d.slip_id, d.shift_id FROM deposit_slips d"
+                         " JOIN pos_shifts p ON p.shift_id = d.shift_id"
+                         " WHERE d.deleted=0 AND COALESCE(p.terminal_id, '') LIKE 'T-E2E-%s%%'"
+                         " AND d.shift_id <> %d"
+                         " AND (%s IS NULL OR d.create_time >= '%s'::timestamp)"
+                         " ORDER BY d.slip_id DESC LIMIT 1"
+                         % (self.tag, int(shift_id),
+                            "'%s'" % refund_time if refund_time else "NULL",
+                            refund_time or "1970-01-01"))
+        if cand:
+            prev_slip, prev_shift = int(cand[0][0]), int(cand[0][1])
+            target_note = "复用本 tag 内既有合规 slip（create_time >= refund_time）"
+        else:
+            made = self._make_target_slip_after(refund_time)
+            if not made:
+                return self.not_ready("三步② 归属目标夹具",
+                                      "本 tag 内既无合规 slip，也造不出新的（generate 失败）")
+            prev_shift, prev_slip = made
+            target_note = "新建班次 shift=%d 在退款后生成 slip（as-of-create 成立）" % prev_shift
         prev_before = rcf_of(prev_slip) or 0
         # 4) 前置校验（夹具合法性）：目标 slip.create_time >= refund_time，否则直接判「夹具不合法」
         prow = self.slip_row(prev_slip) if prev_slip else None
@@ -788,6 +807,16 @@ class CashRecon:
             return self.not_ready("AC-58-③ 归属确认", "缺少前置缴款单上下文")
         sid, rf, shift_id = ctx["slipId"], ctx["refund"], (ctx.get("shiftId")
                                                           or (self.in_shift["row"][1] if hasattr(self, "in_shift") else None))
+        # ---- 夹具隔离守卫（Lead 2026-10-28）：只允许操作本 tag 的班次/缴款单 ----
+        want_prefix = "T-E2E-%s" % self.tag
+        term = self.shift_terminal(shift_id) if shift_id else ""
+        if not str(term).startswith(want_prefix):
+            return self.not_ready("AC-58-③ 夹具隔离守卫",
+                                  "slip=%s 的班次 shift=%s terminal=%s 不属于本 tag（前缀 %s-）→ 拒绝确认，"
+                                  "避免把归属写到别人的夹具上（Lead: 跑一次 e2e 就改一次夹具 = 夹具失效）"
+                                  % (sid, shift_id, term, want_prefix))
+        if "[E2E:%s]" % self.tag not in str(rf.get("reason") or self.mark):
+            return self.not_ready("AC-58-③ 夹具隔离守卫", "refund=%s 的 reason 不含本 tag 标记" % rf.get("refundRecordId"))
         before = self.slip_row(sid)
         st, b = self.confirm_attribution(sid, rf["refundRecordId"], shift_id, "%s AC-58 归属确认" % self.mark)
         if not ok(b):
