@@ -31,12 +31,15 @@ interface Props {
   canConfirm?: boolean
   /** 提交中 */
   confirming?: boolean
+  /** 后端返回的业务错误文案（400 重复确认 / 403 无权限 等），面板内展示，不二次弹窗 */
+  serverError?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   attribution: null,
   canConfirm: false,
   confirming: false,
+  serverError: '',
 })
 
 const emit = defineEmits<{
@@ -138,30 +141,46 @@ function toRef(cand: ShiftCandidateVO | undefined): BoundaryShiftRef | null {
 }
 
 /**
- * 待确认归属 → 边界退款视图模型。
- * 「上一班」= 候选[0]，「这一班」= 候选[1]（后端 candidateShifts 顺序：上一 / 本 / 下一）。
- * 距交班 = refundTime 到「上一班结束」或「这一班开始」的最近距离（分钟）。
+ * 待确认归属 → 边界退款视图模型（契约来源：fund-500）
+ *
+ * 优先级：
+ *   1. **后端直接给的** boundaryDeltaMinutes / boundaryKind / previousShift / currentShift（正式契约，权威）
+ *   2. 后端缺字段时，前端按 candidateShifts（isPrevious 优先，否则下标：上一[0] / 这一班[1]）与 refundTime 兜底推算
+ * 判定口径：边界容差 ±5 分钟由**后端**负责，前端只展示，不做二次判定。
  */
 const boundaryRows = computed<BoundaryRefundPending[]>(() => {
   return pending.value.map((row) => {
     const candidates = candidatesOf(row)
-    const previousShift = toRef(candidates[0])
-    const currentShift = toRef(candidates[1]) ?? toRef(candidates[0])
-    const refundTs = parseTs(row.refundTime)
-    let boundaryDeltaMinutes: number | null = null
-    let boundaryKind: 'start' | 'end' | 'unknown' = 'unknown'
-    if (refundTs != null) {
-      const endPrevTs = parseTs(previousShift?.endTime)
-      const startCurTs = parseTs(currentShift?.startTime)
-      const candidatesDelta: Array<{ kind: 'start' | 'end'; delta: number }> = []
-      if (endPrevTs != null) candidatesDelta.push({ kind: 'end', delta: minutesBetween(refundTs, endPrevTs) })
-      if (startCurTs != null) candidatesDelta.push({ kind: 'start', delta: minutesBetween(refundTs, startCurTs) })
-      if (candidatesDelta.length > 0) {
-        candidatesDelta.sort((a, b) => a.delta - b.delta)
-        boundaryKind = candidatesDelta[0].kind
-        boundaryDeltaMinutes = candidatesDelta[0].delta
+    const prevCand = candidates.find((c) => c.isPrevious === true) ?? candidates[0]
+    const curCand = candidates.find((c) => c.isPrevious !== true) ?? candidates[1] ?? candidates[0]
+    const previousShift = row.previousShift
+      ? { shiftId: row.previousShift.shiftId, label: row.previousShift.shiftNo ?? null, startTime: row.previousShift.startTime ?? null, endTime: row.previousShift.endTime ?? null }
+      : toRef(prevCand)
+    const currentShift = row.currentShift
+      ? { shiftId: row.currentShift.shiftId, label: row.currentShift.shiftNo ?? null, startTime: row.currentShift.startTime ?? null, endTime: row.currentShift.endTime ?? null }
+      : (toRef(curCand) ?? toRef(prevCand))
+
+    let boundaryDeltaMinutes: number | null = typeof row.boundaryDeltaMinutes === 'number' ? row.boundaryDeltaMinutes : null
+    let boundaryKind: 'start' | 'end' | 'unknown' =
+      row.boundaryKind === 'START' ? 'start' : row.boundaryKind === 'END' ? 'end' : 'unknown'
+
+    // 后端缺字段时的兜底推算（不覆盖后端值）
+    if (boundaryDeltaMinutes == null) {
+      const refundTs = parseTs(row.refundTime)
+      if (refundTs != null) {
+        const endPrevTs = parseTs(previousShift?.endTime)
+        const startCurTs = parseTs(currentShift?.startTime)
+        const deltas: Array<{ kind: 'start' | 'end'; delta: number }> = []
+        if (endPrevTs != null) deltas.push({ kind: 'end', delta: minutesBetween(refundTs, endPrevTs) })
+        if (startCurTs != null) deltas.push({ kind: 'start', delta: minutesBetween(refundTs, startCurTs) })
+        if (deltas.length > 0) {
+          deltas.sort((a, b) => a.delta - b.delta)
+          if (boundaryKind === 'unknown') boundaryKind = deltas[0].kind
+          boundaryDeltaMinutes = deltas[0].delta
+        }
       }
     }
+
     return {
       refundRecordId: row.refundRecordId,
       refundNo: row.refundNo ?? row.orderNumber ?? null,
@@ -183,7 +202,8 @@ function boundaryText(row: BoundaryRefundPending): string {
     : row.boundaryKind === 'start'
       ? '开班'
       : '边界'
-  return '距' + where + ' ' + row.boundaryDeltaMinutes + ' 分钟'
+  const suffix = row.boundaryDeltaMinutes <= 5 ? '（边界退款）' : ''
+  return '距' + where + ' ' + row.boundaryDeltaMinutes + ' 分钟' + suffix
 }
 
 /** 触发归属提交（kind: previous=归上一班 / current=归这一班） */
@@ -335,6 +355,9 @@ defineExpose({ localError })
         <span v-if="!canConfirm" class="slip-attribution__lock">无权限确认退款归属（需店长/财务）</span>
       </header>
       <div v-if="localError" class="slip-attribution__error">{{ localError }}</div>
+      <div v-if="serverError" class="slip-attribution__error" data-test="attribution-server-error">
+        {{ serverError }}
+      </div>
       <table class="slip-attribution__table">
         <thead>
           <tr>

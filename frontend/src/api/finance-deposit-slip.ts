@@ -81,16 +81,31 @@ export interface DepositSlipVO {
   candidateShifts?: ShiftCandidateVO[] | null
 }
 
-/** 候选班次（后端：{ shiftId, label, startTime, endTime }） */
+/**
+ * 候选班次（正式契约，fund-500：{ shiftId, shiftNo, startTime, endTime, isPrevious }）
+ * label 为历史字段，保留兼容。
+ */
 export interface ShiftCandidateVO {
   shiftId: number
-  /** 展示名，如 `morning #325` */
+  /** 班次号，如 S20261027-morning-325 */
+  shiftNo?: string | null
+  /** 展示名（历史字段，如 `morning #325`） */
   label?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  /** 是否为「上一班」（正式契约用 isPrevious 判定，不再依赖数组下标） */
+  isPrevious?: boolean | null
+}
+
+/** 边界退款行涉及的班次（正式契约） */
+export interface BoundaryShiftVO {
+  shiftId: number
+  shiftNo?: string | null
   startTime?: string | null
   endTime?: string | null
 }
 
-/** 待确认归属的退款行 */
+/** 待确认归属的退款行（正式契约字段已对齐 fund-500 契约） */
 export interface PendingAttributionRefundVO {
   refundRecordId: number
   refundNo?: string | null
@@ -98,7 +113,15 @@ export interface PendingAttributionRefundVO {
   /** 分 */
   amountFen: number | null
   refundTime?: string | null
-  /** 行级候选班次（后端目前放顶层，行级为兼容保留） */
+  /** 距最近班次边界（start/end）的分钟差，≤5 即边界退款 */
+  boundaryDeltaMinutes?: number | null
+  /** START=贴近开班边界 / END=贴近交班边界 */
+  boundaryKind?: 'START' | 'END' | string | null
+  /** 上一班 */
+  previousShift?: BoundaryShiftVO | null
+  /** 当前班 */
+  currentShift?: BoundaryShiftVO | null
+  /** 行级候选班次（历史兼容，正式契约放顶层） */
   candidateShifts?: ShiftCandidateVO[] | null
 }
 
@@ -309,26 +332,46 @@ export async function getPendingAttribution(
   }
 }
 
-/** 归一单条待确认退款（后端字段：refundRecordId / refundNo / amountFen / refundTime） */
+function normalizeBoundaryShift(raw: unknown): BoundaryShiftVO | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const shiftId = Number(o.shiftId ?? o.id ?? 0)
+  if (!Number.isFinite(shiftId) || shiftId <= 0) return null
+  return {
+    shiftId,
+    shiftNo: (o.shiftNo as string) ?? (o.shift_no as string) ?? null,
+    startTime: (o.startTime as string) ?? null,
+    endTime: (o.endTime as string) ?? null,
+  }
+}
+
+/** 归一单条待确认退款（正式契约：refundRecordId/refundNo/amountFen/refundTime/boundaryDeltaMinutes/boundaryKind/previousShift/currentShift） */
 function normalizePendingRefund(raw: Record<string, unknown>): PendingAttributionRefundVO {
   const rowCandidates = Array.isArray(raw.candidateShifts) ? raw.candidateShifts : []
+  const kind = (raw.boundaryKind as string) ?? null
   return {
     refundRecordId: Number(raw.refundRecordId ?? raw.id ?? 0),
     refundNo: (raw.refundNo as string) ?? (raw.refund_no as string) ?? null,
     orderNumber: (raw.orderNumber as string) ?? (raw.order_no as string) ?? null,
     amountFen: toNum(raw.amountFen) ?? toNum(raw.amount),
     refundTime: (raw.refundTime as string) ?? (raw.refund_time as string) ?? null,
+    boundaryDeltaMinutes: toNum(raw.boundaryDeltaMinutes),
+    boundaryKind: kind ? kind.toUpperCase() : null,
+    previousShift: normalizeBoundaryShift(raw.previousShift),
+    currentShift: normalizeBoundaryShift(raw.currentShift),
     candidateShifts: (rowCandidates as Array<Record<string, unknown>>).map(normalizeShiftCandidate),
   }
 }
 
-/** 归一候选班次（后端字段：shiftId / label / startTime / endTime） */
+/** 归一候选班次（正式契约：shiftId / shiftNo / startTime / endTime / isPrevious） */
 function normalizeShiftCandidate(raw: Record<string, unknown>): ShiftCandidateVO {
   return {
     shiftId: Number(raw.shiftId ?? 0),
+    shiftNo: (raw.shiftNo as string) ?? null,
     label: (raw.label as string) ?? null,
     startTime: (raw.startTime as string) ?? null,
     endTime: (raw.endTime as string) ?? null,
+    isPrevious: typeof raw.isPrevious === 'boolean' ? raw.isPrevious : null,
   }
 }
 

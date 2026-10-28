@@ -51,8 +51,17 @@ const attribution = ref<PendingAttributionPayload | null>(null)
 const detailLoading = ref(false)
 const confirming = ref(false)
 
-/** 归属确认权限（沿用后端 finance:deposit-slip:confirm-attribution，不新增权限码） */
-const canConfirm = computed<boolean>(() => permissionStore.hasPermission('finance:deposit-slip:confirm-attribution'))
+/**
+ * 归属确认权限（正式契约 fund-500：finance:deposit-slip:attribution:confirm）
+ * 同时兼容旧码 finance:deposit-slip:confirm-attribution，避免历史账号瞬间失去操作能力。
+ */
+const canConfirm = computed<boolean>(
+  () => permissionStore.hasPermission('finance:deposit-slip:attribution:confirm')
+    || permissionStore.hasPermission('finance:deposit-slip:confirm-attribution'),
+)
+
+/** 归属提交的业务错误（400 重复确认 / 403 无权限 等，由后端 code+message 给出） */
+const attributionError = ref('')
 
 function money(fen: number | null | undefined): string {
   return typeof fen === 'number' && Number.isFinite(fen) ? formatFen(fen) : '—'
@@ -140,6 +149,7 @@ async function openDetail(row: DepositSlipVO): Promise<void> {
   try {
     const fresh = await getDepositSlip(row.slipId)
     detail.value = fresh
+    attributionError.value = ''
     // N19-3b ⑤：无 confirm-attribution 权限时**不请求** pending-refunds（避免 403 噪声），
     // 给空载荷 → 详情用占位骨架渲染禁用态
     attribution.value = canConfirm.value
@@ -165,9 +175,12 @@ async function handleConfirm(payload: { refundRecordId: number; shiftId: number;
       : { pendingRefunds: [], candidateShifts: [], missingRefundTimeCount: 0 }
     const idx = rows.value.findIndex((r) => r.slipId === updated.slipId)
     if (idx >= 0) rows.value[idx] = updated
+    attributionError.value = ''
     ElMessage.success('已确认退款归属，单据退款构成与净值已重算')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '确认归属失败')
+    // 后端统一 HTTP 200 + body.code（400 重复确认 / 403 无权限 / 其它）；
+    // request 拦截器已按 code 弹出后端原文，这里只做面板内留痕，避免二次弹窗。
+    attributionError.value = error instanceof Error ? error.message : '确认归属失败'
   } finally {
     confirming.value = false
   }
@@ -570,6 +583,7 @@ const pageCount = computed<number>(() => Math.max(1, Math.ceil((total.value || 0
           :slip="detail"
           :attribution="attribution"
           :can-confirm="canConfirm"
+          :server-error="attributionError"
           :confirming="confirming"
           @confirm="handleConfirm"
         />
