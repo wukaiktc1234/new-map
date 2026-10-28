@@ -12,6 +12,7 @@ import com.foodtraceability.security.model.SecurityUser;
 import com.foodtraceability.security.utils.JwtUtils;
 import com.foodtraceability.security.utils.RoleCodeNormalizer;
 import com.foodtraceability.service.PosAuthService;
+import com.foodtraceability.utils.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -339,26 +340,49 @@ public class PosAuthServiceImpl implements PosAuthService {
         }
 
         // 2. 查找当前活跃班次
-        PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
+        // ★ ③ 交班重写（Lead 2026-10-28）：WHERE employee_id = 当前登录人 AND terminal_id = 请求终端 AND status = 'active'
+        //   SQL 原文（PosShiftMapper.findActiveShiftByEmployeeAndTerminal，全部 #{} 参数化、无字符串拼接）：
+        //   SELECT * FROM pos_shifts WHERE employee_id = #{employeeId} AND terminal_id = #{terminalId}
+        //     AND status = 'active' ORDER BY start_time DESC LIMIT 1
+        //   修前只按 terminal 取「最近一个 active」→ 同 terminal 残留两个 active 时会把**别人**的班次关掉。
+        // 当前登录人标识：POS 班次的 employee_id 存的是员工号；拿不到员工号时退回用户名（两者都是唯一标识）。
+        // ★ 修正（2026-10-28）：pos_shifts.employee_id 存的是**员工号**（如 2110437068670001210），
+        //   不是登录用户名；用用户名查 → 恒不命中 → 交班被误拒（实测 code=500 文案却是拒绝语）。
+        //   这里按当前登录用户名回查 users.employee_code，取不到再退回用户名。
+        // ★ 员工标识解析（Lead 2026-10-28）：pos_shifts.employee_id 在不同入口写入的**不是同一个值** ——
+        //   POS 开班传的是前端给的 employeeId（可能是工号/用户ID字符串），有的班次写用户名。
+        //   因此按**候选集**依次尝试：employee_code → username → user_id 字符串，命中即用；全不命中才拒绝。
+        String username = SecurityUtils.getCurrentUsername();
+        java.util.List<String> employeeKeys = new java.util.ArrayList<>();
+        try {
+            User me = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                    .eq(User::getUsername, username).last("LIMIT 1"));
+            if (me != null) {
+                if (me.getEmployeeCode() != null && !me.getEmployeeCode().isBlank()) employeeKeys.add(me.getEmployeeCode());
+                if (me.getId() != null) employeeKeys.add(String.valueOf(me.getId()));
+            }
+        } catch (Exception e) {
+            logger.warn("交班：解析员工标识失败，仅用用户名 username={}, err={}", username, e.getMessage());
+        }
+        if (username != null && !username.isBlank()) employeeKeys.add(username);
+
+        PosShift shift = null;
+        String employeeKey = null;
+        for (String key : employeeKeys) {
+            shift = posShiftMapper.findActiveShiftByEmployeeAndTerminal(key, terminalId);
+            if (shift != null) { employeeKey = key; break; }
+        }
         if (shift == null) {
-            // 现实场景：收银员直接点「确认交班」，但没走开台流程（历史数据里 pos_shifts 为空）。
-            // 这里补建一条当日班次并直接完成，保证交班有留痕、金额能对上，而不是把用户挡在门外。
-            LocalDateTime firstPaid = posShiftMapper.findFirstPaidOrderTimeToday();
-            PosShift synthetic = new PosShift();
-            synthetic.setTerminalId(terminalId);
-            // pos_shifts.employee_id 是 NOT NULL 且无默认值：补建班次必须给非空值，
-            // 否则交班整体 500（2026-10-23 复核发现：原来传 null → 约束冲突）。
-            synthetic.setEmployeeId("SYSTEM");
-            synthetic.setEmployeeName("系统补建");
-            synthetic.setShiftType("day");
-            synthetic.setStartTime(firstPaid != null ? firstPaid : LocalDate.now().atStartOfDay());
-            synthetic.setStatus("active");
-            synthetic.setOpeningCash(BigDecimal.ZERO);
-            synthetic.setTotalOrders(0);
-            synthetic.setTotalAmount(BigDecimal.ZERO);
-            posShiftMapper.insert(synthetic);
-            shift = synthetic;
-            logger.warn("结束班次：终端{}无活跃班次，已按今日首笔支付时间补建班次 shiftId={}", terminalId, shift.getShiftId());
+            // ★ 拒绝而不是退化（Lead 2026-10-28 ①）：**「查不到就按终端找最近 active」正是被修掉的漏洞本身** ——
+            //   它会让「任何人关掉别人残留的 active 班次」。这里改为明确 400，并打印该终端所有 active 班次的归属，便于排查。
+            String actives = String.valueOf(posShiftMapper.selectList(
+                    new LambdaQueryWrapper<PosShift>()
+                            .eq(PosShift::getTerminalId, terminalId)
+                            .eq(PosShift::getStatus, "active"))
+                    .stream().map(s2 -> s2.getEmployeeId() + "#" + s2.getShiftId()).toList());
+            logger.warn("交班被拒：当前登录人 employee_id={} 在 terminal={} 无 active 班次；该终端 active 班次归属={}",
+                    employeeKey, terminalId, actives);
+            throw new BusinessException(400, "当前终端没有你的在班班次，无法交班");
         }
 
         // 3. 统计该班次的订单数据
@@ -380,7 +404,21 @@ public class PosAuthServiceImpl implements PosAuthService {
             shift.setTotalAmount(totalAmount);
         }
 
-        // 5. 更新数据库
+        // 5. 写 closing_cash（Lead 2026-10-28 ③ 第 2 条）：交班必须落「关班现金」，并带出「营收−退款=净额」三元组
+        BigDecimal revenueYuan = shift.getTotalAmount() != null ? shift.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal refundYuan = orderStats != null && orderStats.get("refund_amount") != null
+                ? new BigDecimal(orderStats.get("refund_amount").toString()) : BigDecimal.ZERO;
+        BigDecimal netYuan = orderStats != null && orderStats.get("net_amount") != null
+                ? new BigDecimal(orderStats.get("net_amount").toString())
+                : revenueYuan.subtract(refundYuan);
+        BigDecimal closingBefore = shift.getClosingCash();
+        shift.setClosingCash(netYuan.setScale(2, java.math.RoundingMode.HALF_UP));
+        shift.setHandoverRemark(((remark == null ? "" : remark)
+                + " [交班口径] 营收=" + revenueYuan + " − 退款=" + refundYuan + " = 净额=" + netYuan).trim());
+        logger.info("交班金额口径: shiftId={} 营收={} 退款={} 净额={} ｜ closing_cash 前={} 后={}",
+                shift.getShiftId(), revenueYuan, refundYuan, netYuan, closingBefore, shift.getClosingCash());
+
+        // 6. 更新数据库
         posShiftMapper.updateById(shift);
 
         // 6. 构建返回结果

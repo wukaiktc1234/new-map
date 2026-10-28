@@ -105,6 +105,10 @@ public class PosAuthController {
         try {
             Map<String, Object> result = posAuthService.endShift(params.getTerminalId(), params.getRemark());
             return Result.success(result, "班次结束成功");
+        } catch (com.foodtraceability.exception.BusinessException be) {
+            // 保留业务码（400「当前终端没有你的在班班次」不能变成 500）
+            logger.warn("结束班次被拒: {}", be.getMessage());
+            return Result.error(be.getCode(), be.getMessage());   // BusinessException.code 是 int（原始业务码）
         } catch (Exception e) {
             logger.error("结束班次失败: {}", e.getMessage());
             return Result.error(e.getMessage());
