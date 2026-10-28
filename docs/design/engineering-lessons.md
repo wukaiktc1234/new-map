@@ -92,3 +92,10 @@
 
 - 实战注脚（2026-10-28 补）：**覆盖率检查必须「方法级 + 实测」**。文件级 grep「本类里有 `@UnfinishedFeature`」会把「同类里另一个方法有注解」误当成「这个入口有注解」—— 实测中 `SelfPurchaseController` 的注解标在 `/inbound/{id}`，而 `/{page}`、`/{id}` 并未覆盖。跨层验证的第二种形态：不是「看不到」，而是「看到了别的方法」。
 
+
+## 15. 验证 Flyway 管理的迁移，不能用 psql 裸跑
+
+- 事故：为验证「从零建库」，用 `psql -f` 按**文件名字典序**逐个应用 254 个 `V*.sql` → `failed=25`，据此差点得出「迁移历史无法从零重放」的结论。改用 `FlywayMigrateRunner`（Flyway API，与生产启动同一机制）实测：**`ok=true executed=254 success=254 failed=0`**。
+- 三个差异点：① **字典序 ≠ Flyway 版本语义序**（`V1.0.0.400` / `V4.0.0` / `V9.0.0` 与 `V20261028_014` 的先后完全不同，Flyway 按段解析并补 0）；② `psql` 遇错即停（`ON_ERROR_STOP=1`），而 Flyway 把「列/表已存在」当 WARN 跳过；③ `psql` 裸跑没有 `flyway_schema_history` / `validate` / `outOfOrder` 语义。
+- 规则：**验证一个由工具管理的对象，必须用该工具本身**；`psql -f` 只能用于「已知顺序的单文件排障」。相关用法与对比表见 `scripts/qa/db/README.md`（含 `target ≠ max(version)` 的 `outOfOrder` 解释）。
+
