@@ -318,6 +318,24 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 } else if (!foodCodeToIdMap.containsKey(item.getFoodId())) {
                     return Result.error(400, "菜品[" + item.getFoodId() + "]映射失败: food_code 不存在，拒绝下单");
                 }
+            // ★★ 售罄 / 库存防呆（R2 穿透审计第 1 条，2026-10-28）：
+            //    必须在**任何写库之前**拦下；修前实测「售罄菜下单成功 orderNumber=W20261028218 orders+1」。
+            //    判据以 foods 为唯一真相：status == 1 才有售，stock 必须够本次数量。
+            {
+                Long rid = foodCodeToIdMap.get(item.getFoodId());
+                FoodNew f = rid == null ? null : foodNewMap.get(rid);
+                if (f == null) {
+                    return Result.error(400, "菜品不存在：" + item.getFoodId() + "，拒绝下单");
+                }
+                if (f.getStatus() == null || f.getStatus() != 1) {
+                    return Result.error(400, "菜品已售罄：" + (f.getFoodName() == null ? item.getFoodId() : f.getFoodName()));
+                }
+                int needQty = item.getQuantity() == null ? 1 : item.getQuantity();
+                if (f.getStock() != null && f.getStock() < needQty) {
+                    return Result.error(400, "库存不足：" + f.getFoodName()
+                            + "（当前 " + f.getStock() + "，需要 " + needQty + "）");
+                }
+            }
             }
 
             for (CanonicalOrderItemCommand item : command.getItems()) {

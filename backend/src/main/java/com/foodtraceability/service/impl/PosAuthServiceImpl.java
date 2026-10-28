@@ -245,6 +245,11 @@ public class PosAuthServiceImpl implements PosAuthService {
         userInfo.put("employeeId", user.getEmployeeCode() != null ? user.getEmployeeCode() : user.getUsername());
         userInfo.put("employeeName", user.getFullName());
         userInfo.put("terminalId", terminalId != null ? terminalId : "");
+        // 前端按钮级权限（退款等敏感操作）需要知道当前账号有哪些角色/权限码。
+        // 这里只做"回显"：直接复用上面 buildSecurityUser 已经算好的结果（DB → roles / permissions），
+        // 不新增任何授权判断，也不放宽任何限制。
+        userInfo.put("roles", securityUser.getRoles() != null ? securityUser.getRoles() : new ArrayList<>());
+        userInfo.put("permissions", securityUser.getPermissions() != null ? securityUser.getPermissions() : new ArrayList<>());
 
         // 7. 清理过期Token并检查容量（保留内存存储用于登出等场景）
         cleanExpiredTokens();
