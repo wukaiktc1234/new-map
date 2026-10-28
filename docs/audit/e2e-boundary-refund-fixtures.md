@@ -106,3 +106,24 @@ POST /v1/finance/deposit-slips/387/confirm-attribution
 2. section 开始若目标数据不属于本 tag → **直接 `[NOT_READY]` 报错退出**，不许「就地修改」；
 3. 三步① 前提是「全新 slip、rcf 必为 0」→ 必须新开班次造 slip，不许复用；
    同时保留 `generate 前后 rcf 增量 == 0` 断言（显式打前后值），防将来约束被绕过。
+
+## e2e 快速模式（`--skip-boundary-wait`）**预期基线**
+
+```text
+PASS=52  FAIL=2  exit=1
+INFO skipped_design_wait × 2（班次越界 / 退款距关班越界）
+```
+
+**两条 FAIL 是「跳过设计内等待」的直接后果，不是缺陷**：
+
+| FAIL | 原因 |
+|------|------|
+| `AC-58-① 班次距 start 0 分钟（需 > 边界 10 分钟）` | 不等 16 分钟 → 班次仍在边界带内，① 退化为边界场景 |
+| `AC-58-①（延后）refund_component_fen == 该笔退款` | 依赖上一条，退款还没被归属 → `refund_component=0` |
+
+**判读规则（给以后看日志的人）**：
+```text
+看到 52 / 2  → 正常（快速模式基线），不用查
+看到别的数字 → 才需要分析（多了 FAIL 或 PASS 数变了都算异常）
+要「真正全绿」→ 必须跑全量（不 skip），那需要 ~16 分钟等待
+```

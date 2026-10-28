@@ -11,6 +11,13 @@
 
 **结论**：判定「迁移链是否可从零重放」**只能用 FlywayMigrateRunner**；用 psql 裸跑得出的失败结论无效。
 
+## ⚠ 改迁移文件后必须 `mvn clean`
+
+> `backend/target/classes/db/migration/` 会**残留旧迁移文件副本**。
+> 若你改了文件名（例如把 `V20261028_01__` 改成 `V20261028_018__`）却没 `mvn clean`，
+> 测试/启动时 Flyway 扫 classpath 仍会看到**两份同版本**文件 → `Found more than one migration with version ...`
+> → **应用起不来**（2026-10-28 实测：导致 34 个集成测试 ERROR）。
+
 ## 用法
 
 ```powershell

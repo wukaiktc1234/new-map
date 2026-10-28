@@ -57,6 +57,21 @@ public class OrderPaymentRecordNew {
     @Schema(description = "备注")
     private String remark;
 
+    /** 实收现金（分） */
+    @TableField("cash_received")
+    @Schema(description = "实收现金（分）", example = "20000")
+    private Long cashReceived;
+
+    /** 找零（分） */
+    @TableField("change_amount")
+    @Schema(description = "找零（分）", example = "8800")
+    private Long changeAmount;
+
+    /** 付款码/交易码 */
+    @TableField("payment_code")
+    @Schema(description = "付款码/交易码")
+    private String paymentCode;
+
     /** 创建时间 */
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     @Schema(description = "创建时间")
@@ -82,6 +97,9 @@ public class OrderPaymentRecordNew {
     public LocalDateTime getPaymentTime() { return paymentTime; }
     public Long getOperatorId() { return operatorId; }
     public String getRemark() { return remark; }
+    public Long getCashReceived() { return cashReceived; }
+    public Long getChangeAmount() { return changeAmount; }
+    public String getPaymentCode() { return paymentCode; }
     public LocalDateTime getCreateTime() { return createTime; }
     public LocalDateTime getUpdateTime() { return updateTime; }
     public Integer getDeleted() { return deleted; }
@@ -95,6 +113,9 @@ public class OrderPaymentRecordNew {
     public void setPaymentTime(LocalDateTime paymentTime) { this.paymentTime = paymentTime; }
     public void setOperatorId(Long operatorId) { this.operatorId = operatorId; }
     public void setRemark(String remark) { this.remark = remark; }
+    public void setCashReceived(Long cashReceived) { this.cashReceived = cashReceived; }
+    public void setChangeAmount(Long changeAmount) { this.changeAmount = changeAmount; }
+    public void setPaymentCode(String paymentCode) { this.paymentCode = paymentCode; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
     public void setDeleted(Integer deleted) { this.deleted = deleted; }

@@ -715,6 +715,16 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         record.setPaymentTime(LocalDateTime.now());
         record.setOperatorId(operatorId);
         record.setRemark("POS 标准支付入口（orders 新表）");
+        // 现金对账三字段：可选，仅当客户端上传时落库（元 → 分），老客户端不传则保持 NULL，行为不变
+        if (request.getCashReceived() != null) {
+            record.setCashReceived(yuanToFen(request.getCashReceived()));
+        }
+        if (request.getChangeAmount() != null) {
+            record.setChangeAmount(yuanToFen(request.getChangeAmount()));
+        }
+        if (request.getPaymentCode() != null) {
+            record.setPaymentCode(request.getPaymentCode());
+        }
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
         record.setDeleted(0);
@@ -805,6 +815,17 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         }
 
         return Result.success(result);
+    }
+
+    /**
+     * 元 → 分：乘 100 后四舍五入取 long（与 processBalancePayment 的换算口径一致）。
+     * 仅供可选字段落库使用，不参与任何金额校验/计算。
+     */
+    private static Long yuanToFen(BigDecimal yuan) {
+        if (yuan == null) {
+            return null;
+        }
+        return yuan.multiply(new BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValue();
     }
 
     /**

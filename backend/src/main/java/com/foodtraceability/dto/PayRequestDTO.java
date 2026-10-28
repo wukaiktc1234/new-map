@@ -26,6 +26,13 @@ public class PayRequestDTO {
     @DecimalMin(value = "0.01", message = "支付金额必须大于0")
     @DecimalMax(value = "999999.00", message = "支付金额不能超过999999.00")
     private java.math.BigDecimal amount;
+    @Schema(description = "实收现金（元，可为空）")
+    private java.math.BigDecimal cashReceived;
+    @Schema(description = "找零（元，可为空）")
+    private java.math.BigDecimal changeAmount;
+    @Schema(description = "付款码/交易码")
+    @Size(max = 64, message = "付款码长度不能超过64个字符")
+    private String paymentCode;
 
     public PayRequestDTO() {
     }
@@ -46,6 +53,18 @@ public class PayRequestDTO {
         return this.amount;
     }
 
+    public java.math.BigDecimal getCashReceived() {
+        return this.cashReceived;
+    }
+
+    public java.math.BigDecimal getChangeAmount() {
+        return this.changeAmount;
+    }
+
+    public String getPaymentCode() {
+        return this.paymentCode;
+    }
+
     public void setOrderId(final String orderId) {
         this.orderId = orderId;
     }
@@ -60,6 +79,18 @@ public class PayRequestDTO {
 
     public void setAmount(final java.math.BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public void setCashReceived(final java.math.BigDecimal cashReceived) {
+        this.cashReceived = cashReceived;
+    }
+
+    public void setChangeAmount(final java.math.BigDecimal changeAmount) {
+        this.changeAmount = changeAmount;
+    }
+
+    public void setPaymentCode(final String paymentCode) {
+        this.paymentCode = paymentCode;
     }
 
     @java.lang.Override
