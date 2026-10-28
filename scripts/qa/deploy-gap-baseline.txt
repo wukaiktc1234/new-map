@@ -1,0 +1,44 @@
+# deploy-gap-baseline.txt —— 部署缺口棘轮基线（逐条表名，不是数字）
+#
+# 判据：从零建的库（food_traceability_test）里，实体声明的表不存在 **且** 该实体 Mapper 被真实引用。
+# 棘轮规则（Owner 2026-10-28 定）：
+#   出现基线里没有的表  → EXIT=2（阻断：新缺口/新回归）
+#   缺口 ⊆ 基线         → EXIT=3（警告：正在还账），输出「剩余 N 张 / 基线 33 / 已还 M 张」
+#   缺口 = 0            → EXIT=2（提示「已清零，请删基线文件恢复硬闸门」）
+#
+# 【只降不升】新增表名必须 Lead 批准；补完一张就删一行。
+# 登记日期：2026-10-28 ｜ 基线条数：33
+
+category_operation_log
+contract_document
+dish_ingredient
+file_attachment
+finance_record_operation_log
+hardware_config
+hardware_config_version
+inventory_category
+inventory_code
+inventory_unit
+locker_slot
+material_usage_record
+operation_logs
+over_age_worker
+plan_item
+print_format_template
+receivable
+role_departments
+role_stores
+salary_adjustment
+salary_record
+salary_rule
+sales_order
+scan_device
+scan_record
+self_purchase
+self_purchase_item
+supplier_evaluations
+takeout_locker
+trace_code_log
+v_inventory_summary
+weighing_device
+weighing_record

@@ -1,0 +1,52 @@
+# migration-legacy-allowlist.txt —— 迁移文件命名**存量放行名单**
+#
+# 规则：
+#   1) **只允许存量，不允许新增**；新增一行需 Lead 批准；
+#   2) gate 只认本文件里**具体文件名**，不按「形状相似」放行 —— 新文件即使长得像历史形态也照样报错；
+#   3) 每行格式：<文件名> | <放行理由>；
+#   4) 到期复核：每次架构评审检查本文件，能删的行要删（迁移改名/合并后就不需要了）。
+#
+# 为什么需要它：项目早期命名有三种历史形态（点分 V1.0.0.x、连写 V2026021701、日期无序号 V20260404），
+# 统一改名的代价大于收益（会动 Flyway 版本号/checksum），故按存量放行、新增从严。
+
+V1.0.0.100__init_postgresql.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.1__create_dish_combo_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.200__init_super_admin.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.2__fix_dish_combo_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.301__fix_food_category_status.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.302__create_order_sequence_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.3__restore_dish_combo_columns.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.400__add_version_field_to_baseentity_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.4__create_call_record_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.5__create_tray_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.0.6__create_label_template_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.1.1__finance_record_add_audit_fields.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V1.0.1__create_system_config_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V10.0.0__create_analytics_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V11.0.0__create_traceability_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V2024.01.01__update_suppliers_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V2026021701__add_kitchen_order_amount_fields.sql | 历史形态（10 位连写版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V2026022701__add_business_id_to_operation_logs.sql | 历史形态（10 位连写版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260404.1__create_scheduler_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260404.2__create_data_backup_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260404.3__create_sys_config_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260404__create_notification_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260405__auto_vouchering_foundation.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260406__fix_orders_add_idempotency_key.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260424__create_password_policies_table.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260425__create_notification_system_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260511__create_store_ops_optimization_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260513__create_report_redesign_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260514__add_settlement_payment_breakdown.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260516.1__create_store_table_queue_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260516__create_schedule_management_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260607__create_appeal_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260608__create_task_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V20260707__create_legacy_order_tables.sql | 历史形态（日期无序号）；放行不改名（改名会动 Flyway 版本号/checksum）
+V3.1.0__create_inventory_settings_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V4.0.0.2__add_indexes_to_sys_settings_table.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V4.0.0__create_hr_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V6.0.0.1__add_device_connection_config_field.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V6.0.0__create_order_product_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V8.0.0__create_marketing_crm_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）
+V9.0.0__create_asset_store_tables.sql | 历史形态（点分版本）；放行不改名（改名会动 Flyway 版本号/checksum）

@@ -1,0 +1,17 @@
+# unfinished-features-registry.txt —— 未完成功能登记册（**不是白名单**）
+#
+# 语义：登记「生产库无表 + 无 Controller 入口 + 无调度/MQ」的三无功能。**不是用来让 gate 变绿的排除表**。
+# 新增需 Lead 批准；本文件**只减不增**（修完/立项后删行，不得新增行）。
+# preflight --full 每次都会把本文件内容作为 [INFO] 打印出来，不许静默跳过。
+#
+# 三条判据的证据字段（每次登记必须填）：prod_no_table=已核(YYYY-MM-DD) | no_controller=已核(YYYY-MM-DD) | no_schedule=已核(YYYY-MM-DD)
+#
+# 表名 | 实体 | 三条证据 | 结论 | 登记日期
+finance_account | FinanceAccount | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) | 未完成功能（待产品立项） | 2026-10-28
+finance_approval | FinanceApproval | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) | 未完成功能（待产品立项） | 2026-10-28
+finance_report_detail | FinanceReportDetail | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) | 未完成功能（待产品立项） | 2026-10-28
+department_permissions | DepartmentPermission | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) | 重复设计（role_permissions 已覆盖） | 2026-10-28
+user_sessions | UserSession | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) ｜ mapper_calls=insert0/select0(2026-10-28) | 半成品（未接通） | 2026-10-28
+hardware_operation_log | HardwareOperationLog | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) ｜ mapper_calls=insert0/select0(2026-10-28) | 半成品（未接通） | 2026-10-28
+registration_code_log | RegistrationCodeLog | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) ｜ mapper_calls=insert0/select0(2026-10-28) | 半成品（未接通） | 2026-10-28
+data_change_history | DataChangeHistory | prod_no_table=已核(2026-10-28) ｜ no_controller=已核(2026-10-28) ｜ no_schedule=已核(2026-10-28) ｜ mapper_calls=insert0/select0(2026-10-28) | 半成品（未接通） | 2026-10-28

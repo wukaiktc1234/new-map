@@ -1,0 +1,11 @@
+# 棘轮基线（bug-⑨）：throw new RuntimeException( 处数只降不升
+# 判据：backend/src/main/java 下 'throw new RuntimeException(' 的出现次数
+# 规则：数量增加 → scripts/qa/preflight.py 以 EXIT=2 阻断；只允许减少或持平
+# 处置口径：业务语义（不存在/参数错/状态不允许）一律改用 BusinessException(ErrorCode.X, msg)；
+#           RuntimeException 只留给真正的非预期故障（且应尽快变成专用异常）。
+# 历史：
+#   2026-10-27 首次建立基线 525 处（人工统计 526，差距来自计数口径：只数 backend/src/main/java 的 .java 源文件）。
+#   2026-10-27 bug-⑨ 样板模块 EmployeeApprovalServiceImpl 改造：21 处业务语义改 BusinessException → 基线下调到 504。
+#   2026-10-27 bug-⑨ 批次 1 OrderNewServiceImpl 改造：20 处业务语义改 BusinessException → 基线下调到 484。
+#   2026-10-27 bug-⑭ PromotionServiceImpl「活动编码已存在」改业务异常 → 基线下调到 483。
+483

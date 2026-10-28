@@ -842,3 +842,6 @@ __pycache__/
 /frontend/certs/
 # frontend/android/ 中间产物由 frontend/android/.gitignore 覆盖（build/、.gradle/、local.properties、*.apk、app/src/main/assets/public）；
 # 自定义原生代码入库（放行后实测 64 候选）；capacitor-cordova-android-plugins 已放行（见该文件 ! 规则）。
+
+# --- QA 基线文件必须入库（2026-10-28 审计整改）---
+!/scripts/qa/*.txt

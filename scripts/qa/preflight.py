@@ -504,7 +504,10 @@ def main():
     if perm_rc != 0:
         print("[RESULT] BLOCKED：A46 权限码 ↔ 目录不一致（代码要求了目录里没有的权限）→ exit 2")
         return 2
-    if deploy_gap_rc != 0:
+    if deploy_gap_rc == 3:
+        print("[GATE] 部署缺口在基线内（棘轮 WARN，不阻断）")
+        warn = True
+    if deploy_gap_rc not in (0, 3):
         print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
         return 2
     return 3 if warn else 0
