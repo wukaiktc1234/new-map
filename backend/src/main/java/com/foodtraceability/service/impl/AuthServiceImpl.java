@@ -790,7 +790,11 @@ public class AuthServiceImpl implements AuthService {
                         continue;  // 跳过null角色
                     }
                     String normalizedRole = role.toLowerCase();
-                    if ("admin".equalsIgnoreCase(role)
+                    // Lead 2026-10-29 二：ROLE_SUPER_ADMIN 与 admin 同等视为通配（解析层唯一入口，不在 controller 逐个加）
+                if ("admin".equalsIgnoreCase(role)
+                        || "role_admin".equals(normalizedRole)
+                        || "super_admin".equals(normalizedRole)
+                        || "role_super_admin".equals(normalizedRole)
                         || "z".equals(normalizedRole)
                         || "role_z".equals(normalizedRole)) {
                         isAdmin = true;

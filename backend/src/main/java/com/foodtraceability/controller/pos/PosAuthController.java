@@ -90,6 +90,10 @@ public class PosAuthController {
                     params.getTerminalId(), params.getEmployeeId(), params.getEmployeeName(),
                     params.getShiftType(), params.getOpeningCash());
             return Result.success(shift, "班次开始成功");
+        } catch (com.foodtraceability.exception.BusinessException be) {
+            // 保留业务码：403「不得为他人开班」不能被吞成 500
+            logger.warn("开始班次被拒: code={}, msg={}", be.getCode(), be.getMessage());
+            return Result.error(be.getCode(), be.getMessage());
         } catch (Exception e) {
             logger.error("开始班次失败: {}", e.getMessage());
             return Result.error(e.getMessage());

@@ -281,6 +281,9 @@ public class DataFixController {
             jdbcTemplate.update("UPDATE onboarding_archive SET position = \'软件工程师\' WHERE id = 6");
             jdbcTemplate.update("UPDATE onboarding_archive SET position = \'实习生\' WHERE id = 2");
             // 修复角色名称
+                // ⚠ 三.2 说明（Lead 2026-10-29）：这里是 onboarding_archive.role_id（历史归档表，数字型），
+                //   与 user_roles.role_id（已统一为 ROLE_*）不是同一语义，故不改写为 ROLE_*；
+                //   仅用于历史数据修复，新代码不得依赖 onboarding_archive.role_id 的数字形态。
             jdbcTemplate.update("UPDATE onboarding_archive SET role_name = \'普通员工\' WHERE role_id = \'2\'");
             // 修复劳动合同中的职位名称
             jdbcTemplate.update("UPDATE employee_labor_contract SET position = \'软件工程师\' WHERE employee_code = \'EMP20260004\'");

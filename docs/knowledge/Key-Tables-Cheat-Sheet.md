@@ -15,6 +15,15 @@
 | `deposit_slips` | `slip_id`（bigint） | `slip_no` 是业务号 | IDENTITY | `shift_id` → pos_shifts.shift_id（一班一单） |
 | `refund_shift_attribution` | `id`（bigint） | — | IDENTITY | `refund_record_id`（幂等键）、`shift_id`（真相）、`slip_id`（派生） |
 
+## 一.5 更正：`material_locked` 是**列**，不是表（2026-10-29，第 6 次「名字≠实际」）
+
+```text
+material_locked 不是独立表，它是 kitchen_order 表的 integer 列（0=未锁 / 1=已锁）；
+同表还有 material_consumed、material_consume_time。
+之前只查 information_schema.tables 搜不到它 -> 误判「该功能未实现」，是错误结论。
+教训：查「是否存在」时要同时查 tables 和 columns。
+```
+
 ## 二、`dining_table` 是**视图**，不是表
 
 ```text
@@ -45,4 +54,13 @@ SELECT username, employee_code FROM users;   -- 实测 vcashier01 的 employee_c
 1. \d 表名         — 看主键、看 identity、看有没有 terminal_id 这类维度列
 2. 确认「业务号」与「主键」哪个是外键（orders 用 order_id，不是 order_number）
 3. 确认金额单位（元 or 分），无 _fen 后缀一律当元
+```
+
+## 一.5 更正：material_locked 是列，不是表（2026-10-29，第 6 次「名字≠实际」）
+
+```text
+material_locked 不是独立表，它是 kitchen_order 表的 integer 列（0=未锁 / 1=已锁）；
+同表还有 material_consumed、material_consume_time。
+之前只查 information_schema.tables 搜不到它 -> 误判「该功能未实现」，该结论已撤回。
+教训：查「某东西是否存在」时要同时查 tables 和 columns。
 ```

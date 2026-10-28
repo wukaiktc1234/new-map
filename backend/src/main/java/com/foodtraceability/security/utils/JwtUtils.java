@@ -400,6 +400,11 @@ public class JwtUtils {
                 List<String> permissions = (List<String>) claims.get("permissions");
                 user.setPermissions(permissions);
                 logger.info("[JWT] legacy 分支命中：token 内含 permissions claim，count={}（灰度期老 token 路径）", permissions.size());
+            } else if (isWildcardRole(user.getRoles())) {
+                // ★ 二（Lead 2026-10-29）：admin / ROLE_SUPER_ADMIN 在**解析层**直接拿通配 "*"。
+                //   只在权限解析入口做，**不在 controller 逐个加 or hasAuthority('*')**（那会退回老路）。
+                user.setPermissions(new ArrayList<>(java.util.List.of("*")));
+                logger.info("[JWT] 通配角色分支命中：roles={} → permissions=['*']", user.getRoles());
             } else if (user.getUserId() != null && userPermissionCache != null) {
                 // 新 token：权限服务端回源（TTL 缓存；撤权走 invalidateAll 立即生效）
                 try {
@@ -744,5 +749,28 @@ public class JwtUtils {
         refreshTokenStore.entrySet().removeIf(entry -> entry.getValue().isExpired());
         logger.debug("JWT内存清理完成: blacklist={}, tokenStore={}, refreshTokenStore={}",
                 tokenBlacklist.size(), tokenStore.size(), refreshTokenStore.size());
+    }
+
+    /**
+     * 是否通配角色（admin / ROLE_ADMIN / super_admin / ROLE_SUPER_ADMIN）。
+     *
+     * <p>放在权限解析层，让「超级管理员」在任何接口上都不需要再写 {@code or hasAuthority('*')}；
+     * 普通角色（如 ROLE_CASHIER）**不受影响**，仍按 DB 权限码判定。</p>
+     */
+    private static boolean isWildcardRole(java.util.List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return false;
+        }
+        for (String r : roles) {
+            if (r == null) {
+                continue;
+            }
+            String n = r.trim().toLowerCase(java.util.Locale.ROOT);
+            if (n.equals("admin") || n.equals("role_admin")
+                    || n.equals("super_admin") || n.equals("role_super_admin")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

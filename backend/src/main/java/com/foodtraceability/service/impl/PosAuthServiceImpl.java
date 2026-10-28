@@ -313,6 +313,33 @@ public class PosAuthServiceImpl implements PosAuthService {
         // 3. 创建新班次记录
         PosShift shift = new PosShift();
         shift.setTerminalId(terminalId);
+        // ★★ 一.1 身份伪造修复（Lead 2026-10-29）：
+        //    修前实测：vcashier01 带 admin 的 employeeId 开班 → code=0，pos_shifts 65→66，
+        //    employee_id 落成 admin 的 2110437068670001200（可冒他人开班交班）。
+        //    规则：**以 JWT 里的 userId 为准**；body.employeeId 只用于校验，不一致直接 403。
+        Long jwtUserId = SecurityUtils.getCurrentUserId();
+        if (jwtUserId == null) {
+            throw new BusinessException(401, "登录状态无效，无法开班");
+        }
+        String selfKey = String.valueOf(jwtUserId);
+        try {
+            User self = userMapper.selectById(jwtUserId);
+            if (self != null && self.getEmployeeCode() != null && !self.getEmployeeCode().isBlank()) {
+                selfKey = self.getEmployeeCode();
+            }
+        } catch (Exception e) {
+            logger.warn("开班：解析当前登录人标识失败，使用 userId={}", jwtUserId);
+        }
+        boolean samePerson = employeeId.equals(selfKey)
+                || employeeId.equals(String.valueOf(jwtUserId))
+                || employeeId.equals(SecurityUtils.getCurrentUsername());
+        if (!samePerson) {
+            logger.warn("开班被拒（身份伪造）：登录人={}(id={}) 试图以 employeeId={} 开班",
+                    SecurityUtils.getCurrentUsername(), jwtUserId, employeeId);
+            throw new BusinessException(403, "不得为他人开班");
+        }
+        // 写入时**以 JWT 解析出的标识为准**，不用 body 值
+        employeeId = selfKey;
         shift.setEmployeeId(employeeId);
         shift.setEmployeeName(employeeName != null ? employeeName : "");
         shift.setShiftType(shiftType != null && !shiftType.isEmpty() ? shiftType : "day");
@@ -412,11 +439,31 @@ public class PosAuthServiceImpl implements PosAuthService {
                 ? new BigDecimal(orderStats.get("net_amount").toString())
                 : revenueYuan.subtract(refundYuan);
         BigDecimal closingBefore = shift.getClosingCash();
-        shift.setClosingCash(netYuan.setScale(2, java.math.RoundingMode.HALF_UP));
+        // ★★ 一.2 钱箱公式修复（Lead 2026-10-29）：
+        //    修前：closing_cash = 净营收（含微信/支付宝/银行卡）→ 抽屉现金对不上。
+        //    正确：closing_cash = opening_cash + **现金**收入 − **现金**退款（payment_method=1），
+        //    非现金（微信 2 / 支付宝 3 / 银行卡 4 / 余额 5）**不进钱箱**。
+        BigDecimal openingCash = shift.getOpeningCash() != null ? shift.getOpeningCash() : BigDecimal.ZERO;
+        BigDecimal cashInYuan = BigDecimal.ZERO;
+        BigDecimal cashRefundYuan = BigDecimal.ZERO;
+        if (orderStats != null && orderStats.get("payment_breakdown") instanceof java.util.Map<?, ?> pb) {
+            Object cashPart = pb.get("cash");
+            if (cashPart != null) cashInYuan = new BigDecimal(cashPart.toString());
+        }
+        // 现金退款：按退款记录的原支付方式归集（cash 部分）
+        if (orderStats != null && orderStats.get("cash_refund_amount") != null) {
+            cashRefundYuan = new BigDecimal(orderStats.get("cash_refund_amount").toString());
+        }
+        BigDecimal closingCash = openingCash.add(cashInYuan).subtract(cashRefundYuan)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        shift.setClosingCash(closingCash);
         shift.setHandoverRemark(((remark == null ? "" : remark)
-                + " [交班口径] 营收=" + revenueYuan + " − 退款=" + refundYuan + " = 净额=" + netYuan).trim());
-        logger.info("交班金额口径: shiftId={} 营收={} 退款={} 净额={} ｜ closing_cash 前={} 后={}",
-                shift.getShiftId(), revenueYuan, refundYuan, netYuan, closingBefore, shift.getClosingCash());
+                + " [钱箱口径] 期初=" + openingCash + " + 现金收入=" + cashInYuan
+                + " − 现金退款=" + cashRefundYuan + " = 钱箱=" + closingCash
+                + " ｜ [营收口径] 营收=" + revenueYuan + " − 退款=" + refundYuan + " = 净额=" + netYuan).trim());
+        logger.info("交班钱箱: shiftId={} 期初={} 现金收入={} 现金退款={} 钱箱={} ｜ 营收={} 退款={} 净额={}",
+                shift.getShiftId(), openingCash, cashInYuan, cashRefundYuan, closingCash,
+                revenueYuan, refundYuan, netYuan);
 
         // 6. 更新数据库
         posShiftMapper.updateById(shift);
@@ -636,6 +683,17 @@ public class PosAuthServiceImpl implements PosAuthService {
         BigDecimal netYuanCalc = BigDecimal.valueOf(netCents).movePointLeft(2);
         stats.put("refund_amount", refundYuanCalc);
         stats.put("net_amount", netYuanCalc);
+        // 一.2：现金退款单列（钱箱只认现金口径；退款按 orders.payment_method=1 归集）
+        long cashRefundCents = 0L;
+        try {
+            Map<String, Object> cr = posShiftMapper.sumCashRefund(startTime, endTime);
+            if (cr != null && cr.get("cash_refund_cents") != null) {
+                cashRefundCents = ((Number) cr.get("cash_refund_cents")).longValue();
+            }
+        } catch (Exception e) {
+            logger.warn("交班：现金退款归集失败（按 0 处理）: {}", e.getMessage());
+        }
+        stats.put("cash_refund_amount", BigDecimal.valueOf(cashRefundCents).movePointLeft(2));
             stats.put("avg_amount", orders > 0
                     ? totalYuan.divide(BigDecimal.valueOf(orders), 2, java.math.RoundingMode.HALF_UP)
                     : BigDecimal.ZERO);

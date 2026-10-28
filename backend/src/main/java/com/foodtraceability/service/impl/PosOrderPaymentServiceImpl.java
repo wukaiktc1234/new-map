@@ -1210,6 +1210,12 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
             ku.setId(ko.getId());
             ku.setKitchenOrderId(ko.getKitchenOrderId());
             ku.setStatus("cancelled");
+            // 四.2（Lead 2026-10-29）：退款取消必须留痕 —— cancel_time + cancel_reason（固定文案）。
+            ku.setCancelTime(LocalDateTime.now());
+            ku.setCancelReason("订单退款取消");
+            // 顺带释放物料锁：material_locked 是 kitchen_order 的**列**（不是独立表），
+            //   之前我搜 information_schema.tables 找不到它，误判「该功能未实现」。
+            ku.setMaterialLocked(0);   // material_locked 是 integer 列（0=未锁）
             ku.setUpdateTime(LocalDateTime.now());
             int affected = kitchenOrderMapper.updateById(ku);
             log.info("[REFUND-KITCHEN] updateById 影响行数={}", affected);

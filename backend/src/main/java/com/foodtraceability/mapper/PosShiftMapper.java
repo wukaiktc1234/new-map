@@ -80,6 +80,17 @@ public interface PosShiftMapper extends BaseMapper<PosShift> {
             @Param("endTime") LocalDateTime endTime
     );
 
+    /**
+     * 一.2 钱箱口径：统计时间窗内**现金退款**（payment_method=1）合计（分）。
+     * 钱箱只认现金；微信/支付宝/银行卡退款不进钱箱。参数化绑定，无字符串拼接。
+     */
+    @Select("SELECT COALESCE(SUM(COALESCE(refund_amount, 0)), 0) AS cash_refund_cents " +
+            "FROM orders " +
+            "WHERE create_time >= #{startTime} AND create_time <= #{endTime} " +
+            "  AND payment_status = 2 AND deleted = 0 AND payment_method = 1")
+    Map<String, Object> sumCashRefund(@Param("startTime") LocalDateTime startTime,
+                                      @Param("endTime") LocalDateTime endTime);
+
     /** 今日最早一笔已支付订单时间（用于无班次时补建班次的起始时间） */
     @Select("SELECT MIN(create_time) FROM orders WHERE create_time::date = CURRENT_DATE AND payment_status = 2 AND deleted = 0")
     LocalDateTime findFirstPaidOrderTimeToday();

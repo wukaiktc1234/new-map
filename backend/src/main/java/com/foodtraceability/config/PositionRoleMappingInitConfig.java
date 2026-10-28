@@ -149,6 +149,11 @@ public class PositionRoleMappingInitConfig {
         }
     }
 
+    /**
+     * 三.2 说明（Lead 2026-10-29）：这里的 roleId 是 position_role_mapping.role_id（BIGINT -> roles.id），
+     * 与 user_roles.role_id（已统一为 ROLE_* 字符串 -> roles.role_id_str）不是同一语义，不需要改写成 ROLE_*。
+     * 新代码若关联用户角色，请用 user_roles.role_id = roles.role_id_str。
+     */
     private void createMapping(Long positionId, Long roleId, boolean isPrimary, int priority, String description) {
         PositionRoleMapping mapping = new PositionRoleMapping();
         mapping.setPositionId(positionId);

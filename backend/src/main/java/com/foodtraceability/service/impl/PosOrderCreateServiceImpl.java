@@ -783,14 +783,25 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             throw new BusinessException(500, "订单返回金额异常");
         }
 
-        List<OrderResultDTO.OrderItemInfo> itemInfos = command.getItems().stream().map(item -> {
+        // ★ 四.1 根因修复（Lead 2026-10-29）：
+        //   日志实证：回显 DB 价失败（foodId=FD260926005）：For input string: "FD260926005"
+        //   —— item.getFoodId() 是 food_code（字符串），Long.valueOf 抛 NumberFormatException，
+        //   被 catch 吞掉后静默退回请求价 0.01 → 资损逃逸路径。
+        // 修法：一次性查出该订单全部 order_items，按顺序与 command.items 对齐取 unit_price；
+        //   取不到就抛错，**绝不回显请求价**。
+        java.util.List<OrderItemNew> persistedItems = orderItemNewMapper.selectList(
+                new LambdaQueryWrapper<OrderItemNew>().eq(OrderItemNew::getOrderId, orderId));
+        List<OrderResultDTO.OrderItemInfo> itemInfos = new ArrayList<>();
+        for (int idx = 0; idx < command.getItems().size(); idx++) {
+            CanonicalOrderItemCommand item = command.getItems().get(idx);
             OrderResultDTO.OrderItemInfo info = new OrderResultDTO.OrderItemInfo();
             info.setId(item.getFoodId());
             info.setName(item.getFoodName());
-            info.setPrice(item.getUnitPrice());
             info.setQuantity(item.getQuantity());
-            return info;
-        }).collect(Collectors.toList());
+            info.setPrice(dbPriceForItem(persistedItems, idx));
+            itemInfos.add(info);
+        }
+        result.setOrderItems(itemInfos);
         result.setOrderItems(itemInfos);
 
         return Result.success(result);
@@ -1120,4 +1131,25 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         }
     }
 
+
+    /**
+     * 四.1：取第 idx 个明细的**已落库单价（分→元）**，用于响应回显。
+     *
+     * <p>为什么按"顺序位"取而不是按 foodId 反查：{@code command.items.foodId} 是 food_code（字符串），
+     * 而 {@code order_items.food_id} 是数字 id —— 直接 Long.valueOf 会抛异常（实测过）。
+     * 两端顺序严格一致（同一循环写入），按位对齐最稳。</p>
+     *
+     * <p><b>取不到就抛错，不回显请求价</b>：回显假价 = 前端按假价渲染小计 = 资损逃逸。</p>
+     */
+    private BigDecimal dbPriceForItem(java.util.List<OrderItemNew> persistedItems, int idx) {
+        if (persistedItems == null || idx >= persistedItems.size()) {
+            throw new BusinessException(500, "订单明细回显失败：order_items 数量与请求不一致（idx=" + idx
+                    + "，已落库=" + (persistedItems == null ? 0 : persistedItems.size()) + "）");
+        }
+        Long fen = persistedItems.get(idx).getUnitPrice();
+        if (fen == null) {
+            throw new BusinessException(500, "订单明细回显失败：order_items.unit_price 为空（idx=" + idx + "）");
+        }
+        return fenToYuan(fen);
+    }
 }
