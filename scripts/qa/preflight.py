@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 import os
 import re
 import subprocess
@@ -72,6 +73,15 @@ def find_java_home():
     return None
 
 
+def _safe_print(text):
+    """控制台编码不安全时降级（GBK 控制台下打印部署缺口明细会 UnicodeEncodeError）。"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or 'utf-8'
+        print(text.encode(enc, errors='replace').decode(enc, errors='replace'))
+
+
 def run_gate_script(script, verbose):
     """跑 scripts/qa/<script>，返回 exit code（脚本不存在则跳过返回 0）。"""
     path = ROOT / "scripts" / "qa" / script
@@ -83,12 +93,34 @@ def run_gate_script(script, verbose):
     return rc
 
 
-def run_gate_script(script, verbose):
-    """跑 scripts/qa/<script>；脚本不存在则跳过（返回 0）。"""
+def run_gate_script(script, verbose, baseline_ratchet=False):
+    """跑 scripts/qa/<script>；脚本不存在则跳过（返回 0）。
+
+    baseline_ratchet=True 时（entity_column_audit）：把实测不一致数与
+    scripts/qa/entity-column-baseline.txt 比较，<= 基线 → 0(PASS)，> 基线 → 2(BLOCK)。
+    """
     path = ROOT / "scripts" / "qa" / script
     if not path.exists():
         return 0
     rc, out = run([sys.executable, str(path)], ROOT, timeout=180)
+    if baseline_ratchet:
+        import re as _re
+        m = _re.search(r"合计 \*\*(\d+)\*\* 处不一致", out)
+        if m:
+            actual = int(m.group(1))
+            base_file = ROOT / "scripts" / "qa" / "entity-column-baseline.txt"
+            baseline = 137
+            if base_file.exists():
+                for line in base_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        baseline = int(line)
+                        break
+            if actual <= baseline:
+                print("[GATE] entity_column：实测 %d ≤ 基线 %d → PASS（棘轮，只许降）" % (actual, baseline))
+                return 0
+            print("[GATE] entity_column：实测 %d > 基线 %d → BLOCK（新增不一致必须修）" % (actual, baseline))
+            return 2
     if verbose or rc != 0:
         print(out.strip())
     return rc
@@ -442,6 +474,7 @@ def main():
         if compile_rc != 0:
             print("[WARN] test-compile 失败（rc=%s）→ 注意：test-compile≠test，但连编译都不过就不该开工" % compile_rc)
             warn = True
+    # ---- 轻量 gate（任何模式都跑，均 <5s）----
     mig_gate_rc = run_gate_script("migration_version_gate.py", a.verbose)
     if mig_gate_rc != 0:
         print("[GATE] 迁移版本 gate 失败（EXIT=2）：重复版本号会让应用启动失败")
@@ -492,6 +525,22 @@ def main():
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
               % (skipped, judged, ratio * 100, WARN_RATIO * 100))
         warn = True
+    # ---- 4 个 gate（Lead 2026-10-28 要求接入 --full；fast 不跑，避免拖慢）----
+    if a.full:
+        gate_specs = [
+            ("schema_guard.py", "静态 schema 守卫", 1),
+            ("fen_shadow_check.py", "*_fen 影子列应为全 NULL", 2),
+            ("entity_column_audit.py", "实体列<->表列（不增加棘轮）", 3),
+            ("coverage_check.py", "覆盖率门禁", 2),
+        ]
+        for script, label, cost in gate_specs:
+            t0 = time.time()
+            rc = run_gate_script(script, a.verbose, baseline_ratchet=(script == "entity_column_audit.py"))
+            dt = time.time() - t0
+            status = "PASS" if rc == 0 else ("WARN" if rc == 3 else "BLOCK")
+            print("[GATE] %-34s %s  (%.1fs, ~%ds)" % (label, status, dt, cost))
+            if rc not in (0, 3):
+                warn = True
     perm_rc = check_permission_code()
     deploy_gap_rc = check_deploy_gap() if a.full else 0
     # 新表体检：只针对 2026-10-28 之后新建的表（既有表老账见 docs/audit/tech-debt-schema.md）
