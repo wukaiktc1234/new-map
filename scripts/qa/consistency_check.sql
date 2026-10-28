@@ -2690,4 +2690,24 @@ SELECT o.order_id, o.refund_amount::bigint AS order_refund_fen,
 \echo '-- A33 明细跳过（退款 flow_category 常量未配置 / 表未创建）--'
 \endif
 
+-- ------------------------------------------------------------
+-- A47（参与判定，零容忍）inventory_movement 必须有非空 balance_after，
+-- 且每个 (location_id, material_id) 的最新 balance_after 必须等于 inventory.quantity。
+-- 背景：2026-10-28 发现 15 行冲正流水 balance_after 为 NULL（直接 SQL 插入，非产品路径）。
+-- 产品路径 InventoryServiceImpl:612 / StoreInventoryLogServiceImpl:68 均会写 balance_after，
+-- 故本断言若变红，说明「有人绕过 Service 写流水」或「写流水允许 NULL」。
+-- ------------------------------------------------------------
+\echo ''
+\echo '-- A47 inventory_movement.balance_after 非空 + 最新快照 == inventory.quantity --'
+SELECT 'A47_null_balance' AS item, count(*)::text AS cnt
+  FROM inventory_movement WHERE balance_after IS NULL
+UNION ALL
+SELECT 'A47_last_vs_inventory', count(*)::text
+  FROM inventory i
+ WHERE i.deleted = 0
+   AND EXISTS (SELECT 1 FROM inventory_movement mm WHERE mm.location_id = i.location_id AND mm.material_id = i.material_id)
+   AND i.quantity IS DISTINCT FROM (SELECT mm.balance_after FROM inventory_movement mm
+         WHERE mm.location_id = i.location_id AND mm.material_id = i.material_id
+         ORDER BY mm.movement_id DESC LIMIT 1);
+
 COMMIT;

@@ -1,0 +1,3 @@
+# 2026-10-28 之后新建的表（preflight --full 会对这些表跑 table_health_check.py）
+# 一行一个表名；E 阶段补的 25 张落库后由 lead/fund-500 填进来（或用 PREFLIGHT_NEW_TABLES 环境变量临时覆盖）
+# 既有表的老账见 docs/audit/tech-debt-schema.md，不在此清单内。
