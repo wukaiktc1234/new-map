@@ -1163,7 +1163,9 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     "退款归属确认：refundRecordId=" + refundRecordId + " -> shiftId=" + shiftId + " 原因=" + reason,
                     "{\"refundRecordId\":" + refundRecordId + ",\"shiftId\":" + shiftId + ",\"slipId\":" + slipId + "}");
         } else if (shiftId.equals(existing.getShiftId())) {
-            log.info("[METRIC] refund_attribution_idempotent refundRecordId={} shiftId={}", refundRecordId, shiftId);
+            // 方案 A（Lead 2026-10-28 批准）：同 refund + 同 shift 重复确认 → **400（契约文案）**，且幂等（连续多次都 400）
+            log.info("[METRIC] refund_attribution_duplicate_rejected refundRecordId={} shiftId={}", refundRecordId, shiftId);
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "该退款已完成归属确认，不可重复操作");
         } else {
             int oldVersion = existing.getVersion() == null ? 0 : existing.getVersion();
             int updated = refundShiftAttributionMapper.update(null,
@@ -1178,7 +1180,8 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getUpdateTime, java.time.OffsetDateTime.now())
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getVersion, oldVersion + 1));
             if (updated == 0) {
-                throw new ConflictException("该退款已被确认，请刷新");
+                // 并发同 refund 同 shift：条件更新失败方返回 400（不是 500），文案与契约一致
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "该退款已完成归属确认，不可重复操作");
             }
             changed = true;
             audit(slip, "REFUND_SHIFT_ATTRIBUTION_CHANGED",
