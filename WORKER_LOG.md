@@ -4390,3 +4390,20 @@ mvn -o -B -DskipTests compile   # 增量编译
 ```
 
 建议：把这一行增量编译直接写进 `start-backend.cmd` 首行，避免每个人拉新代码后都误判为「代码坏了」。
+
+## 94. lesson：DELETE 的作用域靠人写 where，一错就是静默数据丢失（2026-10-28）
+
+当天两次同类事故：
+
+1. **「删重复授权行」→ 删掉了唯一有效授权**：我看到角色已有 `PERM_INVENTORY_QUERY` 行就判定重复，
+   实际那行 `deleted=1`（软删），删掉冒号形态那条后，`ROLE_PURCHASE_MANAGER` / `ROLE_STORE_MANAGER` 直接失去 `inventory:query`。
+2. **「批量撤临时绑定」→ 删了两条既有 `user_roles`**：`DELETE ... WHERE role_id IN ('ROLE_AUDITOR','ROLE_ADMIN')` 条件过宽，
+   `test-admin→ROLE_ADMIN`、`qa_auditor→ROLE_AUDITOR` 被一起删掉（24→22），事后按 user_id 精确恢复。
+
+**共同点**：`SELECT` 错了只是看到错数据，`DELETE` 错了是**静默删掉别人的数据**，而且不会报错、不留痕迹。
+
+**规则（已写进 `permission-model.md`）**：
+1. 授权行**永远不用 DELETE**，只用 `deleted=1` 软删；
+2. 去重前必须确认「另一条同权限授权是 `deleted=0`」——`deleted=1` 不算数；
+3. **任何 DELETE 执行前先跑 `SELECT count(*)` 确认命中行数**；
+4. 撤自己插入的临时数据必须**按 id 删**，不用条件删。

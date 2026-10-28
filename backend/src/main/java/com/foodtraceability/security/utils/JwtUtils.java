@@ -61,6 +61,13 @@ public class JwtUtils {
 
     private final JwtConfig jwtConfig;
 
+    /** bug-㉑：权限回源缓存（token 不再带权限清单） */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.foodtraceability.security.cache.UserPermissionCache userPermissionCache;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.foodtraceability.mapper.UserMapper userMapper;
+
     public JwtUtils(JwtConfig jwtConfig) {
         this.jwtConfig = jwtConfig;
     }
@@ -177,10 +184,10 @@ public class JwtUtils {
             }
             claims.put("roles", normalizedRoles);
 
-            // 防御性处理：permissions可能为null
-            List<String> rawPermissions = user.getPermissions();
-            List<String> permissions = (rawPermissions != null) ? rawPermissions : new ArrayList<>();
-            claims.put("permissions", permissions);
+            // bug-㉑（2026-10-28）：**JWT 不再携带权限清单**。
+            // 原因：token ≈ 权限条数 × 33 字节，418 条权限 = 13.8KB，超过 Tomcat 8KB header 上限 → 所有请求 400。
+            // 现改为：token 只放 userId/username/roles/locationId 等标量，权限由服务端按角色实时查（TTL 缓存）。
+            // 灰度兼容：解析侧仍支持带 permissions 的老 token（见 getUserFromToken），至少保留一个版本。
 
             claims.put("mfaEnabled", user.isMfaEnabled());
             claims.put("mfaVerified", user.isMfaVerified());
@@ -388,9 +395,28 @@ public class JwtUtils {
                 user.setRoles(normalizedRoles);
             }
             if (claims.get("permissions") != null) {
+                // 老 token（灰度期）：直接使用内置权限清单
                 @SuppressWarnings("unchecked")
                 List<String> permissions = (List<String>) claims.get("permissions");
                 user.setPermissions(permissions);
+                logger.info("[JWT] legacy 分支命中：token 内含 permissions claim，count={}（灰度期老 token 路径）", permissions.size());
+            } else if (user.getUserId() != null && userPermissionCache != null) {
+                // 新 token：权限服务端回源（TTL 缓存；撤权走 invalidateAll 立即生效）
+                try {
+                    List<String> resolved = userPermissionCache.get(user.getUserId(), uid -> {
+                        try {
+                            return userMapper.getUserRolePermissions(Long.valueOf(uid));
+                        } catch (NumberFormatException nfe) {
+                            return new ArrayList<>();
+                        }
+                    });
+                    user.setPermissions(new ArrayList<>(resolved));
+                    logger.info("[JWT] 回源分支命中（token 无 permissions claim）：userId={}, permissions={}", user.getUserId(), resolved.size());
+                } catch (Exception e) {
+                    logger.warn("[JWT] 回源权限失败，本次请求按无权限处理: userId={}, err={}",
+                            user.getUserId(), e.getMessage());
+                    user.setPermissions(new ArrayList<>());
+                }
             }
 
             return Optional.of(user);

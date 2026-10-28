@@ -114,3 +114,29 @@ UPDATE role_permissions rp SET permission_id = p.permission_id_str
 ```
 
 软删除悬空行（`deleted=1` 且 `permission_id` 无对应目录行）**不动**：不参与判定，动了反而破坏审计。
+
+## 授权数据操作铁律（Owner/Lead 2026-10-28 立）
+
+> **授权行永远不用 `DELETE`，只用 `deleted=1` 软删。**
+>
+> **去重前必须逐角色核对「是否存在另一条 `deleted=0` 的同权限授权」—— `deleted=1` 的行不算数。**
+
+### 为什么（当天两次真实事故）
+
+| 事故 | 我做的 | 结果 | 教训 |
+|------|--------|------|------|
+| 去重 | 删掉 `role_permissions` 里冒号形态的行，理由是「角色已有 `PERM_` 形态」 | 那条 `PERM_` 行其实是 `deleted=1` → **删掉了唯一有效授权**，`ROLE_PURCHASE_MANAGER`/`ROLE_STORE_MANAGER` 直接失去 `inventory:query` | 「另一条存在」必须带 `deleted=0` 条件 |
+| 批量撤临时绑定 | `DELETE FROM user_roles WHERE role_id IN ('ROLE_AUDITOR','ROLE_ADMIN')` | 条件过宽，**误删 test-admin→ROLE_ADMIN、qa_auditor→ROLE_AUDITOR 两条既有绑定**（24→22） | where 条件要窄到「自己插入的那一行」（按 id 删） |
+
+**共同点**：`DELETE` 的作用域由人写的 where 决定，条件差一点就**静默**删掉别人的数据；`SELECT` 不会有事，`DELETE` 一错就是数据丢失。
+
+### 执行规则（写进 checklist）
+
+```sql
+-- 1) 先 SELECT count(*) 确认命中行数与预期一致
+SELECT count(*) FROM role_permissions WHERE <条件>;
+-- 2) 能软删就软删
+UPDATE role_permissions SET deleted = 1 WHERE <条件>;
+-- 3) 只有确认是「本次自己插入的脏数据」才允许物理删，且必须带唯一 id
+DELETE FROM role_permissions WHERE id = <刚刚插入返回的 id>;
+```

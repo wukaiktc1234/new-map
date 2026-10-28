@@ -42,6 +42,10 @@ public class RoleController {
 
     private final RoleService roleService;
 
+    /** bug-㉑：权限变更后主动失效权限缓存（否则撤权要等 TTL 才生效） */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.foodtraceability.security.cache.PermissionCacheInvalidator permissionCacheInvalidator;
+
     /**
      * 创建角色
      * 权限要求：system:role:create
@@ -278,6 +282,9 @@ public class RoleController {
                 return Result.error(400, "权限列表不能为空");
             }
             boolean success = roleService.assignPermissions(id, permissions);
+            if (success && permissionCacheInvalidator != null) {
+                permissionCacheInvalidator.onRolePermissionsChanged("RoleController#assignPermissions roleId=" + id);
+            }
             if (!success) {
                 return Result.error(404, "角色不存在");
             }

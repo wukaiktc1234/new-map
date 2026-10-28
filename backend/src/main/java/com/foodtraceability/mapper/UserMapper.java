@@ -64,6 +64,14 @@ public interface UserMapper extends BaseMapper<User> {
     List<String> getUserRolePermissions(@Param("userId") Long userId);
 
     /**
+     * bug-㉑：权限目录**版本号**（role_permissions 的 max(update_time) + 行数）。
+     * 用于「撤权立即生效」：缓存每 ~1s 比对一次版本，变了就整体失效 —— 不依赖调用方记得 invalidate。
+     */
+    @org.apache.ibatis.annotations.Select("SELECT COUNT(*) || '-' || COALESCE(MAX(create_time)::text, '')"
+            + " FROM role_permissions")
+    String permissionVersion();
+
+    /**
      * 根据角色查询用户
      */
     @Select("SELECT * FROM users WHERE role = #{role} AND deleted = 0")

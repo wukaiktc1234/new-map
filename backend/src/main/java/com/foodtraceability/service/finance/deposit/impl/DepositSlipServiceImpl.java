@@ -117,8 +117,13 @@ public class DepositSlipServiceImpl implements DepositSlipService {
     /** NEW-34：存行日汇总确认记录 Mapper */
     private final com.foodtraceability.mapper.finance.recon.DepositDailyConfirmationMapper depositDailyConfirmationMapper;
 
-    /** N19-2④：班次边界容差（分钟），距 start/end ≤ N 的退款不自动计入任何班次，默认 10 */
-    @org.springframework.beans.factory.annotation.Value("${finance.cash.shift-boundary-minutes:10}")
+    /**
+     * N19-2④：班次边界容差（分钟），距 start/end ≤ N 的退款不自动计入任何班次，默认 **5**。
+     *
+     * <p>口径变更（Owner 2026-10-28 拍板）：由 10 分钟改为 **±5 分钟**。
+     * 审计文案由本变量拼接（不写死数字），改常量即同步改文案 —— 避免「常量 5、文案 10」两边不一致。</p>
+     */
+    @org.springframework.beans.factory.annotation.Value("${finance.cash.shift-boundary-minutes:5}")
     private int shiftBoundaryMinutes;
     private final AtomicBalanceUpdater atomicBalanceUpdater;
     private final FinanceAuditLogService financeAuditLogService;
@@ -1601,6 +1606,14 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     pr.amountFen = flow.getAmount();
                     pr.refundTime = rt;
                     pr.orderId = flow.getOrderId();
+                    pr.refundNo = flow.getFlowNo();   // 正名（前端 BoundaryRefundPending.refundNo）
+                    // 边界判定由后端给出：距 start/end 哪个更近、差多少分钟
+                    long toStart = Math.abs(java.time.Duration.between(rt, shift.getStartTime()).toMinutes());
+                    long toEnd = shift.getEndTime() == null ? Long.MAX_VALUE
+                            : Math.abs(java.time.Duration.between(rt, shift.getEndTime()).toMinutes());
+                    boolean nearStart = toStart <= toEnd;
+                    pr.boundaryDeltaMinutes = nearStart ? toStart : toEnd;
+                    pr.boundaryKind = nearStart ? "START" : "END";
                     vo.pendingRefunds.add(pr);
                 }
             }
@@ -1648,14 +1661,34 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         } else {
             picked.add(shift);
         }
+        com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift prevCs = null;
+        com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift curCs = null;
         for (PosShift ps : picked) {
             com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift cs =
                     new com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.CandidateShift();
             cs.shiftId = ps.getShiftId();
+            // PosShift 无业务编号字段 → 用 S+shiftId 作为稳定编号（前端只用它展示/回传，不参与判定）
+            cs.shiftNo = "S" + ps.getShiftId();
             cs.startTime = ps.getStartTime();
             cs.endTime = ps.getEndTime();
             cs.label = (ps.getShiftType() == null ? "班次" : ps.getShiftType()) + " #" + ps.getShiftId();
+            // isPrevious **由后端按时间判定**（不用数组下标）：开始时间早于本单班次的才是上一班
+            boolean isPrev = ps.getStartTime() != null && shift.getStartTime() != null
+                    && ps.getStartTime().isBefore(shift.getStartTime());
+            cs.isPrevious = Boolean.valueOf(isPrev);
+            if (ps.getShiftId().equals(shift.getShiftId())) {
+                curCs = cs;
+            } else if (isPrev) {
+                prevCs = cs;
+            }
             vo.candidateShifts.add(cs);
+        }
+        // 回填到每条待确认退款（前端直接用，不要自己按下标推断）
+        if (vo.pendingRefunds != null) {
+            for (com.foodtraceability.dto.finance.deposit.DepositSlipPendingRefundsVO.PendingRefund pf : vo.pendingRefunds) {
+                pf.previousShift = prevCs;
+                pf.currentShift = curCs;
+            }
         }
 
         vo.missingRefundTimeCount = countMissingRefundTime(storeId, shift);
