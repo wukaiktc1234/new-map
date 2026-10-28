@@ -4,6 +4,9 @@
 > 读这一份就能知道：钱和货怎么流、谁有权写、单位是元还是分、怎么证明链路是通的。
 > **本文只写经实测确认的事实**；标注「待确认」的地方就是还没验证。
 
+> ⚠ **写查询前先看** [`Key-Tables-Cheat-Sheet.md`](Key-Tables-Cheat-Sheet.md)：主键 / 业务号≠主键 / IDENTITY / 视图与表 / 金额单位。
+> 2026-10-28 一天内因「没这层信息」踩了 5 次同类错误（order_items_new、order_number vs order_id、dining_table 是视图、food_trace 空表、KitchenOrder.@TableId）。
+
 素材来源（结论不重写，直接引用）：
 - 退款归属契约与 as-of 口径：`docs/design/api-deposit-slip-attribution.md`
 - 金额单位边界（元 vs 分）：`docs/audit/money-unit-boundary.md`

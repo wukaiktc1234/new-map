@@ -113,3 +113,12 @@ cd frontend && npm install && npm run dev
 1. **历史账绝不回溯重算**（口径变更只对新数据生效）；
 2. **验证必须用管理该对象的工具**（Flyway 迁移不能用 `psql -f` 裸跑；全量测试不能用子集代表）；
 3. **能不动数据就不动**；动数据只能因为它脏了，且**冲正优于删除**。
+
+## 知识资产（先看这几份，能省一整轮排查）
+
+| 文档 | 什么时候看 |
+|------|------------|
+| [Key-Tables-Cheat-Sheet.md](docs/knowledge/Key-Tables-Cheat-Sheet.md) | **写任何 SQL / Mapper / 外键关联之前**（主键、业务号≠主键、IDENTITY、视图/表、金额单位） |
+| [System-Map.md](docs/knowledge/System-Map.md) | 新人入职 / 想知道钱和货怎么流 |
+| [money-unit-boundary.md](docs/audit/money-unit-boundary.md) | 碰金额字段（元 vs 分）之前 |
+| [tech-debt-schema.md](docs/audit/tech-debt-schema.md) | 想改 schema / 看到奇怪口径之前 |
