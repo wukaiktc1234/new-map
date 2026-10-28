@@ -114,6 +114,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
      * 委托给 createCanonicalOrder 统一处理，保留取餐号/取餐码等入口特有逻辑。
      */
     @Transactional(rollbackFor = Exception.class)
+    // ★★ 回归修正（2026-10-28）：createOrder 内部 this.createCanonicalOrder(...) 属**同类自调用**，
+    // Spring 代理不生效 → createCanonicalOrder 上的 @Transactional **根本没用** →
+    // 订单头已 insert 提交、明细失败 → 「HTTP 200 + code=500 + 半写入」的幽灵订单。
+    // 修法：在最外层入口方法上加事务，自调用也被包进同一事务。
     public Result<OrderResultDTO> createOrder(OrderRequestDTO request) {
         log.info("开始创建订单, orderType={}, items={}", request.getOrderType(), request.getItems().size());
 
@@ -270,12 +274,15 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 .distinct()
                 .collect(Collectors.toList());
             // W1-EC-01: 使用 foodNewMapper 查询 foods 表（主键 food_id）
-            Map<Long, FoodNew> foodNewMap = foodNewMapper.selectBatchIds(foodIds.stream()
-                .map(id -> {
-                    try { return Long.parseLong(id); } catch (NumberFormatException e) { return 0L; }
-                })
-                .collect(Collectors.toList()))
-                .stream()
+        // ★★ 回归修正（2026-10-28 21:5x）：POS 前端传的是 **food_code**（FD2026…），不是数字 id。
+        // 原实现直接 Long.parseLong(foodId) → 全部落到 0L → selectBatchIds 查不到 → foodNewMap 为空
+        // → dbFood 恒为 null → 「菜品不存在」把 6 个真实菜品全判死（ts-ops 实测 6/6）。
+        // 这里先用 food_code 反查数字 id，再批量查 foods；**只修取值来源，不放宽任何校验**。
+        List<Long> resolvedFoodIds = foodNewMapper.selectList(
+                new LambdaQueryWrapper<FoodNew>().in(FoodNew::getFoodCode, foodIds))
+                .stream().map(FoodNew::getFoodId).collect(Collectors.toList());
+        Map<Long, FoodNew> foodNewMap = resolvedFoodIds.isEmpty() ? java.util.Map.of()
+                : foodNewMapper.selectBatchIds(resolvedFoodIds).stream()
                 .collect(Collectors.toMap(FoodNew::getFoodId, food -> food, (existing, replacement) -> existing));
 
             // W1-EC-01: 构建 foodCode → 数字 foodId 映射（用于 order_items.food_id，Long 类型）
@@ -365,7 +372,12 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 // 位置上下文解析链 ②：从登录上下文推导（POS token 必带 locationId，经 location_id_map 反查 store_id）
                 storeId = SecurityUtils.getCurrentUserStoreId();
                 if (storeId == null) {
-                    throw new NoLocationContextException("缺少门店信息：请求未携带 storeId，且登录上下文无归属位置");
+                    // 合并裁定（Lead 2026-10-28）：一.1③ + 二.2 同一口径 —— 无明确门店上下文就 400，
+            // 禁止任何默认门店兜底（不许 storeId=1L、不许「第一个 active 门店」）。
+            // 理由：兜底默认门店 = 订单落错门店 = 库存与营收串门店，比「下单失败」严重得多。
+            throw new NoLocationContextException(
+                    "缺少门店信息，请先在门店设备上登录或指定 storeId"
+                    + "（当前账号未分配门店时禁止 POS 下单）");
                 }
             }
             String storeName = resolveStoreName(storeId);
@@ -502,7 +514,17 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 orderType, command, finalAmountYuan);
         } catch (Exception e) {
             log.error("统一订单创建失败: {}", e.getMessage(), e);
-            return Result.error("订单创建失败: " + e.getMessage());
+                // ★★ 回归修正（2026-10-28）：原来一律 Result.error(msg) → 业务码统一 500，
+                // 前端拿到 500 会重试 → 每重试一次多一条脏单。这里：
+                //   业务异常（BusinessException）→ 用它的原始 code（如 400「菜品不存在」）；
+                //   其它未预期异常 → 500。
+                if (e instanceof com.foodtraceability.common.exception.BusinessException) {
+                    com.foodtraceability.common.exception.BusinessException be =
+                            (com.foodtraceability.common.exception.BusinessException) e;
+                    Integer code = be.getCode() != null ? be.getCode() : 500;
+                    return Result.error(code, "订单创建失败: " + e.getMessage());
+                }
+                return Result.error(500, "订单创建失败: " + e.getMessage());
         }
     }
 
@@ -572,6 +594,12 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         for (CanonicalOrderItemCommand item : items) {
             Long foodIdLong = null;
             try { foodIdLong = Long.parseLong(item.getFoodId()); } catch (NumberFormatException e) {}
+            // ★ 修正（2026-10-28）：POS 前端传的是 **food_code**（如 FD260925001），不是数字 id；
+            // 原实现只 Long.parseLong(foodId)，解析失败即 dbFood=null → 会被下面的「菜品不存在」误杀。
+            // 这里补一次 food_code → 数字 id 的解析，**只影响取值来源，不放宽任何校验**。
+            if (foodIdLong == null) {
+                foodIdLong = foodCodeToIdMap.get(item.getFoodId());
+            }
             FoodNew dbFood = foodIdLong != null ? foodNewMap.get(foodIdLong) : null;
             BigDecimal actualPriceYuan = item.getUnitPrice();
 
@@ -616,18 +644,26 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
                 continue;
             }
 
-            if (dbFood != null && dbFood.getSalePrice() != null && dbFood.getSalePrice() > 0) {
-                actualPriceYuan = new BigDecimal(dbFood.getSalePrice()).divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
-                log.info("使用数据库价格覆盖: foodId={}, dbPrice={}, frontendPrice={}",
-                    item.getFoodId(), dbFood.getSalePrice(), item.getUnitPrice());
-                if (item.getUnitPrice() != null && item.getUnitPrice().compareTo(actualPriceYuan) != 0) {
-                    log.warn("价格差异检测: foodId={}, 前端价格={}, 数据价格={}",
-                        item.getFoodId(), item.getUnitPrice(), actualPriceYuan);
-                }
+            // ★★ 价格三封（Lead 2026-10-28 合并裁定，资损红线）：
+            //   ① dbFood == null          → 400「菜品不存在」，禁止用前端价；
+            //   ② salePrice == null / <=0 → 400「菜品未定价/价格异常」，禁止用前端价；
+            //   ③ 有 DB 价时一律以 DB 价为准，前端价只做比对与记录（[METRIC] price_override_rejected）。
+            // 任何情况下都不再出现「使用前端价格」的代码路径。
+            if (dbFood == null) {
+                throw new BusinessException(400, "菜品不存在：" + item.getFoodId() + "，拒绝按前端价格下单");
+            }
+            if (dbFood.getSalePrice() == null || dbFood.getSalePrice() <= 0) {
+                throw new BusinessException(400, "菜品未定价或价格异常：" + item.getFoodId()
+                        + "（salePrice=" + dbFood.getSalePrice() + "），拒绝下单");
+            }
+            actualPriceYuan = new BigDecimal(dbFood.getSalePrice())
+                    .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+            if (item.getUnitPrice() != null && item.getUnitPrice().compareTo(actualPriceYuan) != 0) {
+                log.warn("[METRIC] price_override_rejected foodId={} frontendPrice={} dbPriceYuan={} dbPriceFen={} qty={}",
+                        item.getFoodId(), item.getUnitPrice(), actualPriceYuan, dbFood.getSalePrice(), item.getQuantity());
             } else {
-                log.info("使用前端价格: foodId={}, frontendPrice={}, dbPrice={}",
-                    item.getFoodId(), item.getUnitPrice(),
-                    dbFood != null ? dbFood.getSalePrice() : "null");
+                log.debug("使用 DB 价格 foodId={} dbPriceYuan={}（前端价一致或被忽略）",
+                        item.getFoodId(), actualPriceYuan);
             }
 
             // W1-EC-01: 金额转换 元→分

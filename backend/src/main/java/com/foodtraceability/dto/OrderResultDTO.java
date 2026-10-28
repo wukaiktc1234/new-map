@@ -30,7 +30,7 @@ public class OrderResultDTO {
     private String orderType;
     @Schema(description = "桌号")
     private String tableNumber;
-    @Schema(description = "订单金额")
+    @Schema(description = "订单金额（元）")
     private BigDecimal totalAmount;
     @Schema(description = "创建时间")
     private String createTime;
@@ -54,7 +54,7 @@ public class OrderResultDTO {
         private String id;
         @Schema(description = "商品名称")
         private String name;
-        @Schema(description = "单价")
+        @Schema(description = "单价（元）")
         private BigDecimal price;
         @Schema(description = "数量")
         private Integer quantity;

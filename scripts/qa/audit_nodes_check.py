@@ -85,12 +85,48 @@ def login(username, password):
     return tok, st, b
 
 
+TABLES_REQUIRED = ['orders', 'order_items', 'pos_shifts', 'deposit_slips', 'fund_flows',
+                   'inventory_movement', 'kitchen_order', 'refund_shift_attribution']
+
+
+def preflight_selfcheck():
+    """开跑前自检（Lead 2026-10-28 要求）：
+
+    1) 我要用的表**必须存在**（to_regclass，而不是凭记忆写表名）；
+    2) 关联键**必须能查到至少 1 行样例**（否则「读到 0 行」会被误判成缺陷）。
+
+    不满足 → 返回 (False, 说明)，调用方打 NOT_READY 并 EXIT=2，**不许直接跑出 FAIL**。
+    背景教训：本会话已 5 次「名字≠实际」（order_items_new 根本不存在），
+    以及一次「report 说明细 0 条、实际 7 条」——读错表会制造假缺陷。
+    """
+    problems = []
+    for t in TABLES_REQUIRED:
+        exists = sql("SELECT to_regclass('public.%s') IS NOT NULL" % t)
+        if not exists or exists[0].strip() != 't':
+            problems.append('表不存在：%s' % t)
+    # 关联键样例：orders.order_id ↔ order_items.order_id 至少 1 行
+    sample = sql("SELECT o.order_number || ' / item=' || i.item_id || ' / unit_price=' || i.unit_price"
+                 " FROM orders o JOIN order_items i ON i.order_id = o.order_id LIMIT 1")
+    if not sample:
+        problems.append('关联键无样例：orders.order_id ↔ order_items.order_id 查不到任何行')
+    else:
+        print('[SELF-CHECK] 关联键样例：%s' % sample[0][:100])
+    # 现库是否已有可参照的成功订单（发现 C 修复后才会有）
+    ok_orders = num("SELECT COUNT(*) FROM orders o JOIN order_items i ON i.order_id=o.order_id"
+                    " WHERE o.deleted=0")
+    print('[SELF-CHECK] 有明细的订单数=%d；表检查问题=%d' % (ok_orders, len(problems)))
+    if problems:
+        return False, '；'.join(problems[:5])
+    return True, 'ok'
+
+
 class Runner:
     def __init__(self, args):
         self.a = args
         self.tag = 'AN' + datetime.now().strftime('%m%d%H%M%S')
         self.rows = []
         self.tokens = {}
+        self.created_orders = []
 
     # ---------- 基础设施 ----------
     def step(self, group, name, passed, detail):
@@ -136,13 +172,18 @@ class Runner:
                     'quantity': 1, 'price': price_yuan, 'dishType': d.get('dishType') or 'single'}
             st, b = http('POST', '/v1/pos/orders/order', tok,
                          {'orderType': 'dinein', 'items': [item],
+                          'remark': '[AUDIT:%s] N2 price=%s' % (self.tag, price_yuan),
                           'idempotencyKey': 'AUDIT-%s-%s' % (self.tag, price_yuan)})
             return st, b
 
         # ① 假价格 0.01 元
         st, b = place(0.01)
         dd = data_of(b) if isinstance(data_of(b), dict) else {}
-        order_no = dd.get('orderNumber') or dd.get('orderNo')
+        order_no = dd.get('orderNumber')
+        if order_no:
+            self.created_orders.append(str(order_no)) or dd.get('orderNo')
+        if order_no:
+            self.created_orders.append(str(order_no))
         total_fen = None
         for k in ('totalAmount', 'totalAmountFen', 'total_amount'):
             if isinstance(dd.get(k), (int, float)):
@@ -153,33 +194,90 @@ class Runner:
                   ok(b) and db_total == real_fen,
                   'HTTP %s code=%s order=%s total_amount(分)=%s 期望=%d' % (
                       st, (b or {}).get('code'), order_no, db_total, real_fen))
-        self.step(g, 'N2② 响应金额字段 == DB 价（分）',
-                  total_fen is not None and total_fen == real_fen,
-                  '响应 totalAmount=%s 期望=%d' % (total_fen, real_fen))
+        # 口径说明（Lead 2026-10-28 拍板 A）：POS 响应金额按**元**是既定契约；DB 存**分**（bigint）。
+        # 真正危险的不是「接口用元」，而是「同一字段两种单位且无标注」→ 所以这里**换算后再比**，
+        # 并且失败时把「响应原始值 + 换算过程 + DB 原始值」三样都打出来。
+        resp_yuan = None
+        if isinstance(dd.get('totalAmount'), (int, float)):
+            resp_yuan = float(dd.get('totalAmount'))
+        resp_fen = None if resp_yuan is None else int(round(resp_yuan * 100))
+        self.step(g, 'N2② 响应金额换算成「分」后 == DB 价（分）',
+                  resp_fen is not None and resp_fen == real_fen,
+                  '响应 totalAmount=%s 元 → ×100 → %s 分；DB total_amount=%s 分；期望 %d 分' % (
+                      resp_yuan, resp_fen, db_total, real_fen))
+        # ---- N2④ 单位显式性断言（防将来有人把某字段改成分却不改后缀）----
+        def _walk(o, path=''):
+            out = []
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    kp = (path + '.' + k) if path else k
+                    if isinstance(v, (dict, list)):
+                        out += _walk(v, kp)
+                    else:
+                        out.append((kp, k, v))
+            elif isinstance(o, list):
+                for i, v in enumerate(o[:3]):
+                    out += _walk(v, path + '[%d]' % i)
+            return out
+        amount_fields = [(pth, k, v) for (pth, k, v) in _walk(dd)
+                         if isinstance(v, (int, float))
+                         and any(t in k.lower() for t in ('amount', 'price', 'total', 'cost', 'fee'))]
+        bad_fields = []
+        for pth, k, v in amount_fields:
+            kl = k.lower()
+            if 'price' in kl or 'unit' in kl:
+                # 单价参照：取该订单在 DB 里的 order_items.unit_price（qty>1 时与总额不同）
+                ref_fen = num("SELECT COALESCE(MAX(i.unit_price),0) FROM order_items i"
+                              " JOIN orders o ON o.order_id = i.order_id"
+                              " WHERE o.order_number = '%s'" % order_no) or real_fen
+            elif 'total' in kl or 'amount' in kl:
+                ref_fen = real_fen
+            else:
+                ref_fen = None
+            if k.lower().endswith('fen') or k.endswith('Fen'):
+                if float(v) != int(v):
+                    bad_fields.append('%s=%s（带 Fen 后缀却不是整数分）' % (pth, v))
+                elif ref_fen is not None and int(v) != ref_fen:
+                    bad_fields.append('%s=%s（分）≠ DB %d 分' % (pth, v, ref_fen))
+            else:
+                if ref_fen is None:
+                    continue
+                if abs(float(v) * 100 - ref_fen) > 0.5:
+                    bad_fields.append('%s=%s（无 Fen 后缀应为元=%s，实际换算 %s 分 ≠ DB %d 分）' % (
+                        pth, v, round(ref_fen / 100.0, 2), round(float(v) * 100, 2), ref_fen))
+        self.step(g, 'N2④ 金额字段单位显式性（Fen 后缀=整数分；无后缀=元且 == DB分/100）',
+                  not bad_fields,
+                  '检查 %d 个金额字段%s' % (len(amount_fields),
+                                            '；违规：' + '；'.join(bad_fields[:4]) if bad_fields else '（全部合规）'))
         # ③ 日志拒绝/覆盖记录（DB 优先，日志兜底）
+        # 关键字以**实际打点**为准（2026-10-28 实测：新代码打的是 [METRIC] price_override_rejected；
+        # 旧的「价格差异检测/使用数据库价格覆盖」是历史 INFO/WARN 文案，两条都认）
+        KEYWORDS = ('price_override', 'price_guard', '价格差异检测', '使用数据库价格覆盖')
         log_hit = 0
-        logdir = ROOT / '.verify-tmp'
-        for lf in sorted(logdir.glob('boot-*.log'), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
+        scanned = []
+        candidates = sorted((ROOT / '.verify-tmp').glob('boot-*.log'),
+                            key=lambda p: p.stat().st_mtime, reverse=True)[:3]
+        candidates += sorted(ROOT.glob('food-traceability.*.log'),
+                             key=lambda p: p.stat().st_mtime, reverse=True)[:2]
+        for lf in candidates:
             try:
                 txt = lf.read_text(encoding='utf-8', errors='replace')
             except OSError:
                 continue
-            if '价格差异检测' in txt or '使用数据库价格覆盖' in txt:
+            scanned.append(lf.name)
+            if any(k in txt for k in KEYWORDS):
                 log_hit += 1
         self.step(g, 'N2③ 后端留下「价格差异/覆盖」记录', log_hit > 0,
-                  '命中日志文件数=%d（关键字：价格差异检测 / 使用数据库价格覆盖）' % log_hit)
+                  '命中日志文件数=%d（扫描 %s；关键字 %s）' % (log_hit, ','.join(scanned[:4]), '/'.join(KEYWORDS[:2])))
         # 负向：合法价格不应被拒
         st2, b2 = place(float(d.get('price') or 0))
         dd2 = data_of(b2) if isinstance(data_of(b2), dict) else {}
-        total2 = None
-        for k in ('totalAmount', 'totalAmountFen', 'total_amount'):
-            if isinstance(dd2.get(k), (int, float)):
-                total2 = int(round(float(dd2[k])))
-                break
-        self.step(g, 'N2 负向：传合法价（DB 价）不被拒',
-                  ok(b2) and total2 == real_fen,
-                  'HTTP %s code=%s totalAmount=%s 期望=%d' % (
-                      st2, (b2 or {}).get('code'), total2, real_fen))
+        no2 = dd2.get('orderNumber') or dd2.get('orderNo')
+        db_total2 = num("SELECT total_amount FROM orders WHERE order_number='%s'" % no2) if no2 else None
+        self.step(g, 'N2 负向：传合法价（DB 价）不被拒且 DB 金额==DB价',
+                  ok(b2) and db_total2 == real_fen,
+                  'HTTP %s code=%s order=%s DB total_amount=%s 期望=%d 分' % (
+                      st2, (b2 or {}).get('code'), no2, db_total2, real_fen))
         return True
 
     # ---------- N4：交班只关自己那个班次 ----------
@@ -198,6 +296,16 @@ class Runner:
                       " AND COALESCE(end_time::text,'')='' ORDER BY shift_id ASC LIMIT 1" % term)
         # 班次 2：同 terminal 的「另一个登录人」——产品 API 会拦（同一 terminal 不允许二次开班），
         # 因此这里用**测试夹具直插一行**构造极端场景（不改产品代码，只造数据）。
+        #
+        # 【缺陷触发面（Lead 2026-10-28 要求写清）】
+        #   交班 API 只带 terminalId → 产品按「该 terminal 最近一个 active 班次」关闭，**不校验登录人**。
+        #   所以触发面 = **是否存在残留 active 班次**。
+        #   这与三.3「12 条幽灵班次」直接相连：幽灵班次不只是数据脏，
+        #   它们会让下一个交班的人**关掉别人的班次**（自己的班次继续 open → 累积更多幽灵）。
+        #
+        # 【这是正向断言，修复后必须变 PASS】当前 FAIL 即缺陷证据；fund-500 修好后应变成
+        #   「同 terminal 两个 active 班次 → 交班只关当前登录人那个，另一个仍 open」。
+        #   **不要为了让它变绿而放宽判据。**
         # shift_id 是 identity 列，不能显式插入 → 插完再读回
         ins_err = sql("INSERT INTO pos_shifts (terminal_id, employee_id, employee_name, shift_type,"
                       " start_time, opening_cash, total_orders, total_amount, status, create_time, update_time, deleted)"
@@ -247,6 +355,7 @@ class Runner:
                 'dishType': d.get('dishType') or 'single'}
         st, b = http('POST', '/v1/pos/orders/order', tk_c,
                      {'orderType': 'dinein', 'items': [item],
+                      'remark': '[AUDIT:%s] N5 refund-linkage' % self.tag,
                       'idempotencyKey': 'AUDIT-%s-N5' % self.tag})
         dd = data_of(b) if isinstance(data_of(b), dict) else {}
         if not ok(b):
@@ -351,6 +460,28 @@ class Runner:
         if self.a.keep:
             self.info('CLEANUP', '保留夹具', 'tag=%s' % self.tag)
             return
+        # 订单夹具：优先按 remark tag 命中（orders.remark = '[AUDIT:<tag>] ...'）；
+        # 若 POS 下单接口不落 remark（产品变动），退化为「按本次记录到的 order_number 精确清理」。
+        if self.created_orders:
+            in_list = ','.join("'" + o.replace("'", "''") + "'" for o in self.created_orders)
+            tagged = num("SELECT COUNT(*) FROM orders WHERE order_number IN (%s) AND COALESCE(remark,'') LIKE '%%[AUDIT:%s]%%'"
+                         % (in_list, self.tag))
+            sql("DELETE FROM order_items WHERE order_id IN (SELECT order_id FROM orders WHERE order_number IN (%s))" % in_list)
+            sql("DELETE FROM fund_flows WHERE order_id IN (SELECT order_id FROM orders WHERE order_number IN (%s))" % in_list)
+            sql("DELETE FROM kitchen_order WHERE order_number IN (%s)" % in_list)
+            sql("DELETE FROM orders WHERE order_number IN (%s)" % in_list)
+            # 兜底：按 remark tag 再兜一次（防止「记录到的 order_number 与实际落库不一致」）
+            sql("DELETE FROM order_items WHERE order_id IN (SELECT order_id FROM orders"
+                " WHERE remark LIKE '%%[AUDIT:%s]%%')" % self.tag)
+            sql("DELETE FROM kitchen_order WHERE order_number IN (SELECT order_number FROM orders"
+                " WHERE remark LIKE '%%[AUDIT:%s]%%')" % self.tag)
+            sql("DELETE FROM orders WHERE remark LIKE '%%[AUDIT:%s]%%'" % self.tag)
+            left = num("SELECT COUNT(*) FROM orders WHERE remark LIKE '%%[AUDIT:%s]%%'" % self.tag)
+            self.info('CLEANUP', '按 order_number 清理订单夹具',
+                      '记录 %d 单，remark 带 tag %d 单；清理后仍剩 %d 单' % (
+                          len(self.created_orders), tagged, left))
+            if left:
+                self.info('CLEANUP', '⚠ 仍有残留', '残留 %d 单（可能被 FK 挡住，需人工看）' % left)
         # 本脚本自造的班次夹具（T-AUDIT-<tag>-*）不在 e2e_cleanup 的锚点里 → 单独按终端清理
         term_like = 'T-AUDIT-%s%%' % self.tag
         left = num("SELECT COUNT(*) FROM pos_shifts WHERE terminal_id LIKE '%s'" % term_like)
@@ -392,6 +523,10 @@ def main():
     ap.add_argument('--group', choices=['N2', 'N4', 'N5', 'PERM'], help='只跑一组')
     ap.add_argument('--keep', action='store_true', help='保留夹具（默认按 tag 清理）')
     a = ap.parse_args()
+    okc, why = preflight_selfcheck()
+    if not okc:
+        print('[NOT_READY] 自检未通过：%s → EXIT=2（不做断言，避免读出假缺陷）' % why)
+        return 2
     r = Runner(a)
     st, b = http('GET', '/v1/actuator/health')
     if st == -1:  # 只有「连不上」才算未就绪；401/403/404 说明服务活着

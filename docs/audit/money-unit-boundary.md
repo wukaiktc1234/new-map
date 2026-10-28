@@ -59,6 +59,33 @@ com.foodtraceability.service.finance.recon.importing.MoneyYuanToFen   ← 唯一
 
 **已发生过的事故**：`pos_shifts.opening_cash` 单位混淆（元被当分用），见当天 lesson。
 
+## 4.5 强制规则（不是建议）—— 命名 = 单位
+
+> **凡金额字段：分单位一律 `*_fen` 后缀；无后缀即视为「元」。**
+> 这条同时适用于 **DB 列 / Java 字段 / DTO 字段 / JSON 响应字段**。
+
+**为什么升级成强制**：2026-10-28 的 N2 断言栽过一次 ——
+接口响应 `22`（元）对 DB `2200`（分），**脚本判「不等」，但两边其实都对**；
+契约没错，错在**没人能从字段名看出单位**，于是断言写错、人也被误导。
+
+### 落地三条
+
+1. **新增**：分单位字段/列必须以 `_fen` 结尾（Java 用 `_fen` 或 `...Fen`）；元单位字段**不要**加后缀，但 `@Schema`/注释必须写「（元）」；
+2. **DTO/接口响应**：所有金额字段的 `@Schema(description)` 必须带单位，例：`@Schema(description = "订单金额（元）")`；
+3. **存量排查**：「无后缀但是分」的字段要**改名或加标注**（本次已给 `OrderResultDTO.totalAmount`/`OrderItemInfo.price` 标注（元））。
+
+### 自查 SQL（DB 侧：无 `_fen` 后缀却是 bigint 的金额列，需人工确认单位）
+
+```sql
+SELECT table_name, column_name, data_type
+  FROM information_schema.columns
+ WHERE table_schema = 'public'
+   AND data_type = 'bigint'
+   AND (column_name LIKE '%amount%' OR column_name LIKE '%price%' OR column_name LIKE '%cash%')
+   AND column_name NOT LIKE '%_fen'
+ ORDER BY 1, 2;   -- 逐行确认：是「分」则改名加 _fen；是「元」则不允许 bigint
+```
+
 ## 5. 新表标准（2026-10-28 起）
 
 ```text
