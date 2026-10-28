@@ -34,7 +34,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test")
     @Operation(summary = "测试设备通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testCommunication(@RequestBody HardwareConfig config) {
         log.info("测试设备通信: 设备类型={} 设备名称={}", config.getDeviceType(), config.getDeviceName());
         try {
@@ -51,7 +51,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test/printer")
     @Operation(summary = "测试打印机通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testPrinterCommunication(@RequestBody HardwareConfig config) {
         log.info("测试打印机通信: 设备名称={}", config.getDeviceName());
         try {
@@ -68,7 +68,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test/scanner")
     @Operation(summary = "测试扫码枪通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testScannerCommunication(@RequestBody HardwareConfig config) {
         log.info("测试扫码枪通信: 设备名称={}", config.getDeviceName());
         try {
@@ -85,7 +85,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test/scale")
     @Operation(summary = "测试电子秤通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testScaleCommunication(@RequestBody HardwareConfig config) {
         log.info("测试电子秤通信: 设备名称={}", config.getDeviceName());
         try {
@@ -102,7 +102,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test/camera")
     @Operation(summary = "测试摄像头通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testCameraCommunication(@RequestBody HardwareConfig config) {
         log.info("测试摄像头通信: 设备名称={}", config.getDeviceName());
         try {
@@ -119,7 +119,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test/kds")
     @Operation(summary = "测试KDS通信")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<TestResult> testKdsCommunication(@RequestBody HardwareConfig config) {
         log.info("测试KDS通信: 设备名称={}", config.getDeviceName());
         try {
@@ -136,7 +136,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test-print")
     @Operation(summary = "发送测试打印")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<Map<String, Object>> sendTestPrint(@RequestBody HardwareConfig config) {
         log.info("发送测试打印: 设备名称={}", config.getDeviceName());
         try {
@@ -153,7 +153,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test-scan")
     @Operation(summary = "发送测试扫描")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<Map<String, Object>> sendTestScan(@RequestBody HardwareConfig config) {
         log.info("发送测试扫描: 设备名称={}", config.getDeviceName());
         try {
@@ -170,7 +170,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/test-weigh")
     @Operation(summary = "发送测试称重")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<Map<String, Object>> sendTestWeigh(@RequestBody HardwareConfig config) {
         log.info("发送测试称重: 设备名称={}", config.getDeviceName());
         try {
@@ -187,7 +187,7 @@ public class DeviceCommunicationTestController {
      */
     @PostMapping("/diagnostics")
     @Operation(summary = "获取设备诊断信息")
-    @PreAuthorize("hasAuthority('device:communication:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:manage')")
     public Result<Map<String, Object>> getDiagnostics(@RequestBody HardwareConfig config) {
         log.info("获取设备诊断信息: 设备名称={}", config.getDeviceName());
         try {
@@ -204,7 +204,7 @@ public class DeviceCommunicationTestController {
      */
     @GetMapping("/quick-test/network")
     @Operation(summary = "快速测试网络设备")
-    @PreAuthorize("hasAuthority('device:communication:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:communication:view')")
     public Result<TestResult> quickTestNetworkDevice(@Parameter(description = "IP地址") @RequestParam String ipAddress, @Parameter(description = "端口") @RequestParam(defaultValue = "9100") int port, @Parameter(description = "设备类型") @RequestParam(defaultValue = "PRINTER") String deviceType) {
         log.info("快速测试网络设备: IP={} 端口={} 设备类型={}", ipAddress, port, deviceType);
         try {

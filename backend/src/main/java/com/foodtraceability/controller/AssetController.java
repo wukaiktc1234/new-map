@@ -37,7 +37,7 @@ public class AssetController {
 
     @GetMapping("/overview")
     @Operation(summary = "资产概览数据")
-    @PreAuthorize("hasAuthority('asset:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:view')")
     public Result<Map<String, Object>> getOverview() {
         try {
             Map<String, Object> overview = new HashMap<>();
@@ -85,7 +85,7 @@ public class AssetController {
 
     @GetMapping("/list")
     @Operation(summary = "资产列表（分页）")
-    @PreAuthorize("hasAuthority('asset:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:view')")
     public Result<Page<AssetMasterVO>> list(AssetMasterQueryDTO queryDTO) {
         try {
             int pageNum = queryDTO.getCurrent() != null ? queryDTO.getCurrent() : 1;
@@ -138,7 +138,7 @@ public class AssetController {
 
     @GetMapping("/{id}")
     @Operation(summary = "资产详情")
-    @PreAuthorize("hasAuthority('asset:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:view')")
     public Result<AssetMasterVO> getById(@PathVariable Long id) {
         AssetMaster asset = assetMasterService.getById(id);
         if (asset == null) {
@@ -149,7 +149,7 @@ public class AssetController {
 
     @GetMapping("/code/{assetCode}")
     @Operation(summary = "根据资产编码查询")
-    @PreAuthorize("hasAuthority('asset:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:view')")
     public Result<AssetMasterVO> getByCode(@PathVariable String assetCode) {
         AssetMaster asset = assetMasterService.findByAssetCode(assetCode);
         if (asset == null) {
@@ -162,7 +162,7 @@ public class AssetController {
 
     @PostMapping
     @Operation(summary = "新增资产")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<AssetMasterVO> create(@Valid @RequestBody AssetMasterCreateDTO createDTO) {
         AssetMaster asset = toEntity(createDTO);
         if (asset.getAssetCode() == null || asset.getAssetCode().isEmpty()) {
@@ -184,7 +184,7 @@ public class AssetController {
 
     @PutMapping("/{id}")
     @Operation(summary = "更新资产")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<AssetMasterVO> update(@PathVariable Long id,
                                         @Valid @RequestBody AssetMasterUpdateDTO updateDTO) {
         AssetMaster existing = assetMasterService.getById(id);
@@ -202,7 +202,7 @@ public class AssetController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "删除资产")
-    @PreAuthorize("hasAuthority('asset:delete') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:delete')")
     public Result<Void> delete(@PathVariable Long id) {
         AssetMaster asset = assetMasterService.getById(id);
         if (asset != null && "in_use".equals(asset.getStatus())) {
@@ -217,7 +217,7 @@ public class AssetController {
 
     @PostMapping("/{id}/allocate")
     @Operation(summary = "分配门店")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<Void> allocate(@PathVariable Long id,
                                  @Parameter(description = "门店ID") @RequestParam Long storeId,
                                  @Parameter(description = "门店名称") @RequestParam String storeName,
@@ -228,7 +228,7 @@ public class AssetController {
 
     @PostMapping("/bind-order")
     @Operation(summary = "绑定订单")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<Void> bindOrder(@Parameter(description = "资产编码") @RequestParam String assetCode,
                                   @Parameter(description = "订单ID") @RequestParam String orderId,
                                   @Parameter(description = "厨房订单ID") @RequestParam(required = false) Long kitchenOrderId,
@@ -239,7 +239,7 @@ public class AssetController {
 
     @PostMapping("/release")
     @Operation(summary = "释放资产")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<Void> release(@Parameter(description = "资产编码") @RequestParam String assetCode,
                                 @Parameter(description = "操作人") @RequestParam(required = false) String operatorName) {
         assetMasterService.releaseAsset(assetCode, operatorName);
@@ -248,7 +248,7 @@ public class AssetController {
 
     @PostMapping("/{id}/repair")
     @Operation(summary = "开始维修")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<Void> startRepair(@PathVariable Long id,
                                     @Parameter(description = "操作人") @RequestParam(required = false) String operatorName) {
         assetMasterService.startRepair(id, operatorName);
@@ -257,7 +257,7 @@ public class AssetController {
 
     @PostMapping("/{id}/complete-repair")
     @Operation(summary = "完成维修")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<Void> completeRepair(@PathVariable Long id,
                                        @Parameter(description = "操作人") @RequestParam(required = false) String operatorName) {
         assetMasterService.completeRepair(id, operatorName);
@@ -266,7 +266,7 @@ public class AssetController {
 
     @PostMapping("/{id}/scrap")
     @Operation(summary = "资产报废")
-    @PreAuthorize("hasAuthority('asset:delete') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:delete')")
     public Result<Void> scrap(@PathVariable Long id,
                               @Parameter(description = "报废原因") @RequestParam String reason,
                               @Parameter(description = "操作人") @RequestParam(required = false) String operatorName) {
@@ -276,7 +276,7 @@ public class AssetController {
 
     @GetMapping("/{id}/flow-records")
     @Operation(summary = "资产流转记录")
-    @PreAuthorize("hasAuthority('asset:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:view')")
     public Result<List<AssetFlowRecord>> getFlowRecords(@PathVariable Long id) {
         List<AssetFlowRecord> records = assetFlowRecordMapper.findAllByAssetId(id);
         return Result.success(records);
@@ -284,7 +284,7 @@ public class AssetController {
 
     @PostMapping("/batch-create")
     @Operation(summary = "批量创建资产")
-    @PreAuthorize("hasAuthority('asset:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('asset:manage')")
     public Result<String> batchCreate(@Parameter(description = "数量") @RequestParam int count,
                                       @Parameter(description = "资产类型") @RequestParam(defaultValue = "tray") String assetType,
                                       @Parameter(description = "编码前缀") @RequestParam(defaultValue = "TRAY") String prefix,

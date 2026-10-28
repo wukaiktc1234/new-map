@@ -1362,20 +1362,23 @@ WITH slip AS (
       FROM slip s
       JOIN cash_refund f
         ON (f.store_id IS NOT DISTINCT FROM s.store_id)
-       -- **as-of-create 截断**：rcf 是缴款单生成时刻的快照，只算生成前已发生的退款。
-       --   生成后、窗口结束前到达的退款不计入期望值（否则「快照 vs 实时」必然红，249 即此例）；
-       --   这类「已过时」的业务信号不判红，但通过 stale=<k> 显式输出。
-       AND f.refund_time IS NOT NULL
-       AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') <= s.create_time
+       -- 【2026-10-28 Owner 裁定】as-of-create 截断**只约束「自动窗口」分支**，不约束「人工归属」分支：
+       --   · as-of 原意：防止**自动窗口**把迟到的退款算进已关班的缴款单（防「快照 vs 实时」必然红）；
+       --   · 人工归属是解决边界情况的**逃生口**（±边界带功能本身）：财务已确认归属，系统不能说不算。
+       --   ⇒ 自动窗口：refund_time <= slip.create_time；人工归属：**不受 as-of 约束**且优先级更高。
        AND (
-             EXISTS (SELECT 1 FROM pos_shifts ps
-                      WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
-                        AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
-                        AND (f.refund_time AT TIME ZONE 'Asia/Shanghai')
-                            BETWEEN ps.start_time + make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int)
-                                AND ps.end_time   - make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int))
+             (
+               f.refund_time IS NOT NULL
+               AND (f.refund_time AT TIME ZONE 'Asia/Shanghai') <= s.create_time
+               AND EXISTS (SELECT 1 FROM pos_shifts ps
+                            WHERE ps.shift_id = s.shift_id AND ps.deleted = 0
+                              AND ps.start_time IS NOT NULL AND ps.end_time IS NOT NULL
+                              AND (f.refund_time AT TIME ZONE 'Asia/Shanghai')
+                                  BETWEEN ps.start_time + make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int)
+                                      AND ps.end_time   - make_interval(mins => :'SHIFT_BOUNDARY_MINUTES'::int))
+             )
              OR
-             -- 人工归属同一时点语义：归属记录必须存在，且该退款也发生在生成之前
+             -- 人工归属：只看该退款是否被归属到本班次，不再叠加 refund_time <= create_time
              EXISTS (SELECT 1 FROM refund_shift_attribution a
                       WHERE a.refund_record_id = f.refund_record_id
                         AND a.shift_id = s.shift_id)

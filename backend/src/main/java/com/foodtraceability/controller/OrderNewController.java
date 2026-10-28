@@ -35,7 +35,7 @@ public class OrderNewController {
      * 完整流程：校验 -> 计算 -> 生成编号 -> 保存 -> 锁桌台
      */
     @PostMapping
-    @PreAuthorize("hasAuthority('order:add') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:add') or hasAuthority('order:manage')")
     @Operation(summary = "创建订单", description = "创建新订单，支持堂食/外卖/自提/打包四种类型")
     public Result<OrderVO> createOrder(@Valid @RequestBody OrderCreateDTO createDTO) {
         return Result.success(orderNewService.createOrder(createDTO));
@@ -49,7 +49,7 @@ public class OrderNewController {
      * 字面量路径必须在 /{orderId} 之前定义，避免路径变量冲突
      */
     @GetMapping("/refunds")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "分页查询退款申请", description = "支持按退款单号、订单号、状态、时间范围筛选")
     public Result<PageResult<OrderRefundListVO>> getRefundPage(OrderRefundQueryDTO queryDTO) {
         return Result.success(orderNewService.queryRefunds(queryDTO), "查询退款列表成功");
@@ -60,7 +60,7 @@ public class OrderNewController {
      * 获取退款汇总统计数据（待处理数、已退款金额、退款率、平均处理时长）
      */
     @GetMapping("/refunds/stats")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "退款统计", description = "获取退款汇总统计数据")
     public Result<OrderRefundStatsVO> getRefundStats() {
         return Result.success(orderNewService.getRefundStats(), "获取退款统计成功");
@@ -71,7 +71,7 @@ public class OrderNewController {
      * 字面量路径必须在 /{orderId} 之前定义，避免路径变量冲突
      */
     @GetMapping("/statistics")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "订单总览统计", description = "获取总订单数、已完成订单数、今日订单数、总销售额、今日销售额")
     public Result<Map<String, Object>> getOrderStatistics() {
         return Result.success(orderNewService.getOrderStatistics(), "获取订单统计成功");
@@ -89,7 +89,7 @@ public class OrderNewController {
      * </p>
      */
     @GetMapping("/{orderId}")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "获取订单详情", description = "获取订单完整信息，包括明细、支付记录、退款记录")
     public Result<OrderVO> getOrderDetail(@PathVariable String orderId) {
         // 格式校验：订单ID通常为 O + 数字 或纯数字
@@ -105,7 +105,7 @@ public class OrderNewController {
      * 支持多条件筛选：订单类型、状态、时间范围、金额范围等
      */
     @GetMapping
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "分页查询订单", description = "支持多条件筛选的分页查询")
     public Result<Page<OrderVO>> queryOrders(OrderQueryDTO queryDTO) {
         return Result.success(orderNewService.queryOrders(queryDTO));
@@ -120,7 +120,7 @@ public class OrderNewController {
      * </p>
      */
     @GetMapping("/page")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "分页查询订单（/page 别名）", description = "与 GET /v1/orders 行为一致，提供 /page 路径别名")
     public Result<Page<OrderVO>> queryOrdersByPage(OrderQueryDTO queryDTO) {
         return Result.success(orderNewService.queryOrders(queryDTO));
@@ -133,7 +133,7 @@ public class OrderNewController {
      * 解决：POS收银端创建的订单无法在管理端订单中心查看的问题。
      */
     @GetMapping("/pos")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "分页查询POS终端订单", description = "查询POS收银端创建的订单（orders_legacy 表），返回格式与管理端订单一致")
     public Result<Page<OrderVO>> queryPosOrders(OrderQueryDTO queryDTO) {
         return Result.success(orderNewService.queryPosOrders(queryDTO));
@@ -153,7 +153,7 @@ public class OrderNewController {
      * @param orderNumber 订单编号（如 T20260713002），非订单ID
      */
     @GetMapping("/pos/{orderNumber}")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "获取POS终端订单详情", description = "通过订单编号查询POS订单完整信息（orders_legacy + order_items_legacy），含菜品明细")
     public Result<OrderVO> getPosOrderDetail(@PathVariable String orderNumber) {
         if (orderNumber == null || orderNumber.isEmpty() || orderNumber.length() > 50
@@ -170,7 +170,7 @@ public class OrderNewController {
      * 支持多种支付方式组合（现金+微信+积分等）
      */
     @PostMapping("/{orderId}/pay")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "支付订单", description = "对订单进行支付，支持多种支付方式组合")
     public Result<OrderVO> payOrder(
             @PathVariable String orderId,
@@ -185,7 +185,7 @@ public class OrderNewController {
      * 自动处理退款、解锁桌台等逻辑
      */
     @PostMapping("/{orderId}/cancel")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "取消订单", description = "取消订单并自动处理相关业务")
     public Result<OrderVO> cancelOrder(
             @PathVariable String orderId,
@@ -200,7 +200,7 @@ public class OrderNewController {
      * 支持全额退款和部分退款
      */
     @PostMapping("/{orderId}/refund")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "申请退款", description = "提交退款申请，支持全额或部分退款")
     public Result<OrderVO.OrderRefundRecordVO> applyRefund(
             @PathVariable String orderId,
@@ -212,7 +212,7 @@ public class OrderNewController {
      * 审批退款
      */
     @PostMapping("/refunds/{refundId}/approve")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "审批退款", description = "审批退款申请，同意或拒绝")
     public Result<Void> approveRefund(
             @PathVariable Long refundId,
@@ -226,7 +226,7 @@ public class OrderNewController {
 
     /** 确认订单（待确认->已确认/制作中） */
     @PostMapping("/{orderId}/confirm")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "确认订单", description = "将待确认订单标记为已确认/制作中")
     public Result<Void> confirmOrder(@PathVariable String orderId) {
         orderNewService.confirmOrder(orderId);
@@ -235,7 +235,7 @@ public class OrderNewController {
 
     /** 完成订单 */
     @PostMapping("/{orderId}/complete")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "完成订单", description = "将订单标记为已完成")
     public Result<Void> completeOrder(@PathVariable String orderId) {
         orderNewService.completeOrder(orderId);
@@ -246,7 +246,7 @@ public class OrderNewController {
 
     /** 更新明细厨房状态 */
     @PutMapping("/items/{itemId}/kitchen-status/{kitchenStatus}")
-    @PreAuthorize("hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:manage')")
     @Operation(summary = "更新厨房状态", description = "更新订单明细的制作状态")
     public Result<Void> updateKitchenStatus(
             @PathVariable String itemId,
@@ -259,7 +259,7 @@ public class OrderNewController {
 
     /** 今日销售统计 */
     @GetMapping("/today/statistics")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "今日销售统计", description = "获取今日销售概况数据")
     public Result<TodayStatisticsVO> getTodayStatistics() {
         return Result.success(orderNewService.getTodayStatistics());
@@ -267,7 +267,7 @@ public class OrderNewController {
 
     /** 交接班汇总 */
     @GetMapping("/cashier/shift-summary")
-    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('order:view') or hasAuthority('order:manage')")
     @Operation(summary = "交接班汇总", description = "获取指定收银员的交接班数据")
     public Result<Map<String, Object>> getShiftSummary(
             @RequestParam(required = false) Long cashierUserId) {

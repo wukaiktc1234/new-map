@@ -43,7 +43,7 @@ public class DeviceAlertController {
 
     @GetMapping("/{alertId}")
     @Operation(summary = "查询告警详情")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<DeviceAlertVO> getAlertById(
             @Parameter(description = "告警ID") @PathVariable Long alertId) {
         log.info("查询告警: alertId={}", alertId);
@@ -54,7 +54,7 @@ public class DeviceAlertController {
 
     @PostMapping
     @Operation(summary = "创建设备告警")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<DeviceAlertVO> createAlert(@RequestBody DeviceAlert alert) {
         log.info("创建设备告警: deviceId={}, alertType={}", alert.getDeviceId(), alert.getAlertType());
         return deviceAlertService.save(alert);
@@ -62,7 +62,7 @@ public class DeviceAlertController {
 
     @DeleteMapping("/{alertId}")
     @Operation(summary = "删除告警")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Void> deleteAlert(
             @Parameter(description = "告警ID") @PathVariable Long alertId) {
         log.info("删除告警: alertId={}", alertId);
@@ -71,7 +71,7 @@ public class DeviceAlertController {
 
     @PutMapping("/{alertId}")
     @Operation(summary = "更新告警信息")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<DeviceAlertVO> updateAlert(
             @Parameter(description = "告警ID") @PathVariable Long alertId,
             @RequestBody DeviceAlert alert) {
@@ -82,7 +82,7 @@ public class DeviceAlertController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询告警列表")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<IPage<DeviceAlertVO>> getAlertPage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
@@ -109,7 +109,7 @@ public class DeviceAlertController {
 
     @GetMapping("/device/{deviceId}/unhandled")
     @Operation(summary = "查询设备的未处理告警")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<List<DeviceAlertVO>> getUnhandledAlertsByDevice(
             @Parameter(description = "设备ID") @PathVariable Long deviceId) {
         log.info("查询未处理告警: deviceId={}", deviceId);
@@ -118,7 +118,7 @@ public class DeviceAlertController {
 
     @GetMapping("/unhandled")
     @Operation(summary = "查询所有未处理告警")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<List<DeviceAlertVO>> getAllUnhandledAlerts() {
         log.info("查询所有未处理告警");
         return deviceAlertService.getAllUnhandledAlerts();
@@ -128,7 +128,7 @@ public class DeviceAlertController {
 
     @PutMapping("/{alertId}/handle")
     @Operation(summary = "处理告警")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Void> handleAlert(
             @Parameter(description = "告警ID") @PathVariable Long alertId,
             @RequestBody Map<String, String> request) {
@@ -139,7 +139,7 @@ public class DeviceAlertController {
 
     @PutMapping("/batch-handle")
     @Operation(summary = "批量处理告警")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Void> batchHandleAlerts(@RequestBody Map<String, Object> request) {
         @SuppressWarnings("unchecked")
         List<Long> alertIds = (List<Long>) request.get("alertIds");
@@ -157,7 +157,7 @@ public class DeviceAlertController {
 
     @GetMapping("/statistics")
     @Operation(summary = "获取告警统计信息")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<Object> getAlertStatistics() {
         log.info("获取告警统计信息");
         return deviceAlertService.getAlertStatistics();
@@ -167,7 +167,7 @@ public class DeviceAlertController {
 
     @PostMapping("/monitor/check")
     @Operation(summary = "手动触发设备状态检查")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Map<String, Object>> checkDeviceStatus() {
         log.info("手动触发设备状态检查");
         return deviceMonitorService.checkDeviceStatus();
@@ -175,7 +175,7 @@ public class DeviceAlertController {
 
     @GetMapping("/monitor/statistics")
     @Operation(summary = "获取设备统计信息")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<Map<String, Long>> getDeviceStatistics() {
         log.info("获取设备统计信息");
         return deviceMonitorService.getDeviceStatistics();
@@ -183,7 +183,7 @@ public class DeviceAlertController {
 
     @GetMapping("/monitor/recent-changes")
     @Operation(summary = "获取最近的状态变更记录")
-    @PreAuthorize("hasAuthority('device:alert:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:view')")
     public Result<List<Map<String, Object>>> getRecentStatusChanges(
             @Parameter(description = "最近N分钟") @RequestParam(defaultValue = "60") int minutes,
             @Parameter(description = "返回条数") @RequestParam(defaultValue = "50") int limit) {
@@ -193,7 +193,7 @@ public class DeviceAlertController {
 
     @PostMapping("/monitor/online/{deviceId}")
     @Operation(summary = "模拟设备上线（测试用）", description = "仅供开发环境使用，生产环境应禁用此接口或通过网关屏蔽")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Void> handleDeviceOnline(
             @Parameter(description = "设备ID") @PathVariable Long deviceId) {
         // 安全提示：此接口仅供开发环境模拟设备上线事件使用，生产环境应通过网关或权限策略禁用。
@@ -203,7 +203,7 @@ public class DeviceAlertController {
 
     @PostMapping("/monitor/offline/{deviceId}")
     @Operation(summary = "模拟设备离线（测试用）", description = "仅供开发环境使用，生产环境应禁用此接口或通过网关屏蔽")
-    @PreAuthorize("hasAuthority('device:alert:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:alert:manage')")
     public Result<Void> handleDeviceOffline(
             @Parameter(description = "设备ID") @PathVariable Long deviceId) {
         // 安全提示：此接口仅供开发环境模拟设备离线事件使用，生产环境应通过网关或权限策略禁用。

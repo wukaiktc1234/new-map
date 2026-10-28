@@ -59,7 +59,7 @@ public class DeviceManagementController {
     @UnfinishedFeature(table = "hardware_config")
     @GetMapping("/config")
     @Operation(summary = "获取设备配置")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<HardwareConfig> getDeviceConfig(
             @Parameter(description = "门店ID") @RequestParam(required = false) Long storeId,
             @Parameter(description = "设备类型") @RequestParam String deviceType) {
@@ -73,7 +73,7 @@ public class DeviceManagementController {
      */
     @GetMapping("/status")
     @Operation(summary = "获取设备状态")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<DeviceStatus> getDeviceStatus(
             @Parameter(description = "设备类型") @RequestParam String deviceType) {
         return Result.success(deviceStatusService.getDeviceDetailedStatus(deviceType));
@@ -86,7 +86,7 @@ public class DeviceManagementController {
      */
     @PostMapping("/test-connection")
     @Operation(summary = "测试设备连接")
-    @PreAuthorize("hasAuthority('device:management:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:manage')")
     public Result<Boolean> testDeviceConnection(
             @Parameter(description = "设备配置") @RequestBody HardwareConfig config) {
         return Result.success(hardwareDeviceService.testConnection(config));
@@ -99,7 +99,7 @@ public class DeviceManagementController {
      */
     @PostMapping("/print")
     @Operation(summary = "统一打印接口")
-    @PreAuthorize("hasAuthority('device:management:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:manage')")
     public Result<PrintTask> print(
             @Parameter(description = "打印请求参数") @RequestBody DevicePrintRequest printRequest) {
         // 创建打印任务
@@ -176,7 +176,7 @@ public class DeviceManagementController {
      */
     @GetMapping("/status/all")
     @Operation(summary = "获取所有设备状态")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<Map<String, DeviceStatus>> getAllDeviceStatus() {
         return Result.success(deviceStatusService.getAllDeviceStatus());
     }
@@ -188,7 +188,7 @@ public class DeviceManagementController {
      */
     @PostMapping("/status/refresh")
     @Operation(summary = "刷新设备状态")
-    @PreAuthorize("hasAuthority('device:management:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:manage')")
     public Result<Boolean> refreshDeviceStatus(
             @Parameter(description = "设备类型") @RequestParam(required = false) String deviceType) {
         if (deviceType != null) {
@@ -206,7 +206,7 @@ public class DeviceManagementController {
      */
     @PostMapping("/scan")
     @Operation(summary = "扫码枪扫描")
-    @PreAuthorize("hasAuthority('device:management:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:manage')")
     public Result<Boolean> scanInventoryCode(
             @Parameter(description = "库存编码") @RequestParam String inventoryCode) {
         return Result.success(hardwareDeviceService.scanInventoryCode(inventoryCode));
@@ -220,7 +220,7 @@ public class DeviceManagementController {
      */
     @PostMapping("/camera/capture")
     @Operation(summary = "摄像头拍照")
-    @PreAuthorize("hasAuthority('device:management:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:manage')")
     public Result<Boolean> capturePhoto(
             @Parameter(description = "订单ID") @RequestParam String orderId,
             @Parameter(description = "溯源码") @RequestParam String traceabilityCode) {
@@ -234,7 +234,7 @@ public class DeviceManagementController {
      */
     @GetMapping("/print/task/{taskId}")
     @Operation(summary = "查询打印任务状态")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<PrintTask> getPrintTaskStatus(
             @Parameter(description = "任务ID") @PathVariable String taskId) {
         PrintTask task = printTaskQueueManager.getTaskById(taskId);
@@ -251,7 +251,7 @@ public class DeviceManagementController {
      */
     @GetMapping("/print/tasks")
     @Operation(summary = "查询打印任务列表")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<List<PrintTask>> getPrintTasks(
             @Parameter(description = "设备类型") @RequestParam(required = false) String deviceType) {
         return Result.success(printTaskQueueManager.getTasksByDeviceType(deviceType));
@@ -265,7 +265,7 @@ public class DeviceManagementController {
      */
     @GetMapping("/print/history")
     @Operation(summary = "查询打印任务历史记录")
-    @PreAuthorize("hasAuthority('device:management:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:management:view')")
     public Result<List<PrintTask>> getPrintHistory(
             @Parameter(description = "设备类型") @RequestParam(required = false) String deviceType,
             @Parameter(description = "限制数量") @RequestParam(defaultValue = "50") int limit) {
