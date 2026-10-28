@@ -1,8 +1,12 @@
 {
  "total": 30,
- "build": 12,
- "pending_product": 2,
+ "build": 14,
+ "pending_product": 0,
  "skip": 16,
+ "gap_original": 59,
+ "gap_remaining": 45,
+ "from_zero_executed": 257,
+ "updated": "2026-10-28 (E 收口，Lead 核对通过)",
  "candidates": [
   {
    "table": "contract_document",
@@ -92,15 +96,15 @@
    "table": "self_purchase",
    "triage": "核心必做",
    "in_registry": "否",
-   "decision": "BUILD_PENDING_PRODUCT",
-   "rationale": "前端 0 命中，属「写了没上线」，等产品决定"
+   "decision": "BUILD",
+   "rationale": "Owner 2026-10-28 拍板建表；写入点 SelfPurchaseServiceImpl:59/67/129；Java 侧已存在故只建表"
   },
   {
    "table": "self_purchase_item",
    "triage": "核心必做",
    "in_registry": "否",
-   "decision": "BUILD_PENDING_PRODUCT",
-   "rationale": "随主表"
+   "decision": "BUILD",
+   "rationale": "Owner 2026-10-28 拍板建表；写入点 SelfPurchaseServiceImpl:59/67/129；Java 侧已存在故只建表"
   },
   {
    "table": "operation_logs",

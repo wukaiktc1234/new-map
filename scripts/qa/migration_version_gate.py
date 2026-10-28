@@ -27,14 +27,24 @@ NAME_RE = re.compile(r"^(?P<ver>V[0-9._]+)__(?P<desc>.+)\.sql$")
 # 两种合法形态：
 #  · 新标准：V<8位日期>_<3位序号>__desc.sql   （2026-10-28 起）
 #  · 历史遗留：V1.0.0.400__desc.sql          （点分版本，已存在 41 个，不动）
-STRICT_RE = re.compile(
-    r"^("
-    r"V\d{8}_\d{3}__[A-Za-z0-9_]+\.sql"      # 新标准：V20261028_014__desc.sql
-    r"|V\d{8}__[A-Za-z0-9_]+\.sql"            # 历史：V20260404__desc.sql
-    r"|V\d{10}__[A-Za-z0-9_]+\.sql"           # 历史：V2026021701__desc.sql（10 位连写）
-    r"|V\d+(\.\d+)+__[A-Za-z0-9_]+\.sql"    # 历史：V1.0.0.400__desc.sql
-    r")$"
-)
+STRICT_RE = re.compile(r"^V\d{8}_\d{3}__[A-Za-z0-9_]+\.sql$")
+
+ALLOWLIST = ROOT / "scripts" / "qa" / "migration-legacy-allowlist.txt"
+
+
+def load_allowlist():
+    """只认文件里**具体文件名**；不按形状放行。"""
+    allowed = {}
+    if not ALLOWLIST.exists():
+        return allowed
+    for line in ALLOWLIST.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [x.strip() for x in line.split("|")]
+        if parts and parts[0].endswith(".sql"):
+            allowed[parts[0]] = parts[1] if len(parts) > 1 else ""
+    return allowed
 
 
 def parse_version(ver):
@@ -52,9 +62,11 @@ def parse_version(ver):
 
 
 def scan(dirpath):
+    allowed = load_allowlist()
     dup = defaultdict(list)
     badname = []
     unparsed = []
+    allowlisted = []
     for p in sorted(Path(dirpath).glob("*.sql")):
         m = NAME_RE.match(p.name)
         if not m:
@@ -66,7 +78,11 @@ def scan(dirpath):
             continue
         dup[v].append(p.name)
         if not STRICT_RE.match(p.name):
-            badname.append(p.name)
+            if p.name in allowed:
+                allowlisted.append(p.name)
+            else:
+                badname.append(p.name)
+    scan.allowlisted = allowlisted
     return dup, badname, unparsed
 
 
@@ -94,6 +110,9 @@ def report(dup, badname, unparsed, verbose=True):
             for n in badname:
                 print("     - " + n)
     total = sum(len(v) for v in dup.values())
+    n_allow = len(getattr(scan, "allowlisted", []))
+    if verbose:
+        print("[INFO] 放行 %d 个历史文件（白名单 scripts/qa/migration-legacy-allowlist.txt；只允许存量、不允许新增）" % n_allow)
     if not fail and verbose:
         print("[PASS] 迁移版本 gate：文件 %d 个，版本唯一、命名规范" % total)
     return fail

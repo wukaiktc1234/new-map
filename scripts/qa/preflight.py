@@ -72,6 +72,28 @@ def find_java_home():
     return None
 
 
+def run_gate_script(script, verbose):
+    """跑 scripts/qa/<script>，返回 exit code（脚本不存在则跳过返回 0）。"""
+    path = ROOT / "scripts" / "qa" / script
+    if not path.exists():
+        return 0
+    rc, out = run([sys.executable, str(path)], ROOT, timeout=180)
+    if verbose or rc != 0:
+        print(out.strip())
+    return rc
+
+
+def run_gate_script(script, verbose):
+    """跑 scripts/qa/<script>；脚本不存在则跳过（返回 0）。"""
+    path = ROOT / "scripts" / "qa" / script
+    if not path.exists():
+        return 0
+    rc, out = run([sys.executable, str(path)], ROOT, timeout=180)
+    if verbose or rc != 0:
+        print(out.strip())
+    return rc
+
+
 def mvn(goal, verbose):
     cmd = [find_mvn(), "-o", "-B"] + goal
     import os
@@ -408,11 +430,22 @@ def main():
     result_error_rc = check_result_error_ratchet()
     warn = False
     compile_rc = 0
+    if a.full and not a.skip_compile:
+        clean_rc = mvn(["clean"], a.verbose)
+        if clean_rc == 0:
+            print("[GATE] clean 完成，避免 target/classes 残留")
+        else:
+            print("[WARN] clean 失败（rc=%s）—— 后续 test 可能跑到旧 class" % clean_rc)
+            warn = True
     if not a.skip_compile:
         compile_rc = mvn(["test-compile"], a.verbose)
         if compile_rc != 0:
             print("[WARN] test-compile 失败（rc=%s）→ 注意：test-compile≠test，但连编译都不过就不该开工" % compile_rc)
             warn = True
+    mig_gate_rc = run_gate_script("migration_version_gate.py", a.verbose)
+    if mig_gate_rc != 0:
+        print("[GATE] 迁移版本 gate 失败（EXIT=2）：重复版本号会让应用启动失败")
+        warn = True
     clean_db_rc = 0
     if a.full:
         print("-" * 86)
