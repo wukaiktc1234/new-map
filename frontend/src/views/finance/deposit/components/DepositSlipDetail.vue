@@ -12,6 +12,11 @@
 import { computed, ref, watch } from 'vue'
 import { formatFen } from '@/types/finance-recon'
 import type {
+  BoundaryRefundDecisionKind,
+  BoundaryRefundPending,
+  BoundaryShiftRef,
+} from '@/types/finance-boundary-refund'
+import type {
   DepositSlipVO,
   PendingAttributionPayload,
   PendingAttributionRefundVO,
@@ -113,6 +118,90 @@ function candidateLabel(cand: ShiftCandidateVO, idx: number): string {
   return base.includes('#' + cand.shiftId) ? base : base + ' #' + cand.shiftId
 }
 
+/* ===== 边界退款视图模型（供「归上一班 / 归这一班」双动作使用） ===== */
+
+/** 解析 'yyyy-MM-dd HH:mm:ss' → 时间戳（毫秒），失败返回 null */
+function parseTs(value: string | null | undefined): number | null {
+  if (!value) return null
+  const ts = Date.parse(value.replace(' ', 'T'))
+  return Number.isFinite(ts) ? ts : null
+}
+
+/** 分钟差（绝对值，保留 1 位小数） */
+function minutesBetween(a: number, b: number): number {
+  return Math.round((Math.abs(a - b) / 60000) * 10) / 10
+}
+
+function toRef(cand: ShiftCandidateVO | undefined): BoundaryShiftRef | null {
+  if (!cand) return null
+  return { shiftId: cand.shiftId, label: cand.label ?? null, startTime: cand.startTime ?? null, endTime: cand.endTime ?? null }
+}
+
+/**
+ * 待确认归属 → 边界退款视图模型。
+ * 「上一班」= 候选[0]，「这一班」= 候选[1]（后端 candidateShifts 顺序：上一 / 本 / 下一）。
+ * 距交班 = refundTime 到「上一班结束」或「这一班开始」的最近距离（分钟）。
+ */
+const boundaryRows = computed<BoundaryRefundPending[]>(() => {
+  return pending.value.map((row) => {
+    const candidates = candidatesOf(row)
+    const previousShift = toRef(candidates[0])
+    const currentShift = toRef(candidates[1]) ?? toRef(candidates[0])
+    const refundTs = parseTs(row.refundTime)
+    let boundaryDeltaMinutes: number | null = null
+    let boundaryKind: 'start' | 'end' | 'unknown' = 'unknown'
+    if (refundTs != null) {
+      const endPrevTs = parseTs(previousShift?.endTime)
+      const startCurTs = parseTs(currentShift?.startTime)
+      const candidatesDelta: Array<{ kind: 'start' | 'end'; delta: number }> = []
+      if (endPrevTs != null) candidatesDelta.push({ kind: 'end', delta: minutesBetween(refundTs, endPrevTs) })
+      if (startCurTs != null) candidatesDelta.push({ kind: 'start', delta: minutesBetween(refundTs, startCurTs) })
+      if (candidatesDelta.length > 0) {
+        candidatesDelta.sort((a, b) => a.delta - b.delta)
+        boundaryKind = candidatesDelta[0].kind
+        boundaryDeltaMinutes = candidatesDelta[0].delta
+      }
+    }
+    return {
+      refundRecordId: row.refundRecordId,
+      refundNo: row.refundNo ?? row.orderNumber ?? null,
+      amountFen: row.amountFen,
+      refundTime: row.refundTime ?? null,
+      boundaryDeltaMinutes,
+      boundaryKind,
+      previousShift,
+      currentShift,
+    } as BoundaryRefundPending
+  })
+})
+
+/** 距交班展示文案 */
+function boundaryText(row: BoundaryRefundPending): string {
+  if (row.boundaryDeltaMinutes == null) return '—'
+  const where = row.boundaryKind === 'end'
+    ? '交班'
+    : row.boundaryKind === 'start'
+      ? '开班'
+      : '边界'
+  return '距' + where + ' ' + row.boundaryDeltaMinutes + ' 分钟'
+}
+
+/** 触发归属提交（kind: previous=归上一班 / current=归这一班） */
+function submitWithKind(row: BoundaryRefundPending, kind: BoundaryRefundDecisionKind): void {
+  const target = kind === 'previous' ? row.previousShift : row.currentShift
+  if (!target) {
+    localError.value = '该笔退款缺少可归属的班次信息，请联系管理员'
+    return
+  }
+  const reason = (reasons.value[row.refundRecordId] || '').trim()
+  if (reason.length < 4) {
+    localError.value = '请填写至少 4 个字的归属理由'
+    return
+  }
+  localError.value = ''
+  emit('confirm', { refundRecordId: row.refundRecordId, shiftId: target.shiftId, reason })
+}
+
 watch(pending, (list) => {
   // 默认选中「本班次」（中间那个候选）
   for (const item of list) {
@@ -129,7 +218,8 @@ watch(pending, (list) => {
  * 有 pending 退款 **或** 当前用户无权限（此时用占位骨架展示禁用态，便于验收/E2E）。
  * 无权限时列表页不请求 pending-refunds（避免 403 噪声），attribution 为空 → 走占位分支。
  */
-const showAttribution = computed<boolean>(() => pending.value.length > 0 || !props.canConfirm)
+// 始终渲染：无边界退款时显示空态「当前无待确认归属」，无权限时显示占位骨架
+const showAttribution = computed<boolean>(() => true)
 
 function reasonValid(row: PendingAttributionRefundVO): boolean {
   return (reasons.value[row.refundRecordId] || '').trim().length >= 4
@@ -250,78 +340,82 @@ defineExpose({ localError })
           <tr>
             <th>退款单号</th>
             <th class="num">金额(元)</th>
-            <th>refund_time</th>
-            <th>候选班次</th>
-            <th>原因</th>
-            <th style="width: 96px">操作</th>
+            <th>发生时间</th>
+            <th>距交班</th>
+            <th>涉及班次（上一班 / 这一班）</th>
+            <th>理由</th>
+            <th style="width: 150px">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="row in pending"
+            v-for="row in boundaryRows"
             :key="row.refundRecordId"
             data-test="attribution-row"
             :data-refund-id="row.refundRecordId"
+            :data-boundary-minutes="row.boundaryDeltaMinutes ?? ''"
+            :data-boundary-kind="row.boundaryKind"
           >
-            <td class="mono">{{ row.refundNo || row.orderNumber || ('#' + row.refundRecordId) }}</td>
+            <td class="mono">{{ row.refundNo || ('#' + row.refundRecordId) }}</td>
             <td class="num">{{ money(row.amountFen) }}</td>
             <td class="mono">{{ row.refundTime || '（空）' }}</td>
             <td>
-              <el-radio-group
-                v-model="selectedShift[row.refundRecordId]"
-                :disabled="!canConfirm"
-                size="small"
-                data-test="attribution-shift"
-              >
-                <el-radio-button
-                  v-for="(cand, idx) in candidatesOf(row)"
-                  :key="cand.shiftId"
-                  :value="cand.shiftId"
-                  :data-shift-id="cand.shiftId"
-                  :title="(cand.startTime || '') + ' ~ ' + (cand.endTime || '')"
-                >{{ candidateLabel(cand, idx) }}</el-radio-button>
-              </el-radio-group>
+              <span :class="{ 'text-warning': row.boundaryDeltaMinutes != null }">{{ boundaryText(row) }}</span>
+            </td>
+            <td class="mono">
+              <div :title="(row.previousShift?.startTime || '') + ' ~ ' + (row.previousShift?.endTime || '')">
+                上一班：{{ row.previousShift ? (row.previousShift.label || '#' + row.previousShift.shiftId) : '—' }}
+              </div>
+              <div :title="(row.currentShift?.startTime || '') + ' ~ ' + (row.currentShift?.endTime || '')">
+                这一班：{{ row.currentShift ? (row.currentShift.label || '#' + row.currentShift.shiftId) : '—' }}
+              </div>
             </td>
             <td>
               <el-input
                 v-model="reasons[row.refundRecordId]"
-                placeholder="至少 4 个字"
+                placeholder="必填，至少 4 个字"
                 maxlength="100"
                 :disabled="!canConfirm"
                 data-test="attribution-reason"
               />
             </td>
             <td>
-              <el-tooltip :disabled="canConfirm" content="仅店长/财务可确认归属" placement="top">
-                <span>
-                  <el-button
-                    type="primary"
-                    link
-                    data-test="attribution-confirm"
-                    :disabled="!canSubmit(row)"
-                    :loading="confirming"
-                    :title="canConfirm ? '' : '无权限'"
-                    @click="submit(row)"
-                  >确认归属</el-button>
-                </span>
-              </el-tooltip>
+              <!-- 无权限：只隐藏操作按钮，不报错 -->
+              <div v-if="canConfirm" class="slip-attribution__actions" data-test="attribution-shift">
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  data-test="attribution-prev"
+                  :disabled="!reasonValid(row) || confirming"
+                  :loading="confirming"
+                  @click="submitWithKind(row, 'previous')"
+                >归上一班</el-button>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  data-test="attribution-this"
+                  :disabled="!reasonValid(row) || confirming"
+                  :loading="confirming"
+                  @click="submitWithKind(row, 'current')"
+                >归这一班</el-button>
+              </div>
+              <span v-else class="slip-attribution__hint">无操作权限</span>
             </td>
           </tr>
 
+          <!-- 空态：有权限但当前没有边界退款 -->
+          <tr v-if="canConfirm && boundaryRows.length === 0" data-test="attribution-empty">
+            <td colspan="7" class="slip-attribution__empty">当前无待确认归属</td>
+          </tr>
+
           <!-- 无权限占位行：不发起 pending-refunds 请求也能展示禁用态 -->
-          <tr v-if="!canConfirm && pending.length === 0" data-test="attribution-placeholder">
-            <td colspan="5" class="slip-attribution__empty">
-              无可确认的退款归属数据（当前账号无查看权限，已跳过取数）
+          <tr v-if="!canConfirm && boundaryRows.length === 0" data-test="attribution-placeholder">
+            <td colspan="6" class="slip-attribution__empty">
+              当前无待确认归属（当前账号无查看权限，已跳过取数）
             </td>
-            <td>
-              <el-button
-                type="primary"
-                link
-                data-test="attribution-confirm"
-                disabled
-                title="无权限"
-              >确认归属</el-button>
-            </td>
+            <td><span class="slip-attribution__hint">无操作权限</span></td>
           </tr>
         </tbody>
       </table>
@@ -442,6 +536,21 @@ defineExpose({ localError })
 .slip-attribution__lock {
   font-size: 12px;
   color: var(--el-color-warning-dark-2, #b88230);
+}
+
+.slip-attribution__actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.slip-attribution__hint {
+  font-size: 12px;
+  color: var(--fts-text-secondary, #909399);
+}
+
+.text-warning {
+  color: var(--el-color-warning, #e6a23c);
 }
 
 .slip-attribution__empty {
