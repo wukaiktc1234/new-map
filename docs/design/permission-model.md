@@ -89,3 +89,28 @@ PERM_ 码        → 只在 permission_id_str 找；它就是 join 键
 4. 改完跑 `python scripts/qa/permission_code_audit.py`（A46）与巡检 A44/A45；
 5. 真调一次目标接口确认 200/业务码（**403 与 500 都要看日志**，权限/缺表都会伪装成别的错）。
 
+
+## 历史上出现过的「脏形态」清单（每出现一种就丢一批授权）
+
+> 规律：`role_permissions.permission_id` 本应**只**存 `permissions.permission_id_str`（`PERM_*` 形态）。
+> 但历史上不同人/不同脚本往同一列塞进了 5 种形态，**每混进一种，就有一批授权静默失效**（A44/A45 报 rows=1 之类的现象）。
+
+| # | 脏形态 | 表现 | 识别 SQL | 处置 |
+|---|--------|------|----------|------|
+| 1 | **冒号形态权限码**写进 `permission_id` | 授权行永远匹配不上 `permission_id_str`（`PERM_*`），权限静默丢失；A44/A45 FAIL | `SELECT * FROM role_permissions WHERE permission_id NOT LIKE 'PERM_%';` | 按 `permission_code` 映射回 `permission_id_str`（**只改授权行**） |
+| 2 | **数字 role_id** 写进 `role_id` | `user_roles.role_id` 是 `ROLE_*` 字符串，数字形态导致角色绑定不上（418 行历史事故） | `SELECT * FROM role_permissions WHERE role_id ~ '^[0-9]+$';` | 按 `roles.role_id` 与 `role_id_str` 映射表归一 |
+| 3 | **`permission_id_str` 当 Spring authority 用** | 注解写 `hasAuthority('PERM_XXX')`，而运行时 authority 是 `permission_code`（`a:b:c`）→ 311 处假缺失 | `grep -rn "hasAuthority('PERM_" backend/src` | 注解一律改 `permission_code` 形态 |
+| 4 | **`hasAuthority('*')`** | `'*'` 不是通配符（精确匹配），且目录里无该行 → 只有 admin 能进（537 处，已知限制） | `grep -rn "hasAuthority('\\*')" backend/src` | 改真实权限码，或明确 `hasRole('SUPER_ADMIN')` |
+| 5 | **目录自身** `permission_id_str` 是冒号形态 | 目录 4 行（`inventory:query` 等）id_str 与 code 相同 → 授权行跟着「合法但形态脏」 | `SELECT permission_id_str FROM permissions WHERE permission_id_str NOT LIKE 'PERM_%';` | **需 Owner 批准后一次性改目录**（本次未动） |
+
+### 2026-10-28 实测结果
+
+```sql
+-- A44/A45 分母 1733，修复前 FAIL rows=1
+UPDATE role_permissions rp SET permission_id = p.permission_id_str
+  FROM permissions p
+ WHERE p.permission_code = rp.permission_id AND rp.permission_id NOT LIKE 'PERM_%';
+-- 结果：a44/a45 失败 0 ｜ 仍有 16 行 permission_id 非 PERM_（因其指向的是「目录里 id_str 本身就是冒号形态」的 4 条）
+```
+
+软删除悬空行（`deleted=1` 且 `permission_id` 无对应目录行）**不动**：不参与判定，动了反而破坏审计。

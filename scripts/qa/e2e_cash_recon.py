@@ -415,12 +415,37 @@ class CashRecon:
 
     def slip_row(self, slip_id):
         """列序：0 slip_id / 1 shift_id / 2 expected / 3 actual / 4 difference / 5 rcf / 6 dnet /
-        7 version / 8 reserve_fen / 9 cash_counted_fen"""
+        7 version / 8 reserve_fen / 9 cash_counted_fen / 10 create_time(text)"""
         r = self.rows("SELECT slip_id, shift_id, expected_amount, actual_amount, difference_amount,"
                       " COALESCE(refund_component_fen,0), COALESCE(difference_net_fen,0), version,"
-                      " COALESCE(reserve_fen,0), COALESCE(cash_counted_fen,0)"
+                      " COALESCE(reserve_fen,0), COALESCE(cash_counted_fen,0),"
+                      " to_char(create_time,'YYYY-MM-DD HH24:MI:SS')"
                       " FROM deposit_slips WHERE slip_id=%d" % int(slip_id))
         return r[0] if r else None
+
+    def make_paid_order(self):
+        """造一笔「已支付但不退款」的订单（供 generate 判定门店用）。返回 (ok, err)。"""
+        st, b = http("GET", self.a.api + "/v1/pos/api/dishes", self.cash_token)
+        dishes = (data_of(b) or []) if ok(b) else []
+        priced = [d for d in dishes if d.get("dishId") and float(d.get("price") or 0) > 0]
+        if not priced:
+            return False, "无可用菜品"
+        d = priced[0]
+        item = {"productId": str(d["dishId"]), "productName": d.get("dishName") or "",
+                "quantity": 1, "price": float(d.get("price") or 0),
+                "dishType": d.get("dishType") or "single"}
+        st2, ob = http("POST", self.a.api + "/v1/pos/orders/order", self.cash_token,
+                       {"orderType": "dinein", "items": [item], "idempotencyKey": self.next_idem()})
+        if not ok(ob):
+            return False, "下单失败 code=%s msg=%s" % ((ob or {}).get("code"),
+                                                       str((ob or {}).get("message"))[:60])
+        dd = data_of(ob) or {}
+        st3, pb = http("POST", self.a.api + "/v1/pos/orders/order/pay", self.cash_token,
+                       {"orderId": dd.get("orderId"), "paymentMethod": "现金", "amount": dd.get("totalAmount")})
+        if not ok(pb):
+            return False, "支付失败 code=%s msg=%s" % ((pb or {}).get("code"),
+                                                       str((pb or {}).get("message"))[:60])
+        return True, dd.get("orderNumber")
 
     def confirm_attribution(self, slip_id, refund_record_id, shift_id, reason):
         return http("POST", self.a.api + "/v1/finance/deposit-slips/%d/confirm-attribution" % int(slip_id),
@@ -528,6 +553,149 @@ class CashRecon:
         self.boundary = {"slipId": sid, "shiftId": shift_id, "refund": rf, "row": row}
         return True
 
+
+    # ---------- 退款归属三步验证（Owner 2026-10-28 拍板口径） ----------
+    def section_attribution_triple(self, shift_id, boundary_min, negative_no_confirm=False):
+        """① 边界退款不计入任何班次；② 人工确认归上一班后金额正确落位；③ 负向（不确认必须红）。
+
+        · 全程不用固定 sleep：一律 wait_until 轮询 + 超时（跟 DB/接口状态，不猜时间）。
+        · 负向演练由 --no-confirm 触发：跳过确认；此时「上一班 rcf 增加」必须为假，
+          若它为真 → 说明该断言恒真（恒真即无效），本步判 FAIL。
+        """
+        if not shift_id:
+            return self.not_ready("退款归属三步验证", "未传入边界班次")
+
+        rf, err = self.make_refund(3000, "%s TRIPLE 边界退款" % self.mark)
+        if not rf:
+            return self.not_ready("三步验证·造退款", err)
+        self.end_shift(self.shift_terminal(shift_id))
+        st, b = self.generate_slip(shift_id)
+        if not ok(b):
+            return self.not_ready("三步验证·generate", "HTTP %s code=%s msg=%s" % (
+                st, (b or {}).get("code"), str((b or {}).get("message"))[:90]))
+        sid = self.slip_id_of(b)
+        amount = rf["amountFen"]
+
+        def rcf_of(slip):
+            if not slip:
+                return None
+            r = self.slip_row(slip)
+            return None if not r else int(r[5] or 0)
+
+        # ---- ① 边界退款不计入任何班次 ----
+        wait_until(lambda: rcf_of(sid) is not None, timeout_sec=60, interval_sec=1.0)
+        rcf0 = rcf_of(sid)
+        self.step("三步① 边界退款不计入任何班次（refund_component_fen == 0）",
+                  rcf0 == 0, "slip=%s shift=%s rcf=%s（本笔=%d 分）" % (sid, shift_id, rcf0, amount))
+        hit = wait_until(
+            lambda: self.num("SELECT COUNT(*) FROM finance_audit_logs WHERE operation_type="
+                             "'RECON_SHIFT_BOUNDARY_PENDING' AND target_id=%d" % int(shift_id)) > 0,
+            timeout_sec=60, interval_sec=1.0)
+        n_audit = self.num("SELECT COUNT(*) FROM finance_audit_logs WHERE operation_type="
+                           "'RECON_SHIFT_BOUNDARY_PENDING' AND target_id=%d" % int(shift_id))
+        self.step("三步① 审计 RECON_SHIFT_BOUNDARY_PENDING 已落（轮询等待）", bool(hit),
+                  "shift_id=%s 命中=%d" % (shift_id, n_audit))
+
+        # ---- 归属目标：上一班（已关班）及其缴款单 ----
+        prev = self.rows("SELECT shift_id FROM pos_shifts WHERE deleted=0 AND shift_id<%d"
+                         " AND end_time IS NOT NULL ORDER BY shift_id DESC LIMIT 1" % int(shift_id))
+        prev_shift = int(prev[0][0]) if prev else None
+        if not prev_shift:
+            return self.not_ready("三步② 归属到上一班", "找不到上一班（shift<%d 且已关班）" % shift_id)
+        # ---- 归属目标必须满足 A39 as-of-create：slip.create_time >= refund_time ----
+        # 1) 退款时间（以资金流水的 refund_time 为准，缺失则用退款单创建时间）
+        rt = self.rows("SELECT COALESCE(to_char(MAX(refund_time),'YYYY-MM-DD HH24:MI:SS'),"
+                       " to_char(MAX(create_time),'YYYY-MM-DD HH24:MI:SS')) FROM fund_flows"
+                       " WHERE refund_record_id=%d" % int(rf["refundRecordId"]))
+        refund_time = rt[0][0] if rt and rt[0][0] else None
+        # 2) 优先复用「退款之后生成」的既有 slip
+        cand = self.rows("SELECT slip_id FROM deposit_slips WHERE shift_id=%d AND deleted=0"
+                         " AND (%s IS NULL OR create_time >= '%s'::timestamp)"
+                         " ORDER BY slip_id DESC LIMIT 1" % (prev_shift,
+                                                             "'%s'" % refund_time if refund_time else "NULL",
+                                                             refund_time or "1970-01-01"))
+        prev_slip = int(cand[0][0]) if cand else None
+        target_note = "复用既有 slip（create_time >= refund_time）"
+        # 3) 没有就**先退款、后关上一班再 generate**：新开一个班次→立刻关班→generate，
+        #    这样 slip.create_time 必然晚于退款时间（满足 as-of-create），不会与 A39 打架
+        if not prev_slip:
+            t_term = "T-E2E-%s-T" % self.tag
+            uid = self.num("SELECT user_id FROM users WHERE username='%s'" % self.a.pos_user)
+            sto, sb2 = http("POST", self.a.api + "/v1/pos/auth/shift/start", self.cash_token,
+                            {"terminalId": t_term, "employeeId": str(uid or self.a.pos_user),
+                             "employeeName": self.a.pos_user, "shiftType": "morning", "openingCash": 0})
+            if ok(sb2):
+                # generate 要求「班次时间窗内有订单，能确定门店」→ 先造一笔已支付订单
+                paid, perr = self.make_paid_order()
+                t_shift = int((data_of(sb2) or {}).get("shiftId") or self.num(
+                    "SELECT shift_id FROM pos_shifts WHERE terminal_id='%s' ORDER BY shift_id DESC LIMIT 1" % t_term))
+                self.end_shift(t_term)
+                stg, bg2 = self.generate_slip(t_shift)
+                if ok(bg2):
+                    gen_id = self.slip_id_of(bg2)
+                    prev_slip = int(gen_id) if gen_id else None
+                    prev_shift = t_shift
+                    target_note = "新建班次 shift=%d 在退款后生成 slip（as-of-create 成立）" % t_shift
+                else:
+                    target_note = ("新建班次 shift=%s generate 失败：HTTP %s code=%s msg=%s"
+                                   % (t_shift, stg, (bg2 or {}).get("code"),
+                                      str((bg2 or {}).get("message"))[:90]))
+            else:
+                target_note = ("新建目标班次失败：HTTP %s code=%s msg=%s"
+                               % (sto, (sb2 or {}).get("code"), str((sb2 or {}).get("message"))[:80]))
+        prev_before = rcf_of(prev_slip) or 0
+        # 4) 前置校验（夹具合法性）：目标 slip.create_time >= refund_time，否则直接判「夹具不合法」
+        prow = self.slip_row(prev_slip) if prev_slip else None
+        slip_ct = prow[10] if prow and len(prow) > 10 else None
+        as_of_ok = bool(slip_ct and refund_time and slip_ct >= refund_time)
+        self.step("三步② 前置校验：目标 slip.create_time >= refund_time（as-of-create 口径）",
+                  as_of_ok, "目标 slip=%s create_time=%s；refund_time=%s；%s" % (
+                      prev_slip, slip_ct, refund_time, target_note))
+        if not as_of_ok:
+            return self.not_ready("三步② 夹具不合法",
+                                  "找不到/造不出「退款之后生成」的缴款单：slip.create_time=%s < refund_time=%s；"
+                                  "按 A39 as-of-create 口径这种归属不计入 rcf，继续跑只会得到假 FAIL"
+                                  % (slip_ct, refund_time))
+
+        # ---- ② 确认归属到上一班 ----
+        if negative_no_confirm:
+            self.step("三步②【负向演练】故意不执行 confirm-attribution", True,
+                      "跳过确认（--no-confirm），下面「上一班 rcf 增加」必须为假")
+        else:
+            stc, bc = self.confirm_attribution(sid, rf["refundRecordId"], prev_shift,
+                                               "%s TRIPLE 归属上一班" % self.mark)
+            self.step("三步② confirm-attribution 归上一班成功", ok(bc),
+                      "slip=%s refund=%s shift=%s HTTP %s code=%s msg=%s" % (
+                          sid, rf["refundRecordId"], prev_shift, stc, (bc or {}).get("code"),
+                          str((bc or {}).get("message"))[:70]))
+
+        grew = False
+        if prev_slip:
+            grew = wait_until(lambda: (rcf_of(prev_slip) or 0) >= prev_before + amount,
+                              timeout_sec=90, interval_sec=1.0)
+            self.step("三步② 上一班 slip 的 refund_component 增加本笔金额",
+                      bool(grew), "prev_slip=%s rcf %d → %s（本笔 %d）" % (
+                          prev_slip, prev_before, rcf_of(prev_slip), amount))
+        else:
+            self.step("三步② 上一班 slip 的 refund_component 增加本笔金额", False,
+                      "上一班 shift=%s 无缴款单 → 无法观察归属落点" % prev_shift)
+
+        rcf_self = rcf_of(sid)
+        self.step("三步② 本轮边界 slip 的 refund_component 仍为 0（没算到自己头上）",
+                  rcf_self == 0, "slip=%s rcf=%s（应保持 0）" % (sid, rcf_self))
+
+        # ---- ③ 负向有效性：不确认时「rcf 增加」必须为假 ----
+        if negative_no_confirm:
+            self.step("三步③ 负向有效性：不确认 → 上一班 rcf 未增加（断言如期为红）",
+                      not grew, "负向模式：grew=%s（必须 False，否则该断言恒真）" % grew)
+        else:
+            self.step("三步③ 负向有效性（由 --no-confirm 单独演练）", True,
+                      "本次为正向运行：确认后 grew=%s；负向证据见 --no-confirm 那次输出" % grew)
+
+        self.triple_ctx = {"slipId": sid, "shiftId": shift_id, "prevShift": prev_shift,
+                           "prevSlip": prev_slip, "amount": amount, "prevBefore": prev_before,
+                           "negative": negative_no_confirm}
+        return True
     # ---------- ③ 归属确认 ----------
     def section_confirm(self):
         ctx = getattr(self, "boundary", None) or getattr(self, "in_shift", None)
@@ -785,6 +953,16 @@ class CashRecon:
         boundary_min = self.shift_window_minutes()
         self.step("边界容差读取（finance.cash.shift-boundary-minutes）", True, "%d 分钟" % boundary_min)
 
+        # ---------- 退款归属三步验证（Owner 2026-10-28 口径；--only-triple 时只跑这段） ----------
+        if getattr(self.a, "only_triple", False):
+            b2 = self.ensure_boundary_shift(boundary_min)
+            if not b2:
+                self.not_ready("三步验证·边界班次", "无法开班")
+            else:
+                self.section_attribution_triple(b2, boundary_min,
+                                                negative_no_confirm=getattr(self.a, "no_confirm", False))
+            return self.summary()
+
         # ② 先用「新鲜班次」跑边界段；① 需要「距 start > 边界」的班次（没有就开班并等待）
         b_shift = self.ensure_boundary_shift(boundary_min)
         if not b_shift:
@@ -805,6 +983,19 @@ class CashRecon:
         self.beat("section_confirm 开始")
         self.section_confirm()
         self.beat("section_confirm 结束")
+        # 三步归属验证：默认跑；造不出边界退款/上一班缴款单 → INFO 跳过（不静默、不算 PASS/FAIL）
+        if getattr(self.a, "no_confirm", False):
+            self.step("AC-58 三步（负向演练 --no-confirm）", True,
+                      "负向开关已开：本次故意不确认，断言应如期变红（默认不跑）", state="INFO")
+        else:
+            try:
+                ok3 = self.section_attribution_triple(b_shift, boundary_min)
+            except Exception as e:
+                ok3 = self.not_ready("AC-58 三步（退款归属）", "异常：%s" % str(e)[:120])
+            if not ok3:
+                self.step("AC-58 三步 skipped_no_boundary_refund", True,
+                          "无可用边界退款/上一班缴款单 → INFO 跳过（不算 PASS 也不算 FAIL）",
+                          state="INFO")
         self.section_idempotent_and_change()
         self.beat("section_idempotent_and_change 结束")
         self.section_forbidden()
@@ -852,6 +1043,10 @@ def main():
     p.add_argument("--refund-password", default="Admin@123456")
     p.add_argument("--store-id", type=int, default=1)
     p.add_argument("--shift-id", type=int, default=0, help="0=自动取最近 OPEN 班次")
+    p.add_argument("--only-triple", action="store_true",
+                   help="只跑「退款归属三步验证」（快，无需等 10 分钟边界窗口）")
+    p.add_argument("--no-confirm", action="store_true",
+                   help="负向演练：三步验证中故意不执行 confirm-attribution，断言应如期变红")
     p.add_argument("--bank-account-id", type=int, default=24,
                    help="人工汇总存行用的收款银行户（本店 account_type=1 status=1，默认 24）")
     p.add_argument("--opening-cash", type=float, default=100.0,

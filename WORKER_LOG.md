@@ -4370,3 +4370,23 @@ general-ledger / reports-trial-balance / overview-summary / finance-accounts →
 1. 子集测试冒充全量测试；
 2. `compile` 冒充 `test-compile`；
 3. 旧进程冒充新代码（改完没重启就测）。
+
+## 2026-10-28 启动脚本坑（务必先编译）
+
+`backend/start-backend.cmd` 直接 `mvn spring-boot:run` 会撞：
+
+```
+java.lang.NoClassDefFoundError: com/foodtraceability/entity/InventoryCheckAsset
+  Caused by: java.lang.ClassNotFoundException: com.foodtraceability.entity.InventoryCheckAsset
+```
+
+根因：`target/classes` 与源码不同步（别人更新了实体/控制器，本地只跑了 test-compile 或没编译）。
+**不是代码坏了**，是构建产物旧了。正确做法：
+
+```bash
+cd backend
+mvn -o -B -DskipTests compile   # 增量编译
+# 再启动：start-backend.cmd  （或 mvn -o -B spring-boot:run -Dspring-boot.run.profiles=pg）
+```
+
+建议：把这一行增量编译直接写进 `start-backend.cmd` 首行，避免每个人拉新代码后都误判为「代码坏了」。
