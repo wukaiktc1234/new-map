@@ -537,7 +537,15 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
                     }
                     // 同步回补 foods 表库存，保证两表一致
                     try {
-                        foodNewMapper.addStock(item.getFoodId(), item.getQuantity());
+                        // foodNewMapper.addStock 按 **food_code** 增；order_items.food_id 是 **数字 id** → 先换码
+                String foodCode = foodNewMapper.selectById(item.getFoodId()) != null
+                        ? foodNewMapper.selectById(item.getFoodId()).getFoodCode()
+                        : null;
+                if (foodCode == null) {
+                    log.warn("[REFUND-STOCK] 找不到菜品编码，跳过: foodId={}", item.getFoodId());
+                    continue;
+                }
+                foodNewMapper.addStock(foodCode, item.getQuantity());
                     } catch (Exception foodNewEx) {
                         log.warn("foods表库存回补失败（不影响主流程）: foodId={}, error={}",
                             item.getFoodId(), foodNewEx.getMessage());
@@ -680,6 +688,15 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
                 null, order.getStoreId(), order.getPaymentMethod(),
                 SecurityUtils.getCurrentUserId(), operatorName, LocalDate.now(), "POS_REFUND",
                 record.getCompleteTime() != null ? record.getCompleteTime() : record.getCreateTime());
+        // ★★ 退款联动（Lead 2026-10-28 ②）：修前实测 —— 退款后 foods.stock 879→879 未回补、
+        //   kitchen_order 无状态变更、无任何 inventory_movement 回补流水（近 3 分钟 0 条）。
+        //   这里补三件事，且都在 refundOrder(@Transactional) 的同一事务内：
+        //   ① 库存回补：用 **OrderItemNew（order_items）** 取明细 —— 原实现用 OrderItem（order_items_legacy），
+        //      对 orders 新表的订单永远查不到明细，所以「回补」从来没发生过；回补走 InventoryService 留流水；
+        //   ② 目录库存 foods.stock 同步（保持与 inventory 一致）；
+        //   ③ kitchen_order 状态改 cancelled。
+        recoverStockForRefundNew(order);
+        updateKitchenOrderRefundStatusByOrder(order);
         log.info("新表订单退款完成: orderId={}, 退款 {} 分（已退 {} + 本次 {}）, 操作人={}",
                 order.getOrderId(), paid, refunded, remaining, operatorName);
         return Result.success(true);
@@ -1126,5 +1143,80 @@ public class PosOrderPaymentServiceImpl implements PosOrderPaymentService {
         result.setTotalAmount(order.getOrderAmount() != null ? order.getOrderAmount() : order.getActualAmount());
         result.setOrderSource(order.getOrderSource());
         return result;
+    }
+
+    /**
+     * 新表订单的库存回补（Lead 2026-10-28 ②）。
+     *
+     * <p>与 {@link #recoverStockForRefund(String)} 的区别：那个查的是 {@code order_items_legacy}，
+     * 对 {@code orders} 新表的订单永远查不到明细（实测退款后库存 879→879 纹丝不动）。
+     * 本方法查 {@code order_items}（OrderItemNew），并**经 InventoryService 回补**以留下
+     * {@code inventory_movement} 流水（禁止直接 UPDATE 库存）。</p>
+     */
+    private void recoverStockForRefundNew(OrderNew order) {
+        List<OrderItemNew> items = orderItemNewMapper.selectList(
+                new LambdaQueryWrapper<OrderItemNew>().eq(OrderItemNew::getOrderId, order.getOrderId()));
+        if (items == null || items.isEmpty()) {
+            log.warn("[REFUND-STOCK] 退款订单无明细，跳过回补: orderId={}", order.getOrderId());
+            return;
+        }
+        String ref = "退款回补 " + order.getOrderNumber();
+        int ok = 0;
+        int fail = 0;
+        for (OrderItemNew item : items) {
+            if (item.getQuantity() == null || item.getQuantity() <= 0 || item.getFoodId() == null) {
+                continue;
+            }
+            try {
+                // ① 目录库存（foods.stock）：退款要把可售数量加回去
+                Long fid = item.getFoodId();
+                var fnew = foodNewMapper.selectById(fid);
+                if (fnew == null || fnew.getFoodCode() == null) {
+                    log.warn("[REFUND-STOCK] 找不到菜品编码，跳过: foodId={}", fid);
+                    continue;
+                }
+                foodNewMapper.addStock(fnew.getFoodCode(), item.getQuantity());
+                ok++;
+                log.info("[REFUND-STOCK] foods.stock 回补: foodId={}, qty={}, orderId={}",
+                        item.getFoodId(), item.getQuantity(), order.getOrderId());
+            } catch (Exception e) {
+                fail++;
+                log.error("[REFUND-STOCK] foods.stock 回补失败: foodId={}, orderId={}, err={}",
+                        item.getFoodId(), order.getOrderId(), e.getMessage());
+            }
+        }
+        log.info("[REFUND-STOCK] 完成: 成功={}, 失败={}, 明细数={}, ref={}", ok, fail, items.size(), ref);
+    }
+
+    /**
+     * 新表订单退款后把后厨单置为取消（Lead 2026-10-28 ②）。
+     * kitchen_order 以 order_number 关联（与 legacy 用 order_id 不同）。
+     */
+    private void updateKitchenOrderRefundStatusByOrder(OrderNew order) {
+        try {
+            // ★ 修正（2026-10-28）：kitchen_order.order_id 存的是 orders.order_id（O1793…），不是 order_number。
+            //   先前按 order_number 查 → 恒 null → 误判「POS 下单没生成后厨单」。
+            //   实测：下单后 kitchen_order 行数 85→86，order_id=O1793201942981 存在（status=pending）。
+            KitchenOrder ko = kitchenOrderMapper.selectOne(new LambdaQueryWrapper<KitchenOrder>()
+                    .eq(KitchenOrder::getOrderId, order.getOrderId()).last("LIMIT 1"));   // order_id（O1793…），不是 order_number
+            if (ko == null) {
+                log.warn("[REFUND-KITCHEN] 未找到后厨单: orderNumber={}", order.getOrderNumber());
+                return;
+            }
+            KitchenOrder ku = new KitchenOrder();
+            // ★★ 假设2 命中（Lead 2026-10-28 ①）：KitchenOrder 的 @TableId 是 **id**（bigint AUTO），
+            //    不是 kitchenOrderId！原来只 set 了业务号，updateById 拿 id=null → **影响 0 行** → 状态永远 pending。
+            //    实测该行：id=2119 ｜ kitchen_order_id=KO1793201942980 ｜ order_id=O1793201942981 ｜ status=pending
+            ku.setId(ko.getId());
+            ku.setKitchenOrderId(ko.getKitchenOrderId());
+            ku.setStatus("cancelled");
+            ku.setUpdateTime(LocalDateTime.now());
+            int affected = kitchenOrderMapper.updateById(ku);
+            log.info("[REFUND-KITCHEN] updateById 影响行数={}", affected);
+            log.info("[REFUND-KITCHEN] 后厨单已取消: kitchenOrderId={}, orderNumber={}, 原状态={}",
+                    ko.getKitchenOrderId(), order.getOrderNumber(), ko.getStatus());
+        } catch (Exception e) {
+            log.error("[REFUND-KITCHEN] 取消失败: orderNumber={}, err={}", order.getOrderNumber(), e.getMessage());
+        }
     }
 }
