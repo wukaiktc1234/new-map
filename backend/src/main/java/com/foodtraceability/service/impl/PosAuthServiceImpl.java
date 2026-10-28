@@ -625,6 +625,17 @@ public class PosAuthServiceImpl implements PosAuthService {
             // 新表金额是「分」，对外统一「元」
             BigDecimal totalYuan = BigDecimal.valueOf(amountCents).movePointLeft(2);
             stats.put("total_amount", totalYuan);
+        // ★ ③ 交班口径（Lead 2026-10-28）：**必须扣本班次已退款**，否则把退掉的钱算成营收。
+        //   实测（修前）：订单A 36 元 + 订单B 18 元（B 已全额退款）→ 交班报 total_amount=54、closing_cash=54，
+        //   而净额应为 54 − 18 = 36。raw 里已带 refund_cents / net_amount_cents（见 PosShiftMapper 统计 SQL）。
+        long refundCents = raw != null && raw.get("refund_cents") != null
+                ? ((Number) raw.get("refund_cents")).longValue() : 0L;
+        long netCents = raw != null && raw.get("net_amount_cents") != null
+                ? ((Number) raw.get("net_amount_cents")).longValue() : amountCents - refundCents;
+        BigDecimal refundYuanCalc = BigDecimal.valueOf(refundCents).movePointLeft(2);
+        BigDecimal netYuanCalc = BigDecimal.valueOf(netCents).movePointLeft(2);
+        stats.put("refund_amount", refundYuanCalc);
+        stats.put("net_amount", netYuanCalc);
             stats.put("avg_amount", orders > 0
                     ? totalYuan.divide(BigDecimal.valueOf(orders), 2, java.math.RoundingMode.HALF_UP)
                     : BigDecimal.ZERO);

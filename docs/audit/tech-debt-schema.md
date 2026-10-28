@@ -105,6 +105,20 @@ SELECT order_id, order_amount, actual_amount, total_amount, final_amount
 
 **修复方向（未排期）**：orders 增加 `terminal_id` + 回填历史（只能按 pos_shifts 时间窗近似），统计改 `terminal_id = #{terminalId}`。
 
+## P1-2　`orders` 缺 `terminal_id` → 班次统计无法按终端隔离（**潜在资损点**）
+
+```text
+现状：orders 表没有 terminal_id 列；pos_shifts 有 terminal_id。
+后果：交班/日结统计只能按「时间窗 + payment_status=2」聚合，不含 terminal 维度。
+      同一门店多终端同时营业时，A 终端交班会统计到 B 终端的订单 → 营收串台。
+```
+
+**当前实现**（PosShiftMapper.countOrdersByTimeRange 注释已写明）：统计口径 = 时间窗 + `payment_status=2`，
+明确**不绑 terminal**；`startTime/endTime` 用 `#{}` 参数化，无字符串拼接。
+
+**修复方向（未排期）**：orders 增加 `terminal_id`（下单时从班次或请求头带入）+ 回填历史（只能按 pos_shifts 时间窗近似），
+统计改为 `terminal_id = #{terminalId}`。
+
 ## 已知遗留（登记，不修）
 
 | 项 | 说明 |
@@ -176,3 +190,23 @@ MoneyYuanToFen.Result r = MoneyYuanToFen.toFen("123.45");  // → 12345 分（�
 | 前端 `data-*-fen` 钩子 | 钩子名带 `fen`，后端某些接口返回元 | 页面实测比对（`e2e_store_recon.py` AC-49d 就是这么抓出假红的） |
 | 12 个 `*_fen` 影子列 | 建了列但双写未实现，恒 NULL | `python scripts/qa/fen_shadow_check.py`（期望全 NULL；非空 → 立刻确认双写已上线） |
 
+
+## P1-2　`orders` 缺 `terminal_id` → 班次统计无法按终端隔离（潜在资损点）
+
+```text
+现状：orders 表没有 terminal_id 列；pos_shifts 有 terminal_id。
+后果：交班/日结统计只能按「时间窗 + payment_status=2」聚合，不含 terminal 维度。
+      同一门店多终端同时营业时，A 终端交班会统计到 B 终端的订单 -> 营收串台。
+```
+
+当前实现（PosShiftMapper.countOrdersByTimeRange 注释已写明）：统计口径 = 时间窗 + payment_status=2，
+明确不绑 terminal；startTime/endTime 用 #{} 参数化，无字符串拼接。
+
+修复方向（未排期）：orders 增加 terminal_id + 回填历史（只能按 pos_shifts 时间窗近似），明细统计改 terminal_id = #{terminalId}。
+
+## P1-2 orders 缺 terminal_id 导致班次统计无法按终端隔离（潜在资损点）
+
+- 现状：orders 表没有 terminal_id 列；pos_shifts 有 terminal_id。
+- 后果：交班/日结统计只能按「时间窗 + payment_status=2」聚合，不含 terminal 维度；同一门店多终端同时营业时，A 终端交班会统计到 B 终端的订单 -> 营收串台。
+- 当前实现：PosShiftMapper.countOrdersByTimeRange 注释已写明「统计口径 = 时间窗 + payment_status=2，不含 terminal 维度」；startTime/endTime 用 #{} 参数化，无字符串拼接。
+- 修复方向（未排期）：orders 增加 terminal_id + 回填历史（只能按 pos_shifts 时间窗近似），统计改 terminal_id = #{terminalId}。
