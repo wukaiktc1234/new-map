@@ -66,7 +66,7 @@ public class LabelPrinterController {
      */
     @GetMapping("/discover")
     @Operation(summary = "发现系统打印机")
-    @PreAuthorize("hasAuthority('hardware:label-printer:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:view')")
     public Result<List<Map<String, Object>>> discoverPrinters() {
         List<Map<String, Object>> printers = new ArrayList<>();
 
@@ -161,7 +161,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/diagnose")
     @Operation(summary = "诊断标签打印机")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> diagnosePrinter(@RequestBody(required = false) Map<String, String> params) {
         Map<String, Object> diagnosis = new LinkedHashMap<>();
 
@@ -208,7 +208,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/test-print")
     @Operation(summary = "测试打印")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> testPrint(@RequestBody(required = false) Map<String, String> params) {
         Map<String, Object> result = new LinkedHashMap<>();
 
@@ -245,7 +245,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/print-trace-label")
     @Operation(summary = "打印追溯码标签")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> printTraceLabel(@RequestBody Map<String, Object> params) {
         Map<String, Object> result = new LinkedHashMap<>();
 
@@ -285,7 +285,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/batch-print")
     @Operation(summary = "批量打印标签")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> batchPrint(
             @RequestParam(required = false) String printerName,
             @RequestParam(required = false) String templateId,
@@ -632,7 +632,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/config")
     @Operation(summary = "设置打印机配置")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> setConfig(@RequestBody Map<String, Object> config) {
         Map<String, Object> result = new LinkedHashMap<>();
 
@@ -668,7 +668,7 @@ public class LabelPrinterController {
      */
     @GetMapping("/status")
     @Operation(summary = "获取打印机状态")
-    @PreAuthorize("hasAuthority('hardware:label-printer:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:view')")
     public Result<Map<String, Object>> getStatus() {
         try {
             Map<String, Object> status = labelPrintService.getPrinterStatus();
@@ -684,7 +684,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/print-custom")
     @Operation(summary = "打印自定义标签")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public Result<Map<String, Object>> printCustom(@RequestBody Map<String, String> params) {
         Map<String, Object> result = new LinkedHashMap<>();
 
@@ -717,7 +717,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/preview-label")
     @Operation(summary = "预览单个标签")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public void previewLabel(@RequestBody Map<String, Object> labelData,
                              jakarta.servlet.http.HttpServletResponse response) {
         try {
@@ -740,7 +740,7 @@ public class LabelPrinterController {
      */
     @PostMapping("/preview-page")
     @Operation(summary = "预览多标签页面")
-    @PreAuthorize("hasAuthority('hardware:label-printer:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('hardware:label-printer:manage')")
     public void previewPage(
             @RequestParam(required = false) String templateId,
             @RequestBody List<Map<String, Object>> labels,

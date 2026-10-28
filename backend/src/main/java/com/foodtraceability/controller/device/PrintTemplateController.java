@@ -38,7 +38,7 @@ public class PrintTemplateController {
 
     @PostMapping
     @Operation(summary = "创建打印模板")
-    @PreAuthorize("hasAuthority('device:print-template:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:manage')")
     public Result<PrintTemplateVO> createTemplate(@Valid @RequestBody PrintTemplateCreateDTO dto) {
         log.info("创建打印模板: templateName={}, type={}", dto.getTemplateName(), dto.getTemplateType());
         return printTemplateService.createTemplate(dto);
@@ -46,7 +46,7 @@ public class PrintTemplateController {
 
     @PutMapping("/{templateId}")
     @Operation(summary = "更新打印模板")
-    @PreAuthorize("hasAuthority('device:print-template:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:manage')")
     public Result<PrintTemplateVO> updateTemplate(
             @Parameter(description = "模板ID") @PathVariable Long templateId,
             @Valid @RequestBody PrintTemplateUpdateDTO dto) {
@@ -56,7 +56,7 @@ public class PrintTemplateController {
 
     @DeleteMapping("/{templateId}")
     @Operation(summary = "删除打印模板")
-    @PreAuthorize("hasAuthority('device:print-template:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:manage')")
     public Result<Void> deleteTemplate(
             @Parameter(description = "模板ID") @PathVariable Long templateId) {
         log.info("删除打印模板: templateId={}", templateId);
@@ -65,7 +65,7 @@ public class PrintTemplateController {
 
     @GetMapping("/{templateId}")
     @Operation(summary = "查询打印模板详情")
-    @PreAuthorize("hasAuthority('device:print-template:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:view')")
     public Result<PrintTemplateVO> getTemplateById(
             @Parameter(description = "模板ID") @PathVariable Long templateId) {
         log.info("查询打印模板: templateId={}", templateId);
@@ -74,7 +74,7 @@ public class PrintTemplateController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询打印模板列表")
-    @PreAuthorize("hasAuthority('device:print-template:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:view')")
     public Result<IPage<PrintTemplateVO>> getTemplatePage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
@@ -87,7 +87,7 @@ public class PrintTemplateController {
 
     @GetMapping("/list")
     @Operation(summary = "查询启用的打印模板列表")
-    @PreAuthorize("hasAuthority('device:print-template:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:view')")
     public Result<List<PrintTemplateVO>> getEnabledTemplates(
             @Parameter(description = "模板类型") @RequestParam(required = false) Integer templateType,
             @Parameter(description = "门店ID") @RequestParam(required = false) Long storeId) {
@@ -96,7 +96,7 @@ public class PrintTemplateController {
 
     @GetMapping("/default")
     @Operation(summary = "获取默认模板")
-    @PreAuthorize("hasAuthority('device:print-template:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:view')")
     public Result<PrintTemplateVO> getDefaultTemplate(
             @Parameter(description = "模板类型") @RequestParam Integer templateType,
             @Parameter(description = "门店ID") @RequestParam(required = false) Long storeId) {
@@ -105,7 +105,7 @@ public class PrintTemplateController {
 
     @PutMapping("/{templateId}/default")
     @Operation(summary = "设置为默认模板")
-    @PreAuthorize("hasAuthority('device:print-template:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:manage')")
     public Result<Void> setAsDefault(
             @Parameter(description = "模板ID") @PathVariable Long templateId) {
         log.info("设置默认模板: templateId={}", templateId);
@@ -114,7 +114,7 @@ public class PrintTemplateController {
 
     @PostMapping("/{templateId}/render")
     @Operation(summary = "渲染模板内容")
-    @PreAuthorize("hasAuthority('device:print-template:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-template:manage')")
     public Result<String> renderTemplate(
             @Parameter(description = "模板ID") @PathVariable Long templateId,
             @RequestBody Map<String, Object> variables) {

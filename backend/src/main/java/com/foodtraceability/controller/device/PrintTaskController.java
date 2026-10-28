@@ -39,7 +39,7 @@ public class PrintTaskController {
 
     @PostMapping
     @Operation(summary = "创建打印任务")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<PrintTaskVO> createPrintTask(@Valid @RequestBody PrintTaskCreateDTO dto) {
         log.info("创建打印任务: deviceId={}, taskType={}", dto.getDeviceId(), dto.getTaskType());
         return printTaskService.createPrintTask(dto);
@@ -47,7 +47,7 @@ public class PrintTaskController {
 
     @PostMapping("/batch")
     @Operation(summary = "批量创建打印任务（厨房单场景）")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<List<PrintTaskVO>> batchCreatePrintTasks(@Valid @RequestBody List<PrintTaskCreateDTO> dtoList) {
         log.info("批量创建打印任务: 数量={}", dtoList.size());
         return printTaskService.batchCreatePrintTasks(dtoList);
@@ -55,7 +55,7 @@ public class PrintTaskController {
 
     @GetMapping("/{taskId}")
     @Operation(summary = "查询打印任务详情")
-    @PreAuthorize("hasAuthority('device:print-task:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:view')")
     public Result<PrintTaskVO> getTaskById(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         log.info("查询打印任务: taskId={}", taskId);
@@ -64,7 +64,7 @@ public class PrintTaskController {
 
     @GetMapping("/page")
     @Operation(summary = "分页查询打印任务列表")
-    @PreAuthorize("hasAuthority('device:print-task:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:view')")
     public Result<IPage<PrintTaskVO>> getTaskPage(
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size,
@@ -89,7 +89,7 @@ public class PrintTaskController {
 
     @GetMapping("/device/{deviceId}/pending")
     @Operation(summary = "查询设备的待打印任务")
-    @PreAuthorize("hasAuthority('device:print-task:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:view')")
     public Result<List<PrintTaskVO>> getPendingTasksByDevice(
             @Parameter(description = "设备ID") @PathVariable Long deviceId) {
         log.info("查询待打印任务: deviceId={}", deviceId);
@@ -98,7 +98,7 @@ public class PrintTaskController {
 
     @PutMapping("/{taskId}/printing")
     @Operation(summary = "标记任务为打印中")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<Void> updateTaskToPrinting(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         log.info("标记任务为打印中: taskId={}", taskId);
@@ -107,7 +107,7 @@ public class PrintTaskController {
 
     @PutMapping("/{taskId}/completed")
     @Operation(summary = "标记任务为已完成")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<Void> updateTaskToCompleted(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         log.info("标记任务为已完成: taskId={}", taskId);
@@ -116,7 +116,7 @@ public class PrintTaskController {
 
     @PutMapping("/{taskId}/failed")
     @Operation(summary = "标记任务为失败")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<Void> updateTaskToFailed(
             @Parameter(description = "任务ID") @PathVariable Long taskId,
             @RequestBody(required = false) Map<String, String> request) {
@@ -127,7 +127,7 @@ public class PrintTaskController {
 
     @PostMapping("/{taskId}/retry")
     @Operation(summary = "重试失败的打印任务")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<Void> retryFailedTask(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         log.info("重试打印任务: taskId={}", taskId);
@@ -136,7 +136,7 @@ public class PrintTaskController {
 
     @DeleteMapping("/{taskId}")
     @Operation(summary = "删除打印任务")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<Void> deletePrintTask(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         log.info("删除打印任务: taskId={}", taskId);
@@ -145,7 +145,7 @@ public class PrintTaskController {
 
     @PutMapping("/{taskId}")
     @Operation(summary = "更新打印任务")
-    @PreAuthorize("hasAuthority('device:print-task:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:print-task:manage')")
     public Result<PrintTaskVO> updatePrintTask(
             @Parameter(description = "任务ID") @PathVariable Long taskId,
             @RequestBody PrintTask task) {

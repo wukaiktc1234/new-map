@@ -760,6 +760,16 @@ public class DepositSlipServiceImpl implements DepositSlipService {
 
     // ==================== 内部工具 ====================
 
+    /** bug-㉓：按班次反查缴款单（shift_id 在 deposit_slips 上唯一）。 */
+    private Long resolveSlipIdByShift(Long shiftId) {
+        if (shiftId == null) {
+            return null;
+        }
+        List<DepositSlip> found = depositSlipMapper.selectList(
+                new LambdaQueryWrapper<DepositSlip>().eq(DepositSlip::getShiftId, shiftId).last("LIMIT 1"));
+        return (found == null || found.isEmpty()) ? null : found.get(0).getSlipId();
+    }
+
     private DepositSlip requireSlip(Long slipId) {
         if (slipId == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "slipId 不能为空");
@@ -1140,6 +1150,15 @@ public class DepositSlipServiceImpl implements DepositSlipService {
         }
         Long operatorId = currentOperatorId();
 
+        // bug-㉓（P2）：归属行的 slip_id 必须与 shift_id **同源**（按目标班次反查缴款单），
+        // 而不是 URL 里的入口 slipId —— 否则审计链会显示「入口 slip 被改了」，实际金额落在目标 slip。
+        Long targetSlipId = resolveSlipIdByShift(shiftId);
+        if (targetSlipId == null) {
+            targetSlipId = slipId;
+            log.warn("[METRIC] attribution_slip_fallback refundRecordId={} targetShiftId={} entrySlipId={}",
+                    refundRecordId, shiftId, slipId);
+        }
+
         com.foodtraceability.entity.finance.recon.RefundShiftAttribution existing =
                 refundShiftAttributionMapper.selectOne(new LambdaQueryWrapper<com.foodtraceability.entity.finance.recon.RefundShiftAttribution>()
                         .eq(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getRefundRecordId, refundRecordId)
@@ -1152,7 +1171,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                     new com.foodtraceability.entity.finance.recon.RefundShiftAttribution();
             row.setRefundRecordId(refundRecordId);
             row.setShiftId(shiftId);
-            row.setSlipId(slipId);
+            row.setSlipId(targetSlipId);   // bug-㉓：与 shiftId 同源
             row.setOperatorId(operatorId);
             row.setReason(reason);
             row.setConfirmedAt(java.time.OffsetDateTime.now());
@@ -1173,7 +1192,7 @@ public class DepositSlipServiceImpl implements DepositSlipService {
                             .eq(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getId, existing.getId())
                             .eq(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getVersion, oldVersion)
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getShiftId, shiftId)
-                            .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getSlipId, slipId)
+                            .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getSlipId, targetSlipId)
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getOperatorId, operatorId)
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getReason, reason)
                             .set(com.foodtraceability.entity.finance.recon.RefundShiftAttribution::getConfirmedAt, java.time.OffsetDateTime.now())

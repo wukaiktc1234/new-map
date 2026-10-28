@@ -43,7 +43,7 @@ public class TakeoutLockerController {
     @UnfinishedFeature(table = "takeout_locker")
     @PostMapping("/locker/{lockerId}/connect")
     @Operation(summary = "连接取餐柜")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> connectLocker(@PathVariable Long lockerId) {
         return takeoutLockerService.connectLocker(lockerId);
     }
@@ -55,7 +55,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/locker/{lockerId}/disconnect")
     @Operation(summary = "断开取餐柜连接")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> disconnectLocker(@PathVariable Long lockerId) {
         return takeoutLockerService.disconnectLocker(lockerId);
     }
@@ -67,7 +67,7 @@ public class TakeoutLockerController {
      */
     @GetMapping("/locker/{lockerId}/status")
     @Operation(summary = "获取取餐柜状态")
-    @PreAuthorize("hasAuthority('device:locker:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:view')")
     public Map<String, Object> getLockerStatus(@PathVariable Long lockerId) {
         return takeoutLockerService.getLockerStatus(lockerId);
     }
@@ -83,7 +83,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/assign-slot")
     @Operation(summary = "分配格口")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> assignSlot(@RequestParam Long lockerId,
                                          @RequestParam Long orderId,
                                          @RequestParam String slotType,
@@ -102,7 +102,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/put-takeout")
     @Operation(summary = "存入外卖")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> putTakeout(@RequestParam Long slotId,
                                          @RequestParam Long orderId,
                                          @RequestParam String putOperator) {
@@ -117,7 +117,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/pickup-takeout")
     @Operation(summary = "取走外卖")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> pickupTakeout(@RequestParam String pickupCode,
                                            @RequestParam String pickupOperator) {
         return takeoutLockerService.pickupTakeout(pickupCode, pickupOperator);
@@ -129,7 +129,7 @@ public class TakeoutLockerController {
      */
     @GetMapping("/lockers/status")
     @Operation(summary = "批量获取取餐柜状态")
-    @PreAuthorize("hasAuthority('device:locker:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:view')")
     public Map<String, Object> batchGetLockerStatus() {
         return takeoutLockerService.batchGetLockerStatus();
     }
@@ -141,7 +141,7 @@ public class TakeoutLockerController {
      */
     @GetMapping("/locker/{lockerId}/slots/status")
     @Operation(summary = "获取格口状态")
-    @PreAuthorize("hasAuthority('device:locker:view') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:view')")
     public Map<String, Object> getLockerSlotsStatus(@PathVariable Long lockerId) {
         return takeoutLockerService.getLockerSlotsStatus(lockerId);
     }
@@ -154,7 +154,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/release-slot")
     @Operation(summary = "释放格口")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> releaseSlot(@RequestParam Long slotId,
                                          @RequestParam String operator) {
         return takeoutLockerService.releaseSlot(slotId, operator);
@@ -167,7 +167,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/locker/{lockerId}/reset-usage")
     @Operation(summary = "重置每日使用计数")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> resetDailyUsageCount(@PathVariable Long lockerId) {
         return takeoutLockerService.resetDailyUsageCount(lockerId);
     }
@@ -179,7 +179,7 @@ public class TakeoutLockerController {
      */
     @PostMapping("/locker/{lockerId}/test")
     @Operation(summary = "测试取餐柜")
-    @PreAuthorize("hasAuthority('device:locker:manage') or hasAuthority('*')")
+    @PreAuthorize("hasAuthority('device:locker:manage')")
     public Map<String, Object> testLocker(@PathVariable Long lockerId) {
         return takeoutLockerService.testLocker(lockerId);
     }
