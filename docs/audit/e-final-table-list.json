@@ -1,0 +1,218 @@
+{
+ "total": 30,
+ "build": 12,
+ "pending_product": 2,
+ "skip": 16,
+ "candidates": [
+  {
+   "table": "contract_document",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "有实体+Mapper+写入点，前端合同模块在用"
+  },
+  {
+   "table": "file_attachment",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "附件通用基建；只存元数据+URL，禁 Blob/本地磁盘"
+  },
+  {
+   "table": "finance_report",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "有入口；detail 不建"
+  },
+  {
+   "table": "hardware_config",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "设备配置页在用"
+  },
+  {
+   "table": "hardware_config_version",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "配置版本化"
+  },
+  {
+   "table": "inventory_code",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "一物一码，销售出库/扫码核销在写"
+  },
+  {
+   "table": "plan_item",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "采购计划明细"
+  },
+  {
+   "table": "receivable",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "应收，POS 支付链路"
+  },
+  {
+   "table": "requisition_requests",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "审批域单据"
+  },
+  {
+   "table": "swap_request_details",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "审批域明细"
+  },
+  {
+   "table": "travel_requests",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "审批域单据"
+  },
+  {
+   "table": "weighing_record",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD",
+   "rationale": "称重记录是业务数据（设备表不建，记录要建）"
+  },
+  {
+   "table": "self_purchase",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD_PENDING_PRODUCT",
+   "rationale": "前端 0 命中，属「写了没上线」，等产品决定"
+  },
+  {
+   "table": "self_purchase_item",
+   "triage": "核心必做",
+   "in_registry": "否",
+   "decision": "BUILD_PENDING_PRODUCT",
+   "rationale": "随主表"
+  },
+  {
+   "table": "operation_logs",
+   "triage": "核心必做",
+   "in_registry": "否（误标已修）",
+   "decision": "SKIP",
+   "rationale": "实际查 sys_operation_logs；OperationLog 实体无调用方"
+  },
+  {
+   "table": "scan_device",
+   "triage": "核心必做",
+   "in_registry": "否（只读配置）",
+   "decision": "SKIP",
+   "rationale": "写入方在仓库外"
+  },
+  {
+   "table": "weighing_device",
+   "triage": "核心必做",
+   "in_registry": "否（只读配置）",
+   "decision": "SKIP",
+   "rationale": "同上"
+  },
+  {
+   "table": "dish_ingredient",
+   "triage": "核心必做",
+   "in_registry": "否（保留不删）",
+   "decision": "SKIP",
+   "rationale": "有活引用但生产从未建过，建表=让死链路变活"
+  },
+  {
+   "table": "role_departments",
+   "triage": "核心必做",
+   "in_registry": "否（保留不删）",
+   "decision": "SKIP",
+   "rationale": "同上（数据权限方案未定）"
+  },
+  {
+   "table": "role_stores",
+   "triage": "核心必做",
+   "in_registry": "否（保留不删）",
+   "decision": "SKIP",
+   "rationale": "同上"
+  },
+  {
+   "table": "sales_order",
+   "triage": "核心必做",
+   "in_registry": "否（重复映射）",
+   "decision": "SKIP",
+   "rationale": "实体已指向 orders"
+  },
+  {
+   "table": "sales_order_detail",
+   "triage": "核心必做",
+   "in_registry": "否（重复映射）",
+   "decision": "SKIP",
+   "rationale": "同上（order_items）"
+  },
+  {
+   "table": "department_permissions",
+   "triage": "核心必做",
+   "in_registry": "是（重复设计）",
+   "decision": "SKIP",
+   "rationale": "role_permissions+role_departments 已覆盖"
+  },
+  {
+   "table": "finance_approval",
+   "triage": "核心必做",
+   "in_registry": "是（未完成功能）",
+   "decision": "SKIP",
+   "rationale": "无 Controller 入口+无调度"
+  },
+  {
+   "table": "finance_report_detail",
+   "triage": "核心必做",
+   "in_registry": "是（未完成功能）",
+   "decision": "SKIP",
+   "rationale": "同上"
+  },
+  {
+   "table": "hardware_operation_log",
+   "triage": "核心必做",
+   "in_registry": "是（半成品）",
+   "decision": "SKIP",
+   "rationale": "Mapper insert0/select0"
+  },
+  {
+   "table": "registration_code_log",
+   "triage": "核心必做",
+   "in_registry": "是（半成品）",
+   "decision": "SKIP",
+   "rationale": "Mapper insert0/select0"
+  },
+  {
+   "table": "user_sessions",
+   "triage": "核心必做",
+   "in_registry": "是（半成品）",
+   "decision": "SKIP",
+   "rationale": "会话走 JWT+内存"
+  },
+  {
+   "table": "finance_account",
+   "triage": "未列",
+   "in_registry": "是（未完成功能）",
+   "decision": "SKIP",
+   "rationale": "与 bank_accounts/period_balance 重叠"
+  },
+  {
+   "table": "data_change_history",
+   "triage": "未列",
+   "in_registry": "是（半成品）",
+   "decision": "SKIP",
+   "rationale": "已有 finance_audit_logs/operation_logs"
+  }
+ ]
+}

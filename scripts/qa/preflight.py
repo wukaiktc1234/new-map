@@ -459,6 +459,12 @@ def main():
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
               % (skipped, judged, ratio * 100, WARN_RATIO * 100))
         warn = True
+    perm_rc = check_permission_code()
+    deploy_gap_rc = check_deploy_gap() if a.full else 0
+    # 新表体检：只针对 2026-10-28 之后新建的表（既有表老账见 docs/audit/tech-debt-schema.md）
+    health_rc = check_new_tables_health() if a.full else 0
+    if health_rc != 0:
+        warn = True
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
         passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
     print("[RESULT] " + summary)
@@ -469,90 +475,44 @@ def main():
         print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
         return 2
     return 3 if warn else 0
-if __name__ == "__main__":
-    sys.exit(main())
-def main():
-    ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
-    ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
-    ap.add_argument("--verbose", action="store_true", help="打印 mvn 与巡检完整输出")
-    ap.add_argument("--skip-compile", action="store_true", help="跳过 mvn（仅看巡检）")
-    a = ap.parse_args()
 
-    print("=" * 86)
-    print("PREFLIGHT GATE   mode=%s" % ("FULL(mvn test)" if a.full else "FAST(test-compile)"))
-    print("  提醒：本脚本是开工闸门，不是系统健康证明；分母不足时 PASS 不可信。")
-    print("=" * 86)
+def check_new_tables_health():
+    """新表体检（只跑「2026-10-28 之后新建」的表清单）。
 
-    ratchet_rc = check_runtime_exception_ratchet()
-    result_error_rc = check_result_error_ratchet()
+    为什么只跑新表：既有表存在大量老账（_id 列无索引、金额用 numeric 元），
+    一上来就 EXIT=2 会让 gate 变成噪音、最终被人关掉 —— gate 一旦被关就再也拦不住新问题。
+    老账单独登记在 docs/audit/tech-debt-schema.md。
 
-    warn = False
-    compile_rc = 0
-    if not a.skip_compile:
-        compile_rc = mvn(["test-compile"], a.verbose)
-        if compile_rc != 0:
-            print("[WARN] test-compile 失败（rc=%s）→ 注意：test-compile≠test，但连编译都不过就不该开工" % compile_rc)
-            warn = True
-
-    clean_db_rc = 0
-    if a.full:
-        print("-" * 86)
-        clean_db_rc = check_clean_db_migration()
-
-    test_rc = None
-    if a.full:
-        test_rc = mvn(["test"], a.verbose)
-        if test_rc != 0:
-            print("[WARN] mvn test 失败（rc=%s）—— 这是真验证档，失败必须修" % test_rc)
-            warn = True
-
-    print("-" * 86)
-    print("[GATE] 巡检：%s" % CHECK)
-    rc, out = run([sys.executable, str(CHECK)], ROOT, timeout=1800)
-    if a.verbose:
-        print(out)
-    stats = parse_inspection(out)
-    if stats is None:
-        print("[WARN] 巡检输出无法解析（未找到「汇总: N PASS / M FAIL」），原文尾 20 行：")
-        for l in out.splitlines()[-20:]:
-            print("       " + l)
-        print("[RESULT] INCONCLUSIVE（无法判定）")
-        return 3
-
-    passed, failed, skipped = stats["pass"], stats["fail"], stats["skipped"]
-    judged = passed + skipped if (passed + skipped) else stats["judged"]
-    ratio = (skipped / judged) if judged else 0.0
-    print("[GATE] 巡检统计：PASS=%d  skipped_no_data=%d  FAIL=%d  判定项=%d"
-          % (passed, skipped, failed, stats["judged"]))
-    print("[GATE] skipped 占比：%d/%d = %.0f%%（阈值 %.0f%%）"
-          % (skipped, judged, ratio * 100, WARN_RATIO * 100))
-    print("[GATE] 巡检原始汇总：%s" % stats["raw"])
-
-    if failed > 0:
-        print("[RESULT] BLOCKED：巡检 FAIL=%d > 0 → exit 2" % failed)
-        return 2
-    if ratchet_rc != 0:
-        print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
-        return 2
-    if result_error_rc != 0:
-        print("[RESULT] BLOCKED：Result.error(字面量) 棘轮上升 → exit 2")
-        return 2
-    if clean_db_rc != 0:
-        print("[RESULT] BLOCKED：干净库迁移 gate 未通过 → exit 2")
-        return 2
-    if ratio > WARN_RATIO:
-        print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
-              % (skipped, judged, ratio * 100, WARN_RATIO * 100))
-        warn = True
-
-    deploy_gap_rc = check_deploy_gap() if a.full else 0
-    perm_rc = check_permission_code()
-
-    summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
-        passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
-    print("[RESULT] " + summary)
-    return 3 if warn else 0
-
+    表清单来源（按优先级）：
+      1) scripts/qa/new-tables.txt（每行一个表名，团队维护）
+      2) 环境变量 PREFLIGHT_NEW_TABLES（逗号分隔）
+    清单为空 → 跳过并打印说明（不阻断）。
+    """
+    list_file = Path(__file__).resolve().parent / "new-tables.txt"
+    tables = []
+    if list_file.exists():
+        tables = [ln.strip() for ln in list_file.read_text(encoding="utf-8-sig").splitlines()
+                  if ln.strip() and not ln.strip().startswith("#")]
+    if not tables:
+        env = os.environ.get("PREFLIGHT_NEW_TABLES", "").strip()
+        tables = [t.strip() for t in env.split(",") if t.strip()]
+    if not tables:
+        print("[GATE] 新表体检：跳过（无 scripts/qa/new-tables.txt / PREFLIGHT_NEW_TABLES 清单）")
+        return 0
+    script = Path(__file__).resolve().parent / "table_health_check.py"
+    if not script.exists():
+        print("[WARN] 新表体检：找不到 %s" % script)
+        return 1
+    rc, out = run([sys.executable, str(script), "--tables", ",".join(tables)], ROOT, timeout=600)
+    if rc == 0:
+        last = [l for l in out.splitlines() if l.strip()][-1:]
+        print("[GATE] 新表体检：%d 张全部通过（%s）" % (len(tables), (last[0] if last else "").strip()))
+        return 0
+    print("[WARN] 新表体检不通过（rc=%s）：" % rc)
+    for l in out.splitlines():
+        if "✗" in l or "结果：" in l:
+            print("       " + l.strip()[:180])
+    return rc
 
 if __name__ == "__main__":
     sys.exit(main())
