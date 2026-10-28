@@ -84,3 +84,68 @@ SELECT order_id, order_amount, actual_amount, total_amount, final_amount
 |----|------|
 | `orders_legacy` / `inventory_legacy` / `order_items_legacy` 的 numeric 金额列 | legacy 空表，不修（见 `dead-code-deletion-list.md`「实体指向空表」） |
 | 实体与表列不匹配 142 条（59 表不存在 + 83 空表列不匹配） | 见 `entity-column-audit-2026-10-28.md`，冻结待立项 |
+
+---
+
+# 补记（2026-10-28 ts-ops）：体检实测的索引债 + 金额单位边界清单
+
+## D. 索引缺失（`table_health_check.py` 实测）
+
+```
+$ python scripts/qa/table_health_check.py --tables deposit_slips,fund_flows,pos_shifts,orders
+deposit_slips 4/5 ✗  外键列无索引：cashier_employee_id,collector_user_id,cash_account_id,bank_account_id,deposit_bank_txn_id,create_user_id
+fund_flows    4/5 ✗  外键列无索引：voucher_id,create_user_id
+pos_shifts    4/5 ✗  金额列非 bigint：total_amount(numeric)
+orders        3/5 ✗  外键列无索引：user_id,transaction_id,merchant_id,deliveryman_id,cashier_user_id,create_user_id
+                     金额列非 bigint：order_amount/discount_amount/actual_amount/refund_amount(numeric)
+结果：0/4 通过 → EXIT=2（**这是老账，故只登记、不进 gate**）
+```
+
+| 编号 | 对象 | 影响 | 规模 | 建议时机 |
+|---|---|---|---|---|
+| D-1 | `orders.user_id / transaction_id / merchant_id / deliveryman_id / cashier_user_id / create_user_id` | 我的订单、骑手配送、收银对账等**高频查询全表扫描**；十万级后是性能悬崖 | 6 列，核心表行数增长最快 | 下次改订单查询/报表前补 `CREATE INDEX CONCURRENTLY` |
+| D-2 | `fund_flows.voucher_id / create_user_id` | 按凭证/操作人反查流水扫表；`fund_flows` 是**增长最快的表** | 2 列，表最大 | **优先级实际高于 D-3** |
+| D-3 | `deposit_slips.cashier_employee_id / collector_user_id / cash_account_id / bank_account_id / deposit_bank_txn_id / create_user_id` | 缴款单按收银员/账户反查扫表（资金核对最常用 `cash_account_id`） | 6 列，体量中等 | 与 D-1 同批 |
+| D-4 | `pos_shifts.total_amount` 是 `numeric`（元） | 班次汇总（元）与缴款单应交额（分）不同单位，每次比对都要换算 | 1 列 + 汇总计算 | **与 P1-1 同批处理，不许单独动**（否则出现第三种口径） |
+
+**为什么单独立账**：把老账塞进 gate → gate 从第一天就红 → 被人关掉 → 再也拦不住新问题。
+所以：新表由 `table_health_check.py`（`preflight --full` 自动跑 `new-tables.txt`）阻断；老账只在这里按时机清偿。
+
+## M. 金额单位边界清单（哪些是分、哪些是元、换算在哪）
+
+### M.1 权威结论
+
+| 单位 | 存法 | 典型对象 |
+|---|---|---|
+| **分**（新标准） | `bigint`（多带 `_fen` 或处资金域） | `fund_flows.amount`、`deposit_slips.expected_amount/actual_amount/refund_component_fen/difference_net_fen/reserve_fen`、`bank_accounts.balance`、`recon_*`、`finance_records.amount`、`daily_settlements.*_amount` |
+| **元**（历史遗留） | `numeric` | `orders.order_amount/discount_amount/actual_amount/refund_amount`、`pos_shifts.total_amount`、`budgets/budget.*`、`electronic_*`、`finance_invoice.*`、`food.cost_price`、`dish_combo.price` |
+| **元**（外部输入） | `numeric` / DTO `BigDecimal` | `pos_shifts.opening_cash`（开班备用金）—— **2026-10-28 已因此出过一次问题** |
+
+规模（实测）：`bigint` 金额列 **176** 个；`numeric` 金额列 **30+** 个。
+
+### M.2 唯一换算实现与全部调用点
+
+```java
+// backend/.../service/finance/recon/importing/MoneyYuanToFen.java
+MoneyYuanToFen.Result r = MoneyYuanToFen.toFen("123.45");  // → 12345 分（千分位/负号/精度校验都在这）
+```
+**禁止裸 `× 100`。** 全仓 11 处引用（含注释），真正的换算点：
+
+| 换算点 | 位置 | 方向 |
+|---|---|---|
+| 开班备用金 → `reserve_fen` | `DepositSlipServiceImpl.java:239-246` | 元 → 分 |
+| 银行流水 CSV `amount` | `CsvImportParser.java:287` | 元 → 分 |
+| 银行流水 CSV `fee` | `CsvImportParser.java:293` | 元 → 分 |
+| 银行流水导入入口 | `BankImportServiceImpl.java:46`（复用 `CsvImportParser`） | 元 → 分 |
+| 对账单创建 | `StatementCreateRequest.java:9`（契约：金额**一律分**，调用方自行换算） | 由调用方换算 |
+
+### M.3 四个必须确认的边界风险点
+
+| 风险点 | 为什么危险 | 怎么确认 |
+|---|---|---|
+| `pos_shifts.opening_cash`（元）→ `deposit_slips.reserve_fen`（分） | 已出过事故 | `AC-58-29` 断言 `reserve_fen == opening_cash × 100` |
+| `orders.actual_amount`（元） vs `fund_flows.amount`（分） | 直接比较差 100 倍 | 任何「订单 vs 流水」断言必须显式换算 |
+| `pos_shifts.total_amount`（元） vs 缴款单 `expected_amount`（分） | 班次汇总与应交额不同单位 | 对账 SQL 全部在分域计算（A39 即如此） |
+| 前端 `data-*-fen` 钩子 | 钩子名带 `fen`，后端某些接口返回元 | 页面实测比对（`e2e_store_recon.py` AC-49d 就是这么抓出假红的） |
+| 12 个 `*_fen` 影子列 | 建了列但双写未实现，恒 NULL | `python scripts/qa/fen_shadow_check.py`（期望全 NULL；非空 → 立刻确认双写已上线） |
+
