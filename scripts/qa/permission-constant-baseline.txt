@@ -5,41 +5,6 @@
 #   出现基线外的新缺失     → EXIT=2（BLOCK）
 #   缺失数下降            → 提示更新基线（逐批缩小直到清空）
 #
-# 明细与判定见 docs/audit/permission-missing-codes-discrimination.md
-# 以下 35 个码在代码里**注解引用为 0**，属历史硬编码清单，待产品确认后「登记」或「删除」。
-
-finance:budget:approve
-finance:budget:delete
-finance:cost:approve
-finance:cost:delete
-purchase:contract:approve
-purchase:contract:create
-purchase:contract:delete
-purchase:contract:edit
-purchase:contract:view
-purchase:material-request:approve
-purchase:material-request:create
-purchase:material-request:delete
-purchase:material-request:edit
-purchase:material-request:view
-purchase:order:approve
-purchase:order:delete
-purchase:order:edit
-purchase:plan:approve
-purchase:plan:create
-purchase:plan:delete
-purchase:plan:edit
-purchase:plan:view
-purchase:settlement:approve
-purchase:settlement:create
-purchase:settlement:delete
-purchase:settlement:edit
-purchase:settlement:view
-purchase:stockin:create
-purchase:stockin:delete
-purchase:stockin:edit
-purchase:supplier:create
-purchase:supplier:delete
-purchase:supplier:edit
-purchase:supplier:view
-trace:export
+# 2026-10-29：原 35 个缺失码已由 V20261029_006 批量登记进 permissions 目录
+#   （35 码全部出现在仍在运行的 TokenServiceImpl / UserDetailsServiceImpl 常量表中），
+#   基线**因此清空**（不是手动删来变绿）—— 当前 gate 实跑 PASS：145/145 在目录中。

@@ -25,6 +25,8 @@ import java.util.Set;
 
 @Service
 public class AuthenticationServiceImpl implements AuthenticationService {
+    /** 【临时探针用】Lead 2026-10-29：该类原本没有 logger，为运行时探针临时加入（验证后随探针一起删） */
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AuthenticationServiceImpl.class);
 
     private static final Set<String> ALL_PERMISSIONS = Set.of(
         "user:view", "user:edit",
@@ -68,6 +70,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     private final TokenService tokenService;
 
+    /** 【临时探针 Lead 2026-10-29】证明该类是否被 Spring 实例化（确认死代码用，验证后删除） */
+    @jakarta.annotation.PostConstruct
+    public void probeInstantiated() {
+        logger.warn("[PROBE] AuthenticationServiceImpl 已实例化 at {}", java.time.LocalDateTime.now());
+    }
+
     private final MfaService mfaService;
 
     private final JwtUtils jwtUtils;
@@ -76,6 +84,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public LoginResponse login(LoginRequest loginRequest) {
+        logger.warn("[PROBE] AuthenticationServiceImpl.login 被调用（命中一次）");
         User user = userMapper.selectOne(
             new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, loginRequest.getUsername())
