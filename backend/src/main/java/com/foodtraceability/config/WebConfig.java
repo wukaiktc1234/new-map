@@ -1,6 +1,5 @@
 package com.foodtraceability.config;
 
-import com.foodtraceability.interceptor.RateLimitInterceptor;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,11 +34,8 @@ import java.util.Properties;
 public class WebConfig implements WebMvcConfigurer {
     
 
-    public WebConfig(RateLimitInterceptor rateLimitInterceptor) {
-        this.rateLimitInterceptor = rateLimitInterceptor;
+    public WebConfig() {
     }
-
-    private final RateLimitInterceptor rateLimitInterceptor;
 
     /**
      * 配置静态资源处理
@@ -124,20 +120,13 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
         // 注意：由于context-path设置为/api，服务器看到的路径不包含/api前缀
-        // 添加API请求频率限制拦截器
-        registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/**")
-                .excludePathPatterns("/v1/hardware/device/**")
-                .excludePathPatterns("/v1/auth/**")
-                .excludePathPatterns("/auth/**")
-                .excludePathPatterns("/public/**")
-                .excludePathPatterns("/onboarding/invitation/**")
-                .excludePathPatterns("/actuator/**")
-                .excludePathPatterns("/swagger-ui.html")
-                .excludePathPatterns("/v2/api-docs")
-                // 审批流程查询（模式切换时并行加载多个业务类型，避免误触限流）
-                .excludePathPatterns("/v1/approval/**");
+        // ★（Lead 2026-10-30 P0 收敛）：**RateLimitInterceptor 已下线**。
+        //   原因：三套限流并存（Aspect 被 TODO 短路 / Filter 生效 / Interceptor 只排除 /v1/auth/**），
+        //   实际行为互相矛盾且无法解释。现在统一由 RateLimitFilter（SecurityConfig:174）承担：
+        //   它返回真 HTTP 429、取 IP 只信 X-Real-IP + getRemoteAddr（不信任 X-Forwarded-For）。
+        //   tech-debt SEC-1 记录本次收敛。
     }
+
     
     @Bean
     public Producer captchaProducer() {

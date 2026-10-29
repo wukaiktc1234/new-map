@@ -1,7 +1,6 @@
 package com.foodtraceability.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.foodtraceability.annotation.RateLimit;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.common.util.WorkLocationFilterHelper;
 import com.foodtraceability.dto.ReceiptConfirmationCreateDTO;
@@ -116,7 +115,6 @@ public class ReceiptConfirmationController {
      * <p>免登录（SecurityConfig 已放行 /v1/receipt-confirmations/verify/**），仅靠限流防暴力遍历。</p>
      */
     @GetMapping("/verify/{verifyCode}")
-    @RateLimit(value = 10, time = 60, message = "查验过于频繁，请稍后再试")
     @Operation(summary = "防伪码查验")
     public Result<ReceiptVerifyVO> verifyByCode(
             @Parameter(description = "16位防伪码") @PathVariable String verifyCode) {

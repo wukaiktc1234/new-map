@@ -3,7 +3,6 @@ package com.foodtraceability.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.foodtraceability.annotation.AuditLog;
-import com.foodtraceability.annotation.RateLimit;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.LabelElementDTO;
 import com.foodtraceability.dto.LabelLayoutConfigDTO;
@@ -136,7 +135,6 @@ public class LabelTemplateController {
     @Operation(summary = "创建标签模板")
     @PreAuthorize("hasAuthority('label:template:create') or hasAuthority('*')")
     @AuditLog(value = "创建标签模板", module = "标签管理")
-    @RateLimit(value = 10, time = 60)
     public Result<LabelTemplate> createTemplate(@RequestBody LabelTemplate template) {
         try {
             if (!isValidTemplateName(template.getTemplateName())) {
@@ -1038,7 +1036,6 @@ public class LabelTemplateController {
     @Operation(summary = "批量打印标签")
     @PreAuthorize("hasAuthority('label:template:print')")
     @AuditLog(value = "批量打印标签", module = "标签管理")
-    @RateLimit(value = 30, time = 60, message = "打印请求过于频繁,请稍后重试")
     public Result<Map<String, Object>> batchPrintLabels(@RequestBody Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
 

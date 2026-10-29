@@ -302,6 +302,10 @@ request.interceptors.response.use(
         case 404:
           logger.warn('Response', `接口不存在: ${res.message || ''}`)
           return Promise.reject(new Error(res.message || '请求的资源不存在'))
+        case 429:
+          // 业务码形式的限流（HTTP 200 + body.code=429）：同样是「可重试」，不进会话过期流程
+          if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
+          break
         case 500:
           // 显示后端返回的实际错误信息（如"用户名或密码错误"），而非通用提示
           if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
@@ -373,6 +377,16 @@ request.interceptors.response.use(
         case 408:
           errorMessage = '请求超时'
           break
+        case 429: {
+          // 限流（登录第 6 次等）：优先服务端 message；
+          // 等待时长先取标准 Retry-After 头，没有就退回后端 body 里的 retryAfter 字段
+          const headerRetry = Number((errorResponse.headers as Record<string, unknown> | undefined)?.['retry-after'])
+          const bodyRetry = Number((errorResponse.data as { retryAfter?: unknown } | undefined)?.retryAfter)
+          const retryAfter = Number.isFinite(headerRetry) && headerRetry > 0 ? headerRetry : bodyRetry
+          const waitHint = Number.isFinite(retryAfter) && retryAfter > 0 ? `（约 ${retryAfter} 秒后可重试）` : ''
+          errorMessage = (errorResponse.data?.message || '请求过于频繁，请稍后重试') + waitHint
+          break
+        }
         case 500:
           // ★ 服务端原文优先（很多业务异常仍以 500 返回并带精确 message）
           errorMessage = errorResponse.data?.message || '服务器内部错误'

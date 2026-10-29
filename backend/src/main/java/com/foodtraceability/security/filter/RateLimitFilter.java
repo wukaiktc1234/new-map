@@ -66,6 +66,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 护栏 1（Lead 2026-10-30）：**限流启用状态必须可观测**。
+     *
+     * <p>今天的事故是：注解在、切面 Bean 在、方法体第一行 {@code return point.proceed();} 短路，
+     * 且**没有任何日志** —— 运行时完全静默，直到实测 8 次登录都不限流才发现。</p>
+     */
+    @jakarta.annotation.PostConstruct
+    public void logEnabled() {
+        logger.info("[SECURITY] rate_limit enabled=true mechanism=RateLimitFilter windowMs={} defaultLimit={} pathLimits={}",
+                TIME_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, PATH_LIMITS);
+        logger.info("[SECURITY] rate_limit note=内存计数，仅单实例有效；多实例部署需换共享存储（tech-debt SEC-1）");
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
@@ -79,10 +92,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } else {
             logger.warn("限流拦截 - IP: {}, URI: {}", clientIp, requestUri);
+            logger.warn("限流拦截 - IP: {}, URI: {}, limit={}", clientIp, requestUri, limit);
+            // ★（Lead 2026-10-30）429 必须带标准 **Retry-After** 头：
+            //   前端已按「服务端原文 + Retry-After 计算等待时长」实现，只回 body.message 时
+            //   「约 N 秒后可重试」永远拿不到真实值。
+            RateLimitCounter counter = memoryRateLimit.get(rateLimitKey);
+            final long retryAfterSec = (counter == null) ? 1L : counter.secondsUntilReset();
             response.setStatus(429);
+            response.setHeader("Retry-After", String.valueOf(retryAfterSec));   // 与 body.retryAfter **同源同值**
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write(objectMapper.writeValueAsString(
-                Map.of("code", 42900, "message", "请求过于频繁，请稍后再试", "timestamp", System.currentTimeMillis())));
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("code", 429);
+            payload.put("message", "请求过于频繁，请稍后再试");
+            payload.put("timestamp", System.currentTimeMillis());
+            payload.put("retryAfter", retryAfterSec);      // ← 同一个变量，禁止再算第二次
+            response.getWriter().write(objectMapper.writeValueAsString(payload));
         }
     }
 
@@ -155,7 +179,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
         }
 
-        public synchronized boolean isLimitExceeded() {
+        /** 距离窗口重置还有多少秒（用于 Retry-After 头） */
+        public synchronized long secondsUntilReset() {
+            long remain = windowStart + TIME_WINDOW_MS - System.currentTimeMillis();
+            return Math.max(1L, (remain + 999) / 1000);
+        }
+
+        public synchronized boolean isLimitExceeded(int limit) {
             long currentTime = System.currentTimeMillis();
             // 窗口已过期，不限制
             if (currentTime - windowStart > TIME_WINDOW_MS) {

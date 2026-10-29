@@ -1,7 +1,5 @@
 package com.foodtraceability.controller;
 
-import com.foodtraceability.annotation.RateLimit;
-import com.foodtraceability.annotation.RateLimitType;
 import com.foodtraceability.common.Result;
 import com.foodtraceability.dto.*;
 import com.foodtraceability.entity.User;
@@ -49,7 +47,6 @@ public class AuthController {
 
     @Operation(summary = "获取验证码")
     @GetMapping("/captcha")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 10, message = "验证码请求过于频繁，请稍后重试")
     public Result<CaptchaResponse> getCaptcha() {
         try {
             CaptchaResponse captchaResponse = authService.generateCaptcha();
@@ -62,7 +59,6 @@ public class AuthController {
 
     @Operation(summary = "用户登录")
     @PostMapping("/login")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 5, message = "登录请求过于频繁，请稍后重试")
     public Result<LoginResponse> login(
             @Valid @RequestBody LoginRequest loginRequest,
             HttpServletRequest request) {
@@ -114,7 +110,6 @@ public class AuthController {
 
     @Operation(summary = "用户注册（邀请制）")
     @PostMapping("/register")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 3, message = "注册请求过于频繁，请稍后重试")
     public Result<RegisterResponse> register(@Valid @RequestBody InviteRegisterRequest registerRequest) {
         try {
             return Result.success(authService.register(registerRequest));
@@ -133,7 +128,6 @@ public class AuthController {
      */
     @Operation(summary = "校验邀请码有效性", description = "注册前校验邀请码是否有效，返回绑定姓名用于友好提示")
     @PostMapping("/validate-invitation-code/{code}")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 10, message = "邀请码校验请求过于频繁，请稍后重试")
     public Result<Map<String, Object>> validateInvitationCode(@Parameter(description = "邀请码") @PathVariable String code) {
         try {
             if (code == null || code.trim().isEmpty()) {
@@ -149,7 +143,6 @@ public class AuthController {
 
     @Operation(summary = "修改密码")
     @PutMapping("/password")
-    @RateLimit(type = RateLimitType.USER, time = 60, value = 3, message = "密码修改请求过于频繁，请稍后重试")
     public Result<String> changePassword(@Valid @RequestBody ChangePasswordRequest changePasswordRequest, Principal principal) {
         try {
             String userId;
@@ -175,7 +168,6 @@ public class AuthController {
     // 安全修复（P1-1）：刷新令牌时 access token 已过期，SecurityContext 无 Authentication，
     // RateLimitType.USER 会退化为 anonymous 共享桶，导致所有用户共享同一限流配额。
     // 改为 IP 限流，确保每个IP独立计数。
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 10, message = "令牌刷新请求过于频繁，请稍后重试")
     public Result<String> refreshToken(@RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         try {
             if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ") || authorizationHeader.length() <= 7) {
@@ -191,7 +183,6 @@ public class AuthController {
 
     @Operation(summary = "注销")
     @PostMapping("/logout")
-    @RateLimit(type = RateLimitType.USER, time = 60, value = 5, message = "注销请求过于频繁，请稍后重试")
     public Result<String> logout(@RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
         try {
             if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ") || authorizationHeader.length() <= 7) {
@@ -259,7 +250,6 @@ public class AuthController {
 
     @Operation(summary = "发送验证码（忘记密码）")
     @PostMapping("/forgot-password/send-code")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 3, message = "验证码发送请求过于频繁，请稍后重试")
     public Result<String> sendVerificationCode(@Valid @RequestBody SendVerificationCodeRequest request) {
         try {
             authService.sendVerificationCode(request.getUsernameOrEmail(), request.getType());
@@ -274,7 +264,6 @@ public class AuthController {
 
     @Operation(summary = "验证双因素验证码（忘记密码第一步）")
     @PostMapping("/forgot-password/verify")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 5, message = "验证请求过于频繁，请稍后重试")
     public Result<String> verifyForResetPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         try {
             String resetToken = authService.verifyForResetPassword(
@@ -293,7 +282,6 @@ public class AuthController {
 
     @Operation(summary = "重置密码（使用令牌）")
     @PostMapping("/forgot-password/reset")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 3, message = "密码重置请求过于频繁，请稍后重试")
     public Result<String> resetPasswordWithToken(@Valid @RequestBody ResetPasswordWithTokenRequest request) {
         try {
             // 验证两次密码是否一致
@@ -313,7 +301,6 @@ public class AuthController {
 
     @Operation(summary = "验证重置令牌是否有效")
     @GetMapping("/forgot-password/validate-token")
-    @RateLimit(type = RateLimitType.IP, time = 60, value = 5, message = "令牌验证请求过于频繁，请稍后重试")
     public Result<Boolean> validateResetToken(@RequestParam String token) {
         try {
             boolean valid = authService.validateResetToken(token);

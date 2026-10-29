@@ -43,6 +43,10 @@ public class PosAuthController {
         try {
             Map<String, Object> result = posAuthService.login(params.getEmployeeId(), params.getPassword(), params.getTerminalId());
             return Result.success(result, "登录成功");
+        } catch (com.foodtraceability.common.exception.BusinessException be) {
+            // ★（Lead 2026-10-30）业务异常必须保留业务码：密码错=400 不能被吞成 500（500 会让前端显示「服务器内部错误」）
+            logger.warn("POS登录被拒: code={}, msg={}", be.getCode(), be.getMessage());
+            return Result.error(be.getCode(), be.getMessage());
         } catch (Exception e) {
             logger.error("POS登录失败: {}", e.getMessage());
             return Result.error(e.getMessage());

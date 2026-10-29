@@ -535,6 +535,15 @@ def main():
         warn = True
     else:
         print("[GATE] 403 语义 gate                PASS")
+    # ---- 限流 gate（Lead 2026-10-30 P0，护栏 2）：第 6 次必须 429（阈值 5）----
+    rl_rc = run_gate_script("rate_limit_gate.py", a.verbose)
+    if rl_rc == 2:
+        print("[GATE] 限流 gate                     BLOCK：登录未在阈值内被限流（可无限撞库）")
+        warn = True
+    elif rl_rc == 3:
+        print("[GATE] 限流 gate                     SKIP：后端未启动（ENV=3）")
+    else:
+        print("[GATE] 限流 gate                     PASS")
     # ---- 宽 catch 棘轮（Lead 2026-10-30）：catch(Exception) 后返 500 的次数只许减不许增 ----
     wc_rc = run_gate_script("wide_catch_ratchet.py", a.verbose)
     if wc_rc == 2:

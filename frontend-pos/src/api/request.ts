@@ -194,6 +194,20 @@ request.interceptors.response.use(
       return Promise.reject({ message: '登录已过期，请重新登录', status: 401 })
     }
 
+    // 限流 429：服务端 message 优先；无 message 给「可重试」兜底文案，有 Retry-After 就补等待时长
+    if (status === 429) {
+      const headerRetry = Number(error.response?.headers?.['retry-after'])
+      const rateData = error.response?.data as { message?: string; retryAfter?: unknown } | undefined
+      const bodyRetry = Number(rateData?.retryAfter)
+      const retryAfter = Number.isFinite(headerRetry) && headerRetry > 0 ? headerRetry : bodyRetry
+      const waitHint = Number.isFinite(retryAfter) && retryAfter > 0 ? `（约 ${retryAfter} 秒后可重试）` : ''
+      return Promise.reject({
+        message: (rateData?.message || '请求过于频繁，请稍后重试') + waitHint,
+        status: 429,
+        originalError: error,
+      })
+    }
+
     // AxiosError.response.data 类型为 unknown，需类型断言访问 message
     const errData = error.response?.data as { message?: string; code?: number | string } | undefined
     const httpStatus = error.response?.status

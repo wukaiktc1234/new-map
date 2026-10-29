@@ -245,7 +245,9 @@ async function handleLogin(): Promise<void> {
     const errorMsg = err && typeof err === 'object' && 'message' in err
       ? String((err as { message: unknown }).message)
       : '登录失败，请稍后重试'
+    // 行内提示 + toast 各一次（POS 拦截器从不弹 toast，所以不会重复）
     error.value = errorMsg
+    ElMessage.error(errorMsg)
   } finally {
     loading.value = false
   }
