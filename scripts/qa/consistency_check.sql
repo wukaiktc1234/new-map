@@ -1226,16 +1226,28 @@ WITH rf AS (
                  AND s.start_time IS NOT NULL
                  AND (r.refund_time AT TIME ZONE 'Asia/Shanghai') BETWEEN s.start_time AND COALESCE(s.end_time, (NOW() AT TIME ZONE 'Asia/Shanghai')))
 )
-SELECT CASE WHEN (SELECT count(*) FROM rf) = 0
-            THEN '[INFO] A37 skipped_no_data 分母=0（无 refund_time 已落的退款流水）'
-            WHEN (SELECT count(*) FROM viol) = 0
-            THEN '[PASS] A37 退款落不进班次窗口 rows=0 分母=' || (SELECT count(*) FROM rf)
-            ELSE '[FAIL] A37 退款落不进班次窗口 rows=' || (SELECT count(*) FROM viol)
-                 || ' 分母=' || (SELECT count(*) FROM rf)
-                 || ' —— 存在 ' || (SELECT count(*) FROM viol) || ' 笔退款的 refund_time 不在任何班次窗口内，禁止接受'
-       END AS a37_line,
-       (SELECT count(*) FROM viol) AS a37_n,
-       (SELECT count(*) FROM rf)   AS a37_den
+  , viol_base AS (   -- 在棘轮基线内的违规（按 order_id 匹配 scripts/qa/a37-orphan-baseline.txt）
+    SELECT v.flow_id FROM viol v
+     JOIN fund_flows f2 ON f2.flow_id = v.flow_id
+     WHERE f2.order_id IN ('O1793203970711','O1793213975888','O1793213975894')
+  ), viol_outside AS (   -- 基线外的新违规（>0 即 FAIL）
+    SELECT v.flow_id FROM viol v
+     WHERE v.flow_id NOT IN (SELECT flow_id FROM viol_base)
+  )
+  SELECT CASE WHEN (SELECT count(*) FROM rf) = 0
+    THEN '[INFO] A37 skipped_no_data 分母=0（无 refund_time 已落的退款流水）'
+    WHEN (SELECT count(*) FROM viol) = 0
+    THEN '[PASS] A37 退款落不进班次窗口 rows=0 分母=' || (SELECT count(*) FROM rf)
+    -- 棘轮基线（Lead 2026-10-29）：违规行 ⊆ 基线 → WARN（不计 FAIL）；基线外新增 → FAIL
+    WHEN (SELECT count(*) FROM viol_base) = (SELECT count(*) FROM viol)
+    THEN '[PASS] A37 退款落不进班次窗口 rows=' || (SELECT count(*) FROM viol)
+         || ' 全部在棘轮基线内（WARN，不阻断）分母=' || (SELECT count(*) FROM rf)
+    ELSE '[FAIL] A37 退款落不进班次窗口 rows=' || (SELECT count(*) FROM viol)
+         || ' 分母=' || (SELECT count(*) FROM rf)
+         || ' —— 存在 ' || (SELECT count(*) FROM viol_outside) || ' 笔**基线外**退款的 refund_time 不在任何班次窗口内，禁止接受'
+    END AS a37_line,
+  (SELECT count(*) FROM viol_outside) AS a37_n,
+  (SELECT count(*) FROM rf)   AS a37_den
 \gset
 \else
 \set a37_line '[INFO] A37 跳过（表未创建）'

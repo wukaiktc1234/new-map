@@ -15,6 +15,23 @@
       v-loading="loading || summaryLoading"
       element-loading-text="正在加载班次数据..."
     >
+      <!-- 班次统计三态：404=未上线 / 网络=可重试 / 无班次=请先开班（三者文案不同，都不白屏） -->
+      <div
+        v-if="shiftStatsState && shiftStatsState !== 'ok'"
+        class="shift-state"
+        :class="'shift-state--' + shiftStatsState"
+        :data-test="'handover-state-' + shiftStatsState"
+      >
+        <span class="shift-state__title">{{ shiftStateTexts.title }}</span>
+        <span class="shift-state__hint">{{ shiftStateTexts.hint }}</span>
+        <el-button
+          v-if="shiftStatsState === 'error'"
+          size="small"
+          data-test="handover-state-retry"
+          @click="retryStats"
+        >重试</el-button>
+      </div>
+
       <!-- 头部 -->
       <div class="sh-header">
         <div class="sh-brand">
@@ -34,135 +51,127 @@
         </div>
       </div>
 
-      <!-- 异常隔离：只报数量，点开单独处理，绝不混进明细（配色与异常抽屉同一套 warning 令牌） -->
-      <div v-if="anomalyOrders.length > 0" class="sh-alert" role="alert" data-test="shift-anomaly-bar">
+      <!-- 班次口径说明条：只说"按什么口径交班"，异常数量与入口统一在下方统计表里，不重复 -->
+      <div class="sh-alert" :class="{ 'is-warn': endShiftBlocked }" role="status" data-test="shift-banner">
         <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
         <span class="sh-alert__text">
-          本班次有 <b>{{ anomalyOrders.length }}</b> 笔异常单（{{ anomalySummary }}），<b>未计入</b>营业额与上交额
+          按班次交班 · 统计区间 <b>{{ formatTime(summaryStartTime, '--:--') }}</b> 至现在
+          <template v-if="endShiftBlocked">
+            · 本班次有<b>待处理异常单</b>，处理完才能交班
+          </template>
+          <template v-else>· 账目已由系统结清</template>
         </span>
-        <button type="button" class="sh-alert__btn" data-test="shift-anomaly-open" @click="anomalyDrawer = true">
-          去处理
-          <el-icon><ArrowRight /></el-icon>
-        </button>
       </div>
 
-      <!-- 主结论：正常态说"应上交"，短款态直接说"需补足"（不能让 ¥0.00 掩盖欠款） -->
-      <div class="sh-hero" :class="{ 'is-short': isCashShort }" data-test="shift-handover-cash">
-        <div class="sh-hero__head">
-          <span class="sh-hero__label" data-test="shift-hero-label">
-            {{ isCashShort ? '需补足（已从备用金垫付）' : '应上交现金' }}
-          </span>
-          <span class="sh-hero__value" :class="{ 'is-danger': isCashShort }" data-test="shift-hero-amount">
-            <AnimatedAmount :value="isCashShort ? floatGap : handoverCash" />
+      <!-- 动作流第一步：看系统算好的总账（四个数字，别的一概不解释） -->
+      <div class="sh-metrics" data-test="shift-handover-cash">
+        <div class="sh-metric">
+          <span class="sh-metric__label">本班次收款（元）</span>
+          <span
+            class="sh-metric__value"
+            data-test="shift-total-received"
+            :data-source="totalReceivedShown === null ? 'missing' : 'server'"
+          >{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</span>
+        </div>
+        <div class="sh-metric">
+          <span class="sh-metric__label">现金收款（元）</span>
+          <span class="sh-metric__value" data-test="shift-cash-in">{{ cashInShown.toFixed(2) }}</span>
+          <span v-if="cashRefundShown > 0" class="sh-metric__sub" data-test="shift-cash-refund">
+            退款已扣 {{ cashRefundShown.toFixed(2) }}
           </span>
         </div>
-
-        <!-- 三个数字块代替一整句算式：用眼睛对数字，不用读句子 -->
-        <div class="sh-tiles">
-          <div class="sh-tile">
-            <span class="sh-tile__label">现金收入</span>
-            <b class="sh-tile__value" data-test="shift-cash-in">{{ cashIn.toFixed(2) }}</b>
-          </div>
-          <div class="sh-tile">
-            <span class="sh-tile__label">现金退款</span>
-            <b class="sh-tile__value is-refund" data-test="shift-cash-refund">{{ cashRefund.toFixed(2) }}</b>
-          </div>
-          <div class="sh-tile">
-            <span class="sh-tile__label">应上交现金</span>
-            <b class="sh-tile__value" data-test="shift-cash-handover">{{ handoverCash.toFixed(2) }}</b>
-          </div>
-        </div>
-
-        <p v-if="isCashShort" class="sh-hero__hint" data-test="shift-cash-negative">
-          <el-icon><WarningFilled /></el-icon>
-          退款比收款多 ¥{{ floatGap.toFixed(2) }}，已从备用金支出；交班后请补回钱箱，否则下一班零钱不足。
-        </p>
-        <span class="is-sr-only" data-test="shift-cash-net">净现金 ¥{{ cashNet.toFixed(2) }}</span>
-      </div>
-
-      <!-- 钱箱核对：左"该有多少"，右"实际点出多少"，输入是明确的动手焦点 -->
-      <div class="sh-cashcheck" data-test="shift-cash-check">
-        <div class="sh-cashcheck__left">
-          <span class="sh-cashcheck__label">钱箱应有现金</span>
-          <span class="sh-cashcheck__value" data-test="shift-drawer-expected">
-            <AnimatedAmount :value="drawerExpected" />
+        <div class="sh-metric">
+          <span class="sh-metric__label">备用金</span>
+          <span class="sh-metric__value">
+            <b data-test="shift-opening-cash">{{ openingShown.toFixed(2) }}</b>
+            <button type="button" class="sh-metric__edit" data-test="shift-opening-edit" @click="openOpeningEdit">修改</button>
           </span>
-          <span class="sh-cashcheck__sub">
-            含备用金 <b data-test="shift-opening-cash">¥{{ openingCash.toFixed(2) }}</b>（留存钱箱）
-            <span v-if="openingCashMissing" class="sh-hero__warn" data-test="shift-opening-missing">未读取到</span>
-          </span>
-          <span class="is-sr-only" data-test="shift-drawer-formula">备用金 + 现金收入 − 现金退款</span>
+          <span v-if="openingCashMissing" class="sh-metric__warn" data-test="shift-opening-missing">未读取到</span>
         </div>
-
-        <div class="sh-cashcheck__right">
-          <label class="sh-cashcheck__label" for="pos-cash-counted">实点现金</label>
-          <el-input
-            id="pos-cash-counted"
-            v-model="cashCountedInput"
-            class="sh-count-input"
-            placeholder="点完钱填入"
-            inputmode="decimal"
-            data-test="shift-cash-counted"
-            @blur="normalizeCounted"
-          />
-          <span class="sh-cc-diff" :class="cashDiffClass" data-test="shift-cash-diff">{{ cashDiffText }}</span>
+        <div class="sh-metric is-primary">
+          <span class="sh-metric__label">上交现金（元）</span>
+          <span class="sh-metric__value sh-metric__value--hero" data-test="shift-cash-handover">
+            <AnimatedAmount :value="handoverShown" />
+          </span>
         </div>
       </div>
 
-      <!-- 非现金收入：单独成块，明确"已直连入账，无需上交" -->
-      <div class="sh-noncash">
-        <div class="sh-noncash__head">
-          <span class="sh-noncash__title">非现金收入</span>
-          <span class="sh-noncash__tag">
-            <el-icon><CircleCheckFilled /></el-icon>
-            已直连入账，无需上交
+      <!-- 退款多于收款时只留一句事实说明，不做归因分析 -->
+      <p v-if="isCashShort" class="sh-hero__hint" data-test="shift-cash-negative">
+        <el-icon><WarningFilled /></el-icon>
+        退款多于收款，已从备用金垫付 ¥{{ floatGap.toFixed(2) }}
+      </p>
+
+      <!-- 唯一一张统计表：收款方式 × 笔数/小计/异常，异常处理也收在这里，避免两处重复 -->
+      <div class="sh-paytable" data-test="shift-payment-table">
+        <div class="sh-paytable__head">
+          <span class="sh-paytable__title">本班次收款统计</span>
+          <span class="sh-paytable__sum">
+            共 <b data-test="shift-paid-count">{{ paidOrders.length }}</b> 笔 ·
+            <b>¥{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</b>
           </span>
         </div>
-        <div class="sh-noncash__grid">
-          <div
-            v-for="card in nonCashCards"
-            :key="card.key"
-            class="sh-nc-card"
-            :data-test="'shift-noncash-' + card.key"
+
+        <div class="sh-paytable__row sh-paytable__row--head">
+          <span>收款方式</span>
+          <span class="is-num">笔数</span>
+          <span class="is-num">小计</span>
+          <span class="is-num">异常</span>
+          <span class="is-action"></span>
+        </div>
+
+        <div
+          v-for="row in paymentRows"
+          :key="row.method"
+          class="sh-paytable__row"
+          :data-test="'shift-method-' + row.method"
+        >
+          <span class="sh-paytable__name">{{ row.name }}</span>
+          <span class="is-num">
+            {{ row.count }} 笔
+            <em v-if="row.refundCount > 0" class="sh-paytable__sub">退 {{ row.refundCount }}</em>
+          </span>
+          <span class="is-num" :class="{ 'is-danger': row.amount < 0 }">¥{{ row.amount.toFixed(2) }}</span>
+          <span class="is-num" :class="{ 'is-danger': row.anomalyCount > 0 }">
+            {{ row.anomalyCount > 0 ? row.anomalyCount + ' 笔' : '—' }}
+          </span>
+          <span class="is-action">
+            <button type="button" class="sh-link" :data-test="'shift-method-detail-' + row.method" @click="openMethodDetail(row.method)">
+              详情
+            </button>
+          </span>
+        </div>
+
+        <div v-if="paymentRows.length === 0" class="sh-paytable__empty">本班次暂无收款</div>
+
+        <!-- 合计行：有效订单 / 退款 / 异常都在这里，异常单处理入口也只此一个 -->
+        <div class="sh-paytable__total" data-test="shift-order-stats">
+          <span class="sh-paytable__total-items">
+            有效订单 <b data-test="shift-valid-count">{{ validOrders.length }}</b> 笔
+            <i class="sh-paytable__dot"></i>
+            退款 <b>{{ refundedOrders.length }}</b> 笔
+            <i class="sh-paytable__dot"></i>
+            <span :class="{ 'is-danger': endShiftBlocked }">
+              待处理异常单
+              <b data-test="shift-pending-exception-count">{{ pendingExceptionCount === null ? '—' : pendingExceptionCount }}</b>
+              笔
+            </span>
+            <i class="sh-paytable__dot"></i>
+            <!-- 明细异常 ≠ 待处理异常单：它是被排除在营业额之外的订单，只解释明细，不参与交班门禁 -->
+            <span class="sh-paytable__total-detail" data-test="shift-anomaly-detail-count">
+              历史异常单 {{ anomalyDetailCount }} 笔（不计入营业额，≠ 待处理异常单）
+            </span>
+          </span>
+          <button
+            type="button"
+            class="sh-orderstats__action"
+            :class="{ 'is-urgent': endShiftBlocked }"
+            data-test="shift-anomaly-open-inline"
+            @click="anomalyDrawer = true"
           >
-            <span class="sh-nc-card__head">
-              <el-icon class="sh-nc-card__icon"><component :is="card.icon" /></el-icon>
-              {{ card.name }}
-            </span>
-            <span class="sh-nc-card__amount" :class="{ 'is-refund': card.isNetRefund }">
-              <em v-if="card.isNetRefund" class="sh-nc-card__flag">净退款</em>
-              ¥{{ Math.abs(card.net).toFixed(2) }}
-            </span>
-            <span v-if="card.refund > 0" class="sh-nc-card__detail">
-              收入 ¥{{ card.income.toFixed(2) }} · 退款 ¥{{ card.refund.toFixed(2) }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 次要指标 -->
-      <div class="sh-stat-grid">
-        <div class="sh-mini-stat">
-          <span class="sh-ms-label">净营业额</span>
-          <span class="sh-ms-value" data-test="shift-net-revenue">¥{{ netRevenue.toFixed(2) }}</span>
-          <span class="sh-ms-pct">
-            已支付 {{ paidOrders.length }} 笔 − 退款 {{ refundedOrders.length }} 笔<template v-if="netRevenue < 0"> · 退款居多</template>
-          </span>
-        </div>
-        <div class="sh-mini-stat">
-          <span class="sh-ms-label">有效订单</span>
-          <span class="sh-ms-value" data-test="shift-valid-count">{{ validOrders.length }}</span>
-          <span class="sh-ms-pct">另有 {{ anomalyOrders.length }} 笔未计入</span>
-        </div>
-        <div class="sh-mini-stat">
-          <span class="sh-ms-label">客单价</span>
-          <span class="sh-ms-value">¥{{ avgTicket.toFixed(2) }}</span>
-          <span class="sh-ms-pct">按已支付订单计</span>
-        </div>
-        <div class="sh-mini-stat">
-          <span class="sh-ms-label">退款</span>
-          <span class="sh-ms-value is-danger">¥{{ refundTotal.toFixed(2) }}</span>
-          <span class="sh-ms-pct">{{ refundedOrders.length }} 笔（含现金 ¥{{ cashRefund.toFixed(2) }}）</span>
+            {{ endShiftBlocked ? '处理待处理异常单' : '查看异常单' }}
+            <el-icon><ArrowRight /></el-icon>
+          </button>
         </div>
       </div>
 
@@ -178,30 +187,57 @@
         <el-icon class="sh-detail-btn__arrow"><ArrowRight /></el-icon>
       </button>
 
-      <!-- 操作区 -->
+      <!-- 操作区：左边辅助动作，右边两个交班按钮（美团式动作流收尾） -->
       <div class="sh-actions">
-        <input
-          v-model="handoverForm.remark"
-          type="text"
-          class="sh-remark-input"
-          placeholder="交班备注（选填，如钱箱差异说明）"
-          maxlength="100"
-          data-test="shift-remark"
-        />
-        <div class="sh-btn-row">
-          <button class="sh-btn sh-btn-ghost" :disabled="exporting" @click="exportReport">
-            <el-icon><Download /></el-icon>
-            导出报表
-          </button>
-          <button class="sh-btn sh-btn-ghost" @click="printReport">
-            <el-icon><Printer /></el-icon>
-            打印小票
-          </button>
-          <button class="sh-btn sh-btn-primary" :disabled="endingShift" data-test="shift-confirm" @click="confirmHandover">
-            <el-icon v-if="endingShift" class="is-loading"><Loading /></el-icon>
-            {{ endingShift ? '交班中…' : '确认交班' }}
-          </button>
+        <div class="sh-actions__links">
+          <button type="button" class="sh-link" data-test="shift-open-drawer" @click="openCashDrawer">开钱箱</button>
+          <button type="button" class="sh-link" data-test="shift-export" :disabled="exporting" @click="exportReport">导出报表</button>
+          <button type="button" class="sh-link" data-test="shift-print-preview" @click="printReport">预打交班单</button>
+          <button type="button" class="sh-link" data-test="shift-help" @click="helpVisible = true">对账说明</button>
         </div>
+
+        <div class="sh-actions__buttons">
+          <el-tooltip
+            :disabled="!endShiftBlockReason"
+            :content="endShiftBlockReason"
+            placement="top"
+            effect="dark"
+            popper-class="shift-tooltip"
+          >
+            <span class="sh-confirm-wrap">
+              <button
+                class="sh-btn sh-btn-ghost"
+                :disabled="endingShift || endShiftBlocked"
+                data-test="shift-confirm"
+                :data-blocked="endShiftBlocked ? '1' : '0'"
+                @click="confirmHandover(false)"
+              >
+                <el-icon v-if="endingShift" class="is-loading"><Loading /></el-icon>
+                {{ endingShift ? '交班中…' : '交班' }}
+              </button>
+            </span>
+          </el-tooltip>
+
+          <el-tooltip
+            :disabled="!endShiftBlockReason"
+            :content="endShiftBlockReason"
+            placement="top"
+            effect="dark"
+            popper-class="shift-tooltip"
+          >
+            <span class="sh-confirm-wrap">
+              <button
+                class="sh-btn sh-btn-primary"
+                :disabled="endingShift || endShiftBlocked"
+                data-test="shift-confirm-print"
+                @click="confirmHandover(true)"
+              >
+                交班，并打印交班单
+              </button>
+            </span>
+          </el-tooltip>
+        </div>
+
         <div class="sh-shift-note" :class="{ active: shiftActive }">{{ shiftStatusText }}</div>
       </div>
     </div>
@@ -217,7 +253,7 @@
       <div class="sh-drawer">
         <div class="sh-drawer-summary">
           共 <b>{{ validOrders.length }}</b> 笔有效订单 · 净营业额 <b>¥{{ netRevenue.toFixed(2) }}</b> ·
-          应上交现金 <b>¥{{ handoverCash.toFixed(2) }}</b>
+          应上交现金 <b>¥{{ handoverShown.toFixed(2) }}</b>
         </div>
         <div class="sh-section">
           <div class="sh-section-header">
@@ -258,35 +294,61 @@
       </div>
     </el-drawer>
 
-    <!-- 异常单抽屉 -->
-    <el-drawer
-      v-model="anomalyDrawer"
-      title="异常单待处理"
-      size="560px"
+    <!-- 收款方式详情：收银员自查用（哪几笔、多少钱、什么状态） -->
+    <el-dialog
+      v-model="methodDetailVisible"
+      :title="activeMethodName + ' 收款明细'"
+      width="520px"
       :append-to-body="true"
-      data-test="shift-anomaly-drawer"
+      data-test="shift-method-dialog"
     >
-      <div class="sh-drawer">
-        <div class="sh-anomaly-tip">
-          <el-icon><InfoFilled /></el-icon>
-          以下订单未计入营业额与应上交现金。请逐单核实：待付单请补收款或作废，取消单请确认是否误操作，无流水单请联系店长核对支付渠道。
+      <div class="sh-method-detail">
+        <div class="sh-method-detail__row sh-method-detail__row--head">
+          <span>时间</span><span>单号</span><span class="is-num">金额</span><span class="is-num">状态</span>
         </div>
-        <div class="sh-order-list">
-          <div v-for="(order, idx) in anomalyOrders" :key="order.orderNumber || idx" class="sh-order-item is-anomaly">
-            <div class="sh-o-row sh-o-row--top">
-              <span class="sh-o-time">{{ formatTime(order.createTime, '--:--') }}</span>
-              <span class="sh-o-no">#{{ order.orderNumber?.slice(-6) }}</span>
-              <span class="sh-o-reason">{{ order.anomalyReason }}</span>
-            </div>
-            <div class="sh-o-row sh-o-row--bottom">
-              <span class="sh-o-method">{{ getPaymentMethodName(order.paymentMethod) }}</span>
-              <span class="sh-o-amount">¥{{ order.amount.toFixed(2) }}</span>
-            </div>
-          </div>
-          <div v-if="anomalyOrders.length === 0" class="sh-orders-empty">本班次无异常单</div>
+        <div v-for="o in activeMethodRows" :key="o.orderNumber" class="sh-method-detail__row">
+          <span>{{ formatTime(o.createTime, '--:--') }}</span>
+          <span>{{ (o.orderNumber || '').slice(-6) }}</span>
+          <span class="is-num" :class="{ 'is-danger': o.statusKey === 'refunded' }">¥{{ o.amount.toFixed(2) }}</span>
+          <span class="is-num">{{ o.statusKey === 'refunded' ? '退款' : '已收款' }}</span>
         </div>
+        <div v-if="activeMethodRows.length === 0" class="sh-method-detail__empty">该方式本班次无记录</div>
       </div>
-    </el-drawer>
+    </el-dialog>
+
+    <!-- 备用金修改：固定值，偶尔调整，改动必须确认 -->
+    <el-dialog
+      v-model="openingEditVisible"
+      title="修改备用金"
+      width="400px"
+      :append-to-body="true"
+      data-test="shift-opening-dialog"
+    >
+      <div class="sh-opening-edit">
+        <p class="sh-opening-edit__tip">备用金是钱箱里留给下一班的零钱，正常情况不需要改。</p>
+        <el-input v-model="openingEditInput" inputmode="decimal" data-test="shift-opening-input">
+          <template #prefix>¥</template>
+        </el-input>
+      </div>
+      <template #footer>
+        <el-button @click="openingEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="openingSaving" data-test="shift-opening-submit" @click="submitOpeningEdit">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 对账说明：只在需要时看，不占主界面 -->
+    <el-dialog v-model="helpVisible" title="对账说明" width="440px" :append-to-body="true" data-test="shift-help-dialog">
+      <ol class="sh-help-list">
+        <li>上交现金 = 本班现金收款 − 现金退款，退款多于收款时按 0 交。</li>
+        <li>备用金留在钱箱，不参与上交。</li>
+        <li>异常单清零后才能交班；微信/支付宝已直连入账，可在收款统计里点「详情」自查。</li>
+      </ol>
+    </el-dialog>
+
+    <!-- 异常单处理抽屉：卡片上带「作废 / 补收款」，操作后由服务端整体下发账目 -->
+    <ExceptionDrawer v-model="anomalyDrawer" :fallback-pending="fallbackExceptions" />
   </el-dialog>
 </template>
 <script setup lang="ts">
@@ -312,23 +374,19 @@ import {
   Files,
   Tickets,
   WarningFilled,
-  Download,
-  Printer,
   Close,
   ArrowRight,
-  CircleCheckFilled,
-  InfoFilled,
-  Loading,
-  ChatDotRound,
-  Wallet,
-  CreditCard,
-  Postcard
+  Loading
 } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { posApi } from '@/api/posApi'
 import { formatDate, formatDateTime, formatTime, parseDateTime } from '@/utils/format'
 import AnimatedAmount from '@/components/pos/AnimatedAmount.vue'
+import ExceptionDrawer from '@/components/pos/shift/ExceptionDrawer.vue'
+import type { ExceptionOrder, ShiftStats } from '@/api/shiftExceptions'
+import { useShiftHandoverStore } from '@/stores/shiftHandover'
 import { clearShiftMark, readShiftMark } from '@/utils/shiftSession'
+import { SHIFT_STATE_TEXT, classifyShiftFailure } from '@/utils/shiftStatus'
 import logger from '@/utils/logger'
 
 interface RawOrder {
@@ -381,6 +439,12 @@ interface PaymentRow {
   method: string
   name: string
   amount: number
+  /** 该方式的已收款笔数（不含退款） */
+  count: number
+  /** 该方式的退款笔数 */
+  refundCount: number
+  /** 该方式挂着的异常单笔数（待付/无流水等） */
+  anomalyCount: number
   percentage: number
 }
 
@@ -399,10 +463,45 @@ const exporting = ref(false)
 const endingShift = ref(false)
 const detailDrawer = ref(false)
 const anomalyDrawer = ref(false)
+
+/* ===== 异常单/账目 Store（账目唯一真相在服务端） ===== */
+const shiftStore = useShiftHandoverStore()
+
+/**
+ * 待处理异常单数：**只认后端 shiftStats.pendingExceptionCount**（决定能否交班的唯一口径）。
+ * null = 统计未到（未知），绝不能拿「明细里的异常单数」冒充这个数——
+ * 两者含义完全不同：前者是「待处理的异常单」，后者是「订单明细里被排除在营业额外的订单」。
+ */
+const pendingExceptionCount = computed<number | null>(() => {
+  const fromStats = shiftStore.stats?.pendingExceptionCount
+  return typeof fromStats === 'number' && Number.isFinite(fromStats) ? fromStats : null
+})
+
+/**
+ * 明细异常数：订单明细里被判为异常（待付/已取消/无流水/金额异常…）的订单数，
+ * **不计入营业额、也不是「待处理异常单」**，只用于解释明细里为什么少了这些单。
+ */
+const anomalyDetailCount = computed<number>(() => {
+  // 后端给了 exceptionOrderTotal 就用它（权威口径）；没给时才退回本地明细统计
+  const fromServer = shiftStore.stats?.exceptionOrderTotal
+  return typeof fromServer === 'number' && Number.isFinite(fromServer) ? fromServer : anomalyOrders.value.length
+})
+/** 交班被阻断的原因（用于 tooltip） */
+/** 是否阻断交班：统计未加载（null）也算阻断，避免「数字没到就放行」 */
+const endShiftBlocked = computed<boolean>(() => pendingExceptionCount.value === null || pendingExceptionCount.value > 0)
+
+const endShiftBlockReason = computed<string>(() => {
+  if (pendingExceptionCount.value === null) return '班次统计未加载完成，暂不能交班（请稍候或点重试）'
+  return pendingExceptionCount.value > 0
+    ? '还有 ' + pendingExceptionCount.value + ' 笔待处理异常单，处理完才能交班'
+    : ''
+})
 const filterPaymentMethod = ref<string>('')
 const handoverForm = ref({ remark: '' })
 
 const terminalId = ref('')
+// store 需要终端号才能拉统计，声明后立即同步一次
+shiftStore.setTerminal(terminalId.value)
 const summaryLoading = ref(false)
 const shiftActive = ref(false)
 const shiftInfo = ref<ShiftInfo | null>(null)
@@ -410,9 +509,6 @@ const summaryStartTime = ref('')
 const summaryOrderStats = ref<ShiftOrderStats | null>(null)
 
 /** 备用金（元）：优先开班标记，其次今日班次接口，最后 0 并告警 */
-/** 金额一律用"分"做整数运算，避免 0.1+0.2 这类浮点漂移 */
-const toCents = (yuan: number): number => Math.round((Number.isFinite(yuan) ? yuan : 0) * 100)
-
 const openingCash = ref(0)
 const openingCashMissing = ref(false)
 
@@ -558,101 +654,122 @@ const cashNet = computed(() => cashIn.value - cashRefund.value)
  * 收银员手里没有可交的现金，不能显示成"要交 -75 元"。
  */
 const handoverCash = computed(() => Math.max(0, cashNet.value))
-/** 备用金缺口：本班次垫付掉的钱，需要店长补回，避免下一班零钱不够 */
-const floatGap = computed(() => Math.max(0, -cashNet.value))
+/* ===== 账目数字的唯一来源：后端 shiftStats（有则整体替换，无则退回明细口径） ===== */
+const statsReady = computed(() => shiftStore.stats !== null)
+const cashInShown = computed(() => (statsReady.value ? shiftStore.cashIn : cashIn.value))
+const cashRefundShown = computed(() => (statsReady.value ? shiftStore.cashRefund : cashRefund.value))
+const handoverShown = computed(() => (statsReady.value ? shiftStore.handoverCash : handoverCash.value))
+const openingShown = computed(() => (statsReady.value ? shiftStore.openingCash : openingCash.value))
 /**
- * 短款态（现金净额为负）：主结论必须换成"需补足"。
- * 否则 ¥0.00 会让人误以为"不用交钱"，而实际欠公司一笔（退款从备用金里垫出去了）。
+ * 退款是否多于收款：用后端两字段**比较**判断（不做减法）。
+ * 垫付金额也取后端 cashRefund（事实值），前端不再自算差额。
  */
-const isCashShort = computed(() => cashNet.value < 0)
+const isCashShort = computed(() => cashRefundShown.value > cashInShown.value)
+const floatGap = computed(() => (isCashShort.value ? cashRefundShown.value : 0))
 
 /**
- * 钱箱应有现金 = 备用金 + 现金收入 − 现金退款。
- * 这是"验算口径"：收银员/店长点完钱，拿实际金额跟它比，差值就是长短款。
- * 注意它 ≠ 应上交现金（应上交 = 钱箱应有 − 备用金，负数按 0 交）。
+ * 本班次收款（净额）：**直接渲染后端 shiftStats.netRevenue**。
+ * 历史实现是「各收款方式小计求和」，退款多于收款时会得出 -174.00 这种负数，
+ * 属于前端自算账，已停用；后端没给值时显示「—」，不猜、不补算。
  */
-const drawerExpectedCents = computed(() =>
-  toCents(openingCash.value) + toCents(cashIn.value) - toCents(cashRefund.value)
-)
-/** 渲染用（元）：AnimatedAmount 接收的是元 */
-const drawerExpected = computed(() => drawerExpectedCents.value / 100)
+const totalReceivedShown = computed<number | null>(() => {
+  const v = shiftStore.stats?.netRevenue
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+})
 
-/** 实点现金输入（字符串，保持"用户正在输入"的状态；空 = 还没点） */
-const cashCountedInput = ref('')
-/** 实点现金（单位：分） */
-const cashCounted = computed<number | null>(() => {
-  const raw = cashCountedInput.value.trim()
-  if (!raw) return null
-  const value = Number(raw)
-  return Number.isFinite(value) ? toCents(value) : null
+// ---- 收款方式详情（自查用）----
+const methodDetailVisible = ref(false)
+const activeMethod = ref('')
+const activeMethodRows = computed(() => {
+  if (!activeMethod.value) return []
+  return [...paidOrders.value, ...refundedOrders.value]
+    .filter(o => o.methodKey === activeMethod.value)
+    .sort((a, b) => String(b.createTime).localeCompare(String(a.createTime)))
 })
-/** 长短款（单位：分）：正数=长款（多钱），负数=短款（少钱） */
-const cashDiff = computed<number | null>(() =>
-  cashCounted.value === null ? null : cashCounted.value - drawerExpectedCents.value
+const activeMethodName = computed(() =>
+  paymentRows.value.find(r => r.method === activeMethod.value)?.name || activeMethod.value
 )
-const cashDiffClass = computed(() => {
-  if (cashDiff.value === null) return 'is-empty'
-  if (cashDiff.value === 0) return 'is-even'
-  return cashDiff.value > 0 ? 'is-over' : 'is-short'
-})
-const cashDiffText = computed(() => {
-  if (cashDiff.value === null) return '待点钞'
-  if (cashDiff.value === 0) return '账实相符'
-  const amount = Math.abs(cashDiff.value / 100).toFixed(2)
-  return cashDiff.value > 0 ? `长款 ¥${amount}` : `短款 ¥${amount}`
-})
-/** 输入失焦后统一成两位小数，避免 '300' 与 '300.00' 两种显示 */
-const normalizeCounted = (): void => {
-  if (cashCounted.value === null) {
-    cashCountedInput.value = ''
+const openMethodDetail = (method: string): void => {
+  activeMethod.value = method
+  methodDetailVisible.value = true
+}
+
+// ---- 备用金修改（固定值，偶尔调整；改动走二次确认 + 服务端）----
+/** 开钱箱：无抽屉硬件对接时给明确提示，不假装成功 */
+const openCashDrawer = (): void => {
+  ElMessage.info('本机未接入钱箱硬件，请手动打开')
+}
+
+const openingEditVisible = ref(false)
+const openingEditInput = ref('')
+const helpVisible = ref(false)
+const openingSaving = ref(false)
+const submitOpeningEdit = async (): Promise<void> => {
+  const value = Number(openingEditInput.value)
+  if (!Number.isFinite(value) || value < 0) {
+    ElMessage.warning('请输入有效的备用金金额')
     return
   }
-  cashCountedInput.value = (cashCounted.value / 100).toFixed(2)
+  try {
+    await ElMessageBox.confirm(
+      '确认把备用金改为 ¥' + value.toFixed(2) + '？该金额会写入本班次结算。',
+      '确认修改备用金',
+      { type: 'warning', confirmButtonText: '确认修改', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  openingSaving.value = true
+  try {
+    await request.post('/v1/pos/shift/opening-cash', { terminalId: terminalId.value, openingCash: value })
+    openingCash.value = value
+    shiftStore.applyStats({ ...(shiftStore.stats as ShiftStats), openingCash: value })
+    ElMessage.success('备用金已更新')
+    openingEditVisible.value = false
+    await syncStoreStats()
+  } catch (error) {
+    // 该端点（POST /v1/pos/shift/opening-cash）后端未提供 → 404，属「功能未上线」，不是保存失败
+    if (classifyShiftFailure(error) === 'not-implemented') {
+      ElMessage.warning('该功能未上线（V2.0）：暂不支持修改备用金')
+    } else {
+      ElMessage.error('备用金保存失败，请重试')
+    }
+  } finally {
+    openingSaving.value = false
+  }
+}
+const openOpeningEdit = (): void => {
+  openingEditInput.value = openingShown.value.toFixed(2)
+  openingEditVisible.value = true
 }
 
 /** 净营业额 = 已支付 − 已退款（全部支付方式） */
 const netRevenue = computed(() => sumBy(paidOrders.value) - sumBy(refundedOrders.value))
-/** 退款总额（所有支付方式） */
-const refundTotal = computed(() => sumBy(refundedOrders.value))
-/** 客单价：按已支付订单计 */
-const avgTicket = computed(() =>
-  paidOrders.value.length > 0 ? sumBy(paidOrders.value) / paidOrders.value.length : 0
-)
 
-/**
- * 非现金收入卡片：微信 / 支付宝 / 银行卡常显（0 也显示，收银员需要"确认没有"），
- * 会员余额只有发生额时才出现；全部标注「已直连入账，无需上交」。
- */
-const NON_CASH_BASE = [
-  { key: 'wechat', name: '微信', icon: ChatDotRound },
-  { key: 'alipay', name: '支付宝', icon: Wallet },
-  { key: 'card', name: '银行卡', icon: CreditCard }
-]
-
-const nonCashCards = computed(() => {
-  const build = (c: { key: string; name: string; icon: unknown }) => {
-    const income = sumBy(paidOrders.value, o => o.methodKey === c.key)
-    const refund = sumBy(refundedOrders.value, o => o.methodKey === c.key)
-    return { ...c, income, refund, net: income - refund, isNetRefund: income - refund < 0 }
-  }
-  const cards = NON_CASH_BASE.map(build)
-  const balance = build({ key: 'balance', name: '会员余额', icon: Postcard })
-  if (balance.income !== 0 || balance.refund !== 0) cards.push(balance)
-  return cards
-})
 
 /** 支付方式分布：按已支付 − 已退款（净额） */
 const paymentRows = computed<PaymentRow[]>(() => {
   const totals: Record<string, number> = {}
+  const counts: Record<string, number> = {}
   paidOrders.value.forEach(o => {
     totals[o.methodKey] = (totals[o.methodKey] || 0) + o.amount
+    counts[o.methodKey] = (counts[o.methodKey] || 0) + 1
   })
   refundedOrders.value.forEach(o => {
     totals[o.methodKey] = (totals[o.methodKey] || 0) - o.amount
   })
+  const refundCounts: Record<string, number> = {}
+  refundedOrders.value.forEach(o => {
+    refundCounts[o.methodKey] = (refundCounts[o.methodKey] || 0) + 1
+  })
+  const anomalyCounts: Record<string, number> = {}
+  anomalyOrders.value.forEach(o => {
+    const key = o.methodKey || 'unpaid'
+    anomalyCounts[key] = (anomalyCounts[key] || 0) + 1
+  })
 
   const baseKeys = ['cash', 'wechat', 'alipay']
-  const keys = Array.from(new Set([...baseKeys, ...Object.keys(totals)]))
+  const keys = Array.from(new Set([...baseKeys, ...Object.keys(totals), ...Object.keys(anomalyCounts)]))
   const denominator = Math.max(1, Object.values(totals).reduce((sum, v) => sum + Math.max(0, v), 0))
 
   return keys
@@ -662,22 +779,28 @@ const paymentRows = computed<PaymentRow[]>(() => {
         method,
         name: getPaymentMethodName(method),
         amount,
+        count: counts[method] || 0,
+        refundCount: refundCounts[method] || 0,
+        anomalyCount: anomalyCounts[method] || 0,
         percentage: (Math.max(0, amount) / denominator) * 100
       }
     })
-    .filter(row => baseKeys.includes(row.method) || row.amount !== 0)
+    .filter(row => baseKeys.includes(row.method) || row.amount !== 0 || row.anomalyCount > 0)
 })
 
-const anomalySummary = computed<string>(() => {
-  const counter: Record<string, number> = {}
-  anomalyOrders.value.forEach(o => {
-    const key = o.anomalyReason.replace(/（.*?）/g, '')
-    counter[key] = (counter[key] || 0) + 1
-  })
-  return Object.entries(counter)
-    .map(([reason, count]) => `${reason} ${count} 笔`)
-    .join(' · ')
-})
+/** 后端异常单接口上线前：把明细里的异常单映射成卡片数据，保证抽屉与徽标同源 */
+const fallbackExceptions = computed<ExceptionOrder[]>(() =>
+  anomalyOrders.value.map((o, idx) => ({
+    orderId: String((o as { orderId?: string }).orderId || o.orderNumber || 'fallback-' + idx),
+    orderNumber: o.orderNumber || '',
+    createTime: o.createTime || '',
+    amount: o.amount || 0,
+    paymentMethod: getPaymentMethodName(o.paymentMethod),
+    type: 'unpaid',
+    typeLabel: o.anomalyReason || '待处理',
+    employeeName: (o as { employeeName?: string }).employeeName
+  }))
+)
 
 const filteredValidOrders = computed<CleanOrder[]>(() => {
   if (!filterPaymentMethod.value) return validOrders.value
@@ -755,6 +878,25 @@ const ensureTerminalId = (): boolean => {
   return false
 }
 
+/** 抽屉打开/刷新账目时，把 terminalId 交给 store，并拉一次后端统计 */
+const syncStoreStats = async (): Promise<void> => {
+  shiftStore.setTerminal(terminalId.value)
+  await shiftStore.refreshStats()
+}
+
+/** 交班面板的三态文案（与 Home 共用同一份常量，避免两处口径漂移） */
+const shiftStatsState = computed(() => shiftStore.statsState)
+const shiftStateTexts = computed(() => {
+  const kind = shiftStatsState.value
+  if (kind === 'not-implemented') return SHIFT_STATE_TEXT['not-implemented']
+  if (kind === 'error') return SHIFT_STATE_TEXT.error
+  return SHIFT_STATE_TEXT['no-shift']
+})
+
+async function retryStats(): Promise<void> {
+  await shiftStore.refreshStats()
+}
+
 const loadShiftSummary = async (): Promise<void> => {
   if (!ensureTerminalId()) return
   summaryLoading.value = true
@@ -828,15 +970,27 @@ const refreshAll = async (): Promise<void> => {
   terminalId.value = resolveTerminalId()
   await loadShiftSummary()
   await Promise.all([loadOrders(), loadOpeningCash()])
+  // 账目数字以后端 shiftStats 为准：terminalId 就绪后再拉，避免 store 拿到空终端
+  await syncStoreStats()
 }
 
 // ---- 操作 ----
-const confirmHandover = async (): Promise<void> => {
+/** @param printAfter 交班后是否立刻打印交班单（美团式双按钮） */
+const confirmHandover = async (printAfter = false): Promise<void> => {
   if (endingShift.value) return
+  if (pendingExceptionCount.value === null) {
+    ElMessage.warning('班次统计未加载完成，请稍候再交班')
+    return
+  }
+  if (pendingExceptionCount.value > 0) {
+    ElMessage.warning('还有 ' + pendingExceptionCount.value + ' 笔待处理异常单，处理完才能交班')
+    anomalyDrawer.value = true
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `确认交班？\n\n应上交现金：¥${handoverCash.value.toFixed(2)}${floatGap.value > 0 ? `\n备用金待补足：¥${floatGap.value.toFixed(2)}` : ''}\n有效订单：${validOrders.value.length} 笔 · 异常单：${anomalyOrders.value.length} 笔\n\n交班后将生成本班次结算记录，需重新开班才能继续收银。`,
-      '确认交班',
+      `确认交班？\n\n上交现金：¥${handoverShown.value.toFixed(2)}\n有效订单：${validOrders.value.length} 笔 · 待处理异常单：${pendingExceptionCount.value ?? '—'} 笔\n\n交班后将生成本班次结算记录，需重新开班才能继续收银。`,
+      printAfter ? '交班并打印交班单' : '确认交班',
       {
         confirmButtonText: '确认交班',
         cancelButtonText: '再核对一下',
@@ -865,6 +1019,7 @@ const confirmHandover = async (): Promise<void> => {
 
     clearShiftMark()
     ElMessage.success(`交班完成：本班次 ${totalOrders} 笔 / ¥${totalAmount.toFixed(2)}`)
+    if (printAfter) printReport()
     handoverForm.value.remark = ''
     detailDrawer.value = false
     anomalyDrawer.value = false
@@ -1122,9 +1277,16 @@ onUnmounted(() => {
   margin-bottom: var(--pos-spacing-sm, 16px);
   padding: 10px 14px;
   border-radius: var(--pos-radius-md, 12px);
+  background: var(--pos-bg-secondary, #f8fafc);
+  color: var(--pos-text-secondary, #64748b);
+  font-size: 12.5px;
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+}
+
+/* 有异常单时才切到 warning 语义（与抽屉同一套令牌） */
+.sh-alert.is-warn {
   background: var(--pos-warning-soft, #fbf5e8);
   color: var(--pos-warning-text, #8a6114);
-  font-size: 12.5px;
   box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
 }
 
@@ -2051,5 +2213,323 @@ onUnmounted(() => {
   .sh-hero__value {
     font-size: 34px;
   }
+}
+
+/* ==================== 动作流版式（对齐美团交班：看总账 → 数钱 → 交钱） ==================== */
+.sh-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--pos-spacing-md, 24px);
+  margin-bottom: var(--pos-spacing-sm, 16px);
+  padding: 16px 20px;
+  border-radius: var(--pos-radius-lg, 16px);
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+}
+
+.sh-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sh-metric__label {
+  font-size: 12.5px;
+  color: var(--pos-text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+.sh-metric__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1e293b);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* 上交现金：页面最醒目的数字 */
+.sh-metric.is-primary .sh-metric__value--hero {
+  font-size: 38px;
+  font-weight: 800;
+  color: var(--pos-primary, #e3651c);
+}
+
+.sh-metric__sub {
+  font-size: 11.5px;
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-metric__warn {
+  font-size: 11px;
+  color: var(--pos-warning-text, #8a6114);
+}
+
+.sh-metric__edit {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pos-primary, #e3651c);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sh-metric__edit:hover {
+  text-decoration: underline;
+}
+
+/* 收款统计表 */
+.sh-paytable {
+  margin-bottom: var(--pos-spacing-sm, 16px);
+  padding: 14px 20px 8px;
+  border-radius: var(--pos-radius-lg, 16px);
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+}
+
+.sh-paytable__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sh-paytable__title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-paytable__sum {
+  font-size: 12.5px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-paytable__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 110px 120px 80px 60px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-top: 1px solid var(--pos-border-light, #f1f5f9);
+  font-size: 13px;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-paytable__row--head {
+  border-top: none;
+  font-size: 12px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-paytable__name {
+  font-weight: 600;
+}
+
+.sh-paytable__row .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-paytable__row .is-action {
+  text-align: right;
+}
+
+.sh-paytable__row .is-danger {
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-paytable__empty {
+  padding: 16px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pos-primary, #e3651c);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sh-link:hover {
+  text-decoration: underline;
+}
+
+.sh-link:disabled {
+  color: var(--pos-text-muted, #94a3b8);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+/* 合计行：有效订单 / 退款 / 异常单（唯一的异常入口） */
+.sh-paytable__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pos-spacing-sm, 16px);
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pos-border-light, #f1f5f9);
+}
+
+.sh-paytable__total-items {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-paytable__total-items b {
+  color: var(--pos-text-primary, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-paytable__total-items .is-danger,
+.sh-paytable__total-items .is-danger b {
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-paytable__dot {
+  width: 1px;
+  height: 12px;
+  background: var(--pos-border-color, #e2e8f0);
+}
+
+.sh-paytable__sub {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-orderstats__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: var(--pos-radius-sm, 8px);
+  border: 1px solid var(--pos-border-color, #e2e8f0);
+  background: transparent;
+  color: var(--pos-text-secondary, #64748b);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sh-orderstats__action.is-urgent {
+  border-color: var(--pos-danger, #c94b4b);
+  color: var(--pos-danger, #c94b4b);
+}
+
+/* 操作区：左辅助、右串联动作 */
+.sh-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.sh-actions__links {
+  display: flex;
+  gap: var(--pos-spacing-md, 24px);
+}
+
+.sh-actions__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.sh-actions__buttons .sh-btn {
+  min-width: 150px;
+}
+
+/* 被异常单阻断时：按钮要"明显点不动"，不能只是文字变灰 */
+.sh-actions__buttons .sh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+  box-shadow: none;
+}
+
+/* 收款方式详情弹窗 */
+.sh-method-detail__row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) 100px 70px;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--pos-border-light, #f1f5f9);
+  font-size: 13px;
+}
+
+.sh-method-detail__row--head {
+  font-size: 12px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-method-detail__row .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-method-detail__row .is-danger {
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-method-detail__empty {
+  padding: 20px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-opening-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sh-opening-edit__tip {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-help-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+[data-theme='dark'] .sh-metrics,
+[data-theme='dark'] .sh-paytable {
+  background: var(--pos-bg-secondary, #2c2c2e);
+  box-shadow: inset 0 0 0 1px var(--pos-border-color, #3a3a3e);
+}
+
+[data-theme='dark'] .sh-paytable__row {
+  border-top-color: var(--pos-border-color, #3a3a3e);
+}
+
+[data-theme='dark'] .sh-metric__value,
+[data-theme='dark'] .sh-paytable__row,
+[data-theme='dark'] .sh-orderstats__items b {
+  color: var(--pos-text-primary, #e5e5e5);
+}
+
+[data-theme='dark'] .sh-metric.is-primary .sh-metric__value--hero {
+  color: var(--pos-primary, #ef7f3a);
 }
 </style>

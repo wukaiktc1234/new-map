@@ -218,6 +218,7 @@ import request from '@/api/request'
 import { callNumberHardwareApi, type HardwareVoiceResponse } from '@/api/callNumberApi'
 import CallHistoryPanel from '@/components/pos/CallHistoryPanel.vue'
 import logger from '@/utils/logger'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 
 interface CallRecord {
   id: number
@@ -497,7 +498,7 @@ const syncFromKitchen = async () => {
     await loadStats()
   } catch (e) {
     logger.errorMessage('同步失败:', e)
-    ElMessage.error('同步失败')
+    ElMessage.error('同步失败：' + resolveErrorMessage(e, '请重试'))
   } finally {
     syncing.value = false
   }
@@ -570,7 +571,7 @@ const callOrder = async (order: CallRecord, autoCall = false) => {
     })
   } catch (e) {
     logger.errorMessage('叫号失败:', e)
-    ElMessage.error('叫号失败')
+    ElMessage.error('叫号失败：' + resolveErrorMessage(e, '请重试'))
   } finally {
     order.calling = false
   }
@@ -619,7 +620,7 @@ const callAgain = async () => {
     })
   } catch (e) {
     logger.errorMessage('重叫失败:', e)
-    ElMessage.error('重叫失败')
+    ElMessage.error('重叫失败：' + resolveErrorMessage(e, '请重试'))
   } finally {
     recalling.value = false
   }
@@ -649,7 +650,7 @@ const markOrderPicked = async (order: CallRecord) => {
     await loadStats()
   } catch (e) {
     logger.errorMessage('标记取餐失败:', e)
-    ElMessage.error('标记取餐失败')
+    ElMessage.error('标记取餐失败：' + resolveErrorMessage(e, '请重试'))
   } finally {
     order.pickingUp = false
   }

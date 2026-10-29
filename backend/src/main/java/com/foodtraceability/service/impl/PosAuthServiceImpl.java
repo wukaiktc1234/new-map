@@ -947,5 +947,98 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
         out.put("cacheMode", userPermissionCache.cacheMode());
         return out;
     }
+
+    /**
+     * 交班面板统计：**与 endShift 同源**（同一个 countShiftOrders + 同一套钱箱公式）。
+     * 字段严格对齐前端 ShiftStats（frontend-pos/src/api/shiftExceptions.ts:21-40）。
+     */
+    @Override
+    public java.util.Map<String, Object> getShiftStatsForPanel(String terminalId) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
+        if (shift == null) {
+            return null;   // 前端约定：null = 无进行中班次（不 404）
+        }
+        java.time.LocalDateTime start = shift.getStartTime();
+        java.util.Map<String, Object> stats = countShiftOrders(terminalId, start, java.time.LocalDateTime.now());
+
+        java.math.BigDecimal cashIn = java.math.BigDecimal.ZERO;
+        if (stats.get("payment_breakdown") instanceof java.util.Map<?, ?> pb && pb.get("cash") != null) {
+            cashIn = new java.math.BigDecimal(pb.get("cash").toString());
+        }
+        java.math.BigDecimal cashRefund = stats.get("cash_refund_amount") != null
+                ? new java.math.BigDecimal(stats.get("cash_refund_amount").toString()) : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal openingCash = shift.getOpeningCash() != null ? shift.getOpeningCash() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal netRevenue = stats.get("net_amount") != null
+                ? new java.math.BigDecimal(stats.get("net_amount").toString()) : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal handoverCash = cashIn.subtract(cashRefund).setScale(2, java.math.RoundingMode.HALF_UP);
+        java.math.BigDecimal drawerExpected = openingCash.add(handoverCash).setScale(2, java.math.RoundingMode.HALF_UP);
+        long pendingCount = exceptionOpsMapper.countPendingExceptionOrders(shift.getShiftId());
+
+        out.put("cashIn", cashIn);
+        out.put("cashRefund", cashRefund);
+        out.put("handoverCash", handoverCash);
+        out.put("drawerExpected", drawerExpected);
+        out.put("openingCash", openingCash);
+        out.put("pendingExceptionCount", pendingCount);
+        // ②（Lead 2026-10-29）：**历史全部异常单数（含已处理与已过期）**，不代表待处理。
+        //   与 pendingExceptionCount 并列返回，避免前端拿「订单明细里的异常单数」冒充待处理数
+        //   （实测前端曾显示 38 笔 vs pendingExceptionCount=0，是两套口径）。
+        //   前端徽标**只认 pendingExceptionCount**。
+        out.put("exceptionOrderTotal", exceptionOpsMapper.countExceptionOrderTotal(shift.getShiftId()));
+        out.put("netRevenue", netRevenue);
+        out.put("matched", stats.get("total_orders"));
+        out.put("refunded", stats.get("refund_amount"));
+        out.put("generatedAt", java.time.LocalDateTime.now().toString());
+        return out;
+    }
+
+    /**
+     * 交班面板异常单列表。口径（Lead 2026-10-29 裁定②，写死）：
+     * pending   = 本班次 && order_status=0 && payment_status&lt;&gt;2
+     *             && cancel_reason&lt;&gt;'EXPIRED_AUTO' && NOT EXISTS(exception_ops)
+     * processed = 本班次 && EXISTS(exception_ops)
+     * **processed 必须按 exception_ops 判定** —— 不能用 order_status 推断（TTL 关单也会改成 3）。
+     */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> listShiftExceptions(String terminalId, String tab) {
+        PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
+        if (shift == null) {
+            return java.util.Collections.emptyList();
+        }
+        boolean processed = "processed".equalsIgnoreCase(tab);
+        String sql = processed
+                ? "SELECT o.order_id, o.order_number, o.create_time, COALESCE(o.final_amount,o.total_amount,0) AS amount, "
+                  + "o.payment_method, e.op_type, e.create_time AS handled_at, e.operator_id "
+                  + "FROM orders o JOIN exception_ops e ON e.order_id=o.order_id AND e.deleted=0 "
+                  + "WHERE o.shift_id=#{shiftId} AND o.deleted=0 ORDER BY e.create_time DESC LIMIT 200"
+                : "SELECT o.order_id, o.order_number, o.create_time, COALESCE(o.final_amount,o.total_amount,0) AS amount, "
+                  + "o.payment_method, NULL AS op_type, NULL AS handled_at, NULL AS operator_id "
+                  + "FROM orders o WHERE o.shift_id=#{shiftId} AND o.deleted=0 "
+                  + "  AND o.order_status=0 AND COALESCE(o.payment_status,0)<>2 "
+                  + "  AND COALESCE(o.cancel_reason,'')<>'EXPIRED_AUTO' "
+                  + "  AND NOT EXISTS (SELECT 1 FROM exception_ops e WHERE e.order_id=o.order_id AND e.deleted=0) "
+                  + "ORDER BY o.create_time DESC LIMIT 200";
+        java.util.List<java.util.Map<String, Object>> rows = posShiftMapper.selectExceptionRows(sql, shift.getShiftId());
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        for (java.util.Map<String, Object> r : rows) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("orderId", r.get("order_id"));
+            m.put("orderNumber", r.get("order_number"));
+            m.put("createTime", String.valueOf(r.get("create_time")));
+            m.put("amount", r.get("amount"));
+            m.put("paymentMethod", r.get("payment_method"));
+            String opType = r.get("op_type") == null ? null : String.valueOf(r.get("op_type"));
+            m.put("type", processed ? "other" : "unpaid");
+            m.put("typeLabel", processed ? ("已处理:" + opType) : "未支付");
+            if (processed && opType != null) {
+                m.put("handledAs", "VOID".equalsIgnoreCase(opType) ? "voided" : "resolved");
+                m.put("handledAt", String.valueOf(r.get("handled_at")));
+                m.put("handledBy", r.get("operator_id"));
+            }
+            out.add(m);
+        }
+        return out;
+    }
 }
 

@@ -2,6 +2,7 @@ import { ref, watch, nextTick, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { posApi, type OrderResult, type OrderRequest } from '@/api/posApi'
 import logger from '@/utils/logger'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 
 export function usePayment(
   cart: Ref<any[]>,
@@ -156,11 +157,8 @@ export function usePayment(
       }
     } catch (error: unknown) {
       // 支付流程异常时展示真实错误信息，便于排查
-      const errMsg = error instanceof Error ? error.message
-        : (error && typeof error === 'object' && 'message' in error
-            ? String((error as { message: unknown }).message)
-            : '支付流程异常')
-      ElMessage.error(errMsg)
+      // 统一取服务端 message（不再自己判断 error instanceof Error，避免丢掉 response.data.message）
+      ElMessage.error(resolveErrorMessage(error, '支付流程异常'))
     } finally {
       paying.value = false
       isConfirming = false

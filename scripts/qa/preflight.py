@@ -487,6 +487,14 @@ def main():
         warn = True
     elif perm_const_rc == 3:
         print("[GATE] 权限常量 gate WARN：已知缺失在基线内（棘轮，不阻断）")
+    # ---- 错误响应体 gate（Lead 2026-10-29）：HTTP>=400 时 body 必须非空且含 code ----
+    # 背景：前端拿到「HTTP 400 + 空 body」只能显示通用失败提示，用户无法得知原因。
+    err_body_rc = run_gate_script("http_error_body_check.py", a.verbose)
+    if err_body_rc == 2:
+        print("[GATE] 错误响应体 gate BLOCK：存在 HTTP>=400 但 body 为空/非 JSON/缺 code 的接口")
+        warn = True
+    elif err_body_rc == 3:
+        print("[GATE] 错误响应体 gate 跳过：后端未启动（ENV=3）")
     clean_db_rc = 0
     if a.full:
         print("-" * 86)

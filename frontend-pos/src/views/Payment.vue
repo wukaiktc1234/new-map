@@ -434,6 +434,7 @@ import QrcodeVue from 'qrcode.vue'
 import { posApi, type OrderResult, type MemberBalance } from '@/api/posApi'
 import { formatDateTime } from '@/utils/format'
 import logger from '@/utils/logger'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 
 interface CartItem {
   id: string;
@@ -737,8 +738,7 @@ const confirmPayment = async () => {
       ElMessage.error('支付失败，订单已创建但未完成支付')
     }
   } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : '支付流程异常'
-    ElMessage.error(errMsg)
+    ElMessage.error(resolveErrorMessage(error, '支付流程异常'))
   } finally {
     paying.value = false
   }

@@ -65,6 +65,15 @@ public interface PosAuthService {
     Map<String, Object> lastEndedShiftOfMyStore();
 
 
+    /**
+     * 交班面板统计（Lead 2026-10-29）：**必须与 endShift 同源** ——
+     * 内部复用 endShift 用的同一个 countShiftOrders + 同一套钱箱口径。
+     */
+    java.util.Map<String, Object> getShiftStatsForPanel(String terminalId);
+
+    /** 交班面板异常单列表：tab=pending|processed（口径见 Lead 裁定②） */
+    java.util.List<java.util.Map<String, Object>> listShiftExceptions(String terminalId, String tab);
+
     /** GET /v1/pos/auth/me：刷新时恢复前端能力快照（只读，权限来源 UserPermissionCache）。 */
     Map<String, Object> getCurrentUserInfo(String terminalId);
 }

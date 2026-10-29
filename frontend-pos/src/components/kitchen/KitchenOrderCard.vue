@@ -149,6 +149,7 @@ import {
 import type { KitchenOrderFullDTO, KitchenDishItem } from '@/types/kitchen';
 import { useKitchenStore } from '@/stores/kitchen';
 import logger from '@/utils/logger'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 
 // Props定义
 interface Props {
@@ -223,7 +224,7 @@ async function handleStartMake(): Promise<void> {
     }
   } catch (error) {
     logger.errorMessage('开始制作失败:', error);
-    ElMessage.error('操作失败');
+    ElMessage.error('操作失败：' + resolveErrorMessage(error, '请重试'));
   }
 }
 
@@ -238,7 +239,7 @@ async function handleComplete(): Promise<void> {
     }
   } catch (error) {
     logger.errorMessage('完成制作失败:', error);
-    ElMessage.error('操作失败');
+    ElMessage.error('操作失败：' + resolveErrorMessage(error, '请重试'));
   }
 }
 
@@ -264,7 +265,7 @@ async function handleServe(): Promise<void> {
   } catch (error: unknown) {
     if (error !== 'cancel') {
       logger.errorMessage('出餐失败:', error);
-      ElMessage.error('操作失败');
+      ElMessage.error('操作失败：' + resolveErrorMessage(error, '请重试'));
     }
   }
 }

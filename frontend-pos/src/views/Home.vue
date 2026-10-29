@@ -16,6 +16,35 @@
       @toggle-theme="toggleTheme"
     />
 
+    <!-- 班次三态提示：no-shift / 未上线(404) / 加载失败 三种文案必须不同，且都不阻塞收银 -->
+    <div
+      v-if="shiftStateText"
+      class="shift-state"
+      :class="'shift-state--' + shiftState"
+      :data-test="'shift-state-' + shiftState"
+      role="status"
+    >
+      <span class="shift-state__title">{{ shiftStateText.title }}</span>
+      <span class="shift-state__hint">{{ shiftStateText.hint }}</span>
+      <span
+        v-if="shiftStateDetail && (shiftState === 'error' || shiftState === 'bad-request')"
+        class="shift-state__detail"
+      >（{{ shiftStateDetail }}）</span>
+      <el-button
+        v-if="shiftState === 'no-shift'"
+        type="primary"
+        size="small"
+        data-test="shift-state-open"
+        @click="showStartShift = true"
+      >去开班</el-button>
+      <el-button
+        v-else-if="shiftState === 'error' || shiftState === 'bad-request'"
+        size="small"
+        data-test="shift-state-retry"
+        @click="retryShiftCheck"
+      >重试</el-button>
+    </div>
+
     <div class="main-content">
       <!-- 购物车置于左侧，菜品网格在右侧 -->
       <CartSection
@@ -153,6 +182,7 @@ import OrderDetailDialog from '@/components/pos/dialogs/OrderDetailDialog.vue'
 import StockQueryDialog from '@/components/pos/dialogs/StockQueryDialog.vue'
 import YoloCheckoutDialog from '@/components/pos/YoloCheckoutDialog.vue'
 import StartShiftDialog from '@/components/pos/dialogs/StartShiftDialog.vue'
+import { SHIFT_STATE_TEXT, classifyShiftFailure, shiftFailureMessage, type ShiftStateKind } from '@/utils/shiftStatus'
 import PosTopBar from '@/components/pos/PosTopBar.vue'
 import MenuSection from '@/components/pos/MenuSection.vue'
 import CartSection from '@/components/pos/CartSection.vue'
@@ -212,6 +242,18 @@ const { prefs } = usePosPreferences()
 const customerDisplayStore = useCustomerDisplayStore()
 const showOrderQuery = ref(false)
 
+/* ===== 班次三态：no-shift（正常无班次）/ not-implemented（404）/ error（网络或 5xx） ===== */
+/** 空串 = 加载中或已有在班班次，不提示 */
+const shiftState = ref<'' | ShiftStateKind>('')
+const shiftStateDetail = ref('')
+const shiftStateText = computed(() => (shiftState.value ? SHIFT_STATE_TEXT[shiftState.value] : null))
+
+function retryShiftCheck(): void {
+  shiftState.value = ''
+  shiftStateDetail.value = ''
+  void maybeOpenStartShift()
+}
+
 /* ===== N19-4：开班（备用金） ===== */
 const showStartShift = ref(false)
 const terminalId = ref('')
@@ -243,6 +285,14 @@ async function maybeOpenStartShift(): Promise<void> {
     if (hasActiveShiftMark(terminal)) return
 
     const current = await posApi.getCurrentShift(terminal)
+    // b) 200 + data=null → 真的没开班（正常业务态）：提示 + 开班入口，绝不当作故障
+    if (!current) {
+      shiftState.value = 'no-shift'
+      shiftStateDetail.value = ''
+      showStartShift.value = true
+      return
+    }
+    shiftState.value = ''
     if (current) {
       // ③ 后端已有进行中的班次（例如换了一台终端登录同一账号）→ 回写标记
       markShiftStarted({
@@ -255,10 +305,12 @@ async function maybeOpenStartShift(): Promise<void> {
       })
       return
     }
-    showStartShift.value = true
   } catch (error) {
-    // 网络异常时不打扰收银（原行为），收银员可从交班面板重试
-    logger.errorMessage('[Home] 检查当前班次失败（不影响收银）', error)
+    // a) 404：接口不存在 → 「该功能未上线（V2.0）」，不阻塞收银
+    // c) 其它：网络/5xx → 「班次状态加载失败，可重试」+ 重试
+    shiftState.value = classifyShiftFailure(error)
+    shiftStateDetail.value = shiftFailureMessage(error)
+    logger.errorMessage('[Home] 检查当前班次失败（三态提示已展示，不阻塞收银）', error)
   }
 }
 
@@ -705,6 +757,41 @@ watch([cart, totalAmount], ([newCart, newTotal]) => {
 </script>
 
 <style scoped>
+/* 班次三态提示条 */
+.shift-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--el-border-color-lighter, #e4e7ed);
+}
+
+.shift-state__title {
+  font-weight: 600;
+}
+
+.shift-state__hint {
+  color: var(--pos-text-secondary, #909399);
+}
+
+.shift-state--no-shift {
+  background: var(--el-color-primary-light-9, #ecf5ff);
+  color: var(--el-color-primary-dark-2, #337ecc);
+}
+
+.shift-state--not-implemented,
+.shift-state--bad-request {
+  background: var(--el-color-warning-light-9, #fdf6ec);
+  color: var(--el-color-warning-dark-2, #b88230);
+}
+
+.shift-state--error {
+  background: var(--el-color-danger-light-9, #fef0f0);
+  color: var(--el-color-danger-dark-2, #c45656);
+}
+
+
 .fastfood-pos {
   height: 100vh;
   display: flex;

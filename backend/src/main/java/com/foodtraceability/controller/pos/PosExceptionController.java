@@ -24,7 +24,10 @@ import java.util.Map;
  * <p>响应外层固定含 <b>replayed</b> 布尔（幂等重放 true / 首次 false），Owner 判据。</p>
  */
 @RestController
-@RequestMapping("/api/v1/pos/exceptions")
+// ⚠ 注意：应用 context-path = /api（application*.yml），所以这里的 mapping **不能再带 /api**。
+//   修前写成 "/api/v1/pos/exceptions" → 实际生效路径是 /api/api/v1/pos/exceptions/…，
+//   前端 baseURL='/api' 拼出来是 /api/v1/pos/exceptions/… → **框架层 404（响应体为空）**。
+@RequestMapping("/v1/pos/exceptions")
 @Tag(name = "POS-异常单处理")
 public class PosExceptionController {
 
@@ -41,10 +44,16 @@ public class PosExceptionController {
     @Operation(summary = "补收款（异常单）", description = "真 409/422；响应含 replayed")
     public ResponseEntity<Map<String, Object>> resolve(@PathVariable String orderId,
                                                        @RequestBody Map<String, Object> body,
-                                                       @RequestHeader(value = "X-Operator-Id", required = false) String operatorId) {
+                                                       @RequestHeader(value = "X-Operator-Id", required = false) String operatorId,
+                                                       @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader) {
+        // ①（Lead 2026-10-29）：**幂等键双读** —— body 优先，回退 Header。
+        //   网关/代理去重靠 Header，业务透传靠 body；只支持一个必然有一方撞墙（前端第一次就撞了）。
         String idemKey = asString(body.get("idempotencyKey"));
         if (idemKey == null || idemKey.isBlank()) {
-            return respond(false, 400, "idempotencyKey 必填", false);
+            idemKey = idemHeader;
+        }
+        if (idemKey == null || idemKey.isBlank()) {
+            return respond(false, 400, "idempotencyKey 必填（body.idempotencyKey 或 Header: Idempotency-Key 二选一）", false);
         }
         Long amountFen = asLong(body.get("amountFen"));
         Long cashReceivedFen = asLong(body.get("cashReceivedFen"));
@@ -80,11 +89,16 @@ public class PosExceptionController {
     @Operation(summary = "作废异常单", description = "不产生资金流水；已支付单 409 ALREADY_PAID")
     public ResponseEntity<Map<String, Object>> voidOrder(@PathVariable String orderId,
                                                          @RequestBody Map<String, Object> body,
-                                                         @RequestHeader(value = "X-Operator-Id", required = false) String operatorId) {
+                                                         @RequestHeader(value = "X-Operator-Id", required = false) String operatorId,
+                                                         @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader) {
+        // ①（Lead 2026-10-29）：幂等键双读，body 优先，回退 Header（与 resolve 保持一致）
         String idemKey = asString(body.get("idempotencyKey"));
+        if (idemKey == null || idemKey.isBlank()) {
+            idemKey = idemHeader;
+        }
         String reason = asString(body.get("reason"));
         if (idemKey == null || idemKey.isBlank()) {
-            return respond(false, 400, "idempotencyKey 必填", false);
+            return respond(false, 400, "idempotencyKey 必填（body.idempotencyKey 或 Header: Idempotency-Key 二选一）", false);
         }
         if (reason == null || reason.isBlank()) {
             return respond(false, 400, "reason 必填", false);

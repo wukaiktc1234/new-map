@@ -12,8 +12,52 @@ if (localStorage.getItem('pos-demo-mode')) {
   localStorage.removeItem('pos-demo-mode')
 }
 
+/**
+ * 路径前缀重复保护（开发期断言）
+ *
+ * axios 实例 baseURL 已经是 '/api'；如果调用方再把 '/api/v1/...' 传进来，
+ * 实际请求就变成 '/api/api/v1/...'，后端返回 **HTTP 404 且响应体为空**（没有 mapping）。
+ * 这种 404 看起来像「接口不存在」，很容易被误判成业务逻辑问题——本仓库真踩过。
+ * 所以在 DEV 环境直接抛错，把问题暴露在调用点。
+ */
+/**
+ * 错误响应体形状断言（开发期告警）
+ *
+ * 约定：后端错误必须带 body（{"code":...,"message":"..."}）。
+ * 出现「HTTP 4xx/5xx 但响应体为空」时，先怀疑路径前缀重复（/api/api/...）或该 mapping 不存在，
+ * 再怀疑业务逻辑——本仓库真踩过（servlet context-path /api + controller 又写 /api/v1 → /api/api/v1）。
+ * 只告警不抛错：错误流已由调用方处理，抛错会掩盖原始错误。
+ */
+function assertErrorBodyShape(status: number | undefined, url: string, data: unknown): void {
+  if (!import.meta.env.DEV) return
+  if (!status || status < 400) return
+  const isEmpty =
+    data === undefined ||
+    data === null ||
+    (typeof data === 'string' && data.trim() === '') ||
+    (typeof data === 'object' && Object.keys(data as Record<string, unknown>).length === 0)
+  if (isEmpty) {
+    console.warn(
+      '[request] 错误响应体为空：HTTP ' + status + ' ' + url +
+        ' —— 优先怀疑 /api/api/ 前缀重复或该 mapping 不存在（真实业务错误通常带 body.code/message）',
+    )
+  }
+}
+
+function assertNoDuplicatedApiPrefix(rawUrl: string): void {
+  if (!import.meta.env.DEV) return
+  if (/(^|\/)api\/api\//i.test(rawUrl) || /^\/api\//i.test(rawUrl)) {
+    throw new Error(
+      '[request] URL 前缀重复：baseURL 已是 /api，请传 /v1/... 而不是 /api/...（实际会打到 /api/api/... → 404 空响应体）：' + rawUrl,
+    )
+  }
+}
+
 request.interceptors.request.use(
   (config) => {
+    // dev 断言：拦掉 /api/api/... 这类前缀重复（见上）
+    assertNoDuplicatedApiPrefix(String(config.url || ''))
+
     // POS 端只使用 pos-token，避免与管理端 token 串用
     const token = localStorage.getItem('pos-token')
     if (token) {
@@ -103,6 +147,7 @@ request.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const status = error.response?.status
+    assertErrorBodyShape(status, String(error.config?.url || ''), error.response?.data)
     const originalRequest = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined
 
     // B3 修复：401 时尝试用 refresh token 刷新，刷新失败再跳登录

@@ -47,6 +47,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { resolveErrorMessage } from '@/utils/errorMessage'
 import { posApi, type CouponVerifyResult } from '@/api/posApi'
 
 interface Props {
@@ -94,11 +95,12 @@ const verifyCoupon = async () => {
       ElMessage.error(result.message || '券码无效')
     }
   } catch (error) {
+    const reason = resolveErrorMessage(error, '请检查网络后重试')
     couponInfo.value = {
       valid: false,
-      message: '验证失败，请检查网络后重试'
+      message: '验证失败：' + reason
     }
-    ElMessage.error('券码验证失败，请检查网络后重试')
+    ElMessage.error('券码验证失败：' + reason)
   } finally {
     isVerifying.value = false
   }

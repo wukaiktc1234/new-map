@@ -91,6 +91,15 @@ public interface PosShiftMapper extends BaseMapper<PosShift> {
     Map<String, Object> sumCashRefund(@Param("startTime") LocalDateTime startTime,
                                       @Param("endTime") LocalDateTime endTime);
 
+    /**
+     * 交班面板异常单列表（Lead 2026-10-29 裁定② 的口径，SQL 由 Service 传入以保持 pending/processed 同源）。
+     * 注意：这里的 ${} 不用 —— SQL 是**常量拼接**（两个分支都是固定字符串，无外部输入），
+     * 唯一参数 #{shiftId} 走预编译绑定。
+     */
+    @Select("${sql}")
+    java.util.List<java.util.Map<String, Object>> selectExceptionRows(@org.apache.ibatis.annotations.Param("sql") String sql,
+                                                                    @org.apache.ibatis.annotations.Param("shiftId") Long shiftId);
+
     /** 今日最早一笔已支付订单时间（用于无班次时补建班次的起始时间） */
     @Select("SELECT MIN(create_time) FROM orders WHERE create_time::date = CURRENT_DATE AND payment_status = 2 AND deleted = 0")
     LocalDateTime findFirstPaidOrderTimeToday();

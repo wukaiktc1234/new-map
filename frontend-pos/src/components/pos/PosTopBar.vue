@@ -362,8 +362,10 @@ async function handleLogout(): Promise<void> {
   try {
     const token = localStorage.getItem('pos-token')
     if (token) {
-      // 后端没有 /v1/pos/auth/logout；通用 /v1/auth/logout 接受任意 Bearer token 并加入黑名单，
-      // 因此这里复用该接口吊销 token。失败也继续本地清理（离线/后端未启动时同样能退出）。
+      // 真实端点：POST /v1/auth/logout（**不在 /v1/pos/auth 下**）。
+      // 历史误传的 /v1/pos/auth/logout 后端无此 mapping，会返回 HTTP 200 + body.code=404「资源不存在」，
+      // 前端若按 HTTP 状态判成功就会误以为已登出。本文件自始至终只调 /v1/auth/logout。
+      // 失败也继续本地清理（离线/后端未启动时同样能退出）。
       try {
         await axios.post('/api/v1/auth/logout', null, {
           headers: { Authorization: `Bearer ${token}` },

@@ -119,3 +119,52 @@ role_permissions 真实列：id, role_id, permission_id, deleted, create_time（
 
 **⚠ 不存在 `cancel_time` 列** —— 第 11 次「假设存在」就是在这里翻车（`UPDATE ... cancel_time = now()` → 92 笔整批失败）。
 关单时间请用 `update_time` 承载。
+
+## 三、`users.employee_code` 允许为空 —— 鉴权/交班统一用 `userId`（2026-10-29 实测）
+
+**实测：13 个用户 `employee_code` 为 NULL**
+
+```text
+1                  | admin
+999                | test-admin
+2080170081205395460| finqa_register
+2080170081205395461| finqa_confirm
+2080170081205395462| finqa_noperm
+2080170081205395463| **vcashier01**   ← 收银员
+2080170081205395464| qa_store_b
+2080170081205395465| qa_auditor
+2110437068670001154| **vtest01**      ← 测试员A
+2110437068670001200| qa_admin
+… 共 13 个
+```
+
+**为什么不能回填假工号**：补 `employee_code = username` 等于**造身份数据**，且会与历史 `pos_shifts.employee_id`
+（旧工号风格 `2110437068670001210`）继续错位 —— 一个用户两种标识，对账/审计都乱。
+
+**正确做法（现行代码已在用）**：
+```text
+鉴权/交班一律**候选集**或 userId：
+  employee_code → userId → username（依次尝试，命中即用）
+POS 登录 findUserByEmployeeId（PosAuthServiceImpl:655-673）：
+  先查 employee_code，**查不到再查 username** ← 这就是 employee_code 为 NULL 仍能登录的原因
+  实测：employeeId=vcashier01 登录成功（userId=2080170081205395463，permissions=44）
+  实测：employeeId=2110437068670001210（旧工号风格）→ code=500 员工号或密码错误
+```
+
+**注意**：`PosAuthServiceImpl:658` 是**唯一**只按 employee_code 精确匹配的 POS 鉴权点，但有 username 兜底；
+其它 14 处精确匹配都在 HR/档案/合同域（`employee_code` 是该域业务主键且必填），**不应统一改**。
+
+## 四、框架层错误（401/403/404）不得包装成 HTTP 200（2026-10-29 教训）
+
+```text
+修前：POST /v1/pos/auth/logout（后端无此映射）→ **HTTP 200** + body.code=404「资源不存在」
+后果：前端只看 HTTP 状态 → 当成成功 → 进入业务分支 → 表现为「无班次」状态崩塌
+修后：GlobalExceptionHandler 的 NoHandlerFound / NoResourceFound 返回 **真 HTTP 404**
+      （ResponseEntity.status(NOT_FOUND)，body 保留 code=404 兼容旧前端）
+```
+
+**通用结论**：「401/403/404 这类**框架层错误**，如果被包装成 HTTP 200 + body.code，前端必然误判；
+而如果前端只看 HTTP 状态，**它会一路走到业务分支里**，表现成业务错误（如『无班次』）。」
+
+对照：交班闸 `PENDING_EXCEPTIONS` 已按契约返回**真 HTTP 409** —— 同一个项目里两种风格并存，
+**判断依据必须是 HTTP 码 + body.code 双看**，前端不能只认一个。

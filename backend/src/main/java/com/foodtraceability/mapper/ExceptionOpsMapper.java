@@ -50,6 +50,16 @@ public interface ExceptionOpsMapper extends BaseMapper<ExceptionOps> {
     @Select("SELECT COALESCE(payment_status, 0) FROM orders WHERE order_id = #{orderId} AND deleted = 0")
     Integer paymentStatusOf(@Param("orderId") String orderId);
 
+    /**
+     * 本班次「异常单总数」（Lead 2026-10-29 ②）：
+     * = 待处理（pending 口径） + 已处理（有 exception_ops） + 已因 TTL 过期关单。
+     * **语义是"历史全部"，不代表待处理**；前端徽标只认 pendingExceptionCount。
+     */
+    @Select("SELECT count(*) FROM orders o WHERE o.shift_id = #{shiftId} AND o.deleted = 0 "
+            + "  AND (COALESCE(o.payment_status,0) <> 2 OR o.cancel_reason = 'EXPIRED_AUTO' "
+            + "       OR EXISTS (SELECT 1 FROM exception_ops e WHERE e.order_id=o.order_id AND e.deleted=0))")
+    long countExceptionOrderTotal(@Param("shiftId") Long shiftId);
+
     /** 交班闸：本班次待处理异常单数（未支付 + 无 exception_ops 记录） */
     @Select("SELECT count(*) FROM orders o "
             + "WHERE o.shift_id = #{shiftId} AND o.deleted = 0 "

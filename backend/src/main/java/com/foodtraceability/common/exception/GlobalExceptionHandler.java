@@ -225,22 +225,26 @@ public class GlobalExceptionHandler {
      * 处理NoHandlerFoundException异常（资源不存在）
      */
     @ExceptionHandler(NoHandlerFoundException.class)
-    public Result<?> handleNoHandlerFoundException(NoHandlerFoundException e) {
+    public ResponseEntity<Result<?>> handleNoHandlerFoundException(NoHandlerFoundException e) {
         log.error("NoHandlerFoundException: {}", e.getMessage(), e);
         recordExceptionToMonitoring(e);
 
-        return Result.error(HttpStatus.NOT_FOUND.value(), "资源不存在");
+        // ★ ①（Lead 2026-10-29）：路径不存在 → **真 HTTP 404**（修前是 200 + body.code=404，前端会当成成功）
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Result.error(HttpStatus.NOT_FOUND.value(), "资源不存在"));
     }
 
     /**
      * 处理NoResourceFoundException异常（静态资源不存在）
      */
     @ExceptionHandler(NoResourceFoundException.class)
-    public Result<?> handleNoResourceFoundException(NoResourceFoundException e) {
+    public ResponseEntity<Result<?>> handleNoResourceFoundException(NoResourceFoundException e) {
         log.error("NoResourceFoundException: {}", e.getMessage(), e);
         recordExceptionToMonitoring(e);
 
-        return Result.error(HttpStatus.NOT_FOUND.value(), "资源不存在");
+        // ★ ①（Lead 2026-10-29）：同上，真 HTTP 404
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Result.error(HttpStatus.NOT_FOUND.value(), "资源不存在"));
     }
 
     /**
