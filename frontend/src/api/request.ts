@@ -278,7 +278,8 @@ request.interceptors.response.use(
           // 登录接口的业务 401 = 用户名或密码错误（后端返回 HTTP 200 + code 401），
           // 不是会话过期：直接透出后端 message，避免误报"登录已过期"
           if (isLoginRequest(response.config.url)) {
-            ElMessage.error(errorMessage)
+            // 登录页自己会弹一次（用它 catch 到的 message），这里再弹就重复了 —— 实测双弹
+            if (!silentError) ElMessage.error(errorMessage)
             return Promise.reject(new Error(errorMessage))
           }
           if (import.meta.env.PROD) {
@@ -290,8 +291,13 @@ request.interceptors.response.use(
           // 开发环境：不跳转、不清空标签页，让 silentGet 走 mock 回退
           // 原因：开发模式无真实 token，后端必然返回 401，若跳转会清空 tab-bar-tabs 导致标签页丢失
           break
+        case 400:
+          // 业务 400：优先服务端原文（如「角色名不能为空」），不再用通用文案
+          if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
+          break
         case 403:
-          if (!silentError && !isAttributionConfirm) ElMessage.error('没有权限执行此操作')
+          // ★ 业务 403：服务端原文优先（如「权限不足: system:role:create」），兜底才是通用文案
+          if (!silentError && !isAttributionConfirm) ElMessage.error(errorMessage)
           break
         case 404:
           logger.warn('Response', `接口不存在: ${res.message || ''}`)
@@ -339,10 +345,14 @@ request.interceptors.response.use(
 
       switch (status) {
         case 400:
-          errorMessage = '请求参数错误'
+          // ★（Lead 2026-10-30 X-2a）：优先用服务端原文，避免再次吞掉 message
+          errorMessage = errorResponse.data?.message || '请求参数错误'
           break
         case 401:
-          errorMessage = '登录已过期，请重新登录'
+          // ★ 登录失败（密码错误/账号禁用/锁定）可能仍是 401：服务端原文优先，避免误报「登录已过期」
+          errorMessage = errorResponse.data?.message || '登录已过期，请重新登录'
+          // ★ 登录接口自身返回 401 = 凭据错误，绝不能走「会话过期」流程（会弹确认框/跳转，掩盖真正原因）
+          if (isLoginRequest(error.config?.url)) break
           if (import.meta.env.PROD) {
             // 先尝试静默刷新并重放请求；失败则弹确认框后再跳转，避免用户数据丢失
             return handleSessionExpired(error.config)
@@ -351,10 +361,12 @@ request.interceptors.response.use(
           // 原因：开发模式无真实 token，后端必然返回 401，若跳转会清空 tab-bar-tabs 导致标签页丢失
           break
         case 403:
-          errorMessage = '没有权限执行此操作'
+          // ★ 服务端原文优先（如「权限不足: system:role:create」「账号已被禁用，请联系管理员」）
+          errorMessage = errorResponse.data?.message || '没有权限执行此操作'
           break
         case 404:
-          errorMessage = `接口不存在: ${url}`
+          // ★ 业务 404（如「角色不存在」）与「接口不存在」必须用服务端 message 区分
+          errorMessage = errorResponse.data?.message || `接口不存在: ${url}`
           // 仅当显式允许 mock 模式时才启用，否则暴露真实错误
           if (MOCK_ALLOWED) enableMockMode()
           break
@@ -362,7 +374,8 @@ request.interceptors.response.use(
           errorMessage = '请求超时'
           break
         case 500:
-          errorMessage = '服务器内部错误'
+          // ★ 服务端原文优先（很多业务异常仍以 500 返回并带精确 message）
+          errorMessage = errorResponse.data?.message || '服务器内部错误'
           break
         case 502:
         case 503:

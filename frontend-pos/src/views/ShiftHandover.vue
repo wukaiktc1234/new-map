@@ -42,7 +42,20 @@
           </div>
         </div>
         <div class="sh-meta">
-          <span class="sh-shift-chip" :class="{ active: shiftActive }">{{ shiftActive ? '班次进行中' : '今日汇总' }}</span>
+          <!-- 账号/班次信息放抬头：收银员一眼确认"我现在以谁的身份、交哪一班" -->
+          <span class="sh-operator" data-test="shift-operator">
+            <b>{{ operator || '当前收银员' }}</b>
+            <template v-if="shiftInfo?.employeeName && shiftInfo.employeeName !== operator">
+              · {{ shiftInfo.employeeName }}
+            </template>
+          </span>
+          <span class="sh-shift-chip" :class="{ active: shiftActive }">
+            {{ shiftActive ? '班次进行中' : '今日汇总' }}
+            <template v-if="shiftInfo?.shiftId"> #{{ shiftInfo.shiftId }}</template>
+          </span>
+          <span v-if="shiftActive" class="sh-shift-start" data-test="shift-start-at">
+            开始于 {{ formatTime(shiftInfo?.startTime || summaryStartTime, '--:--') }}
+          </span>
           <span class="sh-date">{{ currentDate }}</span>
           <span class="sh-time">{{ currentTime }}</span>
           <button type="button" class="sh-close" title="关闭" @click="visible = false">
@@ -120,6 +133,16 @@
             共 <b data-test="shift-paid-count">{{ paidOrders.length }}</b> 笔 ·
             <b>¥{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</b>
           </span>
+          <!-- 明细入口收进统计表：与"按方式看详情"是同一份数据，不必在页面底部再放一条 -->
+          <button
+            type="button"
+            class="sh-link sh-paytable__all"
+            data-test="shift-detail-button"
+            @click="openAllDetails"
+          >
+            明细
+            <el-icon><ArrowRight /></el-icon>
+          </button>
         </div>
 
         <div class="sh-paytable__row sh-paytable__row--head">
@@ -185,18 +208,6 @@
         </div>
       </div>
 
-      <!-- 明细入口：主界面不铺列表，一律走抽屉 -->
-      <button
-        type="button"
-        class="sh-detail-btn"
-        data-test="shift-detail-button"
-        @click="detailDrawer = true"
-      >
-        <el-icon class="sh-detail-btn__icon"><Tickets /></el-icon>
-        <span class="sh-detail-btn__text">调阅本班次所有订单明细（共 {{ validOrders.length }} 笔）</span>
-        <el-icon class="sh-detail-btn__arrow"><ArrowRight /></el-icon>
-      </button>
-
       <!-- 操作区：左边辅助动作，右边两个交班按钮（美团式动作流收尾） -->
       <div class="sh-actions">
         <div class="sh-actions__links">
@@ -247,8 +258,6 @@
             </span>
           </el-tooltip>
         </div>
-
-        <div class="sh-shift-note" :class="{ active: shiftActive }">{{ shiftStatusText }}</div>
       </div>
     </div>
 
@@ -382,7 +391,6 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Files,
-  Tickets,
   WarningFilled,
   Close,
   ArrowRight,
@@ -822,13 +830,24 @@ const filteredValidOrders = computed<CleanOrder[]>(() => {
   return validOrders.value.filter(o => o.methodKey === filterPaymentMethod.value)
 })
 
-const shiftStatusText = computed<string>(() => {
-  if (summaryLoading.value && !shiftActive.value) return '正在读取班次状态…'
-  if (shiftActive.value) {
-    const operator = shiftInfo.value?.employeeName || shiftInfo.value?.employeeId || '当前收银员'
-    return `班次进行中：${operator} · 开始于 ${formatTime(shiftInfo.value?.startTime || summaryStartTime.value, '--:--')}`
+/** 打开"本班次全部明细"：先清掉支付方式筛选，再从统计表头进入 */
+const openAllDetails = (): void => {
+  filterPaymentMethod.value = ''
+  detailDrawer.value = true
+}
+
+/** 当前收银员（抬头展示 + 打印/导出复用） */
+const operator = computed<string>(() => {
+  const fromShift = shiftInfo.value?.employeeName || shiftInfo.value?.employeeId
+  if (fromShift) return fromShift
+  // 兜底：登录时写入的 pos-user（后端班次信息缺失时也不能显示空白）
+  try {
+    const raw = localStorage.getItem('pos-user')
+    const user = raw ? (JSON.parse(raw) as { employeeName?: string; employeeId?: string }) : null
+    return user?.employeeName || user?.employeeId || ''
+  } catch {
+    return ''
   }
-  return `当前无进行中的班次，确认交班将按今日汇总（${formatTime(summaryStartTime.value, '--:--')} 起）留痕`
 })
 
 // ---- 数据加载 ----
@@ -1887,6 +1906,28 @@ onUnmounted(() => {
 .sh-btn-primary:hover:not(:disabled) {
   filter: brightness(1.05);
   box-shadow: 0 10px 24px rgba(227, 101, 28, 0.34);
+}
+
+.sh-operator {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-operator b {
+  font-weight: 700;
+}
+
+.sh-shift-start {
+  font-size: 12px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-paytable__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--pos-spacing-sm, 16px);
 }
 
 .sh-shift-note {

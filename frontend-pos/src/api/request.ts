@@ -150,8 +150,11 @@ request.interceptors.response.use(
     assertErrorBodyShape(status, String(error.config?.url || ''), error.response?.data)
     const originalRequest = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined
 
+    // ★ 登录接口返回 401 = 凭据错误：只把服务端原文抛给登录页，绝不触发刷新/跳登录
+    const isLoginCall = String(error.config?.url || '').includes('/v1/pos/auth/login')
+
     // B3 修复：401 时尝试用 refresh token 刷新，刷新失败再跳登录
-    if (status === 401 && originalRequest && !originalRequest._retry) {
+    if (status === 401 && !isLoginCall && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
 
       if (isRefreshing) {

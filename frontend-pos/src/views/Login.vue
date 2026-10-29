@@ -105,7 +105,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { clearShiftMark } from '@/utils/shiftSession'
-import { setCapabilities } from '@/composables/usePermission'
+import { setCapabilities, clearCapabilities } from '@/composables/usePermission'
 
 interface LoginForm {
   employeeId: string
@@ -164,6 +164,23 @@ function generateTerminalId(): string {
   return `pos-${hostname}-${Date.now()}`
 }
 
+/**
+ * 登录后的权限预检：直接问"收银数据"接口能不能读。
+ *
+ * 只把 403 当作"无权限"（阻断登录）；
+ * 404（接口未上线）/ 5xx / 网络异常一律放行 —— 不能因为接口没就绪把收银员挡在门外。
+ */
+async function probePosAccess(terminal: string): Promise<boolean> {
+  try {
+    await request.get('/v1/pos/shift/stats', { params: { terminalId: terminal } })
+    return true
+  } catch (err: unknown) {
+    const status = Number((err as { status?: number })?.status ?? (err as { code?: number })?.code ?? 0)
+    if (status === 403) return false
+    return true
+  }
+}
+
 async function handleLogin(): Promise<void> {
   error.value = ''
 
@@ -207,6 +224,17 @@ async function handleLogin(): Promise<void> {
         response.userInfo?.permissions ?? response.userInfo?.perms ?? response.userInfo?.authorities,
         response.userInfo?.roles ?? response.userInfo?.roleName,
       )
+      // 登录即校验"能不能收银"：无收银数据权限的账号不该等到交班才被拦下
+      const granted = await probePosAccess(response.userInfo?.terminalId || terminalId)
+      if (!granted) {
+        localStorage.removeItem('pos-token')
+        localStorage.removeItem('pos-user')
+        localStorage.removeItem('pos-terminal')
+        clearCapabilities()
+        error.value = '该账号无收银数据权限，请联系店长授权后再登录'
+        ElMessage.error(error.value)
+        return
+      }
       ElMessage.success('登录成功')
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/')

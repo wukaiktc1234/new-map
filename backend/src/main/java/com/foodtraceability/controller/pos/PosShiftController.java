@@ -46,8 +46,11 @@ public class PosShiftController {
     @Operation(summary = "交班面板统计", description = "与 endShift 同源；无进行中班次返回 data=null（不 404）")
     public Result<Map<String, Object>> stats(@RequestParam String terminalId) {
         try {
+            assertTerminalBelongsToMe(terminalId);   // ★ ② 数据边界：别人的终端 → 403
             Map<String, Object> s = posAuthService.getShiftStatsForPanel(terminalId);
             return s == null ? Result.success(null, "没有进行中的班次") : Result.success(s);
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            throw ade;   // ★ 越权必须冒泡成真 403，不能被下面的 catch(Exception) 吞成 500
         } catch (Exception e) {
             log.error("交班面板统计失败 terminalId={} err={}", terminalId, e.getMessage());
             return Result.error(500, "统计失败：" + e.getMessage());
@@ -61,7 +64,10 @@ public class PosShiftController {
     public Result<List<Map<String, Object>>> exceptions(@RequestParam String terminalId,
                                                         @RequestParam(defaultValue = "pending") String tab) {
         try {
+            assertTerminalBelongsToMe(terminalId);   // ★ ② 数据边界
             return Result.success(posAuthService.listShiftExceptions(terminalId, tab));
+        } catch (org.springframework.security.access.AccessDeniedException ade) {
+            throw ade;   // ★ 同上
         } catch (Exception e) {
             log.error("异常单列表失败 terminalId={} tab={} err={}", terminalId, tab, e.getMessage());
             return Result.error(500, "查询失败：" + e.getMessage());
@@ -73,6 +79,7 @@ public class PosShiftController {
     @PreAuthorize("hasAuthority('pos:shift:manage')")
     @Operation(summary = "读取备用金", description = "只读当前班次 opening_cash")
     public Result<Map<String, Object>> getOpeningCash(@RequestParam String terminalId) {
+        assertTerminalBelongsToMe(terminalId);   // ★ ② 数据边界
         PosShift shift = posAuthService.getCurrentShift(terminalId);
         if (shift == null) {
             return Result.success(null, "没有进行中的班次");
@@ -107,5 +114,27 @@ public class PosShiftController {
         log.warn("[METRIC] pos_shift_scan_not_implemented orderId={}", orderId);
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
                 .body(Result.error(501, "扫码收款功能未实现：扫码合单/回调逻辑待产品定义，暂不开放"));
+    }
+
+    /**
+     * ②（Lead 2026-10-30）：数据边界校验 —— 该终端上的活跃班次必须属于当前登录人。
+     *
+     * <p>修前实测：vcashier01 用别人的 terminalId 调 /stats → HTTP 200 + 别人的班次数据（越权读）。</p>
+     *
+     * <p>规则：「没权限」与「没数据」必须用**状态码**区分：
+     * 无活跃班次 → 该终端没有数据（业务态，返回 null/空）；<b>有班次但不属于我 → 403</b>。</p>
+     */
+    private void assertTerminalBelongsToMe(String terminalId) {
+        com.foodtraceability.entity.PosShift shift = posAuthService.getCurrentShift(terminalId);
+        if (shift == null) {
+            return;   // 该终端本来就没有进行中的班次 → 不是越权，交给业务返回 null
+        }
+        Long me = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        String owner = shift.getEmployeeId();
+        if (me == null || owner == null || !owner.equals(String.valueOf(me))) {
+            log.warn("[METRIC] pos_shift_cross_terminal_denied terminalId={} me={} owner={}", terminalId, me, owner);
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "该终端上的班次不属于当前用户，无权查看");
+        }
     }
 }

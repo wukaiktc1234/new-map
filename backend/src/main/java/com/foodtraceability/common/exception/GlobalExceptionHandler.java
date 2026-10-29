@@ -144,12 +144,28 @@ public class GlobalExceptionHandler {
      * </ul>
      */
     private Integer resolveHttpStatus(BusinessException e) {
+        // ★ X-2a（Lead 2026-10-30）：400 / 403 / 404 映射真 HTTP 状态。
+        //   修前只映射 409（ConflictException），其余一律 null → HTTP 200 + body.code，
+        //   前端于是有两套判断路径（HTTP 与 body.code）—— 今天所有误判都源于「两套表达」。
+        //   ⚠ **401 暂不映射**：管理端 PROD 收到真 401 会走 handleSessionExpired（静默刷新+重放），
+        //     那 12 处业务 401 是否真是「登录失效」尚未审计 → 现保持 200 + code（临时例外）。
         if (e.getHttpStatus() != null) {
             return e.getHttpStatus();
         }
         if (e.getCode() != null && e.getCode() == ConflictException.CONFLICT) {
             return ConflictException.CONFLICT;
         }
+        if (e.getCode() != null) {
+            switch (e.getCode()) {
+                case 400:
+                case 403:
+                case 404:
+                    return e.getCode();
+                default:
+                    break;
+            }
+        }
+        // 其它业务码（含 401 临时例外、5xx 类业务码）→ 仍走 HTTP 200 + body.code 历史语义
         return null;
     }
 
@@ -262,7 +278,7 @@ public class GlobalExceptionHandler {
      * 处理AccessDeniedException异常（权限不足）
      */
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public Result<?> handleAccessDeniedException(org.springframework.security.access.AccessDeniedException e) {
+    public org.springframework.http.ResponseEntity<Result<?>> handleAccessDeniedException(org.springframework.security.access.AccessDeniedException e) {
         log.error("AccessDeniedException: {}", e.getMessage(), e);
         org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (auth != null) {
@@ -272,7 +288,8 @@ public class GlobalExceptionHandler {
         }
         recordExceptionToMonitoring(e);
 
-        return Result.error(HttpStatus.FORBIDDEN.value(), "权限不足，无法访问该资源");
+        return org.springframework.http.ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Result.error(HttpStatus.FORBIDDEN.value(), "权限不足，无法访问该资源"));
     }
 
     /**

@@ -65,6 +65,8 @@ public class PermissionController {
         try {
             List<Permission> permissions = permissionService.getByStatus("active");
             return Result.success(permissions, "获取权限列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("获取权限列表失败", e);
             return Result.error(500, "获取权限列表失败");
@@ -82,6 +84,8 @@ public class PermissionController {
         try {
             List<StatusCount> statusCounts = permissionService.getStatusCount();
             return Result.success(statusCounts, "统计各状态的权限数量成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("统计各状态的权限数量失败", e);
             return Result.error(500, "统计各状态的权限数量失败");
@@ -102,6 +106,8 @@ public class PermissionController {
             Page<Permission> pageParam = new Page<>(page, size);
             IPage<Permission> permissionPage = permissionService.getPermissionPage(pageParam);
             return Result.success(permissionPage, "分页查询权限成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("分页查询权限失败", e);
             return Result.error(500, "分页查询权限失败");
@@ -131,6 +137,8 @@ public class PermissionController {
             IPage<Permission> permissionPage = permissionService.getPermissionPageByCondition(pageParam, permissionCode,
                                                                                              permissionName, permissionType, status, module, null, null, null);
             return Result.success(permissionPage, "条件分页查询权限成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             // 使用LogUtil记录错误，而不是简单日志记录
             String requestId = LogUtil.generateRequestId();
@@ -185,6 +193,8 @@ public class PermissionController {
         try {
             List<Permission> permissions = permissionService.getPermissionTree();
             return Result.success(permissions, "获取权限树结构成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("获取权限树结构失败", e);
             return Result.error(500, "获取权限树结构失败");
@@ -207,6 +217,8 @@ public class PermissionController {
             } else {
                 return Result.error(500, "创建权限失败");
             }
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("创建权限失败", e);
             return Result.error(500, "创建权限失败");
@@ -232,6 +244,8 @@ public class PermissionController {
             } else {
                 return Result.error(500, "更新权限失败");
             }
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("更新权限失败", e);
             return Result.error(500, "更新权限失败");
@@ -254,6 +268,8 @@ public class PermissionController {
             } else {
                 return Result.error(500, "删除权限失败");
             }
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("删除权限失败", e);
             return Result.error(500, "删除权限失败");
@@ -281,6 +297,8 @@ public class PermissionController {
                 }
             }
             return Result.error(500, "更新权限状态失败");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("更新权限状态失败", e);
             return Result.error(500, "更新权限状态失败");
@@ -308,6 +326,8 @@ public class PermissionController {
                 }
             }
             return Result.error(500, "更新权限排序失败");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("更新权限排序失败", e);
             return Result.error(500, "更新权限排序失败");
@@ -324,6 +344,8 @@ public class PermissionController {
         try {
             permissionInitService.initPermissions();
             return Result.success(null, "权限初始化成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("权限初始化失败", e);
             return Result.error(500, "权限初始化失败：" + e.getMessage());
@@ -340,6 +362,8 @@ public class PermissionController {
         try {
             PermissionSyncResult result = permissionInitService.syncPermissions();
             return Result.success(result, "权限同步成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("权限同步失败", e);
             return Result.error(500, "权限同步失败：" + e.getMessage());
@@ -356,6 +380,8 @@ public class PermissionController {
         try {
             List<PermissionTreeNode> tree = permissionInitService.getPermissionTree();
             return Result.success(tree, "获取权限树成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("获取权限树失败", e);
             return Result.error(500, "获取权限树失败");
@@ -373,6 +399,8 @@ public class PermissionController {
         try {
             List<PermissionTreeNode> tree = permissionInitService.getRolePermissionTree(roleId);
             return Result.success(tree, "获取角色权限树成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("获取角色权限树失败", e);
             return Result.error(500, "获取角色权限树失败");
@@ -389,6 +417,8 @@ public class PermissionController {
         try {
             boolean result = permissionInitService.checkPermissionIntegrity();
             return Result.success(result, result ? "权限数据完整" : "权限数据不完整");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("检查权限完整性失败", e);
             return Result.error(500, "检查权限完整性失败");
@@ -406,6 +436,8 @@ public class PermissionController {
         try {
             permissionVerifyService.refreshUserPermissionCache(userId);
             return Result.success(null, "刷新权限缓存成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("刷新权限缓存失败", e);
             return Result.error(500, "刷新权限缓存失败：" + e.getMessage());

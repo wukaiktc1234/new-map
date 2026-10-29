@@ -34,6 +34,34 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /** 单窗口最大请求数 */
     private static final int MAX_REQUESTS_PER_WINDOW = 100;
 
+    /**
+     * ③（Lead 2026-10-30 P0 止血）：按 URI 后缀配置阈值 —— 敏感端点必须单独收紧。
+     *
+     * <p>修前实测：**8 次错误密码全部放行**，因为统一阈值是 100 次/分钟，
+     * 而 {@code @RateLimit(5/60s)} 注解所在的切面被 TODO 短路 → 登录实际几乎无限流（可撞库）。</p>
+     *
+     * <p>规则：按「包含即匹配」判定；表用 LinkedHashMap 保证顺序可读，长的 key 写在前面。</p>
+     */
+    private static final java.util.LinkedHashMap<String, Integer> PATH_LIMITS = new java.util.LinkedHashMap<>();
+    static {
+        PATH_LIMITS.put("/auth/login", 5);      // 管理端 /v1/auth/login 与 POS /v1/pos/auth/login 都命中
+        PATH_LIMITS.put("/auth/captcha", 10);   // 原注解 10/60s
+        PATH_LIMITS.put("/pos/orders", 60);     // POS 开单/支付/退款
+    }
+
+    /** 解析该 URI 适用的阈值（未命中则用默认 100） */
+    private static int limitFor(String uri) {
+        if (uri == null) {
+            return MAX_REQUESTS_PER_WINDOW;
+        }
+        for (java.util.Map.Entry<String, Integer> e : PATH_LIMITS.entrySet()) {
+            if (uri.contains(e.getKey())) {
+                return e.getValue();
+            }
+        }
+        return MAX_REQUESTS_PER_WINDOW;
+    }
+
     public RateLimitFilter(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
@@ -46,7 +74,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String requestUri = request.getRequestURI();
         String rateLimitKey = "rate_limit:" + clientIp + ":" + requestUri;
 
-        if (!isRateLimited(rateLimitKey)) {
+        int limit = limitFor(requestUri);
+        if (!isRateLimited(rateLimitKey, limit)) {
             chain.doFilter(request, response);
         } else {
             logger.warn("限流拦截 - IP: {}, URI: {}", clientIp, requestUri);
@@ -79,7 +108,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /**
      * 判断是否触发限流（内存实现）
      */
-    private boolean isRateLimited(String key) {
+    private boolean isRateLimited(String key, int limit) {
         long currentTime = System.currentTimeMillis();
         RateLimitCounter counter = memoryRateLimit.computeIfAbsent(key,
                 k -> new RateLimitCounter(currentTime));
@@ -92,7 +121,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             counter.setLastCleanupTime(currentTime);
         }
 
-        return counter.isLimitExceeded();
+        return counter.isLimitExceeded(limit);
     }
 
     /**
@@ -132,7 +161,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             if (currentTime - windowStart > TIME_WINDOW_MS) {
                 return false;
             }
-            return requestCount > MAX_REQUESTS_PER_WINDOW;
+            return requestCount > limit;
         }
 
         public long getLastCleanupTime() {

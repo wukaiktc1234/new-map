@@ -4,6 +4,7 @@
  */
 
 import { post, get, put } from './request'
+import type { RequestOptions } from './request'
 
 /** 登录请求参数 */
 export interface LoginParams {
@@ -67,7 +68,9 @@ export interface InvitationCodeValidation {
 export const authApi = {
   /** 用户登录 */
   login(params: LoginParams): Promise<LoginResult> {
-    return post<LoginResult>('/v1/auth/login', params)
+    // _silentError：拦截器不弹 toast，由登录页用 throw 出去的 message 弹一次
+    // （否则同一个「用户名或密码错误」会弹两次 —— 实测确实双弹）
+    return post<LoginResult>('/v1/auth/login', params, { _silentError: true } as Partial<RequestOptions>)
   },
 
   /** 获取验证码 */

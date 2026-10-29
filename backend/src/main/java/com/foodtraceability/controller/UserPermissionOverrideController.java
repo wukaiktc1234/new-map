@@ -56,6 +56,8 @@ public class UserPermissionOverrideController {
             IPage<UserPermissionOverride> result = userPermissionOverrideService.getPage(
                     pageParam, userId, userName, permissionCode, domainCode, overrideType, status);
             return Result.success(result, "分页查询用户权限覆盖成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("分页查询用户权限覆盖失败", e);
             return Result.error(500, "分页查询用户权限覆盖失败");
@@ -76,6 +78,8 @@ public class UserPermissionOverrideController {
                 return Result.error(404, "覆盖记录不存在");
             }
             return Result.success(override, "查询成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("查询用户权限覆盖失败: id={}", id, e);
             return Result.error(500, "查询用户权限覆盖失败");
@@ -93,6 +97,8 @@ public class UserPermissionOverrideController {
         try {
             List<UserPermissionOverride> list = userPermissionOverrideService.getByUserId(userId);
             return Result.success(list, "查询成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("根据用户ID查询覆盖失败: userId={}", userId, e);
             return Result.error(500, "查询用户覆盖失败");
@@ -119,6 +125,8 @@ public class UserPermissionOverrideController {
             }
             UserPermissionOverride created = userPermissionOverrideService.create(override);
             return Result.success(created, "创建成功，等待审批");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("创建用户权限覆盖失败", e);
             return Result.error(500, "创建用户权限覆盖失败");
@@ -140,6 +148,8 @@ public class UserPermissionOverrideController {
             return Result.success(updated, "更新成功");
         } catch (IllegalArgumentException e) {
             return Result.error(404, e.getMessage());
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("更新用户权限覆盖失败: id={}", id, e);
             return Result.error(500, "更新用户权限覆盖失败");
@@ -160,6 +170,8 @@ public class UserPermissionOverrideController {
                 return Result.success(null, "删除成功");
             }
             return Result.error(500, "删除失败");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("删除用户权限覆盖失败: id={}", id, e);
             return Result.error(500, "删除用户权限覆盖失败");
@@ -185,6 +197,8 @@ public class UserPermissionOverrideController {
             return Result.error(404, e.getMessage());
         } catch (IllegalStateException e) {
             return Result.error(400, e.getMessage());
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("审批用户权限覆盖失败: id={}", id, e);
             return Result.error(500, "审批失败");
@@ -206,6 +220,8 @@ public class UserPermissionOverrideController {
             return Result.error(404, e.getMessage());
         } catch (IllegalStateException e) {
             return Result.error(400, e.getMessage());
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("撤销用户权限覆盖失败: id={}", id, e);
             return Result.error(500, "撤销失败");
@@ -223,6 +239,8 @@ public class UserPermissionOverrideController {
         try {
             boolean ok = userPermissionOverrideService.refreshExpired();
             return Result.success(ok, "刷新过期状态成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             log.error("刷新过期状态失败", e);
             return Result.error(500, "刷新过期状态失败");

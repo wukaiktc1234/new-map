@@ -448,6 +448,25 @@ def check_permission_code():
     return 0 if r.returncode == 0 else 2
 
 
+def acquire_lock():
+    """⑤（Lead 2026-10-30）preflight 文件锁：禁止与他人的 mvn clean 并发。
+    今天已三次因并发/顺序问题踩坑（preflight 的 mvn clean 删掉 target → 另一次构建 BUILD FAILURE）。"""
+    lock = Path(__file__).resolve().parent.parent.parent / ".preflight.lock"
+    if lock.exists():
+        try:
+            age = time.time() - lock.stat().st_mtime
+        except OSError:
+            age = 0
+        if age < 3600:
+            print("[LOCK] 已有 preflight 在运行（%s，%.0fs 前创建）→ 本次退出，避免与 mvn clean 并发" % (lock, age))
+            return None
+    try:
+        lock.write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        return None
+    return lock
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -495,6 +514,34 @@ def main():
         warn = True
     elif err_body_rc == 3:
         print("[GATE] 错误响应体 gate 跳过：后端未启动（ENV=3）")
+    # ---- 权限目录可加载性 gate（Lead 2026-10-30 P0）：parent_id 类型 / pos:order:pay 存在 / 无空串 ----
+    cat_rc = run_gate_script("permission_catalog_gate.py", a.verbose)
+    # ⚠ 无论 PASS/BLOCK/SKIP 都必须打印一行 —— 否则「没输出」会被读成「没这个 gate」（今天第 N 次教训）
+    if cat_rc == 2:
+        print("[GATE] 权限目录 gate                BLOCK：catalog 会加载失败 → admin 只剩硬编码码，pos:* 不可用")
+        warn = True
+    elif cat_rc == 3:
+        print("[GATE] 权限目录 gate                SKIP：数据库不可用（ENV=3）")
+        blocked.append(("权限目录 gate", "ENV=3 无法验证"))
+    else:
+        print("[GATE] 权限目录 gate                PASS")
+    # ---- 403 语义 gate（Lead 2026-10-30 P0）：无权限必须真 403，不许 200 + 空集 ----
+    f403_rc = run_gate_script("permission_403_check.py", a.verbose)
+    if f403_rc == 2:
+        print("[GATE] 403 语义 gate                BLOCK：存在 fail-open（无权限返回 200 / 空集表达无权限）")
+        warn = True
+    elif f403_rc == 3:
+        print("[GATE] 403 语义 gate                SKIP：环境不足（无他人活跃班次终端或后端未启动）→ WARN，不计 PASS")
+        warn = True
+    else:
+        print("[GATE] 403 语义 gate                PASS")
+    # ---- 宽 catch 棘轮（Lead 2026-10-30）：catch(Exception) 后返 500 的次数只许减不许增 ----
+    wc_rc = run_gate_script("wide_catch_ratchet.py", a.verbose)
+    if wc_rc == 2:
+        print("[GATE] 宽 catch 棘轮                BLOCK：新增「catch 后返回 500」（吞掉业务/权限语义）")
+        warn = True
+    else:
+        print("[GATE] 宽 catch 棘轮                PASS")
     clean_db_rc = 0
     if a.full:
         print("-" * 86)
@@ -525,18 +572,18 @@ def main():
     print("[GATE] skipped 占比：%d/%d = %.0f%%（阈值 %.0f%%）"
           % (skipped, judged, ratio * 100, WARN_RATIO * 100))
     print("[GATE] 巡检原始汇总：%s" % stats["raw"])
+    # ★（Lead 2026-10-30）**门禁编排必须先跑完再汇总，不许短路**。
+    #   修前：巡检 FAIL 直接 return 2 → 排在后面的 permission_catalog / permission_403 gate 从未执行
+    #   → 新 gate 在 BLOCK 场景下形同不存在（又一次「看起来装了」）。
+    blocked = []          # (名字, 说明)
     if failed > 0:
-        print("[RESULT] BLOCKED：巡检 FAIL=%d > 0 → exit 2" % failed)
-        return 2
+        blocked.append(("巡检", "FAIL=%d > 0" % failed))
     if ratchet_rc != 0:
-        print("[RESULT] BLOCKED：裸 RuntimeException 棘轮上升 → exit 2")
-        return 2
+        blocked.append(("裸 RuntimeException 棘轮", "上升"))
     if result_error_rc != 0:
-        print("[RESULT] BLOCKED：Result.error(字面量) 棘轮上升 → exit 2")
-        return 2
+        blocked.append(("Result.error(字面量) 棘轮", "上升"))
     if clean_db_rc != 0:
-        print("[RESULT] BLOCKED：干净库迁移 gate 未通过 → exit 2")
-        return 2
+        blocked.append(("干净库迁移 gate", "未通过"))
     if ratio > WARN_RATIO:
         print("[WARN] 分母不足，PASS 不可信：skipped %d/%d = %.0f%% > %.0f%%"
               % (skipped, judged, ratio * 100, WARN_RATIO * 100))
@@ -574,21 +621,26 @@ def main():
     else:
         sec_rc = check_security_regression() if a.full else 0
     if sec_rc != 0:
-        print('[RESULT] BLOCKED：安全回归未通过（EXIT=%s）→ exit 2' % sec_rc)
-        return 2
+        blocked.append(("安全回归 S1~S6", "EXIT=%s" % sec_rc))
     if health_rc != 0:
         warn = True
-    summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
-        passed, skipped, round(ratio * 100), failed, "WARN" if warn else "OK")
-    print("[RESULT] " + summary)
     if perm_rc != 0:
-        print("[RESULT] BLOCKED：A46 权限码 ↔ 目录不一致（代码要求了目录里没有的权限）→ exit 2")
-        return 2
+        blocked.append(("A46 权限码 ↔ 目录", "代码要求了目录里没有的权限"))
     if deploy_gap_rc == 3:
         print("[GATE] 部署缺口在基线内（棘轮 WARN，不阻断）")
         warn = True
-    if deploy_gap_rc not in (0, 3):
-        print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
+    elif deploy_gap_rc not in (0, 3):
+        blocked.append(("部署缺口", "干净库缺表且有活引用"))
+
+    # ---- 汇总（所有 gate 都已执行到这里）----
+    print("-" * 86)
+    for name, why in blocked:
+        print("[BLOCK] %s：%s" % (name, why))
+    summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
+        passed, skipped, round(ratio * 100), failed,
+        "BLOCK" if blocked else ("WARN" if warn else "OK"))
+    print("[RESULT] " + summary)
+    if blocked:
         return 2
     return 3 if warn else 0
 

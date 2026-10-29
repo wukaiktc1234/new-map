@@ -57,6 +57,8 @@ public class RoleController {
         try {
             Role createdRole = roleService.createRole(role);
             return Result.success(createdRole, "创建角色成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "创建角色失败：" + e.getMessage());
         }
@@ -74,6 +76,8 @@ public class RoleController {
             role.setRoleId(id);
             Role updatedRole = roleService.updateRole(role);
             return Result.success(updatedRole, "更新角色成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "更新角色失败：" + e.getMessage());
         }
@@ -87,15 +91,14 @@ public class RoleController {
     @Operation(summary = "删除角色")
     @RequiresPermission(value = "system:role:delete", action = "delete")
     public Result<Void> deleteRole(@Parameter(description = "角色ID") @PathVariable Long id) {
-        try {
-            boolean success = roleService.deleteRole(id);
-            if (!success) {
-                return Result.error(404, "角色不存在");
-            }
-            return Result.success(null, "删除角色成功");
-        } catch (Exception e) {
-            return Result.error(500, "删除角色失败：" + e.getMessage());
+        // ★（Lead 2026-10-30 试点）**去掉整段 try-catch**：
+        //   内层 catch(Exception → Result.error(500)) 的唯一效果是把全局异常映射废掉。
+        //   业务错误（404/409）由 Service 抛 BusinessException，全局处理器统一映射成真 HTTP 状态码。
+        boolean success = roleService.deleteRole(id);
+        if (!success) {
+            return Result.error(404, "角色不存在");
         }
+        return Result.success(null, "删除角色成功");
     }
 
     /**
@@ -112,6 +115,8 @@ public class RoleController {
                 return Result.error(404, "角色不存在");
             }
             return Result.success(role, "查询角色成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "查询角色失败：" + e.getMessage());
         }
@@ -131,6 +136,8 @@ public class RoleController {
                 return Result.error(404, "角色不存在");
             }
             return Result.success(role, "查询角色成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "查询角色失败：" + e.getMessage());
         }
@@ -154,6 +161,8 @@ public class RoleController {
             Page<Role> pageParam = new Page<>(page, pageSize);
             IPage<Role> rolePage = roleService.getRolePage(pageParam, roleCode, roleName, status, roleType);
             return Result.success(rolePage, "查询角色列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "查询角色列表失败：" + e.getMessage());
         }
@@ -170,6 +179,8 @@ public class RoleController {
         try {
             List<Role> roles = roleService.getAllRoles();
             return Result.success(roles, "获取角色列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取角色列表失败：" + e.getMessage());
         }
@@ -186,6 +197,8 @@ public class RoleController {
         try {
             List<Role> roles = roleService.getActiveRoles();
             return Result.success(roles, "获取活跃角色列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取活跃角色列表失败：" + e.getMessage());
         }
@@ -202,6 +215,8 @@ public class RoleController {
         try {
             List<Role> roles = roleService.getSystemRoles();
             return Result.success(roles, "获取系统角色列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取系统角色列表失败：" + e.getMessage());
         }
@@ -218,6 +233,8 @@ public class RoleController {
         try {
             List<Role> roles = roleService.getCustomRoles();
             return Result.success(roles, "获取自定义角色列表成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取自定义角色列表失败：" + e.getMessage());
         }
@@ -262,6 +279,8 @@ public class RoleController {
                 return Result.error(404, "角色不存在");
             }
             return Result.success(null, "切换角色状态成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "切换角色状态失败：" + e.getMessage());
         }
@@ -289,6 +308,8 @@ public class RoleController {
                 return Result.error(404, "角色不存在");
             }
             return Result.success(null, "分配权限成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "分配权限失败：" + e.getMessage());
         }
@@ -305,6 +326,8 @@ public class RoleController {
         try {
             List<String> permissions = roleService.getRolePermissions(id);
             return Result.success(permissions, "获取角色权限成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取角色权限失败：" + e.getMessage());
         }
@@ -329,6 +352,8 @@ public class RoleController {
                 return Result.error(404, "角色不存在");
             }
             return Result.success(null, "设置数据权限范围成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "设置数据权限范围失败：" + e.getMessage());
         }
@@ -348,6 +373,8 @@ public class RoleController {
             statistics.put("byStatus", roleService.countByStatus());
             statistics.put("byRoleType", roleService.countByRoleType());
             return Result.success(statistics, "获取统计信息成功");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "获取统计信息失败：" + e.getMessage());
         }
@@ -364,6 +391,8 @@ public class RoleController {
         try {
             boolean exists = roleService.checkRoleCodeExists(roleCode);
             return Result.success(!exists, exists ? "角色编码已存在" : "角色编码可用");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "检查角色编码失败：" + e.getMessage());
         }
@@ -380,6 +409,8 @@ public class RoleController {
         try {
             boolean exists = roleService.checkRoleNameExists(roleName);
             return Result.success(!exists, exists ? "角色名称已存在" : "角色名称可用");
+        } catch (org.springframework.security.access.AccessDeniedException | com.foodtraceability.common.exception.BusinessException wcE) {
+            throw wcE;   // ★ 白名单透传（Lead 2026-10-30）：鉴权/业务异常不得被下面的 catch 吞成 500
         } catch (Exception e) {
             return Result.error(500, "检查角色名称失败：" + e.getMessage());
         }

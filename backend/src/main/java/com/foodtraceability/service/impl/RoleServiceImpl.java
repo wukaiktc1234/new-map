@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.foodtraceability.common.exception.BusinessException;
 import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.RoleTypeCount;
 import com.foodtraceability.entity.StatusCount;
@@ -106,11 +107,14 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
     public boolean deleteRole(Long roleId) {
         Role role = getRoleById(roleId);
         if (role == null) {
-            throw new RuntimeException("角色不存在");
+            // ★（Lead 2026-10-30 试点）BusinessException(404) 而不是 RuntimeException：
+            //   RuntimeException → 全局处理器只能当 500；改成 BusinessException 才能映射成 404。
+            throw new BusinessException(404, "角色不存在");
         }
         
         if (role.getSystemBuiltIn()) {
-            throw new RuntimeException("系统内置角色不能删除");
+            // ★ 内置角色不可删 = 状态冲突 → 409（不是 500）
+            throw new BusinessException(409, "系统内置角色不能删除");
         }
         
         boolean result = removeById(roleId);
