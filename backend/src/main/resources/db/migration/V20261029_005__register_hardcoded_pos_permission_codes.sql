@@ -19,9 +19,12 @@ SELECT v.id_str, v.code, v.name, 1, 0, now()
         ('PERM_POS_MENU_QUERY',   'pos:menu:query',    'POS 菜单查询'),
         ('PERM_POS_YOLO',         'pos:yolo:recognize','POS 菜品识别')
        ) AS v(id_str, code, name)
- WHERE NOT EXISTS (SELECT 1 FROM permissions p WHERE p.permission_code = v.code);
+ WHERE NOT EXISTS (SELECT 1 FROM permissions p WHERE p.permission_code = v.code)
+ON CONFLICT DO NOTHING;
 
--- 断言：9 个基础集码必须全部在目录里（少一个 → 迁移失败）
+-- 断言：**只断言本迁移负责的 6 个 pos:* 码**（Lead 2026-10-29 裁定）。
+--   为什么不再断言 9 码：迁移不能依赖别人的迁移 —— product:*:view 三码由其他迁移负责，
+--   在干净库/换顺序时它们可能还没创建，断言 9 会误报失败（已实际炸过一次）。
 DO $$
 DECLARE have int;
 BEGIN
@@ -29,9 +32,8 @@ BEGIN
       FROM permissions p
      WHERE p.deleted = 0
        AND p.permission_code IN ('pos:order:create','pos:order:pay','pos:order:query',
-                                 'pos:member:query','pos:menu:query','pos:yolo:recognize',
-                                 'product:food:view','product:category:view','product:combo:view');
-    IF have < 9 THEN
-        RAISE EXCEPTION '迁移失败：基础集 9 码只有 % 个在 permissions 目录里', have;
+                                 'pos:member:query','pos:menu:query','pos:yolo:recognize');
+    IF have < 6 THEN
+        RAISE EXCEPTION '迁移失败：本迁移应登记 6 个 pos:* 码，实际只有 % 个在目录里', have;
     END IF;
 END $$;

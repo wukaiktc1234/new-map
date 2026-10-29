@@ -38,7 +38,7 @@
       <div v-if="anomalyOrders.length > 0" class="sh-alert" role="alert" data-test="shift-anomaly-bar">
         <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
         <span class="sh-alert__text">
-          本班次有 <b>{{ anomalyOrders.length }}</b> 笔异常单（{{ anomalySummary }}），已从营业额中剔除
+          本班次有 <b>{{ anomalyOrders.length }}</b> 笔异常单（{{ anomalySummary }}），<b>未计入</b>营业额与上交额
         </span>
         <button type="button" class="sh-alert__btn" data-test="shift-anomaly-open" @click="anomalyDrawer = true">
           去处理
@@ -46,64 +46,67 @@
         </button>
       </div>
 
-      <!-- 核心：应上交现金（一行结论 + 一行算式 + 一行核对，别的一概不放在这里） -->
-      <div class="sh-hero" data-test="shift-handover-cash">
-        <div class="sh-hero__main">
-          <span class="sh-hero__label">应上交现金</span>
-          <span class="sh-hero__value" data-test="shift-cash-handover">
-            <AnimatedAmount :value="handoverCash" />
+      <!-- 主结论：正常态说"应上交"，短款态直接说"需补足"（不能让 ¥0.00 掩盖欠款） -->
+      <div class="sh-hero" :class="{ 'is-short': isCashShort }" data-test="shift-handover-cash">
+        <div class="sh-hero__head">
+          <span class="sh-hero__label" data-test="shift-hero-label">
+            {{ isCashShort ? '需补足（已从备用金垫付）' : '应上交现金' }}
+          </span>
+          <span class="sh-hero__value" :class="{ 'is-danger': isCashShort }" data-test="shift-hero-amount">
+            <AnimatedAmount :value="isCashShort ? floatGap : handoverCash" />
           </span>
         </div>
 
-        <!-- 算式只留一行小字：现金收入 − 现金退款；净额为负时才补一个括号说明 -->
-        <p class="sh-hero__formula">
-          现金收入 <b data-test="shift-cash-in">¥{{ cashIn.toFixed(2) }}</b>
-          <span class="sh-hero__op">−</span>
-          现金退款 <b data-test="shift-cash-refund">¥{{ cashRefund.toFixed(2) }}</b>
-          <template v-if="cashNet < 0">
-            <span class="sh-hero__op">=</span>
-            <b class="sh-hero__net is-negative" data-test="shift-cash-net">−¥{{ Math.abs(cashNet).toFixed(2) }}</b>
-            <span class="sh-hero__note">（退款大于收款，已由备用金垫付）</span>
-          </template>
-          <b v-else class="sh-hero__net" data-test="shift-cash-net">= ¥{{ cashNet.toFixed(2) }}</b>
-        </p>
+        <!-- 三个数字块代替一整句算式：用眼睛对数字，不用读句子 -->
+        <div class="sh-tiles">
+          <div class="sh-tile">
+            <span class="sh-tile__label">现金收入</span>
+            <b class="sh-tile__value" data-test="shift-cash-in">{{ cashIn.toFixed(2) }}</b>
+          </div>
+          <div class="sh-tile">
+            <span class="sh-tile__label">现金退款</span>
+            <b class="sh-tile__value is-refund" data-test="shift-cash-refund">{{ cashRefund.toFixed(2) }}</b>
+          </div>
+          <div class="sh-tile">
+            <span class="sh-tile__label">应上交现金</span>
+            <b class="sh-tile__value" data-test="shift-cash-handover">{{ handoverCash.toFixed(2) }}</b>
+          </div>
+        </div>
 
-        <!-- 核对条：备用金 / 钱箱应有 / 实点 / 长短款，一行放完 -->
-        <div class="sh-cash-check" data-test="shift-cash-check">
-          <span class="sh-cc-item">
-            备用金
-            <b data-test="shift-opening-cash">¥{{ openingCash.toFixed(2) }}</b>
-            <span class="sh-cc-note">留存钱箱</span>
+        <p v-if="isCashShort" class="sh-hero__hint" data-test="shift-cash-negative">
+          <el-icon><WarningFilled /></el-icon>
+          退款比收款多 ¥{{ floatGap.toFixed(2) }}，已从备用金支出；交班后请补回钱箱，否则下一班零钱不足。
+        </p>
+        <span class="is-sr-only" data-test="shift-cash-net">净现金 ¥{{ cashNet.toFixed(2) }}</span>
+      </div>
+
+      <!-- 钱箱核对：左"该有多少"，右"实际点出多少"，输入是明确的动手焦点 -->
+      <div class="sh-cashcheck" data-test="shift-cash-check">
+        <div class="sh-cashcheck__left">
+          <span class="sh-cashcheck__label">钱箱应有现金</span>
+          <span class="sh-cashcheck__value" data-test="shift-drawer-expected">
+            <AnimatedAmount :value="drawerExpected" />
+          </span>
+          <span class="sh-cashcheck__sub">
+            含备用金 <b data-test="shift-opening-cash">¥{{ openingCash.toFixed(2) }}</b>（留存钱箱）
             <span v-if="openingCashMissing" class="sh-hero__warn" data-test="shift-opening-missing">未读取到</span>
           </span>
-          <span class="sh-cc-sep" aria-hidden="true"></span>
-          <span class="sh-cc-item">
-            钱箱应有
-            <b data-test="shift-drawer-expected"><AnimatedAmount :value="drawerExpected" /></b>
-            <!-- 算式只为读屏/断言保留，视觉上不再重复（上面一行已经解释过） -->
-            <span class="sh-cc-formula is-sr-only" data-test="shift-drawer-formula">备用金 + 现金收入 − 现金退款</span>
-          </span>
-          <span class="sh-cc-sep" aria-hidden="true"></span>
-          <label class="sh-cc-count" for="pos-cash-counted">
-            <span class="sh-cc-count__label">实点</span>
-            <el-input
-              id="pos-cash-counted"
-              v-model="cashCountedInput"
-              class="sh-cc-input"
-              placeholder="点完填入"
-              inputmode="decimal"
-              data-test="shift-cash-counted"
-              @blur="normalizeCounted"
-            />
-          </label>
-          <span class="sh-cc-diff" :class="cashDiffClass" data-test="shift-cash-diff">{{ cashDiffText }}</span>
+          <span class="is-sr-only" data-test="shift-drawer-formula">备用金 + 现金收入 − 现金退款</span>
         </div>
 
-        <!-- 净流出时的行动指引（唯一一条会"催人"的话，避免和上面的算式重复） -->
-        <p v-if="cashNet < 0" class="sh-hero__negative" data-test="shift-cash-negative">
-          <el-icon><WarningFilled /></el-icon>
-          本班次现金净流出 ¥{{ floatGap.toFixed(2) }}，已从备用金垫付；请店长补足，否则下一班零钱不足。
-        </p>
+        <div class="sh-cashcheck__right">
+          <label class="sh-cashcheck__label" for="pos-cash-counted">实点现金</label>
+          <el-input
+            id="pos-cash-counted"
+            v-model="cashCountedInput"
+            class="sh-count-input"
+            placeholder="点完钱填入"
+            inputmode="decimal"
+            data-test="shift-cash-counted"
+            @blur="normalizeCounted"
+          />
+          <span class="sh-cc-diff" :class="cashDiffClass" data-test="shift-cash-diff">{{ cashDiffText }}</span>
+        </div>
       </div>
 
       <!-- 非现金收入：单独成块，明确"已直连入账，无需上交" -->
@@ -126,7 +129,13 @@
               <el-icon class="sh-nc-card__icon"><component :is="card.icon" /></el-icon>
               {{ card.name }}
             </span>
-            <span class="sh-nc-card__amount">¥{{ card.amount.toFixed(2) }}</span>
+            <span class="sh-nc-card__amount" :class="{ 'is-refund': card.isNetRefund }">
+              <em v-if="card.isNetRefund" class="sh-nc-card__flag">净退款</em>
+              ¥{{ Math.abs(card.net).toFixed(2) }}
+            </span>
+            <span v-if="card.refund > 0" class="sh-nc-card__detail">
+              收入 ¥{{ card.income.toFixed(2) }} · 退款 ¥{{ card.refund.toFixed(2) }}
+            </span>
           </div>
         </div>
       </div>
@@ -143,7 +152,7 @@
         <div class="sh-mini-stat">
           <span class="sh-ms-label">有效订单</span>
           <span class="sh-ms-value" data-test="shift-valid-count">{{ validOrders.length }}</span>
-          <span class="sh-ms-pct">已剔除 {{ anomalyOrders.length }} 笔异常</span>
+          <span class="sh-ms-pct">另有 {{ anomalyOrders.length }} 笔未计入</span>
         </div>
         <div class="sh-mini-stat">
           <span class="sh-ms-label">客单价</span>
@@ -551,6 +560,11 @@ const cashNet = computed(() => cashIn.value - cashRefund.value)
 const handoverCash = computed(() => Math.max(0, cashNet.value))
 /** 备用金缺口：本班次垫付掉的钱，需要店长补回，避免下一班零钱不够 */
 const floatGap = computed(() => Math.max(0, -cashNet.value))
+/**
+ * 短款态（现金净额为负）：主结论必须换成"需补足"。
+ * 否则 ¥0.00 会让人误以为"不用交钱"，而实际欠公司一笔（退款从备用金里垫出去了）。
+ */
+const isCashShort = computed(() => cashNet.value < 0)
 
 /**
  * 钱箱应有现金 = 备用金 + 现金收入 − 现金退款。
@@ -605,10 +619,6 @@ const avgTicket = computed(() =>
   paidOrders.value.length > 0 ? sumBy(paidOrders.value) / paidOrders.value.length : 0
 )
 
-/** 某支付方式的净额（已支付 − 已退款） */
-const methodNet = (key: string): number =>
-  sumBy(paidOrders.value, o => o.methodKey === key) - sumBy(refundedOrders.value, o => o.methodKey === key)
-
 /**
  * 非现金收入卡片：微信 / 支付宝 / 银行卡常显（0 也显示，收银员需要"确认没有"），
  * 会员余额只有发生额时才出现；全部标注「已直连入账，无需上交」。
@@ -620,11 +630,14 @@ const NON_CASH_BASE = [
 ]
 
 const nonCashCards = computed(() => {
-  const cards = NON_CASH_BASE.map(c => ({ ...c, amount: methodNet(c.key) }))
-  const balance = methodNet('balance')
-  if (balance !== 0) {
-    cards.push({ key: 'balance', name: '会员余额', icon: Postcard, amount: balance })
+  const build = (c: { key: string; name: string; icon: unknown }) => {
+    const income = sumBy(paidOrders.value, o => o.methodKey === c.key)
+    const refund = sumBy(refundedOrders.value, o => o.methodKey === c.key)
+    return { ...c, income, refund, net: income - refund, isNetRefund: income - refund < 0 }
   }
+  const cards = NON_CASH_BASE.map(build)
+  const balance = build({ key: 'balance', name: '会员余额', icon: Postcard })
+  if (balance.income !== 0 || balance.refund !== 0) cards.push(balance)
   return cards
 })
 
@@ -1150,14 +1163,14 @@ onUnmounted(() => {
   background: var(--pos-warning-border, rgba(194, 134, 31, 0.16));
 }
 
-/* ====== 主角：应上交现金 ======
- * 只保留三层：结论（金额）→ 算式（一行小字）→ 核对条（备用金/钱箱应有/实点/长短款）。
- * 之前把 chip、净现金、备用金胶囊、核对两行、提示语全塞进来，噪音过大。
+/* ====== 主结论：应上交 / 需补足 ======
+ * 两态：现金净额 ≥ 0 → 「应上交现金」；< 0 → 「需补足（已从备用金垫付）」。
+ * 短款时大数字就是"欠公司的钱"，避免 ¥0.00 被读成"不用交"。
  */
 .sh-hero {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--pos-spacing-sm, 16px);
   margin-bottom: var(--pos-spacing-sm, 16px);
   padding: 14px 20px 16px;
   border-radius: var(--pos-radius-lg, 16px);
@@ -1166,7 +1179,13 @@ onUnmounted(() => {
   box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
 }
 
-.sh-hero__main {
+/* 短款态只换"边条 + 金额颜色"，不刷满屏红底：财务界面要克制，红色留给真正的异常 */
+.sh-hero.is-short {
+  border-left-color: var(--pos-danger, #c94b4b);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.16);
+}
+
+.sh-hero__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1189,59 +1208,136 @@ onUnmounted(() => {
   color: var(--pos-primary, #e3651c);
 }
 
-.sh-hero__formula {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--pos-text-muted, #94a3b8);
-  font-variant-numeric: tabular-nums;
-}
-
-.sh-hero__formula b {
-  color: var(--pos-text-secondary, #64748b);
-  font-weight: 600;
-}
-
-.sh-hero__net {
-  color: var(--pos-text-primary, #1e293b) !important;
-  font-weight: 700;
-}
-
-.sh-hero__net.is-negative {
-  color: var(--pos-danger, #c94b4b) !important;
-}
-
-.sh-hero__note {
+.sh-hero__value.is-danger {
   color: var(--pos-danger, #c94b4b);
 }
 
-/* ====== 核对条：一行放完，竖线分隔 ====== */
-.sh-cash-check {
+/* 三个数字块：标签 + 数字，不再让用户读一整句算式 */
+.sh-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--pos-spacing-xs, 8px);
+}
+
+.sh-tile {
   display: flex;
-  align-items: center;
-  gap: var(--pos-spacing-sm, 16px);
-  flex-wrap: wrap;
-  padding-top: 10px;
-  border-top: 1px dashed var(--pos-border-color, #e2e8f0);
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--pos-radius-sm, 8px);
+  background: var(--pos-bg-primary, #ffffff);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
 }
 
-.sh-cc-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--pos-text-secondary, #64748b);
-  white-space: nowrap;
+.sh-tile__label {
+  font-size: 11.5px;
+  color: var(--pos-text-muted, #94a3b8);
 }
 
-.sh-cc-item b {
+.sh-tile__value::before {
+  content: '¥';
+  margin-right: 2px;
+  font-size: 0.78em;
+  opacity: 0.8;
+}
+
+.sh-tile__value {
   font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--pos-text-primary, #1e293b);
   font-variant-numeric: tabular-nums;
 }
 
-.sh-cc-formula.is-sr-only {
+.sh-tile__value.is-refund {
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-hero__hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--pos-radius-sm, 8px);
+  background: var(--pos-bg-primary, #ffffff);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.18);
+  color: var(--pos-danger, #c94b4b);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ====== 钱箱核对面板：左"该有多少"，右"点出多少" ====== */
+.sh-cashcheck {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--pos-spacing-md, 24px);
+  margin-bottom: var(--pos-spacing-sm, 16px);
+  padding: 14px 20px;
+  border-radius: var(--pos-radius-lg, 16px);
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+}
+
+.sh-cashcheck__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sh-cashcheck__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-cashcheck__value {
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--pos-text-primary, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-cashcheck__sub {
+  font-size: 11.5px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-cashcheck__right {
+  display: flex;
+  align-items: center;
+  gap: var(--pos-spacing-xs, 8px);
+}
+
+/* 实点输入：给它"要动手"的视觉权重 */
+.sh-count-input {
+  width: 168px;
+}
+
+.sh-count-input :deep(.el-input__wrapper) {
+  height: 44px;
+  border-radius: var(--pos-radius-sm, 8px);
+  box-shadow: inset 0 0 0 1.5px var(--pos-border-color, #e2e8f0);
+  background: var(--pos-bg-primary, #ffffff);
+}
+
+.sh-count-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: inset 0 0 0 1.5px var(--pos-primary, #e3651c);
+}
+
+.sh-count-input :deep(.el-input__inner) {
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
+  font-size: 19px;
+  font-weight: 700;
+  text-align: right;
+  color: var(--pos-text-primary, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+
+.is-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1251,33 +1347,6 @@ onUnmounted(() => {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-
-.sh-cc-note {
-  font-size: 11.5px;
-  color: var(--pos-text-muted, #94a3b8);
-}
-
-.sh-cc-sep {
-  width: 1px;
-  height: 14px;
-  background: var(--pos-border-color, #e2e8f0);
-}
-
-.sh-cc-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--pos-text-secondary, #64748b);
-}
-
-.sh-cc-count__label {
-  white-space: nowrap;
-}
-
-.sh-cc-input {
-  width: 132px;
 }
 
 .sh-cc-diff {
@@ -1423,6 +1492,27 @@ onUnmounted(() => {
 
 .sh-nc-card[data-test='shift-noncash-balance'] .sh-nc-card__icon {
   background: #0891b2;
+}
+
+.sh-nc-card__flag {
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.sh-nc-card__amount.is-refund {
+  color: var(--pos-danger, #c94b4b);
+}
+
+.sh-nc-card__detail {
+  font-size: 11.5px;
+  color: var(--pos-text-muted, #94a3b8);
 }
 
 .sh-nc-card__amount {
@@ -1864,6 +1954,11 @@ onUnmounted(() => {
 [data-theme='dark'] .sh-hero__value {
   color: var(--pos-primary, #ef7f3a);
   text-shadow: none;
+}
+
+/* 深色下短款金额必须是危险色（主题覆盖优先级要压过基础规则） */
+[data-theme='dark'] .sh-hero__value.is-danger {
+  color: var(--pos-danger, #d96b6b);
 }
 
 [data-theme='dark'] .sh-cc-item,

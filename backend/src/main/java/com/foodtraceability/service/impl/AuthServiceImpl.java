@@ -762,7 +762,11 @@ public class AuthServiceImpl implements AuthService {
      * @param user 用户实体
      * @return 安全用户信息
      */
-    private SecurityUser buildSecurityUser(User user) {
+    /**
+     * 包内可见（Lead 2026-10-29）：同包测试类需要直接验证授权来源，
+     * 不为其放宽成 public、也不引入 @VisibleForTesting 额外依赖。
+     */
+    SecurityUser buildSecurityUser(User user) {
         logger.debug("开始构建SecurityUser: userId={}, username={}", user.getId(), user.getUsername());
 
         SecurityUser securityUser = new SecurityUser();

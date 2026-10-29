@@ -191,6 +191,10 @@ class PosOrderCreateServiceFoodIdMapTest {
     void createCanonicalOrder_foodCodeHit_insertsNonNullFoodId() {
         FoodNew food = buildFood();
         when(foodNewMapper.selectList(any())).thenReturn(List.of(food));
+        // ★ 2026-10-29（Lead 裁定②）：服务内部先用 food_code 反查 id，再 selectBatchIds 取明细。
+        //   旧测试只 mock 了 selectList → selectBatchIds 返回空 → foodNewMap 空 → dbFood=null → 400。
+        //   产品行为（查不到就拒绝）是对的（资损防线），**改测试不改产品**。
+        when(foodNewMapper.selectBatchIds(any())).thenReturn(List.of(food));
 
         Result<OrderResultDTO> result = service.createCanonicalOrder(buildCommand(FOOD_CODE));
 
@@ -252,9 +256,11 @@ class PosOrderCreateServiceFoodIdMapTest {
     @Test
     void dualPath_summary_hitSucceeds_missIs400() {
         when(foodNewMapper.selectList(any())).thenReturn(List.of(buildFood()));
+        when(foodNewMapper.selectBatchIds(any())).thenReturn(List.of(buildFood()));
         Result<OrderResultDTO> hit = service.createCanonicalOrder(buildCommand(FOOD_CODE));
         assertEquals(0, hit.getCode());
 
+        when(foodNewMapper.selectBatchIds(any())).thenReturn(Collections.emptyList());
         when(foodNewMapper.selectList(any())).thenReturn(Collections.emptyList());
         Result<OrderResultDTO> miss = service.createCanonicalOrder(buildCommand("NOPE"));
         assertEquals(400, miss.getCode());

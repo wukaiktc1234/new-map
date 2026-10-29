@@ -205,3 +205,28 @@
 
 **正确判据**：跑起来看**实际输出**（`[BOOT] ... | classesDirMtime=...`），而不是看中间产物。
 **通用规则**：验证改动的最后一公里，必须落在「用户可见/日志可见的行为」，而不是「编译产物里有没有这个符号」。
+
+## Test 数对账（每次改测试必须做，2026-10-29 起）
+
+**为什么**：「Tests run 数字相同」可能掩盖「删了一个测试文件、又加了一个」——
+净变化为 0 时，**失败集可能完全不同**。所以每次动测试都要逐条对账：
+
+```text
+格式（写进报告/PR 描述）：
+  基线：Tests run=X, Failures=Y, Errors=Z, Skipped=W
+  本次：Tests run=X, Failures=Y, Errors=Z, Skipped=W
+  差异来源逐条：
+    - 删除 <类名>（<包>）          -N 条
+    - 新增 <类名>（<包>）          +M 条
+    - 合并/拆分 <说明>             ±K 条
+  净变化 = -N + M + K，必须解释到 0
+```
+
+**实例（2026-10-29）**：
+```text
+删旧 AuthRoleSourceTest（com.foodtraceability.security）      -6
+新增 AuthRoleSourceTest（com.foodtraceability.service.impl）  +6
+净变化 0 → Tests run 仍 766 ✅（但测试内容已从被删类改写到 AuthServiceImpl）
+```
+
+**纪律**：数字相同 ≠ 没变。**必须写出「谁被删、谁被加」**，否则对账不算做过。

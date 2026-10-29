@@ -75,3 +75,20 @@ role_permissions 真实列：id, role_id, permission_id, deleted, create_time（
 
 **铁律（2026-10-29 起）**：任何**恢复/回滚**语句执行后，**必须 SELECT 复核目标状态**（行数 + 关键行是否存在），
 不能只看 `INSERT 0 1` / `UPDATE n` 就认为成了 —— 成功输出 ≠ 目标状态正确。
+
+### 实例清单（截至 2026-10-29 共 10 条「假设某个东西存在」）
+
+| # | 假设了什么 | 实际 |
+|---|-----------|------|
+| 1 | `order_items_new` 表存在 | **不存在**（明细在 `order_items`） |
+| 2 | `order_items.order_id` = `orders.order_number` | 存的是 `orders.order_id`（O1793…） |
+| 3 | `dining_table` 是表 | **是视图**（基表 `dining_tables`） |
+| 4 | `food_trace` 有数据 | 死实体/空表 |
+| 5 | `KitchenOrder` 主键是 `kitchenOrderId` | `@TableId` 是 **`id`** |
+| 6 | `material_locked` 是独立表 | 是 `kitchen_order` 的 **integer 列** |
+| 7 | `role_permissions` 有 `created_at` 列 | 实际是 **`create_time`** |
+| 8 | `AuthenticationServiceImpl` 有 `logger` 字段 | **没有**（类里根本没声明） |
+| 9 | `new JwtToken(String)` 单参构造器 | 实际需要 **`(token, refreshToken, expiresIn)`** 三参 |
+| 10 | `pos_shifts.shift_id` 可显式插入 | 是 `GENERATED ALWAYS AS IDENTITY`，**不能显式插** |
+
+**一句话**：动代码/写 SQL 前，先确认它存在（`\d 表名` / 看类字段与方法签名 / 看注解），不要假设。
