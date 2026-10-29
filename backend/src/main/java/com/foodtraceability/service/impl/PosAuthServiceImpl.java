@@ -179,16 +179,30 @@ public class PosAuthServiceImpl implements PosAuthService {
     }
 
 
-    /** POS 终端基础权限集：终端运行必需、且部分码未入 DB 目录的业务码；另含菜品只读三码。 */
-    private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiableList(Arrays.asList(
-            "pos:order:create", "pos:order:pay", "pos:order:query",
-            "pos:member:query", "pos:member:recharge", "pos:member:consume",
-            "pos:menu:query", "pos:shift:manage", "pos:yolo:recognize",
-            "member:manage",              // MemberController：POS 收银员需要充值/消费
-            "product:food:view",          // FoodController（/v1/product-center/foods）
-            "product:category:view",      // CategoryController
-            "product:combo:view"          // ComboController
-    ));
+    /**
+ * POS 终端基础权限集（**不可被 DB 撤销**，要收回必须改代码）。
+ *
+ * <p>每一条都写明「为什么必须无条件给」，**改之前先读理由**（Lead 2026-10-29 要求）。</p>
+ *
+ * <p><b>已迁出（改按角色授予，见迁移）</b>：
+ * member:manage（V20261029_003）、pos:member:recharge / pos:member:consume / pos:shift:manage（V20261029_004）
+ * —— 它们都是**写权限或涉资金/钱箱**，硬编码等于「任何能登 POS 的人都有，且后台撤不掉」。</p>
+ */
+private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiableList(Arrays.asList(
+        // 收银台存在的前提：没有这三码，POS 无法开单收款查单（撤了等于废掉收银台）
+        "pos:order:create", "pos:order:pay", "pos:order:query",
+        // 只读：查会员余额（不扣钱），充值前必须能查
+        "pos:member:query",
+        // 只读：读菜单/菜品列表，收银台首页渲染必需
+        "pos:menu:query",
+        // 只读：菜品图像识别（YOLO），不写任何数据
+        "pos:yolo:recognize",
+        // 只读三码：菜品/分类/套餐展示。若改为 DB 授，新店初始化漏配就会「菜品看不到」，
+        //   而这是高频故障（历史上已发生过一次：POS 首页菜品 403）
+        "product:food:view",
+        "product:category:view",
+        "product:combo:view"
+));
 
     private static final Set<String> POS_ALLOWED_ROLE_CODES =
             Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
@@ -277,6 +291,7 @@ public class PosAuthServiceImpl implements PosAuthService {
             permissionSource = "DB";
         }
         userInfo.put("permissionSource", permissionSource);
+        userInfo.put("cacheMode", userPermissionCache.cacheMode());
 
         // 7. 清理过期Token并检查容量（保留内存存储用于登出等场景）
         cleanExpiredTokens();
@@ -873,6 +888,10 @@ public class PosAuthServiceImpl implements PosAuthService {
                     try {
                         return userMapper.getUserRolePermissions(Long.valueOf(uid));
                     } catch (Exception e) {
+                        // ★ ③（Lead 2026-10-29）：**内层 catch 必须自己打 metric** ——
+                        //   外层 catch 永远收不到（异常已被这里吞掉），靠外层 = metric 永不触发。
+                        logger.warn("[METRIC] permission_reload_failed userId={} exception={} error={}（loader 回源失败，本次按空权限处理）",
+                                uid, e.getClass().getSimpleName(), e.getMessage());
                         logger.warn("[METRIC] permission_assembly_failed userId={} reason=CACHE_LOADER_FAILED error={}",
                                 uid, e.getMessage());
                         return new ArrayList<>();
@@ -909,6 +928,8 @@ public class PosAuthServiceImpl implements PosAuthService {
         out.put("roles", roles);
         out.put("permissions", permissions);
         out.put("permissionSource", permissionSource);
+        // ② 缓存模式：VERSION_POLLING（直接改库 ~1s 生效）/ TTL_ONLY（只能等 ≤45s TTL）
+        out.put("cacheMode", userPermissionCache.cacheMode());
         return out;
     }
 }

@@ -16,7 +16,7 @@ app:
   # 背景: Java 21 + Windows 平台虚拟线程稳定性问题（exit code -1073741819）
   # 生产部署（Linux）应设为 true 或删除此配置（默认 true）
   scheduling:
-    enabled: false
+    enabled: true   # Lead 2026-10-29：权限版本轮询依赖 @Scheduled；关掉等于撤权延迟不可控（曾静默 45s+）
   encryption:
     # 生产环境必须通过 APP_ENCRYPTION_KEY 环境变量注入强随机密钥（无默认值，缺失则启动失败）
     # 生成命令: openssl rand -base64 32

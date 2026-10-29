@@ -64,3 +64,14 @@ material_locked 不是独立表，它是 kitchen_order 表的 integer 列（0=�
 之前只查 information_schema.tables 搜不到它 -> 误判「该功能未实现」，该结论已撤回。
 教训：查「某东西是否存在」时要同时查 tables 和 columns。
 ```
+
+## 一.6 第 7 次「名字≠实际」：role_permissions 是 create_time，不是 created_at
+
+```text
+实测：INSERT INTO role_permissions (role_id, permission_id, created_at, ...) → 报列不存在，
+      而我当时只看了 'INSERT 0 1' 之类的输出/或没看 stderr → 恢复语句静默失败，行数停在 33（应为 34）。
+role_permissions 真实列：id, role_id, permission_id, deleted, create_time（无 updated_at/created_at）。
+```
+
+**铁律（2026-10-29 起）**：任何**恢复/回滚**语句执行后，**必须 SELECT 复核目标状态**（行数 + 关键行是否存在），
+不能只看 `INSERT 0 1` / `UPDATE n` 就认为成了 —— 成功输出 ≠ 目标状态正确。

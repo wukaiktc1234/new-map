@@ -411,7 +411,10 @@ public class JwtUtils {
                     List<String> resolved = userPermissionCache.get(user.getUserId(), uid -> {
                         try {
                             return userMapper.getUserRolePermissions(Long.valueOf(uid));
-                        } catch (NumberFormatException nfe) {
+                } catch (Exception nfe) {
+                    // ★ ③（Lead 2026-10-29）：内层 catch 自己打 metric（外层永远收不到）
+                    logger.warn("[METRIC] permission_reload_failed userId={} exception={} error={}（JwtUtils loader 回源失败）",
+                            uid, nfe.getClass().getSimpleName(), nfe.getMessage());
                             return new ArrayList<>();
                         }
                     });

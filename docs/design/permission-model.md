@@ -140,3 +140,22 @@ UPDATE role_permissions SET deleted = 1 WHERE <条件>;
 -- 3) 只有确认是「本次自己插入的脏数据」才允许物理删，且必须带唯一 id
 DELETE FROM role_permissions WHERE id = <刚刚插入返回的 id>;
 ```
+
+## POS 硬编码基础权限集（2026-10-29 补充，**不可被 DB 撤销**）
+
+`PosAuthServiceImpl:183-191` 的 `POS_BASE_PERMISSIONS` 会被**无条件并入**每个非 admin 的 POS 用户权限集：
+
+```text
+pos:order:create, pos:order:pay, pos:order:query,
+pos:member:query, pos:member:recharge, pos:member:consume,
+pos:menu:query, pos:shift:manage, pos:yolo:recognize,
+member:manage, product:food:view, product:category:view, product:combo:view
+```
+
+**关键含义**：
+1. 这 13 个码 **改 DB 撤不掉**（从 `role_permissions` 删除也照样生效），只能改代码；
+2. 实测（2026-10-29）：删掉 `ROLE_CASHIER` 的 `product:combo:view` 后，登录与 `/me` 仍是 43 个权限、该码仍在；
+3. `member:manage` 是**写权限**，硬编码给所有 POS 用户过宽（待产品确认是否改为按角色授予）；
+4. `pos:member:recharge` / `pos:member:consume` / `pos:shift:manage` 涉及资金与钱箱，建议一并评估。
+
+→ 详见 `docs/audit/tech-debt-schema.md` P2-5。

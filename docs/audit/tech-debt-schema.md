@@ -272,3 +272,65 @@ END $$;
 
 **为什么强制**：迁移「跑过了」不等于「结果对」。没有断言时，DELETE 命中 0 行、UPDATE 条件写错、
 映射规则不匹配都**静默通过**，直到线上 403/账不平才发现。断言让迁移在 CI 阶段就炸。
+
+## P2-4　权限缓存两种生效时效（**不是缺陷，是设计**；2026-10-29 实测）
+
+| 变更方式 | 生效时效 | 实测 |
+|----------|----------|------|
+| **应用层撤权**（管理员后台改权限 → `PermissionCacheInvalidator#invalidateAll`） | **~1 秒** | 由 `RoleController#assignPermissions` 调用 invalidateAll |
+| **直接改库**（SQL 绕过应用，改 `role_permissions`） | **≤45 秒（TTL）**，实测 45.7s / 34.5s | `UserPermissionCache` TTL 默认 45s |
+
+**为什么会有 45s**：`UserPermissionCache` 的缓存条目 TTL=45s，且「版本轮询」（`permissionVersion()` = count+max(create_time)）
+在 `versionSource` 为 null 时不生效（`@Autowired(required=false)`）→ 直接改库只能等 TTL。
+
+**⚠ 安全事件处置铁律**：**必须走应用层撤权接口**。直接改库后以为「立刻生效」是错误预期，最长 45s 内该 token 仍带旧权限。
+
+## P2-5　`POS_BASE_PERMISSIONS` 硬编码 = 隐藏授权（**不可被 DB 撤销**，安全隐患）
+
+位置：`PosAuthServiceImpl:183-191`，`Collections.unmodifiableList(...)` 后**无条件并入**每个非 admin 的 POS 用户权限集。
+
+| 码 | 为什么给 | 风险 |
+|----|----------|------|
+| `pos:order:create` | 收银台核心：下单 | 低（业务必需） |
+| `pos:order:pay` | 收银台核心：收款 | 低 |
+| `pos:order:query` | 查单/退单前置 | 低 |
+| `pos:member:query` | 会员查询（充值前查余额） | 低 |
+| `pos:member:recharge` | 会员充值 | **中**：涉及资金 |
+| `pos:member:consume` | 会员消费（扣余额） | **中**：涉及资金 |
+| `pos:menu:query` | 菜单读取 | 低 |
+| `pos:shift:manage` | 开班/交班 | **中**：可开关钱箱 |
+| `pos:yolo:recognize` | 菜品识别 | 低 |
+| `member:manage` | MemberController 充值/消费 | **高：`manage` 是写权限** |
+| `product:food:view` | 菜品只读 | 低 |
+| `product:category:view` | 分类只读 | 低 |
+| `product:combo:view` | 套餐只读 | 低 |
+
+**核心事实（实测 2026-10-29）**：从 `role_permissions` 删除 `product:combo:view` 后，
+登录与 `/me` 的 permissions **仍是 43 个、该码仍在** —— 因为它在硬编码基础集里。
+
+**结论（写进规范）**：
+1. **这份基础集不可被 DB 撤销**。将来产品要收回其中任何一个码，**改 DB 无效，必须改代码**；
+2. 不要试图用 `DELETE FROM role_permissions` 或后台「取消勾选」来收回这些码 —— 会得到「看起来撤了、实际没撤」的假象；
+3. **`member:manage` 属写权限，硬编码给所有 POS 用户过宽**，应改为按角色授予（未改，待产品确认）；
+4. `pos:member:recharge` / `pos:member:consume` / `pos:shift:manage` 涉及资金与钱箱，也建议改为按角色授予。
+
+**更正 R3 三.1 的结论**：当时我报「三个 product view 码已存在于 ROLE_CASHIER，无需新增」——
+这个结论**方向错了**：这三个码**本来就不该靠 DB 授**（POS 端由硬编码基础集提供）。
+DB 里有没有它们，对 POS 端没有影响。
+
+## P2-6　调度被全局关闭 → 权限版本轮询静默失效（**已知影响：安全处置窗口 45s**）
+
+```text
+根因：application-dev.yml / application-pg.yml / application-prod.yml 三处全部
+      app.scheduling.enabled: false  →  @ConditionalOnProperty 使 @EnableScheduling 不生效
+      →  UserPermissionCache.refreshVersionPeriodically 从未注册 → 版本轮询全程没跑。
+
+影响：撤权（含直接改库）只能等 TTL 45s；而 cacheMode 因只看 Bean 注入仍报 VERSION_POLLING，
+      **所有人都以为 1s 生效**。线上安全事件处置窗口实际是 45s，且无人知晓。
+
+修复：三处配置改 enabled: true（2026-10-29）。修后实测：撤权 0.5s、恢复 1.1s。
+验证：启动日志 [PERM-CACHE] cacheMode=VERSION_POLLING 由 scheduled-2 线程输出（真实轮询）。
+```
+
+**残余风险**：若将来有人再次把 scheduling 关掉（例如为了 JVM 稳定性排查），
+权限失效会**静默回退到 45s** —— 现在有 `lastPollAt` 判据 + 60s 自检 ERROR 兜底，但**仍要人工看日志**。

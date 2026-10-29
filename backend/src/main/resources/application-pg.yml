@@ -9,7 +9,7 @@
 # 同时减少非必要日志，便于聚焦采购-仓储-库存-财务链路
 app:
   scheduling:
-    enabled: false
+    enabled: true   # Lead 2026-10-29：权限版本轮询依赖 @Scheduled；关掉等于撤权延迟不可控（曾静默 45s+）
 
 scheduler:
   enabled: false

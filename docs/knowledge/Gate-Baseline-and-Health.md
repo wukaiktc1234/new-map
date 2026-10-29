@@ -149,3 +149,43 @@
 | 缺表/覆盖/新表体检 | `scripts/qa/deploy_gap_audit.py`、`gate_coverage_audit.py`、`table_health_check.py`、`new-tables.txt` |
 | 缺表分类与债务 | `docs/audit/missing-tables-triage.md`、`docs/audit/tech-debt-schema.md` |
 | e2e 夹具期望状态 | `docs/audit/e2e-boundary-refund-fixtures.md` |
+
+## 权限缓存的两种生效时效（2026-10-29 实测，安全处置必读）
+
+- **应用层撤权**（后台改权限，走 `invalidateAll`）：**~1 秒**生效；
+- **直接改库**（SQL 改 `role_permissions`）：**≤45 秒（TTL）**，实测 45.7s / 34.5s。
+
+> **处置安全事件必须走应用层撤权接口**。直接改库后「以为立刻生效」是错的 —— 最长 45s 内旧 token 仍可用。
+
+## 假信号（false-signal）范例集 —— 比「没信号」更危险
+
+**结论一句**：**「判据错」和「时机错」都会造出假信号，而假信号比没信号更危险** ——
+没信号时人会去查；假信号让人以为已经查过了。
+
+### 范例 1（判据错）：`cacheMode` 只看 Bean 注入 → 假信号 1.0
+
+```text
+代码：return versionSource == null ? "TTL_ONLY" : "VERSION_POLLING";
+现象：三个 profile 都是 app.scheduling.enabled=false → @Scheduled 根本没注册 → 版本轮询从未运行，
+      但 cacheMode 一直报 VERSION_POLLING（因为 Bean 注入成功）。
+后果：所有人以为「撤权 1s 生效」，实际一直 45s；安全事件处置窗口被误判。
+修法：判据改为 lastPollAt —— 最近 5 秒内真的轮询过才算 VERSION_POLLING。
+```
+
+### 范例 2（时机错）：自检窗口 10s < 启动 28s → 假信号 2.0
+
+```text
+代码：启动后 10s 检查 lastPollAt == 0 → 报 [METRIC] permission_version_polling_dead
+现象：应用启动耗时 28s，调度线程 15s 后才起 → 10s 时必然 lastPollAt==0 → **误报「轮询已死」**。
+教训：检查窗口必须大于最慢启动时间；能「首次成功后停检」就别用固定窗口。
+修法：60s 窗口 + 已轮询成功则静默退出（cancel）。
+```
+
+### 纪律（2026-10-29 起）
+
+```text
+1. 任何「死 / 失活」类自检，判据必须是「最近 N 秒内确实发生过」，不是「配置看起来对」；
+2. 检查窗口必须大于最慢启动时间（本机实测最慢 ~30s，窗口取 60s）；
+3. 有条件时优先「首次成功即停检」，彻底消除启动期误报；
+4. 每个 metric 都要问一句：这条日志**在什么情况下会打**？如果答不出，它大概率永远不打（见 CACHE_RELOAD_FAILED 内层 catch 吞异常）。
+```

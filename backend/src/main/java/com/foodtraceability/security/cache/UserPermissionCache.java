@@ -48,6 +48,12 @@ public class UserPermissionCache {
     private volatile String cachedVersion = null;
     private volatile long versionRefreshedAt = 0L;
 
+    /** 最近一次**真正执行**版本查询的时间（cacheMode 判据，防假信号） */
+    private volatile long lastPollAt = 0L;
+
+    /** 累计真正轮询次数（自检日志用） */
+    private volatile long pollCount = 0L;
+
     @Autowired(required = false)
     private com.foodtraceability.mapper.UserMapper versionSource;
 
@@ -67,15 +73,70 @@ public class UserPermissionCache {
         return safe;
     }
 
+    /** 是否已在启动时检查过 versionSource（避免每轮刷屏） */
+    private volatile boolean sourceChecked = false;
+
+    /**
+     * 缓存模式（Lead 2026-10-29）：
+     * VERSION_POLLING = 版本轮询可用（直接改库 ~1s 生效）；
+     * TTL_ONLY = versionSource 缺失，只能等 TTL（≤45s）。
+     */
+    public String cacheMode() {
+        // ★ ④（Lead 2026-10-29）：「Bean 注入成功」**不等于**轮询真的在跑 ——
+        //   之前 cacheMode 只看 versionSource != null，是**假信号**（调度被 enabled:false 关掉时仍报 VERSION_POLLING）。
+        //   现在改成看 lastPollAt：最近 5 秒内真的轮询过才算 VERSION_POLLING。
+        if (versionSource == null) {
+            return "TTL_ONLY";
+        }
+        long since = System.currentTimeMillis() - lastPollAt;
+        return since <= 5000L ? "VERSION_POLLING" : "TTL_ONLY";
+    }
+
+    /** 最近一次真正轮询到版本的时间（0 = 从未轮询） */
+    public long lastPollAt() {
+        return lastPollAt;
+    }
+
+    /** 启动后 10s 自检：若从未轮询到版本 → ERROR（调度被关 or 线程未注册） */
+    @jakarta.annotation.PostConstruct
+    public void selfCheckPolling() {
+        // ★ ②（Lead 2026-10-29）：**检查窗口必须大于最慢启动时间** ——
+        //   上一版 10s 检查、而应用启动耗时 28s → 报「轮询已死」其实是误报（假信号 2.0）。
+        //   现在：60s 后仍未轮询才报；且若期间已轮询成功，直接静默退出。
+        new java.util.Timer(true).schedule(new java.util.TimerTask() {
+            @Override
+            public void run() {
+                if (lastPollAt == 0L) {
+                    log.error("[METRIC] permission_version_polling_dead cacheMode=TTL_ONLY（启动 60s 内版本轮询从未执行：app.scheduling.enabled=false 或调度线程未注册 → 权限变更只能等 TTL，安全处置请走应用层撤权）");
+                } else {
+                    log.info("[PERM-CACHE] 自检通过：启动 60s 内已轮询 %d 次（lastPollAt>0）", pollCount);
+                }
+                cancel();
+            }
+        }, 60000L);
+    }
+
     /** 定时（每秒）刷新权限目录版本；变化则整体失效。DB 查询恒为 1/秒，与业务流量无关。 */
     @Scheduled(fixedRate = 1000L, initialDelay = 1000L)
     public void refreshVersionPeriodically() {
         if (versionSource == null) {
+            // ★ ②（Lead 2026-10-29）：**不许静默降级**。versionSource 缺失 = 版本轮询失效，
+            //   权限变更只能等 TTL（≤45s）；直接改库「以为立刻生效」会导致安全处置失败。
+            if (!sourceChecked) {
+                sourceChecked = true;
+                log.error("[METRIC] permission_version_source_missing cacheMode=TTL_ONLY（版本轮询不可用：UserMapper 未注入，权限变更最长 45s 才生效，安全处置必须走应用层撤权）");
+            }
             return;
+        }
+        if (!sourceChecked) {
+            sourceChecked = true;
+            log.info("[PERM-CACHE] cacheMode=VERSION_POLLING（版本轮询可用，每 1s 比对 permissionVersion）");
         }
         versionRefreshedAt = System.currentTimeMillis();
         try {
             String v = versionSource.permissionVersion();
+            lastPollAt = System.currentTimeMillis();   // 只有真查询成功才算「轮询在跑」
+            pollCount++;
             if (v != null && !v.equals(cachedVersion)) {
                 if (cachedVersion != null) {
                     log.info("[PERM-CACHE] 权限目录版本变更 {} → {}，整体失效（定时比对）", cachedVersion, v);
