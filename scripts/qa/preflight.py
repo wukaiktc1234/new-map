@@ -479,6 +479,14 @@ def main():
     if mig_gate_rc != 0:
         print("[GATE] 迁移版本 gate 失败（EXIT=2）：重复版本号会让应用启动失败")
         warn = True
+    # ---- 权限常量 gate（Lead 2026-10-29）：代码集合常量里的码必须在 permissions 目录里 ----
+    # 棘轮：⊆基线 → rc=3 WARN；出现基线外新缺失 → rc=2 BLOCK
+    perm_const_rc = run_gate_script("permission_constant_gate.py", a.verbose)
+    if perm_const_rc == 2:
+        print("[GATE] 权限常量 gate BLOCK：出现基线外的新缺失码（代码有、目录无 → 隐形授权）")
+        warn = True
+    elif perm_const_rc == 3:
+        print("[GATE] 权限常量 gate WARN：已知缺失在基线内（棘轮，不阻断）")
     clean_db_rc = 0
     if a.full:
         print("-" * 86)

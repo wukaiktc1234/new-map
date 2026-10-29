@@ -109,7 +109,7 @@ public class UserPermissionCache {
                 if (lastPollAt == 0L) {
                     log.error("[METRIC] permission_version_polling_dead cacheMode=TTL_ONLY（启动 60s 内版本轮询从未执行：app.scheduling.enabled=false 或调度线程未注册 → 权限变更只能等 TTL，安全处置请走应用层撤权）");
                 } else {
-                    log.info("[PERM-CACHE] 自检通过：启动 60s 内已轮询 %d 次（lastPollAt>0）", pollCount);
+                    log.info("[PERM-CACHE] 自检通过：启动 60s 内已轮询 {} 次（lastPollAt>0）", pollCount);
                 }
                 cancel();
             }
