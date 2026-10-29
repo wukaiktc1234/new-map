@@ -92,3 +92,30 @@ role_permissions 真实列：id, role_id, permission_id, deleted, create_time（
 | 10 | `pos_shifts.shift_id` 可显式插入 | 是 `GENERATED ALWAYS AS IDENTITY`，**不能显式插** |
 
 **一句话**：动代码/写 SQL 前，先确认它存在（`\d 表名` / 看类字段与方法签名 / 看注解），不要假设。
+
+### `orders` 真实列清单（54 列，2026-10-29 实测；写 UPDATE 前必看）
+
+```text
+1 order_id varchar(32) NOT NULL     2 user_id varchar(50)        3 order_number varchar(32) NOT NULL
+4 order_type int                    5 order_status int          6 order_amount numeric
+7 discount_amount numeric           8 actual_amount numeric     9 payment_method int
+10 transaction_id varchar(100)     11 payment_time timestamp   12 delivery_address text
+13 contact_name varchar(50)        14 contact_phone varchar(20) 15 remarks text
+16 idempotency_key varchar(100)    17 order_source int         18 merchant_id varchar(50)
+19 deliveryman_id varchar(50)      20 estimated_delivery_time  21 actual_delivery_time
+22 cancel_reason **text**          ← 存在（text，无长度限制）
+23 refund_reason text              24 refund_amount numeric    25 refund_time timestamp
+26 create_time timestamp           27 update_time timestamp    28 create_by varchar(50)
+29 update_by varchar(50)           30 deleted int              31 store_id bigint
+32 order_code varchar(32)          33 customer_id bigint       34 customer_name varchar(50)
+35 customer_phone varchar(20)      36 table_id bigint          37 table_name varchar(50)
+38 dining_people_count int         39 payment_status int       40 total_amount bigint(分)
+41 coupon_amount bigint            42 points_amount bigint     43 delivery_fee bigint
+44 packaging_fee bigint            45 final_amount bigint(分)  46 paid_amount bigint(分)
+47 points_earned int               48 remark text              49 expected_time timestamp
+50 cashier_user_id bigint          51 create_user_id bigint    52 customer_phone_encrypted varchar(255)
+53 call_number varchar(8)          54 shift_id bigint
+```
+
+**⚠ 不存在 `cancel_time` 列** —— 第 11 次「假设存在」就是在这里翻车（`UPDATE ... cancel_time = now()` → 92 笔整批失败）。
+关单时间请用 `update_time` 承载。

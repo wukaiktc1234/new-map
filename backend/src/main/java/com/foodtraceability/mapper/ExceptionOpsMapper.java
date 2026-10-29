@@ -54,6 +54,7 @@ public interface ExceptionOpsMapper extends BaseMapper<ExceptionOps> {
     @Select("SELECT count(*) FROM orders o "
             + "WHERE o.shift_id = #{shiftId} AND o.deleted = 0 "
             + "  AND COALESCE(o.payment_status, 0) <> 2 "
+            + "  AND COALESCE(o.cancel_reason, '') <> 'EXPIRED_AUTO' "   // TTL 自动关的单不算「待处理异常单」
             + "  AND NOT EXISTS (SELECT 1 FROM exception_ops e WHERE e.order_id = o.order_id AND e.deleted = 0)")
     long countPendingExceptionOrders(@Param("shiftId") Long shiftId);
 }
