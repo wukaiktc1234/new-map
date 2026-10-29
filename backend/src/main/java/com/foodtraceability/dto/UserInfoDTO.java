@@ -32,6 +32,13 @@ public class UserInfoDTO {
     @Schema(description = "权限列表", example = "[\"user:manage\", \"product:view\"]")
     private List<String> permissions;
 
+    /**
+     * 权限来源（Lead 2026-10-29）：DB / CACHE / WILDCARD_ADMIN / FALLBACK_EMPTY。
+     * 管理端没有 POS 基础集兜底，FALLBACK_EMPTY 是**可达的**，前端可据此提示「权限装配异常」。
+     */
+    @io.swagger.v3.oas.annotations.media.Schema(description = "权限来源：DB/CACHE/WILDCARD_ADMIN/FALLBACK_EMPTY")
+    private String permissionSource;
+
     public UserInfoDTO() {
     }
 
@@ -89,5 +96,13 @@ public class UserInfoDTO {
 
     public void setPermissions(List<String> permissions) {
         this.permissions = permissions;
+    }
+
+    public String getPermissionSource() {
+        return permissionSource;
+    }
+
+    public void setPermissionSource(String permissionSource) {
+        this.permissionSource = permissionSource;
     }
 }

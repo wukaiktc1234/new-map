@@ -210,3 +210,65 @@ MoneyYuanToFen.Result r = MoneyYuanToFen.toFen("123.45");  // → 12345 分（�
 - 后果：交班/日结统计只能按「时间窗 + payment_status=2」聚合，不含 terminal 维度；同一门店多终端同时营业时，A 终端交班会统计到 B 终端的订单 -> 营收串台。
 - 当前实现：PosShiftMapper.countOrdersByTimeRange 注释已写明「统计口径 = 时间窗 + payment_status=2，不含 terminal 维度」；startTime/endTime 用 #{} 参数化，无字符串拼接。
 - 修复方向（未排期）：orders 增加 terminal_id + 回填历史（只能按 pos_shifts 时间窗近似），统计改 terminal_id = #{terminalId}。
+
+## P2-1　统一鉴权语言（扫描结论，2026-10-29）
+
+**扫描命令与结果**（不凭记忆）：
+```powershell
+Get-ChildItem "backend\src\main\java" -Recurse -Filter *.java | Select-String -Pattern "hasAnyRole|hasRole\(" | Measure-Object
+→ 命中行数 334
+其中 @PreAuthorize 内 316 ｜ 非注解（服务层/AOP）18
+```
+
+**结论：全仓仍在大量使用 `hasRole`/`hasAnyRole`（不是 0）**。集中在 HR/组织域：
+`EmployeeLaborContractController(21)`、`SalaryController(17)`、`HealthCertificateController(16)`、
+`PositionController(15)`、`EmployeeController(14)`、`DepartmentController(12)`、`PurchasePlanController(11)` …
+
+**两种语言并存的风险**：`hasAuthority('ROLE_X')` 需要前缀且精确匹配；`hasRole('x')` 由 Spring 自动补 `ROLE_` 前缀并依赖
+`RoleCodeNormalizer` 的归一（历史曾出现 `ROLE_ROLE_STORE_MANAGER` 双前缀 bug）。**同一权限两种写法 → 改一处忘一处就会 403**。
+
+**建议**：新代码**只允许 `hasAuthority('a:b:c')`**（业务权限码），角色判定下沉到权限码；存量 316 处按域分批迁移。
+**CI 拦截**：可加 grep gate（新增 `hasRole(`/`hasAnyRole(` 即 EXIT=2），但需先给存量 334 行做白名单（同 migration-legacy-allowlist 模式）。
+
+## P2-2　HTTP 语义（业务码 vs 状态码，长线，只出方案）
+
+**现状**：业务异常统一 HTTP 200 + `body.code`（400/403/404/500），前端按 `body.code` 判定。
+
+**改造面（实测）**：
+```text
+Result.error 调用点 ≈ 828 处（棘轮基线 841 → 现 828）
+Controller ≈ 82 个
+```
+
+**三阶段方案（渐进可回滚）**：
+1. **只改鉴权类 401/403**（影响面最小、收益最大：网关/监控/前端拦截器都能正确识别「没登录/没权限」）；
+2. 再改 404（资源不存在）；
+3. 最后 400（参数）/500（系统）——这两类前端已有降级逻辑，优先级最低。
+
+**灰度策略**：改造期 **`body.code` 与 HTTP 状态码双写**，前端不用同步改就能上线；切完再评估是否下线 body.code。
+
+**⚠ 跨端协同项（必须同版本上线）**：若前端 axios 在 **HTTP 层** 拦截（`status !== 200` 直接弹错），
+与现有 `body.code` 判定会**双判**（同一个错误弹两次，或把 200 判定当成成功而吞掉错误）。
+→ 后端改状态码与前端改拦截器**必须同一版本**发布，并在联调环境先跑一遍全链路。
+
+## P2-3　迁移必须自带 DO 断言（规范，2026-10-29 起强制）
+
+**范例**：`V20261029_002__revoke_cashier_refund_permissions.sql`（**双断言**）
+```sql
+-- 删类迁移必须同时断言：① 该删的没了；② 不该删的还在
+DO $$
+DECLARE bad int; DECLARE keep int;
+BEGIN
+    SELECT count(*) INTO bad FROM role_permissions rp JOIN permissions p ON p.permission_id_str = rp.permission_id
+     WHERE rp.role_id = 'ROLE_CASHIER' AND rp.deleted = 0
+       AND p.permission_code IN ('order:refund','order:refund:initiate','refund:manage');
+    IF bad > 0 THEN RAISE EXCEPTION '迁移失败：ROLE_CASHIER 仍持有 % 条退款发起权限码', bad; END IF;
+
+    SELECT count(*) INTO keep FROM role_permissions rp JOIN permissions p ON p.permission_id_str = rp.permission_id
+     WHERE rp.role_id = 'ROLE_CASHIER' AND rp.deleted = 0 AND p.permission_code = 'refund:view';
+    IF keep = 0 THEN RAISE EXCEPTION '迁移失败：refund:view 被误删（应保留只读）'; END IF;
+END $$;
+```
+
+**为什么强制**：迁移「跑过了」不等于「结果对」。没有断言时，DELETE 命中 0 行、UPDATE 条件写错、
+映射规则不匹配都**静默通过**，直到线上 403/账不平才发现。断言让迁移在 CI 阶段就炸。

@@ -202,6 +202,10 @@ public class AuthServiceImpl implements AuthService {
         // 前端需要完整权限列表用于菜单/按钮可见性控制
         // securityUser.getPermissions() 只含 "*"（admin），需展开为完整列表
         userInfo.setPermissions(expandPermissionsForFrontend(securityUser.getPermissions()));
+        // 管理端权限来源：通配 / 有码(DB) / 空(FALLBACK_EMPTY)
+        boolean wildcard = securityUser.getPermissions() != null && securityUser.getPermissions().contains("*");
+        boolean empty = securityUser.getPermissions() == null || securityUser.getPermissions().isEmpty();
+        userInfo.setPermissionSource(wildcard ? "WILDCARD_ADMIN" : (empty ? "FALLBACK_EMPTY" : "DB"));
 
         response.setUserInfo(userInfo);
 
@@ -838,6 +842,13 @@ public class AuthServiceImpl implements AuthService {
         }
 
         securityUser.setPermissions(new ArrayList<>(permissions));
+
+        // ★ ①（Lead 2026-10-29）：管理端**没有 POS 基础集兜底**，权限装配为空是可达的 →
+        //   必须打 metric + WARN（静默空权限 = 该用户所有接口 403，最难查）。
+        if (!isAdmin && permissions.isEmpty()) {
+            logger.warn("[METRIC] permission_assembly_failed userId={} username={} roles={} reason=FALLBACK_EMPTY（管理端权限装配为空：user_roles/role_permissions 无有效映射）",
+                    user.getId(), user.getUsername(), roles);
+        }
 
         logger.info("SecurityUser构建完成: userId={}, username={}, rolesCount={}, permissionsCount={}",
                 user.getId(),

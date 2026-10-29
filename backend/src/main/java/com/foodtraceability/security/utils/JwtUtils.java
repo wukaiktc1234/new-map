@@ -418,6 +418,8 @@ public class JwtUtils {
                     user.setPermissions(new ArrayList<>(resolved));
                     logger.info("[JWT] 回源分支命中（token 无 permissions claim）：userId={}, permissions={}", user.getUserId(), resolved.size());
                 } catch (Exception e) {
+                logger.warn("[METRIC] permission_assembly_failed userId={} roles={} reason=CACHE_RELOAD_FAILED error={}（本次请求按无权限处理）",
+                        user.getUserId(), user.getRoles(), e.getMessage());
                     logger.warn("[JWT] 回源权限失败，本次请求按无权限处理: userId={}, err={}",
                             user.getUserId(), e.getMessage());
                     user.setPermissions(new ArrayList<>());

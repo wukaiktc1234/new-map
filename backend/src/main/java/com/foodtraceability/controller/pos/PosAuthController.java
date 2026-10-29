@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -97,6 +98,33 @@ public class PosAuthController {
         } catch (Exception e) {
             logger.error("开始班次失败: {}", e.getMessage());
             return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * GET /v1/pos/auth/me —— 刷新时恢复前端能力快照（Lead 2026-10-29）。
+     *
+     * <p>前端已拔除 localStorage 权限，刷新会丢内存快照；本接口让刷新后**不再重新登录**，
+     * 同时保持「权限不落本地存储」的安全要求。</p>
+     *
+     * <p>鉴权：Bearer token。**未带/失效 token 返回真实 HTTP 401**（不是 200+业务码）。</p>
+     */
+    @GetMapping("/me")
+    @Operation(summary = "当前登录人能力快照", description = "刷新时恢复前端权限快照；权限来源与登录同源（UserPermissionCache）")
+    public ResponseEntity<Result<Map<String, Object>>> me(@RequestParam(required = false) String terminalId) {
+        if (com.foodtraceability.utils.SecurityUtils.getCurrentUserId() == null) {
+            return ResponseEntity.status(401).body(Result.error(401, "未登录或登录已过期"));
+        }
+        try {
+            return ResponseEntity.ok(Result.success(posAuthService.getCurrentUserInfo(terminalId), "ok"));
+        } catch (com.foodtraceability.exception.BusinessException be) {
+            if (be.getCode() == 401) {
+                return ResponseEntity.status(401).body(Result.error(401, be.getMessage()));
+            }
+            return ResponseEntity.badRequest().body(Result.error(be.getCode(), be.getMessage()));
+        } catch (Exception e) {
+            logger.error("获取当前登录人失败: {}", e.getMessage());
+            return ResponseEntity.status(500).body(Result.error(500, "获取当前登录人失败"));
         }
     }
 

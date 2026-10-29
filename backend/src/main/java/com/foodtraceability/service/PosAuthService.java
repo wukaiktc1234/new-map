@@ -64,4 +64,7 @@ public interface PosAuthService {
     /** ② POS「上一班」默认值：当前登录人所属门店最近一条已结束班次；无历史返回 null */
     Map<String, Object> lastEndedShiftOfMyStore();
 
+
+    /** GET /v1/pos/auth/me：刷新时恢复前端能力快照（只读，权限来源 UserPermissionCache）。 */
+    Map<String, Object> getCurrentUserInfo(String terminalId);
 }

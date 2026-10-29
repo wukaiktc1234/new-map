@@ -39,13 +39,15 @@ public class PosAuthServiceImpl implements PosAuthService {
     public PosAuthServiceImpl(PosShiftMapper posShiftMapper, UserMapper userMapper,
                               PasswordEncoder passwordEncoder, JwtUtils jwtUtils,
                               ObjectMapper objectMapper,
-                              com.foodtraceability.mapper.OrderNewMapper orderNewMapper) {
+                              com.foodtraceability.mapper.OrderNewMapper orderNewMapper,
+                                 com.foodtraceability.security.cache.UserPermissionCache userPermissionCache) {
         this.posShiftMapper = posShiftMapper;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
         this.objectMapper = objectMapper;
         this.orderNewMapper = orderNewMapper;
+        this.userPermissionCache = userPermissionCache;
     }
 
     private final JwtUtils jwtUtils;
@@ -69,6 +71,9 @@ public class PosAuthServiceImpl implements PosAuthService {
     private final com.foodtraceability.mapper.OrderNewMapper orderNewMapper;
 
     private final PasswordEncoder passwordEncoder;
+
+    /** /v1/pos/auth/me 的权限来源：与登录同源（UserPermissionCache），保证撤权即时生效。 */
+    private final com.foodtraceability.security.cache.UserPermissionCache userPermissionCache;
 
     /**
      * POS 端允许登录的角色码（归一化后的小写码）。
@@ -251,6 +256,27 @@ public class PosAuthServiceImpl implements PosAuthService {
         // 不新增任何授权判断，也不放宽任何限制。
         userInfo.put("roles", securityUser.getRoles() != null ? securityUser.getRoles() : new ArrayList<>());
         userInfo.put("permissions", securityUser.getPermissions() != null ? securityUser.getPermissions() : new ArrayList<>());
+        // ★ ①（Lead 2026-10-29）：permissionSource 明确来源，避免「静默空权限」最难查。
+        //   DB / CACHE / WILDCARD_ADMIN / FALLBACK_EMPTY
+        java.util.List<String> permsForSource = securityUser.getPermissions() != null
+                ? securityUser.getPermissions() : new ArrayList<>();
+        java.util.List<String> rolesForSource = securityUser.getRoles() != null
+                ? securityUser.getRoles() : new ArrayList<>();
+        String permissionSource;
+        if (permsForSource.contains("*")) {
+            permissionSource = "WILDCARD_ADMIN";
+        } else if (permsForSource.isEmpty()) {
+            // ⚠ 对 POS **不可达**：buildSecurityUser 无条件并入 POS_BASE_PERMISSIONS（8 个 pos:* 码），
+            //   非 admin 分支权限集永远非空。保留该分支是为「万一基础集被移除」时仍有显式标记 + metric，
+            //   真正的 FALLBACK_EMPTY 风险在**管理端 JWT 回源路径**（没有基础集兜底），见 AuthServiceImpl/JwtUtils。
+            permissionSource = "FALLBACK_EMPTY";
+            // 静默给空权限 = 所有人 403，是最难查的一类；必须同时打 metric + WARN
+            logger.warn("[METRIC] permission_assembly_failed userId={} username={} roles={} reason=FALLBACK_EMPTY（权限装配结果为空，该用户所有接口将 403）",
+                    user.getId(), user.getUsername(), rolesForSource);
+        } else {
+            permissionSource = "DB";
+        }
+        userInfo.put("permissionSource", permissionSource);
 
         // 7. 清理过期Token并检查容量（保留内存存储用于登出等场景）
         cleanExpiredTokens();
@@ -582,7 +608,8 @@ public class PosAuthServiceImpl implements PosAuthService {
                     permissions.addAll(fromRoles);
                 }
             } catch (Exception e) {
-                logger.warn("读取用户 DB 权限失败，仅使用 POS 基础集: userId={}, error={}", user.getId(), e.getMessage());
+                logger.warn("[METRIC] permission_assembly_failed userId={} username={} reason=DB_ERROR error={}（已降级为 POS 基础集）",
+                    user.getId(), user.getUsername(), e.getMessage());
             }
             permissions.addAll(POS_BASE_PERMISSIONS);
             securityUser.setPermissions(new ArrayList<>(permissions));
@@ -787,6 +814,102 @@ public class PosAuthServiceImpl implements PosAuthService {
                 .map(Map.Entry::getKey)
                 .forEach(tokenStore::remove);
         logger.info("Token存储容量已满，已清理{}个最旧Token", removeCount);
+    }
+
+    /**
+     * GET /v1/pos/auth/me（Lead 2026-10-29，联调期解前端阻塞）。
+     *
+     * <p>前端已按要求拔除 localStorage 权限，刷新/新标签页会丢内存快照 → 只能重新登录。
+     * 本接口让前端「刷新时调 /me 恢复能力快照」，**不必把权限写回本地存储**（安全与体验兼得）。</p>
+     *
+     * <p><b>权限来源必须与登录同源</b>：登录走 {@link #buildSecurityUser}（DB），
+     * 这里走 {@code UserPermissionCache}（同样回源 DB，TTL 45s + 版本轮询），
+     * 并**并入与登录相同的 POS 基础集**，保证同一时刻两边的 permissions 集合一致。</p>
+     */
+    @Override
+    public Map<String, Object> getCurrentUserInfo(String terminalId) {
+        Long userId = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录或登录已过期");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(401, "用户不存在或已被删除");
+        }
+
+        // 角色（与登录同源：user_roles → roles.role_id_str）
+        List<String> roles = new ArrayList<>();
+        try {
+            List<String> dbRoles = userMapper.getUserRoles(user.getId());
+            if (dbRoles != null) {
+                for (String r : dbRoles) {
+                    if (r != null && !r.isBlank()) {
+                        roles.add(r.trim());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("[METRIC] permission_assembly_failed userId={} reason=ROLE_QUERY_FAILED error={}",
+                    userId, e.getMessage());
+        }
+        if ((roles.isEmpty() || roles.stream().noneMatch(r -> "admin".equalsIgnoreCase(r)))
+                && "admin".equalsIgnoreCase(user.getUsername())) {
+            roles = new ArrayList<>(Collections.singletonList("admin"));
+        }
+
+        boolean isAdmin = roles.stream().anyMatch("admin"::equalsIgnoreCase)
+                || (user.getUsername() != null && user.getUsername().equalsIgnoreCase("admin"));
+
+        List<String> permissions;
+        String permissionSource;
+        if (isAdmin) {
+            permissions = new ArrayList<>(Collections.singletonList("*"));
+            permissionSource = "WILDCARD_ADMIN";
+        } else {
+            LinkedHashSet<String> set = new LinkedHashSet<>();
+            try {
+                // ★ 与登录的差异点：这里走**缓存**（撤权即时生效），登录走 DB 直查
+                List<String> fromRoles = userPermissionCache.get(String.valueOf(user.getId()), uid -> {
+                    try {
+                        return userMapper.getUserRolePermissions(Long.valueOf(uid));
+                    } catch (Exception e) {
+                        logger.warn("[METRIC] permission_assembly_failed userId={} reason=CACHE_LOADER_FAILED error={}",
+                                uid, e.getMessage());
+                        return new ArrayList<>();
+                    }
+                });
+                if (fromRoles != null) {
+                    set.addAll(fromRoles);
+                }
+                List<String> direct = userMapper.getUserPermissions(user.getId());
+                if (direct != null) {
+                    set.addAll(direct);
+                }
+                permissionSource = "CACHE";
+            } catch (Exception e) {
+                logger.warn("[METRIC] permission_assembly_failed userId={} roles={} reason=CACHE_RELOAD_FAILED error={}",
+                        userId, roles, e.getMessage());
+                permissionSource = "FALLBACK_EMPTY";
+            }
+            set.addAll(POS_BASE_PERMISSIONS);
+            permissions = new ArrayList<>(set);
+            if (permissions.isEmpty()) {
+                permissionSource = "FALLBACK_EMPTY";
+                logger.warn("[METRIC] permission_assembly_failed userId={} roles={} reason=FALLBACK_EMPTY（/me 权限装配为空）",
+                        userId, roles);
+            }
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("employeeId", user.getEmployeeCode() != null && !user.getEmployeeCode().isBlank()
+                ? user.getEmployeeCode() : user.getUsername());
+        out.put("employeeName", user.getFullName());
+        out.put("userId", String.valueOf(user.getId()));
+        out.put("terminalId", terminalId != null ? terminalId : "");
+        out.put("roles", roles);
+        out.put("permissions", permissions);
+        out.put("permissionSource", permissionSource);
+        return out;
     }
 }
 
