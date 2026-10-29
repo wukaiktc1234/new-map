@@ -133,17 +133,22 @@ public class PosAuthController {
      */
     @PostMapping("/shift/end")
     @Operation(summary = "结束当前班次", description = "结束指定终端的当前班次，并统计订单数据")
-    public Result<Map<String, Object>> endShift(@Valid @RequestBody PosEndShiftDTO params) {
+    public ResponseEntity<Result<Map<String, Object>>> endShift(@Valid @RequestBody PosEndShiftDTO params) {
         try {
             Map<String, Object> result = posAuthService.endShift(params.getTerminalId(), params.getRemark());
-            return Result.success(result, "班次结束成功");
+            return ResponseEntity.ok(Result.success(result, "班次结束成功"));
         } catch (com.foodtraceability.exception.BusinessException be) {
-            // 保留业务码（400「当前终端没有你的在班班次」不能变成 500）
-            logger.warn("结束班次被拒: {}", be.getMessage());
-            return Result.error(be.getCode(), be.getMessage());   // BusinessException.code 是 int（原始业务码）
+            logger.warn("结束班次被拒: code={}, msg={}", be.getCode(), be.getMessage());
+            // ⑤ 交班闸（Lead 2026-10-29）：存在待处理异常单 → **真 HTTP 409**（不是 200+业务码）
+            if (be.getCode() == 40902) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT)
+                        .body(Result.error(be.getCode(), be.getMessage()));
+            }
+            return ResponseEntity.badRequest().body(Result.error(be.getCode(), be.getMessage()));
         } catch (Exception e) {
             logger.error("结束班次失败: {}", e.getMessage());
-            return Result.error(e.getMessage());
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Result.error(e.getMessage()));
         }
     }
 

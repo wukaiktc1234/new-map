@@ -334,3 +334,24 @@ DB 里有没有它们，对 POS 端没有影响。
 
 **残余风险**：若将来有人再次把 scheduling 关掉（例如为了 JVM 稳定性排查），
 权限失效会**静默回退到 45s** —— 现在有 `lastPollAt` 判据 + 60s 自检 ERROR 兜底，但**仍要人工看日志**。
+
+## P1-3　`PosSaleFinanceRecorder` 解析不到本店资金账户时**静默跳过入账**（资金流水为零，无人知晓）
+
+**证据（实际代码，`PosSaleFinanceRecorder:175-180`）**：
+```java
+AccountPick pick = resolveAccount(storeId, paymentMethod, orderId);
+if (pick == null) {
+    // 门店隔离：找不到本店匹配账户时**不入账**（不再回退到全局第一个启用账户），
+    // 支付本身已成功，这里只返回 no_account 让上层记 ERROR + 人工补配账户。
+    return FundFlowWriteOutcome.noAccount();
+}
+```
+**日志实证**：`[METRIC] pos_fund_flow_recorded result=no_account`（`:196-197` 的 success 分支同族）
+
+**后果**：门店未配资金账户时，**POS 收款成功但 `fund_flows` 为零** —— 钱收了、账上没有，
+对账永远差这笔且无人主动发现（只靠人翻 ERROR 日志）。
+
+**本次新接口（异常单补收款）反向处理**：解析不到账户 → `BusinessException(40903)` → **整个事务回滚**
+（订单不置 paid、流水不写、exception_ops 不写），且在 CAS 之前解析账户。
+
+**处置建议**：与异常单接口对齐为「报错阻断」，但属既有 POS 支付链路改动，需回归全链路，**单独立项**。

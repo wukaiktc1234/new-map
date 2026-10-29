@@ -223,6 +223,10 @@ public class OrderNew {
     /** 幂等键：同一 key 重复提交返回同一订单（唯一部分索引 uk_orders_idempotency_key） */
     @TableField("idempotency_key")
     private String idempotencyKey;
+    /** 下单所属班次（V20261029_007 新增；历史数据可 NULL，不回溯） */
+    @TableField("shift_id")
+    private Long shiftId;
+
     @TableField("transaction_id")
     private String transactionId;
 
@@ -318,5 +322,13 @@ public class OrderNew {
 
     public void setTransactionId(String transactionId) {
         this.transactionId = transactionId;
+    }
+
+    public Long getShiftId() {
+        return shiftId;
+    }
+
+    public void setShiftId(Long shiftId) {
+        this.shiftId = shiftId;
     }
 }

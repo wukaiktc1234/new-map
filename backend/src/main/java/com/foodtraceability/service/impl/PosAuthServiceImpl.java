@@ -40,7 +40,8 @@ public class PosAuthServiceImpl implements PosAuthService {
                               PasswordEncoder passwordEncoder, JwtUtils jwtUtils,
                               ObjectMapper objectMapper,
                               com.foodtraceability.mapper.OrderNewMapper orderNewMapper,
-                                 com.foodtraceability.security.cache.UserPermissionCache userPermissionCache) {
+                                 com.foodtraceability.security.cache.UserPermissionCache userPermissionCache,
+                                 com.foodtraceability.mapper.ExceptionOpsMapper exceptionOpsMapper) {
         this.posShiftMapper = posShiftMapper;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
@@ -48,6 +49,7 @@ public class PosAuthServiceImpl implements PosAuthService {
         this.objectMapper = objectMapper;
         this.orderNewMapper = orderNewMapper;
         this.userPermissionCache = userPermissionCache;
+        this.exceptionOpsMapper = exceptionOpsMapper;
     }
 
     private final JwtUtils jwtUtils;
@@ -74,6 +76,9 @@ public class PosAuthServiceImpl implements PosAuthService {
 
     /** /v1/pos/auth/me 的权限来源：与登录同源（UserPermissionCache），保证撤权即时生效。 */
     private final com.foodtraceability.security.cache.UserPermissionCache userPermissionCache;
+
+    /** 交班闸：待处理异常单计数（Lead 2026-10-29） */
+    private final com.foodtraceability.mapper.ExceptionOpsMapper exceptionOpsMapper;
 
     /**
      * POS 端允许登录的角色码（归一化后的小写码）。
@@ -451,6 +456,16 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
             logger.warn("交班被拒：当前登录人 employee_id={} 在 terminal={} 无 active 班次；该终端 active 班次归属={}",
                     employeeKey, terminalId, actives);
             throw new BusinessException(400, "当前终端没有你的在班班次，无法交班");
+        }
+
+        // ★ ⑤ 交班闸（Lead 2026-10-29）：任何写操作前先查本班次待处理异常单
+        long pendingExceptions = exceptionOpsMapper.countPendingExceptionOrders(shift.getShiftId());
+        if (pendingExceptions > 0) {
+            logger.warn("[METRIC] shift_end_blocked_pending_exceptions shiftId={} pendingExceptionCount={}",
+                    shift.getShiftId(), pendingExceptions);
+            throw new BusinessException(40902,
+                    "本班次还有 " + pendingExceptions + " 笔待处理异常单，请先处理后再交班 [PENDING_EXCEPTIONS pendingExceptionCount="
+                            + pendingExceptions + "]");
         }
 
         // 3. 统计该班次的订单数据

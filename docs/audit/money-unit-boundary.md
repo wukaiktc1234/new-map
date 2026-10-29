@@ -100,3 +100,21 @@ SELECT table_name, column_name, data_type
 1. `orders` 的 4 个 numeric 列**不要贸然改成 bigint**（历史账 + 全链路读写 115 处），先加一列 `*_fen` 并双写，等对账一致再切；
 2. 所有「从 orders/pos_shifts 取金额进缴款单/报表」的位置，**逐处核对是否调用了 toFen**；
 3. 给 `MoneyYuanToFen` 加一条单测：元值 0.01 / 0.1 / 1234.56 → 分 1 / 10 / 123456（防回归）。
+
+## fund_flows 取值表（2026-10-29 补，此前无任何文档）
+
+| 列 | 取值 | 含义 | 出处 |
+|----|------|------|------|
+| `amount` | bigint（分） | 金额，**单位是分**（列名无 `_fen` 后缀，历史命名） | `PosRefundFlowRecorder:125 setAmount(amountFen)` |
+| `flow_direction` | **1** | 收入（进账） | `PosSaleFinanceRecorder:53 FLOW_DIRECTION_INCOME = 1` |
+| `flow_direction` | **2** | 支出（出账，如退款） | `PosRefundFlowRecorder:123 setFlowDirection(2)` |
+| `flow_category` | **1** | SALE（销售收款） | `PosSaleFinanceRecorder:55 FLOW_CATEGORY_SALE = 1` |
+| `flow_category` | **2** | REFUND（退款） | `PosSaleFinanceRecorder:62 FLOW_CATEGORY_REFUND = 2` |
+| `account_id` | 必填 | **不能为 NULL**；来自门店资金账户映射 | `PosCashAccountResolver.resolve(storeId, paymentMethod, orderId, scene)`；找不到 → 既有实现静默跳过（见 tech-debt P1-3），异常单接口改为 409 |
+| `business_date` | date | 取 `LocalDate.now()` | `PosSaleFinanceRecorder:187` |
+| `create_user_id` | bigint | 当前登录用户 ID（POS 场景=收银员） | `PosSaleFinanceRecorder:192 setCreateUserId(operatorId)` |
+| `flow_no` | varchar | `FF<yyyyMMdd><4位序列>` | `PosRefundFlowRecorder:112-116`（`sequenceAllocator.next`） |
+| `status` | 1 / 2 | 2 = 已确认（退款流水用 2） | `PosRefundFlowRecorder:128 setStatus(2)` |
+
+**注意**：`fund_flows` 还有对账必需的 `balance_after`（由 `AtomicBalanceUpdater` 返回快照写入），
+直接 `INSERT` 而不更新账户余额会导致余额与流水不一致 —— **禁止绕过 `fundFlowService.create()` 或 `AtomicBalanceUpdater` 直接写表**。
