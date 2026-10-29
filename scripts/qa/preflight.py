@@ -545,6 +545,10 @@ def main():
     deploy_gap_rc = check_deploy_gap() if a.full else 0
     # 新表体检：只针对 2026-10-28 之后新建的表（既有表老账见 docs/audit/tech-debt-schema.md）
     health_rc = check_new_tables_health() if a.full else 0
+    sec_rc = check_security_regression() if a.full else 0
+    if sec_rc != 0:
+        print('[RESULT] BLOCKED：安全回归未通过（EXIT=%s）→ exit 2' % sec_rc)
+        return 2
     if health_rc != 0:
         warn = True
     summary = "PASS=%d skipped=%d (%d%%) FAIL=%d → %s" % (
@@ -560,6 +564,33 @@ def main():
         print("[RESULT] BLOCKED：部署缺口未清零（干净库缺表且有活引用）→ exit 2")
         return 2
     return 3 if warn else 0
+
+def check_security_regression():
+    """安全回归 S1~S6（发布门禁）：EXIT=0 才允许发版。
+
+    覆盖 R1-R5 攻击用例 + 每组正常对照（防恒真）：
+      S1 价格篡改 / S2 售罄强攻 / S3 伪造开班 / S4 跨人交班 / S5 退款越权 / S6 响应价回显
+    脚本内置 [SELF-CHECK]（表存在 + 关联键样例）与按 tag 清理，跑完打印残留数（应为 0）。
+    只在 --full 跑（依赖运行中的后端 + 真实下单，约 20-40 秒）。
+    """
+    script = Path(__file__).resolve().parent / 'security_regression.py'
+    if not script.exists():
+        print('[WARN] 安全回归：找不到 %s' % script)
+        return 1
+    rc, out = run([sys.executable, str(script)], ROOT, timeout=900)
+    tail = [l for l in out.splitlines() if l.startswith('总计') or l.startswith('EXIT=')]
+    if rc == 0:
+        print('[GATE] 安全回归 S1~S6：全 PASS（%s）' % ('；'.join(tail)[:120]))
+        return 0
+    if rc == 2:
+        print('[WARN] 安全回归：未就绪（后端未起/自检未过）→ 本次不算验证通过')
+        return 2
+    print('[GATE] 安全回归失败（rc=%s）：' % rc)
+    for l in out.splitlines():
+        if l.strip().startswith('S') and 'FAIL' in l:
+            print('       ' + l.strip()[:170])
+    return rc
+
 
 def check_new_tables_health():
     """新表体检（只跑「2026-10-28 之后新建」的表清单）。
