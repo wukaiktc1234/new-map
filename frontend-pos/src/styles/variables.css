@@ -2,12 +2,12 @@
   /* ========== 亮色主题 ========== */
   
   /* 主色调 - 暖橙色系 */
-  --pos-primary: #f97316;
+  --pos-primary: #ef7f3a;
   --pos-primary-light: #fb923c;
-  --pos-primary-dark: #ea580c;
-  --pos-primary-gradient: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  --pos-primary-dark: #e3651c;
+  --pos-primary-gradient: linear-gradient(135deg, #ef7f3a 0%, #fb923c 100%);
   --pos-primary-gradient-hover: linear-gradient(135deg, #fb923c 0%, #fdba74 100%);
-  --pos-primary-glow: 0 0 20px rgba(249, 115, 22, 0.4);
+  --pos-primary-glow: 0 0 20px rgba(239, 127, 58, 0.4);
   
   /* 辅助色 - 翠绿色系 */
   --pos-accent: #10b981;
@@ -68,7 +68,7 @@
   --pos-shadow-2xl: 0 25px 50px -12px rgba(28, 25, 23, 0.12);
   
   /* 彩色阴影 */
-  --pos-shadow-primary: 0 10px 30px -5px rgba(249, 115, 22, 0.25);
+  --pos-shadow-primary: 0 10px 30px -5px rgba(239, 127, 58, 0.25);
   --pos-shadow-success: 0 10px 30px -5px rgba(16, 185, 129, 0.25);
   --pos-shadow-info: 0 10px 30px -5px rgba(6, 182, 212, 0.25);
   --pos-shadow-warning: 0 10px 30px -5px rgba(245, 158, 11, 0.25);
@@ -126,7 +126,7 @@
   /* 主色调 - 暖橙色系（暗色适配） */
   --pos-primary: #fb923c;
   --pos-primary-light: #fdba74;
-  --pos-primary-dark: #f97316;
+  --pos-primary-dark: #ef7f3a;
   --pos-primary-gradient: linear-gradient(135deg, #fb923c 0%, #fdba74 100%);
   --pos-primary-gradient-hover: linear-gradient(135deg, #fdba74 0%, #fed7aa 100%);
   --pos-primary-glow: 0 0 30px rgba(251, 146, 60, 0.4);
@@ -404,7 +404,7 @@ html, body {
 
 .pos-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 35px -5px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 12px 35px -5px rgba(239, 127, 58, 0.4);
 }
 
 .pos-btn-secondary {
@@ -624,8 +624,8 @@ body {
 }
 
 @keyframes pos-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.4); }
-  50% { box-shadow: 0 0 40px rgba(249, 115, 22, 0.6); }
+  0%, 100% { box-shadow: 0 0 20px rgba(239, 127, 58, 0.4); }
+  50% { box-shadow: 0 0 40px rgba(239, 127, 58, 0.6); }
 }
 
 @keyframes pos-ripple {
@@ -865,7 +865,7 @@ body {
   background-color: var(--pos-primary);
   border-color: var(--pos-primary);
   color: var(--pos-text-inverse);
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 4px 12px rgba(239, 127, 58, 0.4);
 }
 
 [data-theme="dark"] .el-radio-button:first-child .el-radio-button__inner {
@@ -897,7 +897,7 @@ body {
 
 [data-theme="dark"] .el-select-dropdown__item.selected {
   color: var(--pos-primary);
-  background-color: rgba(249, 115, 22, 0.1);
+  background-color: rgba(239, 127, 58, 0.1);
 }
 
 /* 徽章 */

@@ -18,7 +18,7 @@ export const kitchenApi = {
    * @returns 订单完整信息列表
    */
   getActiveOrdersFull(): Promise<KitchenOrderFullDTO[]> {
-    return request.get('/v1/kitchen-order/active/full') as Promise<KitchenOrderFullDTO[]>;
+    return request.get('/v1/kitchen/orders/active/full') as Promise<KitchenOrderFullDTO[]>;
   },
 
   /**
@@ -27,7 +27,7 @@ export const kitchenApi = {
    * @returns 订单完整信息列表
    */
   getRecentOrdersFull(limit: number = 50): Promise<KitchenOrderFullDTO[]> {
-    return request.get('/v1/kitchen-order/recent/full', { params: { limit } }) as Promise<KitchenOrderFullDTO[]>;
+    return request.get('/v1/kitchen/orders/recent/full', { params: { limit } }) as Promise<KitchenOrderFullDTO[]>;
   },
 
   /**
@@ -36,7 +36,7 @@ export const kitchenApi = {
    * @returns 后厨订单信息
    */
   getById(kitchenOrderId: string): Promise<KitchenOrder> {
-    return request.get(`/v1/kitchen-order/${kitchenOrderId}`) as Promise<KitchenOrder>;
+    return request.get(`/v1/kitchen/orders/${kitchenOrderId}`) as Promise<KitchenOrder>;
   },
 
   /**
@@ -45,7 +45,7 @@ export const kitchenApi = {
    * @returns 完整订单信息
    */
   getFullById(kitchenOrderId: string): Promise<KitchenOrderFullDTO> {
-    return request.get(`/v1/kitchen-order/${kitchenOrderId}/full`) as Promise<KitchenOrderFullDTO>;
+    return request.get(`/v1/kitchen/orders/${kitchenOrderId}/full`) as Promise<KitchenOrderFullDTO>;
   },
 
   /**
@@ -60,7 +60,7 @@ export const kitchenApi = {
     storeId?: number;
     chefId?: number;
   }): Promise<{ records: KitchenOrder[]; total: number }> {
-    return request.get('/v1/kitchen-order/list', params ? { params } : undefined) as Promise<{ records: KitchenOrder[]; total: number }>;
+    return request.get('/v1/kitchen/orders/list', params ? { params } : undefined) as Promise<{ records: KitchenOrder[]; total: number }>;
   },
 
   /**
@@ -71,7 +71,7 @@ export const kitchenApi = {
    */
   receiveOrder(kitchenOrderId: string, chef: ChefInfo): Promise<boolean> {
     return request.post(
-      `/v1/kitchen-order/${kitchenOrderId}/receive`,
+      `/v1/kitchen/orders/${kitchenOrderId}/receive`,
       null,
       { params: { chefId: chef.chefId, chefName: chef.chefName } }
     ) as Promise<boolean>;
@@ -83,7 +83,7 @@ export const kitchenApi = {
    * @returns 操作结果
    */
   startMake(kitchenOrderId: string): Promise<boolean> {
-    return request.post(`/v1/kitchen-order/${kitchenOrderId}/start-make`) as Promise<boolean>;
+    return request.post(`/v1/kitchen/orders/${kitchenOrderId}/start-make`) as Promise<boolean>;
   },
 
   /**
@@ -92,7 +92,7 @@ export const kitchenApi = {
    * @returns 操作结果
    */
   completeMake(kitchenOrderId: string): Promise<boolean> {
-    return request.post(`/v1/kitchen-order/${kitchenOrderId}/complete-make`) as Promise<boolean>;
+    return request.post(`/v1/kitchen/orders/${kitchenOrderId}/complete-make`) as Promise<boolean>;
   },
 
   /**
@@ -101,7 +101,7 @@ export const kitchenApi = {
    * @returns 操作结果
    */
   serve(kitchenOrderId: string): Promise<boolean> {
-    return request.post(`/v1/kitchen-order/${kitchenOrderId}/serve`) as Promise<boolean>;
+    return request.post(`/v1/kitchen/orders/${kitchenOrderId}/serve`) as Promise<boolean>;
   },
 
   /**
@@ -112,7 +112,7 @@ export const kitchenApi = {
    */
   cancelOrder(kitchenOrderId: string, reason: string): Promise<boolean> {
     return request.post(
-      `/v1/kitchen-order/${kitchenOrderId}/cancel`,
+      `/v1/kitchen/orders/${kitchenOrderId}/cancel`,
       null,
       { params: { reason } }
     ) as Promise<boolean>;
@@ -126,7 +126,7 @@ export const kitchenApi = {
    */
   updatePriority(kitchenOrderId: string, priority: number): Promise<boolean> {
     return request.put(
-      `/v1/kitchen-order/${kitchenOrderId}/priority`,
+      `/v1/kitchen/orders/${kitchenOrderId}/priority`,
       null,
       { params: { priority } }
     ) as Promise<boolean>;
@@ -138,6 +138,6 @@ export const kitchenApi = {
    * @returns 统计数据
    */
   getStatistics(storeId: number): Promise<KitchenStatistics> {
-    return request.get(`/v1/kitchen-order/statistics/${storeId}`) as Promise<KitchenStatistics>;
+    return request.get(`/v1/kitchen/orders/statistics/${storeId}`) as Promise<KitchenStatistics>;
   },
 };

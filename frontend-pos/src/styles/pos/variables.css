@@ -1,23 +1,38 @@
 /* ==================== POS系统CSS变量定义 - 餐饮暖橙配色 ==================== */
 
 :root {
-  /* 主色调 - 暖橙色系（食欲色，专业餐饮感） */
-  --pos-primary: #ea580c;
-  --pos-primary-dark: #c2410c;
-  --pos-primary-light: #f97316;
-  --pos-primary-gradient: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
-  --pos-primary-gradient-hover: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  /* 主色调 - 暖橙（取"稳而不灰"的中间值：#ea580c 过冲、#c9622a 发灰） */
+  --pos-primary: #e3651c;
+  --pos-primary-dark: #c25515;
+  --pos-primary-light: #ef7f3a;
+  --pos-primary-gradient: linear-gradient(135deg, #e3651c 0%, #ef7f3a 100%);
+  --pos-primary-gradient-hover: linear-gradient(135deg, #ef7f3a 0%, #f59a5f 100%);
+  /* 主色软底（替代写死的 #fff7ed / #fef2f2 这类浅色块，深色模式自动跟随） */
+  --pos-primary-soft: #fdf1e7;
+  --pos-primary-soft-hover: #fbe2d1;
 
   /* 功能色 */
   --pos-success: #059669;
-  --pos-danger: #dc2626;
-  --pos-warning: #d97706;
+  --pos-danger: #c94b4b;
+  --pos-warning: #c2861f;
+  --pos-danger-soft: #fbf0f0;
+  --pos-danger-soft-hover: #f6dede;
+  --pos-success-soft: #ecf7f2;
+  --pos-warning-soft: #fbf5e8;
+  /* 预警语义三件套：底色 / 文字 / 描边 —— 深浅两套，保证"同一件事同一种表达" */
+  --pos-warning-text: #8a6114;
+  --pos-warning-border: rgba(194, 134, 31, 0.3);
+
+  /* 界面缩放（偏好设置「大」档 = 110%） */
+  --pos-zoom: 1;
 
   /* 背景色 */
   --pos-bg-primary: #ffffff;
   --pos-bg-secondary: #f8fafc;
   --pos-bg-tertiary: #f1f5f9;
   --pos-bg-hover: #e2e8f0;
+  /* 页面画布：比卡片深一档，靠"画布浅灰 + 卡片纯白"建立区块边界 */
+  --pos-bg-canvas: #f2f3f5;
 
   /* 文字颜色 */
   --pos-text-primary: #1e293b;
@@ -36,7 +51,8 @@
   --pos-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   --pos-glass-blur: blur(12px);
 
-  /* 圆角 */
+  /* 圆角体系（统一 8 / 12 / 16 三档，避免 4/6/10/14/20 混用） */
+  --pos-radius-xs: 6px;
   --pos-radius-sm: 8px;
   --pos-radius-md: 12px;
   --pos-radius-lg: 16px;
@@ -53,13 +69,17 @@
   --pos-font-mono: 'Courier New', 'Consolas', monospace;
   --pos-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
+  /* 金额数字字体：优先 DIN / Bahnschrift 这类有"票据感"的等宽数字 */
+  --pos-font-number: 'DIN Alternate', 'DINPro', 'Bahnschrift', 'Roboto',
+    'SF Pro Display', -apple-system, 'Segoe UI', sans-serif;
 
-  /* 间距 */
-  --pos-spacing-xs: 4px;
-  --pos-spacing-sm: 8px;
-  --pos-spacing-md: 16px;
-  --pos-spacing-lg: 24px;
-  --pos-spacing-xl: 32px;
+  /* 间距体系：8 的倍数（8 / 16 / 24 / 32），所有内边距与行距从此取值 */
+  --pos-spacing-xxs: 4px;
+  --pos-spacing-xs: 8px;
+  --pos-spacing-sm: 16px;
+  --pos-spacing-md: 24px;
+  --pos-spacing-lg: 32px;
+  --pos-spacing-xl: 40px;
 
   /* 过渡动画 */
   --pos-transition-fast: 150ms ease;
@@ -72,39 +92,59 @@
   --pos-z-toast: 3000;
 }
 
-/* 深色主题变量覆盖 */
+/* 深色主题变量覆盖
+ *
+ * 商用收银系统的夜间模式：**深灰而非纯黑**（#1E1E20）。
+ * 纯黑 (#000/#1c1917) 在长时间盯屏 + 暖色按钮下会产生强烈眩光与拖影；
+ * 同时避免"白线分割"——区块用阴影与色阶区分，边框只保留极低对比度的一档。
+ */
 [data-theme='dark'] {
-  /* 主色调（暗色下稍亮） */
-  --pos-primary: #f97316;
-  --pos-primary-dark: #ea580c;
-  --pos-primary-light: #fb923c;
+  /* 主色调（暗色下提亮，保持与深灰底的可读对比） */
+  --pos-primary: #ef7f3a;
+  --pos-primary-dark: #e3651c;
+  --pos-primary-light: #f59a5f;
+  --pos-primary-gradient: linear-gradient(135deg, #e3651c 0%, #ef7f3a 100%);
+  --pos-primary-soft: #3b2717;
+  --pos-primary-soft-hover: #48301d;
 
-  /* 背景色 - 暖灰色系 */
-  --pos-bg-primary: #1c1917;
-  --pos-bg-secondary: #292524;
-  --pos-bg-tertiary: #3f3b37;
-  --pos-bg-hover: #44403c;
+  /* 背景色 - 深灰三级：#1E1E1F 打底，卡片 #2C2C2E，抬升 #353538 */
+  --pos-bg-primary: #1e1e1f;
+  --pos-bg-secondary: #2c2c2e;
+  --pos-bg-tertiary: #353538;
+  --pos-bg-hover: #414146;
+  --pos-bg-canvas: #181819;
 
-  /* 文字颜色 */
-  --pos-text-primary: #f5f5f4;
-  --pos-text-secondary: #a8a29e;
-  --pos-text-muted: #78716c;
-  --pos-text-inverse: #1c1917;
+  /* 文字颜色 - 柔和灰白 #E5E5E5，绝不用纯白 */
+  --pos-text-primary: #e5e5e5;
+  --pos-text-secondary: #b0b0b5;
+  --pos-text-muted: #85858c;
+  --pos-text-inverse: #1e1e1f;
 
-  /* 边框颜色 - 暖灰边框 */
-  --pos-border-color: #3f3b37;
-  --pos-border-light: #57534e;
+  /* 边框 - 仅作"极轻分隔"，避免白色描边 */
+  --pos-border-color: #3a3a3e;
+  --pos-border-light: #323236;
   --pos-border-focus: var(--pos-primary);
 
+  /* 功能色（暗色下降饱和，避免荧光感） */
+  --pos-success: #4caf8a;
+  --pos-danger: #d96b6b;
+  --pos-warning: #c9a04a;
+  --pos-danger-soft: #332426;
+  --pos-danger-soft-hover: #3d2929;
+  --pos-success-soft: #22322c;
+  --pos-warning-soft: #33291a;
+  --pos-warning-text: #e7bd6b;
+  --pos-warning-border: rgba(231, 189, 107, 0.32);
+
   /* 玻璃效果 */
-  --pos-glass-bg: rgba(28, 25, 23, 0.88);
-  --pos-glass-border: rgba(63, 59, 55, 0.6);
-  --pos-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --pos-glass-bg: rgba(30, 30, 32, 0.88);
+  --pos-glass-border: rgba(53, 53, 59, 0.6);
+  --pos-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   --pos-glass-blur: blur(16px);
 
-  /* 阴影 */
-  --pos-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --pos-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
-  --pos-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.45);
-  --pos-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.55);
+  /* 阴影 - 深色下靠阴影分层（这是"去白框"的关键） */
+  --pos-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --pos-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --pos-shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.6);
+  --pos-shadow-xl: 0 20px 56px rgba(0, 0, 0, 0.65);
 }

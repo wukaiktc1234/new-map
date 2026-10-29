@@ -2,183 +2,347 @@
   <el-dialog
     v-model="visible"
     title=""
-    width="880px"
+    width="960px"
     class="shift-handover-dialog"
     :close-on-click-modal="false"
+    :show-close="false"
     :lock-scroll="false"
+    :append-to-body="true"
+    data-test="shift-handover-dialog"
   >
-    <div class="shift-handover-content" v-loading="loading || summaryLoading" element-loading-text="正在加载班次数据...">
+    <div
+      class="shift-handover-content"
+      v-loading="loading || summaryLoading"
+      element-loading-text="正在加载班次数据..."
+    >
       <!-- 头部 -->
       <div class="sh-header">
         <div class="sh-brand">
-          <span class="sh-icon">📋</span>
+          <span class="sh-brand-icon"><el-icon><Files /></el-icon></span>
           <div class="sh-title-group">
             <h2>交班日结</h2>
-            <span class="sh-subtitle">Shift Handover Report</span>
+            <span class="sh-subtitle">Shift Handover</span>
           </div>
         </div>
         <div class="sh-meta">
           <span class="sh-shift-chip" :class="{ active: shiftActive }">{{ shiftActive ? '班次进行中' : '今日汇总' }}</span>
           <span class="sh-date">{{ currentDate }}</span>
           <span class="sh-time">{{ currentTime }}</span>
+          <button type="button" class="sh-close" title="关闭" @click="visible = false">
+            <el-icon><Close /></el-icon>
+          </button>
         </div>
       </div>
 
-      <!-- 核心数据区 -->
-      <div class="sh-main-stats">
-        <div class="sh-total-card">
-          <div class="sh-total-label">{{ shiftActive ? '本班次营业额' : '今日营业额' }}</div>
-          <div class="sh-total-value">¥{{ stats.totalAmount.toFixed(2) }}</div>
-          <div class="sh-total-sub">共 {{ stats.totalOrders }} 笔订单 · 客单价 ¥{{ stats.avgAmount.toFixed(2) }}</div>
+      <!-- 异常隔离：只报数量，点开单独处理，绝不混进明细（配色与异常抽屉同一套 warning 令牌） -->
+      <div v-if="anomalyOrders.length > 0" class="sh-alert" role="alert" data-test="shift-anomaly-bar">
+        <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
+        <span class="sh-alert__text">
+          本班次有 <b>{{ anomalyOrders.length }}</b> 笔异常单（{{ anomalySummary }}），已从营业额中剔除
+        </span>
+        <button type="button" class="sh-alert__btn" data-test="shift-anomaly-open" @click="anomalyDrawer = true">
+          去处理
+          <el-icon><ArrowRight /></el-icon>
+        </button>
+      </div>
+
+      <!-- 核心：应上交现金（一行结论 + 一行算式 + 一行核对，别的一概不放在这里） -->
+      <div class="sh-hero" data-test="shift-handover-cash">
+        <div class="sh-hero__main">
+          <span class="sh-hero__label">应上交现金</span>
+          <span class="sh-hero__value" data-test="shift-cash-handover">
+            <AnimatedAmount :value="handoverCash" />
+          </span>
         </div>
-        <div class="sh-stat-grid">
-          <div class="sh-mini-stat">
-            <span class="sh-ms-label">现金收入</span>
-            <span class="sh-ms-value cash">¥{{ amountOf('cash').toFixed(2) }}</span>
-            <span class="sh-ms-pct">占比 {{ getPaymentPercentage(amountOf('cash')).toFixed(1) }}%</span>
-          </div>
-          <div class="sh-mini-stat">
-            <span class="sh-ms-label">微信收款</span>
-            <span class="sh-ms-value wechat">¥{{ amountOf('wechat').toFixed(2) }}</span>
-            <span class="sh-ms-pct">占比 {{ getPaymentPercentage(amountOf('wechat')).toFixed(1) }}%</span>
-          </div>
-          <div class="sh-mini-stat">
-            <span class="sh-ms-label">支付宝</span>
-            <span class="sh-ms-value alipay">¥{{ amountOf('alipay').toFixed(2) }}</span>
-            <span class="sh-ms-pct">占比 {{ getPaymentPercentage(amountOf('alipay')).toFixed(1) }}%</span>
-          </div>
-          <div class="sh-mini-stat" v-if="amountOf('card') > 0">
-            <span class="sh-ms-label">银行卡</span>
-            <span class="sh-ms-value card">¥{{ amountOf('card').toFixed(2) }}</span>
-            <span class="sh-ms-pct">占比 {{ getPaymentPercentage(amountOf('card')).toFixed(1) }}%</span>
-          </div>
-          <div class="sh-mini-stat" v-if="amountOf('balance') > 0">
-            <span class="sh-ms-label">余额支付</span>
-            <span class="sh-ms-value balance">¥{{ amountOf('balance').toFixed(2) }}</span>
-            <span class="sh-ms-pct">占比 {{ getPaymentPercentage(amountOf('balance')).toFixed(1) }}%</span>
-          </div>
-          <div class="sh-mini-stat" v-if="stats.refundCount > 0">
-            <span class="sh-ms-label">退款</span>
-            <span class="sh-ms-value refund">-¥{{ stats.refundAmount.toFixed(2) }}</span>
+
+        <!-- 算式只留一行小字：现金收入 − 现金退款；净额为负时才补一个括号说明 -->
+        <p class="sh-hero__formula">
+          现金收入 <b data-test="shift-cash-in">¥{{ cashIn.toFixed(2) }}</b>
+          <span class="sh-hero__op">−</span>
+          现金退款 <b data-test="shift-cash-refund">¥{{ cashRefund.toFixed(2) }}</b>
+          <template v-if="cashNet < 0">
+            <span class="sh-hero__op">=</span>
+            <b class="sh-hero__net is-negative" data-test="shift-cash-net">−¥{{ Math.abs(cashNet).toFixed(2) }}</b>
+            <span class="sh-hero__note">（退款大于收款，已由备用金垫付）</span>
+          </template>
+          <b v-else class="sh-hero__net" data-test="shift-cash-net">= ¥{{ cashNet.toFixed(2) }}</b>
+        </p>
+
+        <!-- 核对条：备用金 / 钱箱应有 / 实点 / 长短款，一行放完 -->
+        <div class="sh-cash-check" data-test="shift-cash-check">
+          <span class="sh-cc-item">
+            备用金
+            <b data-test="shift-opening-cash">¥{{ openingCash.toFixed(2) }}</b>
+            <span class="sh-cc-note">留存钱箱</span>
+            <span v-if="openingCashMissing" class="sh-hero__warn" data-test="shift-opening-missing">未读取到</span>
+          </span>
+          <span class="sh-cc-sep" aria-hidden="true"></span>
+          <span class="sh-cc-item">
+            钱箱应有
+            <b data-test="shift-drawer-expected"><AnimatedAmount :value="drawerExpected" /></b>
+            <!-- 算式只为读屏/断言保留，视觉上不再重复（上面一行已经解释过） -->
+            <span class="sh-cc-formula is-sr-only" data-test="shift-drawer-formula">备用金 + 现金收入 − 现金退款</span>
+          </span>
+          <span class="sh-cc-sep" aria-hidden="true"></span>
+          <label class="sh-cc-count" for="pos-cash-counted">
+            <span class="sh-cc-count__label">实点</span>
+            <el-input
+              id="pos-cash-counted"
+              v-model="cashCountedInput"
+              class="sh-cc-input"
+              placeholder="点完填入"
+              inputmode="decimal"
+              data-test="shift-cash-counted"
+              @blur="normalizeCounted"
+            />
+          </label>
+          <span class="sh-cc-diff" :class="cashDiffClass" data-test="shift-cash-diff">{{ cashDiffText }}</span>
+        </div>
+
+        <!-- 净流出时的行动指引（唯一一条会"催人"的话，避免和上面的算式重复） -->
+        <p v-if="cashNet < 0" class="sh-hero__negative" data-test="shift-cash-negative">
+          <el-icon><WarningFilled /></el-icon>
+          本班次现金净流出 ¥{{ floatGap.toFixed(2) }}，已从备用金垫付；请店长补足，否则下一班零钱不足。
+        </p>
+      </div>
+
+      <!-- 非现金收入：单独成块，明确"已直连入账，无需上交" -->
+      <div class="sh-noncash">
+        <div class="sh-noncash__head">
+          <span class="sh-noncash__title">非现金收入</span>
+          <span class="sh-noncash__tag">
+            <el-icon><CircleCheckFilled /></el-icon>
+            已直连入账，无需上交
+          </span>
+        </div>
+        <div class="sh-noncash__grid">
+          <div
+            v-for="card in nonCashCards"
+            :key="card.key"
+            class="sh-nc-card"
+            :data-test="'shift-noncash-' + card.key"
+          >
+            <span class="sh-nc-card__head">
+              <el-icon class="sh-nc-card__icon"><component :is="card.icon" /></el-icon>
+              {{ card.name }}
+            </span>
+            <span class="sh-nc-card__amount">¥{{ card.amount.toFixed(2) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 支付分布 -->
-      <div class="sh-section">
-        <div class="sh-section-header">
-          <span class="sh-section-title">支付方式分布</span>
+      <!-- 次要指标 -->
+      <div class="sh-stat-grid">
+        <div class="sh-mini-stat">
+          <span class="sh-ms-label">净营业额</span>
+          <span class="sh-ms-value" data-test="shift-net-revenue">¥{{ netRevenue.toFixed(2) }}</span>
+          <span class="sh-ms-pct">
+            已支付 {{ paidOrders.length }} 笔 − 退款 {{ refundedOrders.length }} 笔<template v-if="netRevenue < 0"> · 退款居多</template>
+          </span>
         </div>
-        <div class="sh-payment-bars">
-          <div v-for="row in paymentRows" :key="row.method" class="sh-bar-row">
-            <span class="sh-bar-name">{{ row.name }}</span>
-            <div class="sh-bar-track">
-              <div class="sh-bar-fill" :class="'bar-' + row.method" :style="{ width: row.percentage + '%' }"></div>
-            </div>
-            <span class="sh-bar-val">¥{{ row.amount.toFixed(2) }}</span>
-            <span class="sh-bar-pct">{{ row.percentage.toFixed(1) }}%</span>
-          </div>
-          <div v-if="paymentRows.length === 0" class="sh-bar-empty">暂无支付数据</div>
+        <div class="sh-mini-stat">
+          <span class="sh-ms-label">有效订单</span>
+          <span class="sh-ms-value" data-test="shift-valid-count">{{ validOrders.length }}</span>
+          <span class="sh-ms-pct">已剔除 {{ anomalyOrders.length }} 笔异常</span>
+        </div>
+        <div class="sh-mini-stat">
+          <span class="sh-ms-label">客单价</span>
+          <span class="sh-ms-value">¥{{ avgTicket.toFixed(2) }}</span>
+          <span class="sh-ms-pct">按已支付订单计</span>
+        </div>
+        <div class="sh-mini-stat">
+          <span class="sh-ms-label">退款</span>
+          <span class="sh-ms-value is-danger">¥{{ refundTotal.toFixed(2) }}</span>
+          <span class="sh-ms-pct">{{ refundedOrders.length }} 笔（含现金 ¥{{ cashRefund.toFixed(2) }}）</span>
         </div>
       </div>
 
-      <!-- 订单明细 -->
-      <div class="sh-section sh-orders-section">
-        <div class="sh-section-header" @click="toggleOrders">
-          <span class="sh-section-title">订单明细</span>
-          <span class="sh-section-badge">{{ filteredOrders.length }} 笔</span>
-          <span class="sh-toggle-icon">{{ showOrders ? '▲' : '▼' }}</span>
-        </div>
-        <div v-show="showOrders" class="sh-orders-body">
-          <div class="sh-filter-row">
-            <el-select
-              v-model="filterPaymentMethod"
-              placeholder="全部方式"
-              clearable
-              size="small"
-              style="width: 140px"
-            >
-              <el-option
-                v-for="method in paymentMethods"
-                :key="method.value"
-                :label="method.label"
-                :value="method.value"
-              />
-            </el-select>
-          </div>
-          <div class="sh-order-list">
-            <div
-              v-for="(order, idx) in filteredOrders.slice(0, showAllOrders ? undefined : 8)"
-              :key="idx"
-              class="sh-order-item"
-            >
-              <span class="sh-o-time">{{ formatTime(order.createTime, '--:--') }}</span>
-              <span class="sh-o-no">#{{ order.orderNumber?.slice(-6) }}</span>
-              <span class="sh-o-amount">¥{{ (order.totalAmount || 0).toFixed(2) }}</span>
-              <span class="sh-o-method" :class="'m-' + paymentKey(order.paymentMethod)">{{ getPaymentMethodName(order.paymentMethod) }}</span>
-              <span class="sh-o-status" :class="'s-' + order.status">{{ getStatusText(order.status) }}</span>
-            </div>
-            <div v-if="filteredOrders.length === 0" class="sh-orders-empty">本时段暂无订单</div>
-            <div v-if="filteredOrders.length > 8 && !showAllOrders" class="sh-show-more" @click="showAllOrders = true">
-              还有 {{ filteredOrders.length - 8 }} 笔，点击展开
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- 明细入口：主界面不铺列表，一律走抽屉 -->
+      <button
+        type="button"
+        class="sh-detail-btn"
+        data-test="shift-detail-button"
+        @click="detailDrawer = true"
+      >
+        <el-icon class="sh-detail-btn__icon"><Tickets /></el-icon>
+        <span class="sh-detail-btn__text">调阅本班次所有订单明细（共 {{ validOrders.length }} 笔）</span>
+        <el-icon class="sh-detail-btn__arrow"><ArrowRight /></el-icon>
+      </button>
 
       <!-- 操作区 -->
       <div class="sh-actions">
-        <div class="sh-remark">
-          <input
-            v-model="handoverForm.remark"
-            type="text"
-            class="sh-remark-input"
-            placeholder="交班备注（选填）"
-            maxlength="100"
-          />
-        </div>
+        <input
+          v-model="handoverForm.remark"
+          type="text"
+          class="sh-remark-input"
+          placeholder="交班备注（选填，如钱箱差异说明）"
+          maxlength="100"
+          data-test="shift-remark"
+        />
         <div class="sh-btn-row">
-          <button class="sh-btn sh-btn-outline" @click="exportReport" :disabled="exporting">
-            📥 导出报表
+          <button class="sh-btn sh-btn-ghost" :disabled="exporting" @click="exportReport">
+            <el-icon><Download /></el-icon>
+            导出报表
           </button>
-          <button class="sh-btn sh-btn-outline" @click="printReport">
-            🖨️ 打印小票
+          <button class="sh-btn sh-btn-ghost" @click="printReport">
+            <el-icon><Printer /></el-icon>
+            打印小票
           </button>
-          <button class="sh-btn sh-btn-confirm" :disabled="endingShift" @click="confirmHandover">
+          <button class="sh-btn sh-btn-primary" :disabled="endingShift" data-test="shift-confirm" @click="confirmHandover">
+            <el-icon v-if="endingShift" class="is-loading"><Loading /></el-icon>
             {{ endingShift ? '交班中…' : '确认交班' }}
           </button>
         </div>
         <div class="sh-shift-note" :class="{ active: shiftActive }">{{ shiftStatusText }}</div>
       </div>
     </div>
+
+    <!-- 明细抽屉 -->
+    <el-drawer
+      v-model="detailDrawer"
+      title="本班次订单明细"
+      size="560px"
+      :append-to-body="true"
+      data-test="shift-detail-drawer"
+    >
+      <div class="sh-drawer">
+        <div class="sh-drawer-summary">
+          共 <b>{{ validOrders.length }}</b> 笔有效订单 · 净营业额 <b>¥{{ netRevenue.toFixed(2) }}</b> ·
+          应上交现金 <b>¥{{ handoverCash.toFixed(2) }}</b>
+        </div>
+        <div class="sh-section">
+          <div class="sh-section-header">
+            <span class="sh-section-title">支付方式分布（有效订单净额）</span>
+          </div>
+          <div class="sh-payment-bars">
+            <div v-for="row in paymentRows" :key="row.method" class="sh-bar-row">
+              <span class="sh-bar-name">{{ row.name }}</span>
+              <div class="sh-bar-track">
+                <div class="sh-bar-fill" :class="'bar-' + row.method" :style="{ width: row.percentage + '%' }"></div>
+              </div>
+              <span class="sh-bar-val">¥{{ row.amount.toFixed(2) }}</span>
+              <span class="sh-bar-pct">{{ row.percentage.toFixed(1) }}%</span>
+            </div>
+            <div v-if="paymentRows.length === 0" class="sh-bar-empty">本班次暂无有效收款</div>
+          </div>
+        </div>
+
+        <div class="sh-drawer-filter">
+          <el-select v-model="filterPaymentMethod" placeholder="全部支付方式" clearable size="small" style="width: 170px">
+            <el-option v-for="m in paymentMethods" :key="m.value" :label="m.label" :value="m.value" />
+          </el-select>
+        </div>
+        <div class="sh-order-list">
+          <div v-for="(order, idx) in filteredValidOrders" :key="order.orderNumber || idx" class="sh-order-item">
+            <div class="sh-o-row sh-o-row--top">
+              <span class="sh-o-time">{{ formatTime(order.createTime, '--:--') }}</span>
+              <span class="sh-o-no">#{{ order.orderNumber?.slice(-6) }}</span>
+              <span class="sh-o-status" :class="'s-' + order.statusKey">{{ order.statusText }}</span>
+            </div>
+            <div class="sh-o-row sh-o-row--bottom">
+              <span class="sh-o-method" :class="'m-' + order.methodKey">{{ getPaymentMethodName(order.paymentMethod) }}</span>
+              <span class="sh-o-amount">¥{{ order.amount.toFixed(2) }}</span>
+            </div>
+          </div>
+          <div v-if="filteredValidOrders.length === 0" class="sh-orders-empty">暂无有效订单</div>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- 异常单抽屉 -->
+    <el-drawer
+      v-model="anomalyDrawer"
+      title="异常单待处理"
+      size="560px"
+      :append-to-body="true"
+      data-test="shift-anomaly-drawer"
+    >
+      <div class="sh-drawer">
+        <div class="sh-anomaly-tip">
+          <el-icon><InfoFilled /></el-icon>
+          以下订单未计入营业额与应上交现金。请逐单核实：待付单请补收款或作废，取消单请确认是否误操作，无流水单请联系店长核对支付渠道。
+        </div>
+        <div class="sh-order-list">
+          <div v-for="(order, idx) in anomalyOrders" :key="order.orderNumber || idx" class="sh-order-item is-anomaly">
+            <div class="sh-o-row sh-o-row--top">
+              <span class="sh-o-time">{{ formatTime(order.createTime, '--:--') }}</span>
+              <span class="sh-o-no">#{{ order.orderNumber?.slice(-6) }}</span>
+              <span class="sh-o-reason">{{ order.anomalyReason }}</span>
+            </div>
+            <div class="sh-o-row sh-o-row--bottom">
+              <span class="sh-o-method">{{ getPaymentMethodName(order.paymentMethod) }}</span>
+              <span class="sh-o-amount">¥{{ order.amount.toFixed(2) }}</span>
+            </div>
+          </div>
+          <div v-if="anomalyOrders.length === 0" class="sh-orders-empty">本班次无异常单</div>
+        </div>
+      </div>
+    </el-drawer>
   </el-dialog>
 </template>
-
 <script setup lang="ts">
+/**
+ * 交班日结弹窗（第四轮 · 财务口径校正）
+ *
+ * ── 财务模型（对齐真实门店） ──────────────────────────────
+ *   备用金          开班时放进钱箱的零钱，**留存不上交**
+ *   应上交现金      现金收入 − 现金退款          ← 收银员唯一要交出去的钱（核心大字）
+ *   钱箱理论应有    备用金 + 现金收入 − 现金退款  ← 收银员自己数钱核对用（小字）
+ *   非现金收入      微信 / 支付宝 / 银行卡（含会员余额）→ 已直连入账，无需上交，单独成块
+ *
+ * ── 数据纪律 ─────────────────────────────────────────────
+ *   只统计「已支付 / 已退款」且**有支付流水且金额 > 0** 的订单；
+ *   待付、已取消、退款中、未记录流水、金额 ≤ 0 一律判为异常单，不进统计也不铺进明细。
+ *
+ * 数据源：/v1/pos/orders 明细（清洗唯一真相）→ /v1/pos/auth/shift/summary（班次状态）
+ *        → /v1/pos/auth/shift/today（备用金兜底）→ POST /v1/pos/auth/shift/end
+ */
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Files,
+  Tickets,
+  WarningFilled,
+  Download,
+  Printer,
+  Close,
+  ArrowRight,
+  CircleCheckFilled,
+  InfoFilled,
+  Loading,
+  ChatDotRound,
+  Wallet,
+  CreditCard,
+  Postcard
+} from '@element-plus/icons-vue'
 import request from '@/api/request'
-import { formatDate, formatDateTime, formatTime } from '@/utils/format'
+import { posApi } from '@/api/posApi'
+import { formatDate, formatDateTime, formatTime, parseDateTime } from '@/utils/format'
+import AnimatedAmount from '@/components/pos/AnimatedAmount.vue'
+import { clearShiftMark, readShiftMark } from '@/utils/shiftSession'
 import logger from '@/utils/logger'
 
-interface OrderItem {
+interface RawOrder {
+  orderNumber?: string
+  createTime?: string
+  totalAmount?: number | string | null
+  paymentMethod?: string | null
+  status?: string | number | null
+}
+
+type OrderStatusKey = 'paid' | 'refunded' | 'anomaly'
+
+interface CleanOrder {
   orderNumber: string
   createTime: string
-  totalAmount: number
+  amount: number
   paymentMethod: string
-  status: string
+  methodKey: string
+  statusKey: OrderStatusKey
+  statusText: string
+  anomalyReason: string
 }
 
-interface ShiftStats {
-  totalOrders: number
-  totalAmount: number
-  avgAmount: number
-  paymentMethodBreakdown: Record<string, number>
-  refundCount: number
-  refundAmount: number
-}
-
-/** GET /api/v1/pos/auth/shift/summary → orderStats（金额已是元、值为 BigDecimal 序列化后的数字） */
 interface ShiftOrderStats {
   total_orders?: number | string | null
   total_amount?: number | string | null
@@ -194,22 +358,13 @@ interface ShiftInfo {
   shiftType?: string
   startTime?: string
   endTime?: string | null
-  totalOrders?: number | string | null
-  totalAmount?: number | string | null
   status?: string
-  handoverRemark?: string | null
 }
 
 interface ShiftSummaryResponse {
   shiftInfo?: ShiftInfo | null
   shiftActive?: boolean
   summaryStartTime?: string
-  orderStats?: ShiftOrderStats | null
-  currentTime?: string
-}
-
-interface ShiftEndResponse {
-  shiftInfo?: ShiftInfo | null
   orderStats?: ShiftOrderStats | null
 }
 
@@ -220,46 +375,49 @@ interface PaymentRow {
   percentage: number
 }
 
-const props = defineProps<{
-  modelValue: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
-}>()
+const props = defineProps<{ modelValue: boolean }>()
+const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void }>()
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
+  set: (val: boolean) => emit('update:modelValue', val)
 })
 
-const orders = ref<OrderItem[]>([])
+// ---- 状态 ----
+const rawOrders = ref<RawOrder[]>([])
 const loading = ref(false)
-const showOrders = ref(true)
-const showAllOrders = ref(false)
-const filterPaymentMethod = ref<string>('')
 const exporting = ref(false)
+const endingShift = ref(false)
+const detailDrawer = ref(false)
+const anomalyDrawer = ref(false)
+const filterPaymentMethod = ref<string>('')
 const handoverForm = ref({ remark: '' })
 
-// ---- 班次（真实数据源：/v1/pos/auth/shift/summary）----
 const terminalId = ref('')
 const summaryLoading = ref(false)
-const endingShift = ref(false)
 const shiftActive = ref(false)
 const shiftInfo = ref<ShiftInfo | null>(null)
 const summaryStartTime = ref('')
 const summaryOrderStats = ref<ShiftOrderStats | null>(null)
+
+/** 备用金（元）：优先开班标记，其次今日班次接口，最后 0 并告警 */
+/** 金额一律用"分"做整数运算，避免 0.1+0.2 这类浮点漂移 */
+const toCents = (yuan: number): number => Math.round((Number.isFinite(yuan) ? yuan : 0) * 100)
+
+const openingCash = ref(0)
+const openingCashMissing = ref(false)
 
 const currentTime = ref('')
 let timeTimer: ReturnType<typeof setInterval> | null = null
 
 const updateTime = (): void => {
   const now = new Date()
-  currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  currentTime.value = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 }
-
 const currentDate = computed(() => formatDate(new Date()))
 
+// ---- 支付方式归一 ----
 const paymentMethods = [
   { value: 'cash', label: '现金' },
   { value: 'wechat', label: '微信' },
@@ -268,7 +426,6 @@ const paymentMethods = [
   { value: 'balance', label: '余额' }
 ]
 
-/** 支付方式展示名（统计口径 key 为 cash/wechat/alipay/card/balance） */
 const PAYMENT_METHOD_NAMES: Record<string, string> = {
   cash: '现金',
   wechat: '微信',
@@ -278,7 +435,6 @@ const PAYMENT_METHOD_NAMES: Record<string, string> = {
   other: '其他'
 }
 
-/** 订单明细里支付方式是中文（现金 / 微信支付 / 支付宝 / 银行卡 / 余额支付），统一折回统计 key */
 const PAYMENT_LABEL_TO_KEY: Record<string, string> = {
   现金: 'cash',
   微信: 'wechat',
@@ -292,9 +448,15 @@ const PAYMENT_LABEL_TO_KEY: Record<string, string> = {
 
 const paymentKey = (method?: string | null): string => {
   const raw = (method ?? '').trim()
-  if (!raw) return 'unknown'
+  if (!raw) return ''
   if (PAYMENT_METHOD_NAMES[raw]) return raw
-  return PAYMENT_LABEL_TO_KEY[raw] ?? raw
+  return PAYMENT_LABEL_TO_KEY[raw] ?? 'other'
+}
+
+const getPaymentMethodName = (method?: string | null): string => {
+  const key = paymentKey(method)
+  if (!key) return '未记录'
+  return PAYMENT_METHOD_NAMES[key] || (method ?? '未知')
 }
 
 const toNumber = (value: unknown): number => {
@@ -302,159 +464,234 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-/** 金额取值（供模板与统计共用） */
-const amountOf = (method: string): number => stats.value.paymentMethodBreakdown[method] || 0
+// ---- 状态清洗 ----
+/** 已支付：1已确认 / 2已完成 / 4完成（历史码） */
+const PAID_STATUS = new Set(['1', '2', '4', 'paid', 'completed', 'confirmed', '已确认', '已完成', '已支付', 'PAID'])
+/** 已退款：5全额退款 / 7已退（历史码） */
+const REFUNDED_STATUS = new Set(['5', '7', 'refunded', '已退', '已退款', 'REFUNDED'])
 
-/** 本地兜底口径：按今日订单明细统计（/v1/pos/orders 取不到时使用） */
-const localStats = computed<ShiftStats>(() => {
-  const todayOrders = orders.value
-  const totalOrders = todayOrders.length
-  const paidOrders = todayOrders.filter(o => o.status !== 'refunded')
-  const totalAmount = paidOrders.reduce((sum, o) => sum + toNumber(o.totalAmount), 0)
-  const paymentMethodBreakdown: Record<string, number> = {}
-  paidOrders.forEach(order => {
-    const key = paymentKey(order.paymentMethod)
-    paymentMethodBreakdown[key] = (paymentMethodBreakdown[key] || 0) + toNumber(order.totalAmount)
-  })
-  const refundOrders = todayOrders.filter(o => o.status === 'refunded')
-  return {
-    totalOrders,
-    totalAmount,
-    avgAmount: totalOrders > 0 ? totalAmount / totalOrders : 0,
-    paymentMethodBreakdown,
-    refundCount: refundOrders.length,
-    refundAmount: refundOrders.reduce((sum, o) => sum + toNumber(o.totalAmount), 0)
+const ANOMALY_STATUS_TEXT: Record<string, string> = {
+  '0': '待付（未收款）',
+  '3': '已取消',
+  '6': '退款中（待确认）',
+  pending: '待付（未收款）',
+  cancelled: '已取消',
+  canceled: '已取消',
+  making: '制作中（未收款）',
+  delivering: '配送中（未收款）',
+  refunding: '退款中（待确认）'
+}
+
+function cleanOrder(raw: RawOrder): CleanOrder {
+  const amount = toNumber(raw.totalAmount)
+  const methodRaw = (raw.paymentMethod ?? '').trim()
+  const statusRaw = String(raw.status ?? '').trim()
+  const statusLower = statusRaw.toLowerCase()
+
+  let statusKey: OrderStatusKey = 'anomaly'
+  let anomalyReason = ''
+  let statusText = ''
+
+  const isPaid = PAID_STATUS.has(statusRaw) || PAID_STATUS.has(statusLower)
+  const isRefunded = REFUNDED_STATUS.has(statusRaw) || REFUNDED_STATUS.has(statusLower)
+
+  if (!methodRaw) {
+    statusKey = 'anomaly'
+    anomalyReason = '未记录支付流水'
+  } else if (amount <= 0) {
+    statusKey = 'anomaly'
+    anomalyReason = '金额异常（≤ 0）'
+  } else if (isPaid) {
+    statusKey = 'paid'
+    statusText = '已支付'
+  } else if (isRefunded) {
+    statusKey = 'refunded'
+    statusText = '已退款'
+  } else {
+    statusKey = 'anomaly'
+    anomalyReason = ANOMALY_STATUS_TEXT[statusRaw] ?? ANOMALY_STATUS_TEXT[statusLower] ?? `未知状态（${statusRaw || '空'}）`
   }
-})
+
+  return {
+    orderNumber: raw.orderNumber ?? '',
+    createTime: raw.createTime ?? '',
+    amount,
+    paymentMethod: methodRaw,
+    methodKey: paymentKey(methodRaw) || 'unknown',
+    statusKey,
+    statusText: statusText || anomalyReason,
+    anomalyReason
+  }
+}
+
+const cleanedOrders = computed<CleanOrder[]>(() => rawOrders.value.map(cleanOrder))
+const validOrders = computed<CleanOrder[]>(() =>
+  cleanedOrders.value.filter(o => o.statusKey === 'paid' || o.statusKey === 'refunded')
+)
+const paidOrders = computed<CleanOrder[]>(() => cleanedOrders.value.filter(o => o.statusKey === 'paid'))
+const refundedOrders = computed<CleanOrder[]>(() => cleanedOrders.value.filter(o => o.statusKey === 'refunded'))
+const anomalyOrders = computed<CleanOrder[]>(() => cleanedOrders.value.filter(o => o.statusKey === 'anomaly'))
+
+const sumBy = (list: CleanOrder[], predicate?: (o: CleanOrder) => boolean): number =>
+  list.reduce((sum, o) => (predicate && !predicate(o) ? sum : sum + o.amount), 0)
+
+const isCash = (o: CleanOrder): boolean => o.methodKey === 'cash'
+
+/** 现金收入（已支付中的现金） */
+const cashIn = computed(() => sumBy(paidOrders.value, isCash))
+/** 现金退款（已退款中的现金） */
+const cashRefund = computed(() => sumBy(refundedOrders.value, isCash))
+/** 现金净额 = 现金收入 − 现金退款（可为负：退款大于收款） */
+const cashNet = computed(() => cashIn.value - cashRefund.value)
+/**
+ * 应上交现金：现金净额为正才上交，负数一律记 0。
+ * 理由：退款大于收款时，缺口是从钱箱（备用金）垫出去的，
+ * 收银员手里没有可交的现金，不能显示成"要交 -75 元"。
+ */
+const handoverCash = computed(() => Math.max(0, cashNet.value))
+/** 备用金缺口：本班次垫付掉的钱，需要店长补回，避免下一班零钱不够 */
+const floatGap = computed(() => Math.max(0, -cashNet.value))
 
 /**
- * 数据源优先级：/shift/summary 的 orderStats（金额已是元、含支付方式拆解）→ 本地订单明细统计。
- * 统计接口不可用时 summaryOrderStats 为 null，自动退回本地口径，不报错。
+ * 钱箱应有现金 = 备用金 + 现金收入 − 现金退款。
+ * 这是"验算口径"：收银员/店长点完钱，拿实际金额跟它比，差值就是长短款。
+ * 注意它 ≠ 应上交现金（应上交 = 钱箱应有 − 备用金，负数按 0 交）。
  */
-const stats = computed<ShiftStats>(() => {
-  const fallback = localStats.value
-  const summary = summaryOrderStats.value
-  if (!summary) return fallback
+const drawerExpectedCents = computed(() =>
+  toCents(openingCash.value) + toCents(cashIn.value) - toCents(cashRefund.value)
+)
+/** 渲染用（元）：AnimatedAmount 接收的是元 */
+const drawerExpected = computed(() => drawerExpectedCents.value / 100)
 
-  const totalOrders = Math.round(toNumber(summary.total_orders))
-  const totalAmount = toNumber(summary.total_amount)
-  const rawBreakdown = summary.payment_breakdown ?? {}
-  const paymentMethodBreakdown: Record<string, number> = {}
-  Object.keys(rawBreakdown).forEach(key => {
-    paymentMethodBreakdown[paymentKey(key)] = toNumber(rawBreakdown[key])
+/** 实点现金输入（字符串，保持"用户正在输入"的状态；空 = 还没点） */
+const cashCountedInput = ref('')
+/** 实点现金（单位：分） */
+const cashCounted = computed<number | null>(() => {
+  const raw = cashCountedInput.value.trim()
+  if (!raw) return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? toCents(value) : null
+})
+/** 长短款（单位：分）：正数=长款（多钱），负数=短款（少钱） */
+const cashDiff = computed<number | null>(() =>
+  cashCounted.value === null ? null : cashCounted.value - drawerExpectedCents.value
+)
+const cashDiffClass = computed(() => {
+  if (cashDiff.value === null) return 'is-empty'
+  if (cashDiff.value === 0) return 'is-even'
+  return cashDiff.value > 0 ? 'is-over' : 'is-short'
+})
+const cashDiffText = computed(() => {
+  if (cashDiff.value === null) return '待点钞'
+  if (cashDiff.value === 0) return '账实相符'
+  const amount = Math.abs(cashDiff.value / 100).toFixed(2)
+  return cashDiff.value > 0 ? `长款 ¥${amount}` : `短款 ¥${amount}`
+})
+/** 输入失焦后统一成两位小数，避免 '300' 与 '300.00' 两种显示 */
+const normalizeCounted = (): void => {
+  if (cashCounted.value === null) {
+    cashCountedInput.value = ''
+    return
+  }
+  cashCountedInput.value = (cashCounted.value / 100).toFixed(2)
+}
+
+/** 净营业额 = 已支付 − 已退款（全部支付方式） */
+const netRevenue = computed(() => sumBy(paidOrders.value) - sumBy(refundedOrders.value))
+/** 退款总额（所有支付方式） */
+const refundTotal = computed(() => sumBy(refundedOrders.value))
+/** 客单价：按已支付订单计 */
+const avgTicket = computed(() =>
+  paidOrders.value.length > 0 ? sumBy(paidOrders.value) / paidOrders.value.length : 0
+)
+
+/** 某支付方式的净额（已支付 − 已退款） */
+const methodNet = (key: string): number =>
+  sumBy(paidOrders.value, o => o.methodKey === key) - sumBy(refundedOrders.value, o => o.methodKey === key)
+
+/**
+ * 非现金收入卡片：微信 / 支付宝 / 银行卡常显（0 也显示，收银员需要"确认没有"），
+ * 会员余额只有发生额时才出现；全部标注「已直连入账，无需上交」。
+ */
+const NON_CASH_BASE = [
+  { key: 'wechat', name: '微信', icon: ChatDotRound },
+  { key: 'alipay', name: '支付宝', icon: Wallet },
+  { key: 'card', name: '银行卡', icon: CreditCard }
+]
+
+const nonCashCards = computed(() => {
+  const cards = NON_CASH_BASE.map(c => ({ ...c, amount: methodNet(c.key) }))
+  const balance = methodNet('balance')
+  if (balance !== 0) {
+    cards.push({ key: 'balance', name: '会员余额', icon: Postcard, amount: balance })
+  }
+  return cards
+})
+
+/** 支付方式分布：按已支付 − 已退款（净额） */
+const paymentRows = computed<PaymentRow[]>(() => {
+  const totals: Record<string, number> = {}
+  paidOrders.value.forEach(o => {
+    totals[o.methodKey] = (totals[o.methodKey] || 0) + o.amount
+  })
+  refundedOrders.value.forEach(o => {
+    totals[o.methodKey] = (totals[o.methodKey] || 0) - o.amount
   })
 
-  return {
-    totalOrders,
-    totalAmount,
-    avgAmount: toNumber(summary.avg_amount) || (totalOrders > 0 ? totalAmount / totalOrders : 0),
-    paymentMethodBreakdown,
-    // 后端班次统计没有退款字段，退款口径沿用订单明细
-    refundCount: fallback.refundCount,
-    refundAmount: fallback.refundAmount
-  }
-})
-
-const filteredOrders = computed(() => {
-  if (!filterPaymentMethod.value) return orders.value
-  return orders.value.filter(o => paymentKey(o.paymentMethod) === filterPaymentMethod.value)
-})
-
-/** 支付分布行：现金/微信/支付宝常显，银行卡/余额/其他有金额才出现 */
-const paymentRows = computed<PaymentRow[]>(() => {
-  const breakdown = stats.value.paymentMethodBreakdown
   const baseKeys = ['cash', 'wechat', 'alipay']
-  const keys = Array.from(new Set([...baseKeys, ...Object.keys(breakdown)]))
+  const keys = Array.from(new Set([...baseKeys, ...Object.keys(totals)]))
+  const denominator = Math.max(1, Object.values(totals).reduce((sum, v) => sum + Math.max(0, v), 0))
+
   return keys
     .map(method => {
-      const amount = toNumber(breakdown[method])
+      const amount = totals[method] || 0
       return {
         method,
         name: getPaymentMethodName(method),
         amount,
-        percentage: getPaymentPercentage(amount)
+        percentage: (Math.max(0, amount) / denominator) * 100
       }
     })
-    .filter(row => baseKeys.includes(row.method) || row.amount > 0)
+    .filter(row => baseKeys.includes(row.method) || row.amount !== 0)
 })
 
-const toggleOrders = (): void => { showOrders.value = !showOrders.value }
+const anomalySummary = computed<string>(() => {
+  const counter: Record<string, number> = {}
+  anomalyOrders.value.forEach(o => {
+    const key = o.anomalyReason.replace(/（.*?）/g, '')
+    counter[key] = (counter[key] || 0) + 1
+  })
+  return Object.entries(counter)
+    .map(([reason, count]) => `${reason} ${count} 笔`)
+    .join(' · ')
+})
 
-const getPaymentMethodName = (method: string): string => {
-  const key = paymentKey(method)
-  return PAYMENT_METHOD_NAMES[key] || method || '未知'
-}
+const filteredValidOrders = computed<CleanOrder[]>(() => {
+  if (!filterPaymentMethod.value) return validOrders.value
+  return validOrders.value.filter(o => o.methodKey === filterPaymentMethod.value)
+})
 
-const getPaymentPercentage = (amount: number): number => {
-  if (stats.value.totalAmount === 0) return 0
-  return (amount / stats.value.totalAmount) * 100
-}
-
-const getStatusText = (status: string): string => {
-  const map: Record<string, string> = {
-    pending: '待付',
-    paid: '已付',
-    making: '制作中',
-    delivering: '配送中',
-    completed: '完成',
-    cancelled: '取消',
-    refunding: '退款中',
-    refunded: '已退',
-    '0': '待付',
-    '1': '已付',
-    '2': '制作中',
-    '3': '配送中',
-    '4': '完成',
-    '5': '取消',
-    '6': '退款中',
-    '7': '已退'
+const shiftStatusText = computed<string>(() => {
+  if (summaryLoading.value && !shiftActive.value) return '正在读取班次状态…'
+  if (shiftActive.value) {
+    const operator = shiftInfo.value?.employeeName || shiftInfo.value?.employeeId || '当前收银员'
+    return `班次进行中：${operator} · 开始于 ${formatTime(shiftInfo.value?.startTime || summaryStartTime.value, '--:--')}`
   }
-  return map[status] ?? status
-}
+  return `当前无进行中的班次，确认交班将按今日汇总（${formatTime(summaryStartTime.value, '--:--')} 起）留痕`
+})
 
-const TERMINAL_STORAGE_KEY = 'pos-terminal'
-
-/**
- * 终端号：优先 localStorage 'pos-terminal'；其次登录写入的 pos-user.terminalId；
- * 都没有时用 'pos-<hostname>' 兜底并写回，保证班次接口始终有值可查。
- */
-const resolveTerminalId = (): string => {
-  const stored = (localStorage.getItem(TERMINAL_STORAGE_KEY) || '').trim()
-  if (stored) return stored
-
-  try {
-    const rawUser = localStorage.getItem('pos-user')
-    if (rawUser) {
-      const userInfo = JSON.parse(rawUser) as { terminalId?: string } | null
-      const fromUser = (userInfo?.terminalId || '').trim()
-      if (fromUser) {
-        localStorage.setItem(TERMINAL_STORAGE_KEY, fromUser)
-        return fromUser
-      }
-    }
-  } catch {
-    // pos-user 解析失败直接走兜底
-  }
-
-  const fallback = `pos-${window.location.hostname || 'localhost'}`
-  localStorage.setItem(TERMINAL_STORAGE_KEY, fallback)
-  return fallback
-}
-
-/** 兼容 /v1/pos/orders 直接返回数组（也兼容包装成 records/data/list 的老格式） */
-const normalizeOrders = (payload: unknown): OrderItem[] => {
-  if (Array.isArray(payload)) return payload as OrderItem[]
+// ---- 数据加载 ----
+const normalizeOrders = (payload: unknown): RawOrder[] => {
+  if (Array.isArray(payload)) return payload as RawOrder[]
   if (payload && typeof payload === 'object') {
     const holder = payload as { records?: unknown; data?: unknown; list?: unknown }
-    const candidates = [holder.records, holder.data, holder.list]
-    for (const candidate of candidates) {
-      if (Array.isArray(candidate)) return candidate as OrderItem[]
+    for (const candidate of [holder.records, holder.data, holder.list]) {
+      if (Array.isArray(candidate)) return candidate as RawOrder[]
     }
   }
   return []
 }
 
-/** 抽后端 message（拦截器 reject 的 { message } 或 axios 的 response.data.message） */
 const resolveErrorMessage = (error: unknown, fallback: string): string => {
   if (typeof error === 'string' && error.trim()) return error
   if (error && typeof error === 'object') {
@@ -469,25 +706,44 @@ const resolveErrorMessage = (error: unknown, fallback: string): string => {
   return fallback
 }
 
-const loadTodayOrders = async (): Promise<void> => {
-  loading.value = true
+const TERMINAL_STORAGE_KEY = 'pos-terminal'
+
+const resolveTerminalId = (): string => {
+  const stored = (localStorage.getItem(TERMINAL_STORAGE_KEY) || '').trim()
+  if (stored) return stored
   try {
-    const today = formatDate(new Date())
-    // 后端 /v1/pos/orders 返回数组，参数只有 startDate/endDate/keyword
-    const result = await request.get('/v1/pos/orders', {
-      params: { startDate: today, endDate: today }
-    })
-    orders.value = normalizeOrders(result)
-  } catch (error) {
-    // 明细拿不到时静默降级（统计仍可能来自 /shift/summary）
-    orders.value = []
-    logger.warnMessage('[交班] 订单明细加载失败：', resolveErrorMessage(error, '未知错误'))
-  } finally {
-    loading.value = false
+    const rawUser = localStorage.getItem('pos-user')
+    if (rawUser) {
+      const userInfo = JSON.parse(rawUser) as { terminalId?: string } | null
+      const fromUser = (userInfo?.terminalId || '').trim()
+      if (fromUser) {
+        localStorage.setItem(TERMINAL_STORAGE_KEY, fromUser)
+        return fromUser
+      }
+    }
+  } catch {
+    // 解析失败走兜底
   }
+  const fallback = 'pos-default'
+  localStorage.setItem(TERMINAL_STORAGE_KEY, fallback)
+  return fallback
+}
+
+/**
+ * 终端标识硬校验：交班/班次统计全部依赖 terminalId，
+ * 一旦为空或落到 'pos-default' 兜底值，后端会算到"另一个终端"的账上。
+ * 这里显式拦住并提示重新登录（登录会用真实终端号覆盖）。
+ */
+const ensureTerminalId = (): boolean => {
+  const value = (terminalId.value || '').trim()
+  if (value && value !== 'pos-default') return true
+  ElMessage.error('终端标识缺失或不合法，无法交班：请退出登录后重新登录本机')
+  logger.warnMessage('[交班] terminalId 不可用：', value || '(empty)')
+  return false
 }
 
 const loadShiftSummary = async (): Promise<void> => {
+  if (!ensureTerminalId()) return
   summaryLoading.value = true
   try {
     const res = (await request.get('/v1/pos/auth/shift/summary', {
@@ -497,53 +753,108 @@ const loadShiftSummary = async (): Promise<void> => {
     if (res && typeof res === 'object') {
       shiftActive.value = res.shiftActive === true
       shiftInfo.value = res.shiftInfo ?? null
-      summaryStartTime.value = res.summaryStartTime || shiftInfo.value?.startTime || ''
+      summaryStartTime.value = res.summaryStartTime || res.shiftInfo?.startTime || ''
       summaryOrderStats.value = res.orderStats ?? null
     }
   } catch (error) {
-    // 优雅降级：统计接口不可用时退回本地订单明细口径，不打断交班面板
-    shiftActive.value = false
-    shiftInfo.value = null
-    summaryStartTime.value = ''
-    summaryOrderStats.value = null
-    logger.warnMessage('[交班] 班次统计加载失败，已降级为本地统计：', resolveErrorMessage(error, '未知错误'))
+    logger.warnMessage('[交班] 班次统计加载失败：', resolveErrorMessage(error, '未知错误'))
   } finally {
     summaryLoading.value = false
   }
 }
 
-const refreshAll = async (): Promise<void> => {
-  terminalId.value = resolveTerminalId()
-  await Promise.all([loadShiftSummary(), loadTodayOrders()])
+const loadOpeningCash = async (): Promise<void> => {
+  const mark = readShiftMark()
+  if (mark && typeof mark.openingCash === 'number' && Number.isFinite(mark.openingCash)) {
+    openingCash.value = mark.openingCash
+    openingCashMissing.value = false
+    return
+  }
+  try {
+    const shifts = await posApi.getTodayShifts(terminalId.value)
+    const list = Array.isArray(shifts) ? shifts : []
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const value = list[i]?.openingCash
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        openingCash.value = value
+        openingCashMissing.value = false
+        return
+      }
+    }
+  } catch (error) {
+    logger.warnMessage('[交班] 备用金读取失败：', resolveErrorMessage(error, '未知错误'))
+  }
+  openingCash.value = 0
+  openingCashMissing.value = true
 }
 
-/** 班次状态说明：真实数据驱动，无活跃班次时说明按今日汇总留痕 */
-const shiftStatusText = computed(() => {
-  if (summaryLoading.value && !summaryOrderStats.value) return '正在读取班次统计…'
-  if (shiftActive.value) {
-    const operator = shiftInfo.value?.employeeName || shiftInfo.value?.employeeId || '当前收银员'
-    return `班次进行中：${operator} · 开始于 ${formatTime(shiftInfo.value?.startTime, '--:--')}`
-  }
-  return `当前无进行中的班次，确认交班将按今日汇总（${formatTime(summaryStartTime.value, '--:--')} 起）留痕`
-})
+const inShiftWindow = (order: RawOrder): boolean => {
+  if (!shiftActive.value || !summaryStartTime.value) return true
+  const orderTime = parseDateTime(order.createTime)
+  const shiftStart = parseDateTime(summaryStartTime.value)
+  if (!orderTime || !shiftStart) return true
+  return orderTime.getTime() >= shiftStart.getTime()
+}
 
-/** 确认交班：POST /v1/pos/auth/shift/end，成功后提示本班次笔数/金额并刷新+关闭 */
+const loadOrders = async (): Promise<void> => {
+  loading.value = true
+  try {
+    const today = formatDate(new Date())
+    const result = await request.get('/v1/pos/orders', { params: { startDate: today, endDate: today } })
+    rawOrders.value = normalizeOrders(result).filter(inShiftWindow)
+  } catch (error) {
+    rawOrders.value = []
+    logger.warnMessage('[交班] 订单明细加载失败：', resolveErrorMessage(error, '未知错误'))
+    ElMessage.warning('订单明细加载失败，营业额请以班次汇总为准')
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshAll = async (): Promise<void> => {
+  terminalId.value = resolveTerminalId()
+  await loadShiftSummary()
+  await Promise.all([loadOrders(), loadOpeningCash()])
+}
+
+// ---- 操作 ----
 const confirmHandover = async (): Promise<void> => {
   if (endingShift.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确认交班？\n\n应上交现金：¥${handoverCash.value.toFixed(2)}${floatGap.value > 0 ? `\n备用金待补足：¥${floatGap.value.toFixed(2)}` : ''}\n有效订单：${validOrders.value.length} 笔 · 异常单：${anomalyOrders.value.length} 笔\n\n交班后将生成本班次结算记录，需重新开班才能继续收银。`,
+      '确认交班',
+      {
+        confirmButtonText: '确认交班',
+        cancelButtonText: '再核对一下',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: false
+      }
+    )
+  } catch {
+    return
+  }
+
+  if (!ensureTerminalId()) return
+
   endingShift.value = true
   try {
+    // 传参口径固定：terminalId 必传且与登录时写盘值一致，remark 只做备注
     const res = (await request.post('/v1/pos/auth/shift/end', {
-      terminalId: terminalId.value,
+      terminalId: terminalId.value.trim(),
       remark: handoverForm.value.remark.trim()
-    })) as unknown as ShiftEndResponse | null
+    })) as unknown as { orderStats?: ShiftOrderStats | null } | null
 
     const orderStats = res?.orderStats ?? null
-    const totalOrders = Math.round(toNumber(orderStats?.total_orders ?? res?.shiftInfo?.totalOrders))
-    const totalAmount = toNumber(orderStats?.total_amount ?? res?.shiftInfo?.totalAmount)
+    const totalOrders = Math.round(toNumber(orderStats?.total_orders))
+    const totalAmount = toNumber(orderStats?.total_amount)
 
+    clearShiftMark()
     ElMessage.success(`交班完成：本班次 ${totalOrders} 笔 / ¥${totalAmount.toFixed(2)}`)
     handoverForm.value.remark = ''
-    showAllOrders.value = false
+    detailDrawer.value = false
+    anomalyDrawer.value = false
     await refreshAll()
     visible.value = false
   } catch (error) {
@@ -553,16 +864,45 @@ const confirmHandover = async (): Promise<void> => {
   }
 }
 
-const exportReport = async () => {
+const exportReport = async (): Promise<void> => {
   exporting.value = true
   try {
-    const headers = ['时间', '订单号', '金额', '支付方式', '状态']
-    const rows = orders.value.map(o => [
-      formatDateTime(o.createTime, ''), o.orderNumber, (o.totalAmount || 0).toFixed(2),
-      getPaymentMethodName(o.paymentMethod), getStatusText(o.status)
-    ])
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n')
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const nonCash = netRevenue.value - handoverCash.value
+    const lines: string[] = []
+    lines.push(`交班报表,${currentDate.value} ${currentTime.value}`)
+    lines.push(`应上交现金,${handoverCash.value.toFixed(2)}`)
+    lines.push(`备用金待补足,${floatGap.value.toFixed(2)}`)
+    lines.push(`备用金（留存钱箱）,${openingCash.value.toFixed(2)}`)
+    lines.push(`现金收入,${cashIn.value.toFixed(2)}`)
+    lines.push(`现金退款,${cashRefund.value.toFixed(2)}`)
+    lines.push(`非现金收入（已直连入账无需上交）,${nonCash.toFixed(2)}`)
+    lines.push(`净营业额,${netRevenue.value.toFixed(2)}`)
+    lines.push(`有效订单,${validOrders.value.length}`)
+    lines.push(`异常单,${anomalyOrders.value.length}`)
+    lines.push('')
+    lines.push('【有效订单】')
+    lines.push('时间,订单号,金额,支付方式,状态')
+    validOrders.value.forEach(o => {
+      lines.push(
+        [formatDateTime(o.createTime, ''), o.orderNumber, o.amount.toFixed(2), getPaymentMethodName(o.paymentMethod), o.statusText]
+          .map(cell => `"${cell}"`)
+          .join(',')
+      )
+    })
+    if (anomalyOrders.value.length > 0) {
+      lines.push('')
+      lines.push('【异常单（未计入营业额）】')
+      lines.push('时间,订单号,金额,支付方式,异常原因')
+      anomalyOrders.value.forEach(o => {
+        lines.push(
+          [formatDateTime(o.createTime, ''), o.orderNumber, o.amount.toFixed(2), getPaymentMethodName(o.paymentMethod), o.anomalyReason]
+            .map(cell => `"${cell}"`)
+            .join(',')
+        )
+      })
+    }
+
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -570,36 +910,46 @@ const exportReport = async () => {
     link.click()
     URL.revokeObjectURL(url)
     ElMessage.success('导出成功')
-  } catch {
+  } catch (error) {
+    logger.warnMessage('[交班] 导出失败：', resolveErrorMessage(error, '未知错误'))
     ElMessage.error('导出失败')
   } finally {
     exporting.value = false
   }
 }
 
-const printReport = () => {
+const printReport = (): void => {
   const w = window.open('', '_blank')
-  if (!w) { ElMessage.error('无法打开打印窗口'); return }
-
-  const methodsHtml = Object.entries(stats.value.paymentMethodBreakdown).map(([m, a]) =>
-    `<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${getPaymentMethodName(m)}</span><span>${a.toFixed(2)}</span></div>`
-  ).join('')
+  if (!w) {
+    ElMessage.error('无法打开打印窗口')
+    return
+  }
+  const methodsHtml = paymentRows.value
+    .filter(row => row.amount > 0)
+    .map(row => `<div class="row"><span>${row.name}</span><span>${row.amount.toFixed(2)}</span></div>`)
+    .join('')
 
   w.document.write(`<!DOCTYPE html><html><head><meta charset=utf-8><title>交班小票</title>
 <style>body{font-family:'Courier New',monospace;font-size:13px;padding:24px;max-width:320px;margin:0 auto}
 h1{text-align:center;font-size:18px;margin-bottom:4px}.sub{text-align:center;color:#888;font-size:11px;margin-bottom:16px}
 .hr{border-top:1px dashed #ccc;margin:12px 0}.row{display:flex;justify-content:space-between;padding:3px 0}
-.total{font-size:22px;font-weight:bold;text-align:center;color:#ea580c;margin:12px 0}
+.total{font-size:26px;font-weight:bold;text-align:center;color:#e3651c;margin:10px 0}
+.small{font-size:11px;color:#666;text-align:center}
 .footer{text-align:center;color:#aaa;font-size:11px;margin-top:20px}</style></head><body>
 <h1>交班日结</h1><p class="sub">${currentDate.value} ${currentTime.value}</p>
 <div class="hr"></div>
-<div class="row"><span>订单总数</span><span><b>${stats.value.totalOrders}</b> 笔</span></div>
-<div class="row"><span>总营业额</span></div>
-<div class="total">¥${stats.value.totalAmount.toFixed(2)}</div>
-<div class="row"><span>平均客单价</span><span>¥${stats.value.avgAmount.toFixed(2)}</span></div>
+<div class="row"><span>应上交现金</span></div>
+<div class="total">¥${handoverCash.value.toFixed(2)}</div>
+<div class="small">= 现金收入 ${cashIn.value.toFixed(2)} − 现金退款 ${cashRefund.value.toFixed(2)}</div>
 <div class="hr"></div>
-<h3 style="font-size:14px;margin:8px 0 4px">支付明细</h3>${methodsHtml}
-${stats.value.refundCount > 0 ? `<div class="hr"></div><div class="row"><span>退款</span><span style="color:red">-${stats.value.refundAmount.toFixed(2)}</span></div>` : ''}
+<div class="row"><span>备用金待补足</span><span>${floatGap.value.toFixed(2)}</span></div>
+<div class="row"><span>备用金（留存钱箱）</span><span>${openingCash.value.toFixed(2)}</span></div>
+<div class="hr"></div>
+<div class="row"><span>净营业额</span><span>${netRevenue.value.toFixed(2)}</span></div>
+<div class="row"><span>有效订单</span><span>${validOrders.value.length} 笔</span></div>
+<div class="row"><span>异常单</span><span>${anomalyOrders.value.length} 笔</span></div>
+<div class="hr"></div>
+<h3 style="font-size:14px;margin:8px 0 4px">收款明细（非现金已直连入账，无需上交）</h3>${methodsHtml}
 <div class="hr"></div>
 ${handoverForm.value.remark ? `<div style="color:#666;font-size:12px">备注：${handoverForm.value.remark}</div><div class="hr"></div>` : ''}
 <div class="footer"><p>--- 交班完成 ---</p><p>感谢您的辛勤工作！</p></div>
@@ -627,10 +977,33 @@ onUnmounted(() => {
   }
 })
 </script>
-
 <style scoped>
+/* ==================== 交班日结（第四轮 · 质感重做） ====================
+ * 布局原则：一个主角（应上交现金）→ 一个辅助（钱箱核对）→ 一组并列（非现金）
+ *           → 一排指标 → 一个入口 → 一条操作栏。
+ * 视觉原则：区块用阴影与色阶分区，不用白描边；金额用 DIN/等宽数字；主色只用品牌橙。
+ */
+
 .shift-handover-content {
-  padding: 4px 0;
+  padding: 0 0 4px;
+}
+
+/* 自绘头部，隐藏 el-dialog 的空标题条 */
+.shift-handover-dialog :deep(.el-dialog__header) {
+  display: none;
+}
+
+.shift-handover-dialog :deep(.el-dialog__body) {
+  padding: 20px 24px 0;
+  max-height: 78vh;
+  /* 隐藏滚动条轨道（滚轮/触屏仍可滚动），避免右侧出现一条突兀的白条 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.shift-handover-dialog :deep(.el-dialog__body)::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 /* ====== 头部 ====== */
@@ -638,9 +1011,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #f0f0f0;
+  margin-bottom: 16px;
 }
 
 .sh-brand {
@@ -649,365 +1020,538 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.sh-icon {
-  font-size: 28px;
+.sh-brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--pos-primary-gradient, linear-gradient(135deg, #e3651c, #ef7f3a));
+  color: #ffffff;
+  font-size: 19px;
+  box-shadow: 0 6px 16px rgba(227, 101, 28, 0.28);
 }
 
 .sh-title-group h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
-  color: #1f2937;
-  line-height: 1.2;
+  letter-spacing: 0.5px;
+  color: var(--pos-text-primary, #1e293b);
+  line-height: 1.25;
 }
 
 .sh-subtitle {
-  font-size: 11px;
-  color: #9ca3af;
-  letter-spacing: 1px;
+  font-size: 10.5px;
+  color: var(--pos-text-muted, #94a3b8);
+  letter-spacing: 1.6px;
   text-transform: uppercase;
 }
 
 .sh-meta {
-  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--pos-text-secondary, #64748b);
+  font-size: 12.5px;
 }
 
 .sh-shift-chip {
-  display: inline-block;
-  margin-right: 10px;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--pos-radius-full, 9999px);
+  font-size: 11.5px;
   font-weight: 600;
-  color: #6b7280;
-  background: #f3f4f6;
-  vertical-align: middle;
+  color: var(--pos-text-secondary, #64748b);
+  background: var(--pos-bg-tertiary, #f1f5f9);
 }
 
 .sh-shift-chip.active {
-  color: #065f46;
-  background: #d1fae5;
-}
-
-.sh-date {
-  font-size: 15px;
-  font-weight: 600;
-  color: #374151;
+  color: #047857;
+  background: rgba(16, 185, 129, 0.14);
 }
 
 .sh-time {
-  font-size: 12px;
-  color: #9ca3af;
-  font-family: 'Courier New', monospace;
+  font-family: var(--pos-font-number, monospace);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ====== 核心数据 ====== */
-.sh-main-stats {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.sh-total-card {
-  flex: 1;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
-  border-radius: 14px;
-  padding: 20px 24px;
-  color: #fff;
-  display: flex;
-  flex-direction: column;
+.sh-close {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pos-text-muted, #94a3b8);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background var(--pos-transition-fast, 150ms ease);
 }
 
-.sh-total-label {
-  font-size: 13px;
-  opacity: 0.85;
-  margin-bottom: 6px;
+.sh-close:hover {
+  background: var(--pos-bg-hover, #e2e8f0);
+  color: var(--pos-text-primary, #1e293b);
 }
 
-.sh-total-value {
-  font-size: 32px;
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
+/* ====== 异常单提示条 ======
+ * 和"异常单待处理"抽屉使用同一套 warning 令牌：
+ * 同一个概念只有一种颜色，禁止"条是红的、抽屉是黄的"这种前后不一致。
+ */
+.sh-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--pos-spacing-xs, 8px);
+  margin-bottom: var(--pos-spacing-sm, 16px);
+  padding: 10px 14px;
+  border-radius: var(--pos-radius-md, 12px);
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  font-size: 12.5px;
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
 }
 
-.sh-total-sub {
-  font-size: 12px;
-  opacity: 0.75;
-  margin-top: 8px;
+.sh-alert__icon {
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.sh-stat-grid {
-  flex: 0 0 260px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.sh-alert__text {
+  flex: 1;
+  min-width: 0;
 }
 
-.sh-mini-stat {
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 12px 14px;
+.sh-alert__text b {
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-alert__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--pos-radius-sm, 8px);
+  border: 1px solid var(--pos-warning-border, rgba(194, 134, 31, 0.4));
+  background: transparent;
+  color: var(--pos-warning-text, #8a6114);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--pos-transition-fast, 150ms ease);
+}
+
+.sh-alert__btn:hover {
+  background: var(--pos-warning-border, rgba(194, 134, 31, 0.16));
+}
+
+/* ====== 主角：应上交现金 ======
+ * 只保留三层：结论（金额）→ 算式（一行小字）→ 核对条（备用金/钱箱应有/实点/长短款）。
+ * 之前把 chip、净现金、备用金胶囊、核对两行、提示语全塞进来，噪音过大。
+ */
+.sh-hero {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: var(--pos-spacing-sm, 16px);
+  padding: 14px 20px 16px;
+  border-radius: var(--pos-radius-lg, 16px);
+  background: var(--pos-bg-secondary, #f8fafc);
+  border-left: 3px solid var(--pos-primary, #e3651c);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
 }
 
-.sh-ms-label {
-  font-size: 11px;
-  color: #6b7280;
+.sh-hero__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--pos-spacing-sm, 16px);
 }
 
-.sh-ms-value {
-  font-size: 17px;
+.sh-hero__label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-hero__value {
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', monospace);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-primary, #e3651c);
+}
+
+.sh-hero__formula {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--pos-text-muted, #94a3b8);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-hero__formula b {
+  color: var(--pos-text-secondary, #64748b);
+  font-weight: 600;
+}
+
+.sh-hero__net {
+  color: var(--pos-text-primary, #1e293b) !important;
   font-weight: 700;
 }
 
-.sh-ms-pct {
-  font-size: 11px;
-  color: #9ca3af;
+.sh-hero__net.is-negative {
+  color: var(--pos-danger, #c94b4b) !important;
 }
 
-.sh-ms-value.cash { color: #059669; }
-.sh-ms-value.wechat { color: #07c160; }
-.sh-ms-value.alipay { color: #1677ff; }
-.sh-ms-value.card { color: #7c3aed; }
-.sh-ms-value.balance { color: #0891b2; }
-.sh-ms-value.refund { color: #dc2626; }
-
-/* ====== 支付分布 ====== */
-.sh-section {
-  background: #fafafa;
-  border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
+.sh-hero__note {
+  color: var(--pos-danger, #c94b4b);
 }
 
-.sh-section-header {
+/* ====== 核对条：一行放完，竖线分隔 ====== */
+.sh-cash-check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
+  gap: var(--pos-spacing-sm, 16px);
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px dashed var(--pos-border-color, #e2e8f0);
 }
 
-.sh-section-title {
+.sh-cc-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--pos-text-secondary, #64748b);
+  white-space: nowrap;
+}
+
+.sh-cc-item b {
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
   font-size: 14px;
-  font-weight: 600;
-  color: #374151;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1e293b);
+  font-variant-numeric: tabular-nums;
 }
 
-.sh-section-badge {
+.sh-cc-formula.is-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sh-cc-note {
+  font-size: 11.5px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-cc-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--pos-border-color, #e2e8f0);
+}
+
+.sh-cc-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-cc-count__label {
+  white-space: nowrap;
+}
+
+.sh-cc-input {
+  width: 132px;
+}
+
+.sh-cc-diff {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: var(--pos-radius-full, 9999px);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-cc-diff.is-empty {
+  background: var(--pos-bg-tertiary, #f1f5f9);
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-cc-diff.is-even {
+  background: var(--pos-success-soft, #ecf7f2);
+  color: var(--pos-success, #059669);
+  box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.22);
+}
+
+.sh-cc-diff.is-over {
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+}
+
+.sh-cc-diff.is-short {
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.24);
+}
+
+.sh-hero__op {
+  margin: 0 4px;
+  font-weight: 700;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-hero__warn {
+  padding: 1px 8px;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
   font-size: 11px;
   font-weight: 600;
-  color: #fff;
-  background: #ea580c;
-  padding: 1px 8px;
-  border-radius: 10px;
 }
 
-.sh-toggle-icon {
-  font-size: 10px;
-  color: #9ca3af;
-  margin-left: auto;
+/* 现金净流出：只说"谁来补"，不再重复金额（上面算式已经写了） */
+.sh-hero__negative {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--pos-radius-sm, 8px);
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  font-size: 12.5px;
 }
 
-.sh-payment-bars {
+/* ====== 非现金收入 ====== */
+.sh-noncash {
+  margin-bottom: 14px;
+}
+
+.sh-noncash__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sh-noncash__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-noncash__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sh-noncash__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sh-nc-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 3px;
+  padding: 10px 13px;
+  border-radius: 14px;
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: var(--pos-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.06));
+  transition: transform var(--pos-transition-fast, 150ms ease), box-shadow var(--pos-transition-fast, 150ms ease);
 }
 
-.sh-bar-row {
-  display: flex;
+.sh-nc-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--pos-shadow-md, 0 6px 18px rgba(0, 0, 0, 0.1));
+}
+
+.sh-nc-card__head {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-}
-
-.sh-bar-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: #4b5563;
-  min-width: 48px;
-  flex-shrink: 0;
-}
-
-.sh-bar-track {
-  flex: 1;
-  height: 18px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.sh-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.5s ease;
-  min-width: 4px;
-}
-
-.bar-cash { background: linear-gradient(90deg, #059669, #10b981); }
-.bar-wechat { background: linear-gradient(90deg, #07c160, #34d399); }
-.bar-alipay { background: linear-gradient(90deg, #1677ff, #60a5fa); }
-.bar-card { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
-.bar-balance { background: linear-gradient(90deg, #0891b2, #22d3ee); }
-.bar-other { background: linear-gradient(90deg, #6b7280, #9ca3af); }
-
-.sh-bar-empty {
-  padding: 8px 0;
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: center;
-}
-
-.sh-bar-val {
-  font-size: 13px;
+  gap: 7px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: #1f2937;
-  min-width: 72px;
-  text-align: right;
-  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--pos-text-secondary, #64748b);
 }
 
-.sh-bar-pct {
+.sh-nc-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 14px;
+  color: #ffffff;
+  background: #16a34a;
+}
+
+.sh-nc-card[data-test='shift-noncash-alipay'] .sh-nc-card__icon {
+  background: #2563eb;
+}
+
+.sh-nc-card[data-test='shift-noncash-card'] .sh-nc-card__icon {
+  background: #7c3aed;
+}
+
+.sh-nc-card[data-test='shift-noncash-balance'] .sh-nc-card__icon {
+  background: #0891b2;
+}
+
+.sh-nc-card__amount {
+  font-family: var(--pos-font-number, 'DIN Alternate', monospace);
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-nc-card__hint {
   font-size: 11px;
-  color: #9ca3af;
-  min-width: 36px;
-  text-align: right;
+  color: var(--pos-text-muted, #94a3b8);
 }
 
-/* ====== 订单明细 ====== */
-.sh-orders-body {
-  margin-top: 12px;
+/* ====== 次要指标 ====== */
+.sh-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.sh-filter-row {
-  margin-bottom: 10px;
-}
-
-.sh-order-list {
+.sh-mini-stat {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: var(--pos-bg-primary, #ffffff);
+  box-shadow: var(--pos-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.06));
 }
 
-.sh-order-item {
+.sh-ms-label {
+  font-size: 11.5px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-ms-value {
+  font-family: var(--pos-font-number, 'DIN Alternate', monospace);
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-ms-value.is-danger {
+  color: var(--pos-danger, #dc2626);
+}
+
+.sh-ms-pct {
+  font-size: 10.5px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+/* ====== 明细入口 ====== */
+.sh-detail-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 12px;
-  transition: background 0.15s;
-}
-
-.sh-order-item:hover { background: #f0fdf4; }
-
-.sh-o-time {
-  font-family: 'SF Mono', monospace;
-  color: #6b7280;
-  min-width: 52px;
-  flex-shrink: 0;
-}
-
-.sh-o-no {
-  color: #9ca3af;
-  min-width: 56px;
-  flex-shrink: 0;
-}
-
-.sh-o-amount {
-  font-weight: 600;
-  color: #1f2937;
-  min-width: 64px;
-  text-align: right;
-  font-family: 'SF Mono', monospace;
-}
-
-.sh-o-method {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  min-width: 40px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.m-cash { background: #d1fae5; color: #065f46; }
-.m-wechat { background: #d1fae5; color: #065f46; }
-.m-alipay { background: #dbeafe; color: #1e40af; }
-.m-card { background: #ede9fe; color: #5b21b6; }
-.m-balance { background: #cffafe; color: #155e75; }
-.m-unknown { background: #f3f4f6; color: #6b7280; }
-
-.sh-o-status {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
-  min-width: 44px;
-  text-align: center;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.s-completed, .s-paid { background: #d1fae5; color: #065f46; }
-.s-pending { background: #fef3c7; color: #92400e; }
-.s-making, .s-delivering { background: #dbeafe; color: #1e40af; }
-.s-refunding { background: #ffedd5; color: #9a3412; }
-.s-refunded { background: #fee2e2; color: #991b1b; }
-.s-cancelled { background: #f3f4f6; color: #6b7280; }
-
-.sh-orders-empty {
-  padding: 14px 0;
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: center;
-}
-
-.sh-show-more {
-  text-align: center;
-  padding: 8px;
-  font-size: 12px;
-  color: #ea580c;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-/* ====== 操作区 ====== */
-.sh-actions {
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.sh-remark {
+  width: 100%;
+  min-height: 48px;
   margin-bottom: 14px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+  color: var(--pos-text-primary, #1e293b);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--pos-transition-fast, 150ms ease);
+}
+
+.sh-detail-btn:hover {
+  background: #fff7ed;
+  box-shadow: inset 0 0 0 1px rgba(227, 101, 28, 0.35);
+  color: var(--pos-primary, #e3651c);
+}
+
+.sh-detail-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(227, 101, 28, 0.12);
+  color: var(--pos-primary, #e3651c);
+  font-size: 16px;
+}
+
+.sh-detail-btn__text {
+  flex: 1;
+  text-align: left;
+}
+
+.sh-detail-btn__arrow {
+  font-size: 14px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+/* ====== 操作栏 ====== */
+.sh-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--pos-border-light, #f1f5f9);
 }
 
 .sh-remark-input {
   width: 100%;
-  height: 38px;
+  min-height: 38px;
   padding: 0 14px;
-  border: 1px solid #d1d5db;
   border-radius: 8px;
+  border: 1px solid var(--pos-border-color, #e2e8f0);
+  background: var(--pos-bg-secondary, #f8fafc);
+  color: var(--pos-text-primary, #1e293b);
   font-size: 13px;
-  color: #374151;
-  outline: none;
-  transition: border-color 0.2s;
-  box-sizing: border-box;
+  transition: border-color var(--pos-transition-fast, 150ms ease);
 }
 
 .sh-remark-input:focus {
-  border-color: #ea580c;
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.08);
+  outline: none;
+  border-color: var(--pos-primary, #e3651c);
+  background: var(--pos-bg-primary, #ffffff);
 }
-
-.sh-remark-input::placeholder { color: #9ca3af; }
 
 .sh-btn-row {
   display: flex;
@@ -1016,74 +1560,401 @@ onUnmounted(() => {
 }
 
 .sh-btn {
-  height: 42px;
-  padding: 0 22px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-}
-
-.sh-btn-outline {
-  background: #fff;
-  border: 1.5px solid #d1d5db;
-  color: #4b5563;
-}
-
-.sh-btn-outline:hover:not(:disabled) {
-  border-color: #ea580c;
-  color: #ea580c;
-}
-
-.sh-btn-confirm {
-  background: linear-gradient(135deg, #dc2626, #ef4444);
-  color: #fff;
-  min-width: 120px;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
-}
-
-.sh-btn-confirm:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.35);
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--pos-transition-fast, 150ms ease);
 }
 
 .sh-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
+.sh-btn-ghost {
+  border: none;
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: inset 0 0 0 1px var(--pos-border-color, #e2e8f0);
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-btn-ghost:hover:not(:disabled) {
+  color: var(--pos-primary, #e3651c);
+  box-shadow: inset 0 0 0 1px rgba(227, 101, 28, 0.4);
+}
+
+.sh-btn-primary {
+  min-width: 148px;
+  border: none;
+  background: var(--pos-primary-gradient, linear-gradient(135deg, #e3651c, #ef7f3a));
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(227, 101, 28, 0.28);
+}
+
+.sh-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 24px rgba(227, 101, 28, 0.34);
+}
+
 .sh-shift-note {
-  margin-top: 10px;
-  text-align: right;
-  font-size: 12px;
-  color: #d97706;
+  font-size: 11.5px;
+  color: var(--pos-text-muted, #94a3b8);
 }
 
 .sh-shift-note.active {
-  color: #059669;
+  color: var(--pos-success, #059669);
 }
 
-/* ====== 暗色模式 ====== */
-[data-theme='dark'] .sh-header { border-bottom-color: #374151; }
-[data-theme='dark'] .sh-title-group h2 { color: #f1f5f9; }
-[data-theme='dark'] .sh-date { color: #e2e8f0; }
-[data-theme='dark'] .sh-total-card { background: linear-gradient(135deg, #c2410c, #ea580c); }
-[data-theme='dark'] .sh-mini-stat { background: #1e293b; }
-[data-theme='dark'] .sh-section { background: #1e293b; }
-[data-theme='dark'] .sh-section-title { color: #e2e8f0; }
-[data-theme='dark'] .sh-bar-track { background: #334155; }
-[data-theme='dark'] .sh-bar-val { color: #f1f5f9; }
-[data-theme='dark'] .sh-order-item { background: #0f172a; }
-[data-theme='dark'] .sh-order-item:hover { background: #1e293b; }
-[data-theme='dark'] .sh-o-amount { color: #f1f5f9; }
-[data-theme='dark'] .sh-actions { border-top-color: #334155; }
-[data-theme='dark'] .sh-remark-input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
-[data-theme='dark'] .sh-btn-outline { background: transparent; border-color: #475569; color: #94a3b8; }
-[data-theme='dark'] .sh-shift-chip { background: #334155; color: #94a3b8; }
-[data-theme='dark'] .sh-shift-chip.active { background: rgba(5, 150, 105, 0.25); color: #6ee7b7; }
+/* ====== 抽屉 ====== */
+.sh-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+}
+
+.sh-drawer-summary {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--pos-bg-tertiary, #f1f5f9);
+  font-size: 12.5px;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-drawer-summary b {
+  font-family: var(--pos-font-number, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-primary, #e3651c);
+}
+
+.sh-section {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: var(--pos-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.05));
+}
+
+.sh-section-header {
+  margin-bottom: 10px;
+}
+
+.sh-section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-payment-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sh-bar-row {
+  display: grid;
+  grid-template-columns: 52px 1fr 86px 52px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.sh-bar-name {
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-bar-track {
+  height: 8px;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: var(--pos-bg-tertiary, #f1f5f9);
+  overflow: hidden;
+}
+
+.sh-bar-fill {
+  height: 100%;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: var(--pos-primary, #e3651c);
+  transition: width var(--pos-transition-normal, 250ms ease);
+}
+
+.sh-bar-fill.bar-wechat { background: #16a34a; }
+.sh-bar-fill.bar-alipay { background: #2563eb; }
+.sh-bar-fill.bar-card { background: #7c3aed; }
+.sh-bar-fill.bar-balance { background: #0891b2; }
+
+.sh-bar-val {
+  text-align: right;
+  font-family: var(--pos-font-number, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-bar-pct {
+  text-align: right;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-bar-empty {
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+.sh-drawer-filter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sh-anomaly-tip {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--pos-radius-md, 12px);
+  /* 统一走预警语义令牌：浅色深字、深色浅字，不再两套硬编码 */
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.sh-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pos-border-color, #e2e8f0) transparent;
+}
+
+.sh-order-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sh-order-list::-webkit-scrollbar-thumb {
+  background: var(--pos-border-color, #e2e8f0);
+  border-radius: 9999px;
+}
+
+/* 每条订单一张卡片：上行「时间 / 单号 / 状态」，下行「支付方式 / 金额」 */
+.sh-order-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--pos-bg-secondary, #f8fafc);
+  box-shadow: var(--pos-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.05));
+  transition: transform var(--pos-transition-fast, 150ms ease), box-shadow var(--pos-transition-fast, 150ms ease);
+}
+
+.sh-order-item:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--pos-shadow-md, 0 6px 18px rgba(0, 0, 0, 0.1));
+}
+
+.sh-order-item.is-anomaly {
+  background: var(--pos-warning-soft, #fbf5e8);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+}
+
+.sh-o-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sh-o-row--top {
+  font-size: 13px;
+}
+
+.sh-o-row--bottom {
+  justify-content: space-between;
+}
+
+.sh-o-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pos-text-primary, #1e293b);
+  font-family: var(--pos-font-number, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-o-no {
+  color: var(--pos-text-muted, #94a3b8);
+  font-family: var(--pos-font-number, monospace);
+  font-size: 12.5px;
+}
+
+.sh-o-amount {
+  font-size: 19px;
+  font-weight: 800;
+  font-family: var(--pos-font-number, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--pos-text-primary, #1e293b);
+}
+
+.sh-o-method {
+  font-size: 13px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.sh-o-status {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: var(--pos-radius-full, 9999px);
+  font-size: 11.5px;
+  font-weight: 600;
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+}
+
+.sh-o-status.s-refunded {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+/* 异常原因与"待付"状态共用同一套预警令牌：同一个概念只有一种颜色 */
+.sh-o-reason {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: var(--pos-radius-full, 9999px);
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+}
+
+.sh-o-status.s-anomaly,
+.sh-o-status.s-pending {
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+}
+
+.sh-orders-empty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pos-text-muted, #94a3b8);
+}
+
+/* ==================== 深色模式：深灰 + 柔和灰白 + 去白框 ==================== */
+[data-theme='dark'] .sh-hero {
+  background: var(--pos-bg-secondary, #2c2c2e);
+  border-left-color: var(--pos-primary, #ef7f3a);
+  box-shadow: inset 0 0 0 1px var(--pos-border-color, #3a3a3e);
+}
+
+[data-theme='dark'] .sh-cc-diff.is-empty {
+  background: var(--pos-bg-tertiary, #353538);
+  color: var(--pos-text-muted, #85858c);
+}
+
+[data-theme='dark'] .sh-hero__value {
+  color: var(--pos-primary, #ef7f3a);
+  text-shadow: none;
+}
+
+[data-theme='dark'] .sh-cc-item,
+[data-theme='dark'] .sh-cc-count {
+  color: var(--pos-text-secondary, #b0b0b5);
+}
+
+[data-theme='dark'] .sh-cc-item b {
+  color: var(--pos-text-primary, #e5e5e5);
+}
+
+[data-theme='dark'] .sh-hero__negative {
+  background: var(--pos-danger-soft, #332426);
+  color: var(--pos-danger, #d96b6b);
+}
+
+[data-theme='dark'] .sh-order-item {
+  background: var(--pos-bg-secondary, #26262a);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='dark'] .sh-order-item.is-anomaly {
+  background: rgba(217, 119, 6, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.25);
+}
+
+[data-theme='dark'] .sh-nc-card,
+[data-theme='dark'] .sh-mini-stat,
+[data-theme='dark'] .sh-section {
+  background: var(--pos-bg-secondary, #26262a);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='dark'] .sh-detail-btn {
+  background: var(--pos-bg-secondary, #26262a);
+  box-shadow: inset 0 0 0 1px var(--pos-border-color, #35353b);
+  color: var(--pos-text-primary, #ececee);
+}
+
+[data-theme='dark'] .sh-detail-btn:hover {
+  background: #2e2e33;
+  color: #fb923c;
+  box-shadow: inset 0 0 0 1px rgba(239, 127, 58, 0.4);
+}
+
+[data-theme='dark'] .sh-btn-ghost {
+  background: var(--pos-bg-secondary, #26262a);
+  box-shadow: inset 0 0 0 1px var(--pos-border-color, #35353b);
+  color: var(--pos-text-primary, #ececee);
+}
+
+[data-theme='dark'] .sh-remark-input {
+  background: var(--pos-bg-secondary, #26262a);
+  border-color: var(--pos-border-color, #35353b);
+  color: var(--pos-text-primary, #ececee);
+}
+
+
+
+[data-theme='dark'] .sh-anomaly-tip {
+  background: var(--pos-warning-soft, #33291a);
+  color: var(--pos-warning-text, #e7bd6b);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(231, 189, 107, 0.32));
+}
+
+[data-theme='dark'] .sh-order-item:hover {
+  background: var(--pos-bg-tertiary, #2e2e33);
+}
+
+[data-theme='dark'] .sh-order-item.is-anomaly {
+  background: var(--pos-warning-soft, #33291a);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(231, 189, 107, 0.32));
+}
+
+[data-theme='dark'] .sh-drawer-summary {
+  background: var(--pos-bg-tertiary, #2e2e33);
+  color: var(--pos-text-primary, #ececee);
+}
+
+/* ====== 窄屏 ====== */
+@media (max-width: 1200px) {
+  .sh-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sh-noncash__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sh-hero__value {
+    font-size: 34px;
+  }
+}
 </style>

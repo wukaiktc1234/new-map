@@ -435,13 +435,10 @@ export const usePermissionStore = defineStore('permission', () => {
     userInfo.value = info
     loaded.value = true
     
-    // 同步到localStorage（供v-permission指令使用）
-    if (info.permissions && info.permissions.length > 0) {
-      localStorage.setItem('permissions', JSON.stringify(info.permissions))
-    }
-    
-    // 同步角色到localStorage
-    localStorage.setItem('roles', JSON.stringify(info.roles))
+    // 【安全】不再把 permissions / roles 写入 localStorage：
+    // 权限唯一来源 = 服务端 /v1/auth/me（见 runInitFromToken 的 fail-closed 逻辑），
+    // 本地存储可被篡改，写入即等于给前端留下一个「自授权」入口。
+    // v-permission 指令直接读 pinia store（usePermissionStore().userInfo.permissions）。
   }
 
   /**

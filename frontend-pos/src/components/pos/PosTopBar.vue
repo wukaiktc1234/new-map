@@ -22,13 +22,13 @@
     <div class="right-section">
       <div class="quick-actions">
         <!-- 收银核心操作 -->
-        <button class="action-btn hold-order-btn" @click="$emit('hold')">
+        <button class="action-btn hold-order-btn" title="挂单" @click="$emit('hold')">
           <el-icon><Document /></el-icon>
           <span>挂单</span>
         </button>
 
         <el-badge :value="heldCount" :hidden="heldCount === 0" :max="99">
-          <button class="action-btn retrieve-order-btn" @click="$emit('retrieve')">
+          <button class="action-btn retrieve-order-btn" title="取单" @click="$emit('retrieve')">
             <el-icon><FolderOpened /></el-icon>
             <span>取单</span>
           </button>
@@ -36,25 +36,25 @@
 
         <!-- 叫号系统入口 -->
         <el-badge :value="callNumberPendingCount" :hidden="callNumberPendingCount === 0" type="danger" :max="99">
-          <button class="action-btn call-number-btn" @click="$emit('callNumber')">
+          <button class="action-btn call-number-btn" title="叫号" @click="$emit('callNumber')">
             <el-icon><Bell /></el-icon>
             <span>叫号</span>
           </button>
         </el-badge>
 
         <!-- 高频辅助操作 -->
-        <button class="action-btn coupon-btn" @click="$emit('coupon')">
+        <button class="action-btn coupon-btn" title="券码核销" @click="$emit('coupon')">
           <el-icon><Ticket /></el-icon>
           <span>券码</span>
         </button>
 
-        <button class="action-btn query-btn" @click="$emit('orderQuery')">
+        <button class="action-btn query-btn" title="订单查询" @click="$emit('orderQuery')">
           <el-icon><Search /></el-icon>
           <span>订单</span>
         </button>
 
         <!-- 桌台管理 -->
-        <button class="action-btn table-btn" @click="$emit('tables')">
+        <button class="action-btn table-btn" title="桌台管理" @click="$emit('tables')">
           <el-icon><Grid /></el-icon>
           <span>桌台</span>
         </button>
@@ -66,39 +66,119 @@
         </button>
 
         <!-- 交班 -->
-        <button class="action-btn shift-handover-btn" @click="$emit('shiftHandover')">
+        <button class="action-btn shift-handover-btn" title="交班日结" @click="$emit('shiftHandover')">
           <el-icon><SwitchButton /></el-icon>
           <span>交班</span>
         </button>
 
         <!-- 主题切换 -->
-        <button class="action-btn theme-btn" @click="$emit('toggleTheme')">
+        <button class="action-btn theme-btn" :title="isDark ? '切换浅色' : '切换深色'" @click="$emit('toggleTheme')">
           <el-icon v-if="isDark"><Sunny /></el-icon>
           <el-icon v-else><Moon /></el-icon>
         </button>
       </div>
 
-      <!-- 当前登录账号 + 退出登录 -->
+      <!-- 当前登录账号：头像即入口，点开是下拉菜单（用户信息 / 修改密码 / 偏好设置 / 退出登录） -->
       <div class="account-area">
-        <div class="account-chip" :title="accountTooltip">
-          <span class="account-avatar">{{ avatarText }}</span>
-          <span class="account-meta">
-            <span class="account-name">{{ accountName }}</span>
-            <span v-if="accountCode" class="account-code">{{ accountCode }}</span>
-          </span>
-        </div>
-        <button
-          class="action-btn logout-btn"
-          :disabled="loggingOut"
-          :title="'退出登录：' + accountName"
-          @click="handleLogout"
+        <el-popover
+          v-model:visible="accountMenuVisible"
+          placement="bottom-end"
+          :width="300"
+          trigger="click"
+          :show-arrow="false"
+          :offset="10"
+          :hide-after="0"
+          popper-class="pos-account-popper"
+          data-test="account-popover"
         >
-          <el-icon v-if="!loggingOut"><TurnOff /></el-icon>
-          <el-icon v-else class="is-loading"><Loading /></el-icon>
-          <span>{{ loggingOut ? '退出中' : '退出' }}</span>
-        </button>
+          <template #reference>
+            <button
+              type="button"
+              class="account-chip"
+              :class="{ 'is-open': accountMenuVisible }"
+              :title="accountTooltip"
+              aria-haspopup="menu"
+              :aria-expanded="accountMenuVisible"
+              data-test="account-chip"
+            >
+              <span class="account-avatar">{{ avatarText }}</span>
+              <span class="account-meta">
+                <span class="account-name">{{ accountName }}</span>
+                <span v-if="accountCode" class="account-code">{{ accountCode }}</span>
+              </span>
+              <el-icon class="account-caret" :class="{ 'is-open': accountMenuVisible }"><ArrowDown /></el-icon>
+            </button>
+          </template>
+
+          <div class="account-menu" role="menu" data-test="account-menu">
+            <!-- 用户信息 -->
+            <div class="account-menu__head">
+              <span class="account-menu__avatar">{{ avatarText }}</span>
+              <span class="account-menu__identity">
+                <span class="account-menu__name">{{ accountName }}</span>
+                <span class="account-menu__sub">
+                  {{ accountCode || '未绑定工号' }}
+                  <template v-if="accountRoleText"> · {{ accountRoleText.replace('角色：', '') }}</template>
+                </span>
+                <span class="account-menu__terminal" :title="terminalTip">
+                  <el-icon><Monitor /></el-icon>
+                  {{ terminalName }}
+                </span>
+              </span>
+            </div>
+
+            <div class="account-menu__divider" />
+
+            <!-- 构建标记：刷新后据此确认是否拿到最新前端包（排查"改了没生效"用） -->
+            <div class="account-menu__build" data-test="build-stamp" :title="BUILD_STAMP">
+              前端版本 {{ BUILD_STAMP }}
+            </div>
+
+            <button
+              type="button"
+              class="account-menu__item"
+              role="menuitem"
+              data-test="account-menu-password"
+              @click="openChangePassword"
+            >
+              <el-icon><Lock /></el-icon>
+              <span>修改密码</span>
+            </button>
+
+            <button
+              type="button"
+              class="account-menu__item"
+              role="menuitem"
+              data-test="account-menu-preferences"
+              @click="openPreferences"
+            >
+              <el-icon><Setting /></el-icon>
+              <span>偏好设置</span>
+            </button>
+
+            <div class="account-menu__divider" />
+
+            <button
+              type="button"
+              class="account-menu__item account-menu__item--danger"
+              role="menuitem"
+              :disabled="loggingOut"
+              data-test="account-menu-logout"
+              @click="handleLogout"
+            >
+              <el-icon v-if="!loggingOut"><SwitchButton /></el-icon>
+              <el-icon v-else class="is-loading"><Loading /></el-icon>
+              <span>{{ loggingOut ? '退出中…' : '退出登录' }}</span>
+            </button>
+          </div>
+        </el-popover>
       </div>
     </div>
+
+    <!-- 修改密码 -->
+    <ChangePasswordDialog v-model="showChangePassword" @success="handlePasswordChanged" />
+    <!-- 偏好设置 -->
+    <PreferenceDialog v-model="showPreferences" :is-dark="isDark" @toggle-theme="$emit('toggleTheme')" />
   </div>
 </template>
 
@@ -106,6 +186,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { clearCapabilities } from '@/composables/usePermission'
 import axios from 'axios'
 import {
   Document,
@@ -118,9 +199,16 @@ import {
   Sunny,
   Moon,
   View,
-  TurnOff,
-  Loading
+  Loading,
+  ArrowDown,
+  Lock,
+  Setting,
+  Monitor
 } from '@element-plus/icons-vue'
+import ChangePasswordDialog from '@/components/pos/dialogs/ChangePasswordDialog.vue'
+import PreferenceDialog from '@/components/pos/dialogs/PreferenceDialog.vue'
+import { terminalDisplayName, terminalTooltip } from '@/utils/terminal'
+import { clearPosRuntimeCache } from '@/utils/posCache'
 
 interface Props {
   currentTime: string
@@ -160,9 +248,19 @@ interface PosUserInfo {
   terminalId?: string
 }
 
+/** 构建标记：每次前端改动递增，用于确认浏览器加载到的是最新包 */
+const BUILD_STAMP = 'r12.2026-10-28'
+console.info('[POS] 前端版本', BUILD_STAMP)
+
 const router = useRouter()
 const posUser = ref<PosUserInfo | null>(null)
 const loggingOut = ref(false)
+const accountMenuVisible = ref(false)
+const showChangePassword = ref(false)
+const showPreferences = ref(false)
+/** 终端展示名（脱敏）：「前台收银机A」，不展示 pos-localhost-1793xxx */
+const terminalName = ref('未绑定终端')
+const terminalTip = ref('')
 
 /** 从 localStorage 读取当前登录账号（Login.vue 登录成功时写入 pos-user） */
 function readPosUser(): void {
@@ -172,6 +270,9 @@ function readPosUser(): void {
   } catch {
     posUser.value = null
   }
+  const terminal = localStorage.getItem('pos-terminal') || posUser.value?.terminalId || ''
+  terminalName.value = terminalDisplayName(terminal)
+  terminalTip.value = terminalTooltip(terminal)
 }
 
 /** 兜底顺序：姓名 → 工号 → 用户名 */
@@ -195,7 +296,7 @@ const accountCode = computed<string>(() => {
   return `工号 ${code}`
 })
 
-/** 角色文本（hover 展示；后端 PosAuthController 当前未返回角色，缺失时留空不显示占位） */
+/** 角色文本（hover / 菜单头部展示；后端 PosAuthController 当前未返回角色，缺失时不显示占位） */
 const accountRoleText = computed<string>(() => {
   const user = posUser.value
   if (!user) return '未登录或登录信息已失效'
@@ -220,17 +321,38 @@ const avatarText = computed<string>(() => {
   return name.slice(0, 1).toUpperCase()
 })
 
-/** 退出登录：二次确认 → 尽力调用后端登出 → 清理本地凭证 → 回登录页 */
+/** 打开修改密码（先收起菜单，避免弹窗与菜单层级打架） */
+function openChangePassword(): void {
+  accountMenuVisible.value = false
+  showChangePassword.value = true
+}
+
+/** 打开偏好设置 */
+function openPreferences(): void {
+  accountMenuVisible.value = false
+  showPreferences.value = true
+}
+
+/**
+ * 退出登录：二次确认 → 清理本班次缓存 → 尽力调用后端登出 → 回登录页
+ * 二次确认不可跳过（收银场景误触代价太高）：误点退出会中断当前购物车与班次归属。
+ */
 async function handleLogout(): Promise<void> {
   if (loggingOut.value) return
+  accountMenuVisible.value = false
 
   try {
-    await ElMessageBox.confirm('确认退出当前账号登录吗？', '退出登录', {
-      confirmButtonText: '退出登录',
-      cancelButtonText: '取消',
-      type: 'warning',
-      distinguishCancelAndClose: true
-    })
+    await ElMessageBox.confirm(
+      '退出后将清理本机登录凭证与当前购物车草稿（挂单会保留），需重新登录才能继续收银。',
+      '确认退出登录？',
+      {
+        confirmButtonText: '退出登录',
+        cancelButtonText: '继续收银',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: false
+      }
+    )
   } catch {
     // 用户取消 / 关闭弹窗
     return
@@ -252,9 +374,9 @@ async function handleLogout(): Promise<void> {
       }
     }
   } finally {
-    localStorage.removeItem('pos-token')
-    localStorage.removeItem('pos-user')
-    localStorage.removeItem('pos-terminal')
+    // 清理凭证 + 开班标记 + 购物车/客显等运行态缓存（挂单与个人偏好保留）
+    clearPosRuntimeCache()
+    clearCapabilities()
     posUser.value = null
     loggingOut.value = false
     ElMessage.success('已退出登录')
@@ -262,9 +384,24 @@ async function handleLogout(): Promise<void> {
   }
 }
 
+/** 修改密码成功：旧 token 已不可信，确认后强制重新登录 */
+async function handlePasswordChanged(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('密码已修改，需要用新密码重新登录。是否立即重新登录？', '修改成功', {
+      confirmButtonText: '立即重新登录',
+      cancelButtonText: '稍后',
+      type: 'success'
+    })
+  } catch {
+    return
+  }
+  clearPosRuntimeCache()
+  router.push('/login')
+}
+
 /** 其它标签页登录/登出后同步账号信息 */
 function handleStorageChange(event: StorageEvent): void {
-  if (!event.key || event.key === 'pos-user') {
+  if (!event.key || event.key === 'pos-user' || event.key === 'pos-terminal') {
     readPosUser()
   }
 }
@@ -284,10 +421,12 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 24px;
+  gap: var(--pos-spacing-sm, 16px);
+  padding: var(--pos-spacing-xs, 8px) var(--pos-spacing-md, 24px);
+  min-height: 64px;
   background: var(--pos-glass-bg, rgba(255, 255, 255, 0.8));
   backdrop-filter: blur(10px);
-  border-bottom: 2px solid var(--pos-border-color, #e5e7eb);
+  border-bottom: 1px solid var(--pos-border-color, #e5e7eb);
 }
 
 .store-info {
@@ -305,7 +444,7 @@ onUnmounted(() => {
 .pos-logo-icon {
   width: 40px;
   height: 40px;
-  background: var(--pos-primary-gradient, linear-gradient(135deg, #ea580c, #f97316));
+  background: var(--pos-primary-gradient, linear-gradient(135deg, #e3651c, #ef7f3a));
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -320,17 +459,20 @@ onUnmounted(() => {
 
 .pos-logo-text h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
   color: var(--pos-text-primary, #1f2937);
 }
 
 .time-display {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 16px;
-  border-left: 2px solid var(--pos-border-color, #e5e7eb);
+  gap: var(--pos-spacing-xs, 8px);
+  padding-left: var(--pos-spacing-sm, 16px);
+  border-left: 1px solid var(--pos-border-color, #e5e7eb);
+  white-space: nowrap;
 }
 
 .time-display .time {
@@ -349,50 +491,74 @@ onUnmounted(() => {
 .time-display .date {
   font-size: 13px;
   color: var(--pos-text-muted, #6b7280);
+  white-space: nowrap;
 }
 
 .right-section {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--pos-spacing-sm, 16px);
   min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .quick-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--pos-spacing-xs, 8px);
   flex-wrap: nowrap;
+  min-width: 0;
+  /* 允许按钮区被压缩而不是把账号区挤出屏幕 */
+  flex: 0 1 auto;
+  /* 不能 hidden：会把 el-badge 的角标（悬在按钮右上角）裁掉一半 */
+  overflow: visible;
+}
+
+/* 角标改为"按钮内右上角"：既不会被顶栏上边缘裁断，也不占额外宽度 */
+.quick-actions .el-badge {
+  display: inline-flex;
+  position: relative;
+}
+
+.quick-actions .el-badge__content.is-fixed {
+  top: 5px;
+  right: 6px;
+  transform: none;
+  border: none;
+  box-shadow: 0 0 0 2px var(--pos-bg-primary, #ffffff);
 }
 
 .action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  height: 40px;
-  padding: 0 14px;
-  border-radius: 10px;
-  border: 1.5px solid var(--pos-border-color, #e5e7eb);
-  background: var(--pos-bg-secondary, #f9fafb);
-  color: var(--pos-text-primary, #1f2937);
+  gap: 6px;
+  height: 44px;
+  padding: 0 var(--pos-spacing-sm, 16px);
+  border-radius: var(--pos-radius-sm, 8px);
+  border: 1px solid var(--pos-border-color, #e5e7eb);
+  background: var(--pos-bg-primary, #ffffff);
+  color: var(--pos-text-secondary, #64748b);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: background-color var(--pos-transition-fast, 150ms ease),
+    border-color var(--pos-transition-fast, 150ms ease),
+    color var(--pos-transition-fast, 150ms ease),
+    transform var(--pos-transition-fast, 150ms ease);
   white-space: nowrap;
   user-select: none;
 }
 
 .action-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.15);
-  border-color: var(--pos-primary, #ea580c);
-  color: var(--pos-primary, #ea580c) !important;
+  background: var(--pos-primary-soft, #fbf1ea);
+  border-color: var(--pos-primary, #c9622a);
+  color: var(--pos-primary, #c9622a) !important;
 }
 
 .action-btn:active {
-  transform: translateY(0);
+  transform: scale(0.97);
 }
 
 .action-btn:disabled {
@@ -405,111 +571,41 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
-.hold-order-btn {
-  border-color: var(--pos-primary, #ea580c);
-  color: var(--pos-primary, #ea580c);
-}
-
-.hold-order-btn:hover {
-  background: var(--pos-primary, #ea580c) !important;
-  color: #ffffff !important;
-  border-color: var(--pos-primary, #ea580c) !important;
-}
-
-.retrieve-order-btn {
-  border-color: #0891b2;
-  color: #0e7490;
-}
-
-.retrieve-order-btn:hover {
-  background: #0891b2 !important;
-  color: #ffffff !important;
-  border-color: #0891b2 !important;
-}
-
+/* 顶栏统一"中性按钮 + 单一主行动色"：
+ * 之前 8 个按钮各有蓝/青/绿/紫/黄描边，颜色越多越显廉价；
+ * 现在只有「叫号」是填充主色（最高频、需要最醒目），其余走中性描边。
+ */
 .call-number-btn {
-  background: var(--pos-primary-gradient, linear-gradient(135deg, #ea580c, #f97316)) !important;
-  border-color: transparent !important;
+  background: var(--pos-primary, #c9622a) !important;
+  border-color: var(--pos-primary, #c9622a) !important;
   color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(201, 98, 42, 0.24);
 }
 
 .call-number-btn:hover {
-  box-shadow: 0 4px 16px rgba(234, 88, 12, 0.4) !important;
-  opacity: 0.95 !important;
-}
-
-.coupon-btn {
-  border-color: #10b981;
-  color: #059669;
-}
-
-.coupon-btn:hover {
-  background: #10b981 !important;
+  background: var(--pos-primary-dark, #a94f1f) !important;
+  border-color: var(--pos-primary-dark, #a94f1f) !important;
   color: #ffffff !important;
-  border-color: #10b981 !important;
-}
-
-.query-btn {
-  border-color: #64748b;
-  color: #475569;
-}
-
-.query-btn:hover {
-  background: #64748b !important;
-  color: #ffffff !important;
-  border-color: #64748b !important;
-}
-
-.table-btn {
-  border-color: #0891b2;
-  color: #0e7490;
-}
-
-.table-btn:hover {
-  background: #0891b2 !important;
-  color: #ffffff !important;
-  border-color: #0891b2 !important;
-}
-
-.yolo-btn {
-  border-color: #7c3aed;
-  color: #6d28d9;
-}
-
-.yolo-btn:hover {
-  background: #7c3aed !important;
-  color: #ffffff !important;
-  border-color: #7c3aed !important;
-}
-
-.shift-handover-btn {
-  border-color: var(--pos-warning, #f59e0b);
-  color: var(--pos-warning, #f59e0b);
-}
-
-.shift-handover-btn:hover {
-  background: var(--pos-warning, #f59e0b) !important;
-  color: #ffffff !important;
-  border-color: var(--pos-warning, #f59e0b) !important;
+  box-shadow: 0 6px 16px rgba(201, 98, 42, 0.3) !important;
 }
 
 .theme-btn {
-  width: 40px;
+  width: 44px;
   padding: 0;
-  min-width: 40px;
+  min-width: 44px;
 }
 
 .theme-btn .el-icon {
   font-size: 18px;
 }
 
-/* ====== 当前账号 + 退出登录 ====== */
+/* ====== 当前账号（头像 = 下拉菜单入口） ====== */
 .account-area {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-left: 16px;
-  border-left: 2px solid var(--pos-border-color, #e5e7eb);
+  gap: var(--pos-spacing-xs, 8px);
+  padding-left: var(--pos-spacing-sm, 16px);
+  border-left: 1px solid var(--pos-border-color, #e5e7eb);
   flex-shrink: 0;
 }
 
@@ -517,12 +613,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 200px;
+  max-width: 220px;
+  min-height: 44px;
   padding: 4px 10px 4px 6px;
-  border-radius: 12px;
-  border: 1.5px solid var(--pos-border-color, #e5e7eb);
+  border-radius: var(--pos-radius-md, 12px);
+  border: 1px solid var(--pos-border-color, #e5e7eb);
   background: var(--pos-bg-secondary, #f9fafb);
-  cursor: default;
+  cursor: pointer;
+  transition: all var(--pos-transition-fast, 150ms ease);
+}
+
+.account-chip:hover,
+.account-chip.is-open {
+  border-color: var(--pos-primary, #c9622a);
+  background: var(--pos-primary-soft, #fbf1ea);
 }
 
 .account-avatar {
@@ -536,7 +640,7 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 700;
   color: var(--pos-text-inverse, #ffffff);
-  background: var(--pos-primary-gradient, linear-gradient(135deg, #ea580c, #f97316));
+  background: var(--pos-primary-gradient, linear-gradient(135deg, #e3651c, #ef7f3a));
 }
 
 .account-meta {
@@ -544,6 +648,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   line-height: 1.2;
+  align-items: flex-start;
 }
 
 .account-name {
@@ -553,6 +658,7 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 .account-code {
@@ -561,23 +667,173 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 120px;
 }
 
-.logout-btn {
-  border-color: #f87171;
-  color: #dc2626;
+.account-caret {
+  font-size: 12px;
+  color: var(--pos-text-muted, #94a3b8);
+  transition: transform var(--pos-transition-fast, 150ms ease);
 }
 
-.logout-btn:hover:not(:disabled) {
-  background: #dc2626 !important;
-  color: #ffffff !important;
-  border-color: #dc2626 !important;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+.account-caret.is-open {
+  transform: rotate(180deg);
+  color: var(--pos-primary, #e3651c);
 }
 
-@media (max-width: 1400px) {
+/* ====== 下拉菜单（Popover 内容区） ====== */
+.account-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-menu__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 4px 10px;
+}
+
+.account-menu__avatar {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--pos-primary-gradient, linear-gradient(135deg, #e3651c, #ef7f3a));
+}
+
+.account-menu__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-menu__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pos-text-primary, #1f2937);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-menu__sub {
+  font-size: 12px;
+  color: var(--pos-text-secondary, #64748b);
+}
+
+.account-menu__terminal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 2px 8px;
+  align-self: flex-start;
+  border-radius: var(--pos-radius-full, 9999px);
+  background: var(--pos-bg-tertiary, #f1f5f9);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pos-text-secondary, #64748b);
+  cursor: help;
+}
+
+.account-menu__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--pos-border-light, #f1f5f9);
+}
+
+.account-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--pos-radius-sm, 8px);
+  background: transparent;
+  color: var(--pos-text-primary, #1f2937);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--pos-transition-fast, 150ms ease);
+}
+
+.account-menu__item:hover {
+  background: var(--pos-bg-tertiary, #f1f5f9);
+  color: var(--pos-primary, #e3651c);
+}
+
+.account-menu__item .el-icon {
+  font-size: 16px;
+}
+
+.account-menu__item--danger {
+  color: var(--pos-danger, #dc2626);
+}
+
+.account-menu__item--danger:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.account-menu__item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-menu__build {
+  padding: 4px 14px 6px;
+  font-size: 11px;
+  color: var(--pos-text-muted, #94a3b8);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+/* ========== 响应式：顶栏必须"永不被裁" ==========
+ * 110% 缩放会让可用宽度缩到 1/1.1，1280 窗口只剩 1164px；
+ * 旧版所有按钮都带文字，总宽 1370px → 右侧账号区被裁掉、菜单被截断。
+ * 断点策略：① 先隐藏按钮文字（保留图标 + title 提示）② 再隐藏低频入口。
+ */
+@media (max-width: 1780px) {
   .account-chip {
     max-width: 150px;
+  }
+
+  .action-btn {
+    padding: 0 10px;
+    min-width: 44px;
+    gap: 0;
+  }
+
+  .action-btn span:not(.el-icon) {
+    display: none;
+  }
+
+  .quick-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .account-chip__meta {
+    display: none;
+  }
+
+  /* 低频入口在窄屏收起，保证核心操作（挂单/取单/叫号/订单/结账）不被挤掉 */
+  .table-btn,
+  .yolo-btn,
+  .coupon-btn {
+    display: none !important;
   }
 }
 
@@ -615,7 +871,8 @@ onUnmounted(() => {
     padding: 4px;
   }
 
-  .account-meta {
+  .account-meta,
+  .account-caret {
     display: none;
   }
 }

@@ -1,5 +1,6 @@
 import axios, { type AxiosRequestConfig, type AxiosError } from 'axios'
 import router from '../router'
+import { clearCapabilities } from '../composables/usePermission'
 
 const request = axios.create({
   baseURL: '/api',
@@ -75,6 +76,8 @@ async function tryRefreshToken(): Promise<string | null> {
 function clearAuthAndRedirect() {
   localStorage.removeItem('pos-token')
   localStorage.removeItem('pos-user')
+  // 权限只在内存：会话失效时一并清空，避免旧快照继续渲染按钮
+  clearCapabilities()
   const currentPath = router.currentRoute.value.path
   if (currentPath !== '/login') {
     router.push('/login')
@@ -144,9 +147,19 @@ request.interceptors.response.use(
     }
 
     // AxiosError.response.data 类型为 unknown，需类型断言访问 message
-    const errData = error.response?.data as { message?: string } | undefined
+    const errData = error.response?.data as { message?: string; code?: number | string } | undefined
+    const httpStatus = error.response?.status
+    // 403 是"越权"信号：调用方需要据此隐藏入口/提示，因此把 status 一并抛出去
+    if (httpStatus === 403) {
+      return Promise.reject({
+        message: errData?.message || '无权限执行该操作（403）',
+        status: 403,
+        code: errData?.code ?? 403,
+        originalError: error
+      })
+    }
     const message = errData?.message || error.message || '请求失败'
-    return Promise.reject({ message, originalError: error })
+    return Promise.reject({ message, status: httpStatus, originalError: error })
   }
 )
 

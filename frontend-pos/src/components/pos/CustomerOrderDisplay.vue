@@ -76,7 +76,7 @@
 
         <div class="promo-section">
           <div class="promo-item" v-for="(promo, index) in promoList" :key="index">
-            <div class="promo-icon">{{ promo.icon }}</div>
+            <div class="promo-icon"><el-icon><component :is="promo.icon" /></el-icon></div>
             <span>{{ promo.text }}</span>
           </div>
         </div>
@@ -96,6 +96,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { Present, Iphone, Star } from '@element-plus/icons-vue'
 import { useCustomerDisplayStore } from '@/stores/customer-display'
 
 const displayStore = useCustomerDisplayStore()
@@ -109,9 +110,9 @@ let cleanupStorageListener: (() => void) | null = null
 const latestCallNumber = ref<{ number: string } | null>(null)
 
 const promoList = [
-  { icon: '🎉', text: '新用户立减5元' },
-  { icon: '📱', text: '扫码关注享优惠' },
-  { icon: '⭐', text: '好评返现活动进行中' }
+  { icon: Present, text: '新用户立减5元' },
+  { icon: Iphone, text: '扫码关注享优惠' },
+  { icon: Star, text: '好评返现活动进行中' }
 ]
 
 const updateTime = (): void => {
@@ -147,7 +148,7 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%);
+  background: linear-gradient(135deg, #e3651c 0%, #ef7f3a 50%, #fb923c 100%);
   color: #ffffff;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -201,7 +202,7 @@ onUnmounted(() => {
   margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #f3f4f6;
 }
 [data-theme="dark"] .order-title-row { border-bottom-color: #374151; }
-.order-title-row h2 { margin: 0; font-size: 18px; font-weight: 700; color: #ea580c; }
+.order-title-row h2 { margin: 0; font-size: 18px; font-weight: 700; color: #e3651c; }
 .order-number { font-size: 28px; font-weight: 800; color: #111827; font-family: 'Courier New', monospace; letter-spacing: 2px; }
 [data-theme="dark"] .order-number { color: #f3f4f6; }
 
@@ -220,7 +221,7 @@ onUnmounted(() => {
 }
 .table-row:hover { background: #fafafa; }
 [data-theme="dark"] .table-row { border-bottom-color: #374151; }
-[data-theme="dark"] .table-row:hover { background: rgba(234, 88, 12, 0.08); }
+[data-theme="dark"] .table-row:hover { background: rgba(227, 101, 28, 0.08); }
 
 .item-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .col-qty { text-align: center; font-size: 14px; color: #6b7280; font-family: 'SF Mono', Monaco, monospace; }

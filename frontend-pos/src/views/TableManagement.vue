@@ -43,7 +43,7 @@
       </div>
 
       <div v-else-if="tables.length === 0" class="empty-container">
-        <div class="empty-icon">🪑</div>
+        <div class="empty-icon"><el-icon><Grid /></el-icon></div>
         <p>暂无桌台数据</p>
         <el-button type="primary" @click="showAddDialog">
           <el-icon><Plus /></el-icon>
@@ -743,7 +743,7 @@ onMounted(() => {
 .table-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: #ea580c;
+  border-color: #e3651c;
 }
 
 .card-top {
@@ -832,7 +832,7 @@ onMounted(() => {
 .qr-table-number {
   font-size: 32px;
   font-weight: 700;
-  color: #ea580c;
+  color: #e3651c;
   margin-bottom: 4px;
 }
 
@@ -902,7 +902,7 @@ onMounted(() => {
 .preview-number {
   font-size: 40px;
   font-weight: 700;
-  color: #ea580c;
+  color: #e3651c;
   margin-bottom: 8px;
 }
 
@@ -954,7 +954,7 @@ onMounted(() => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+  background: linear-gradient(135deg, #e3651c 0%, #ef7f3a 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -995,7 +995,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   padding: 12px 0;
-  color: #ea580c;
+  color: #e3651c;
   font-size: 24px;
 }
 

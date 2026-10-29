@@ -27,7 +27,7 @@
           @click="handleStartCooking"
           :disabled="loading"
         >
-          <span class="btn-icon">🍳</span>
+          <span class="btn-icon"><el-icon><Dish /></el-icon></span>
           <span class="btn-text">开始制作</span>
         </button>
 
@@ -36,7 +36,7 @@
           @click="handleMarkComplete"
           :disabled="loading"
         >
-          <span class="btn-icon">✅</span>
+          <span class="btn-icon"><el-icon><Select /></el-icon></span>
           <span class="btn-text">标记完成</span>
         </button>
 
@@ -45,7 +45,7 @@
           @click="handleResetSelection"
           :disabled="loading"
         >
-          <span class="btn-icon">🔄</span>
+          <span class="btn-icon"><el-icon><Refresh /></el-icon></span>
           <span class="btn-text">重置选择</span>
         </button>
       </div>
@@ -82,6 +82,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Dish, Select, Refresh } from '@element-plus/icons-vue'
 import { useOperationFeedback } from '@/composables/kitchen/useOperationFeedback'
 
 /**
@@ -377,7 +378,7 @@ const handleQuickServeAll = (): void => {
 
 .btn-start:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 12px 35px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 12px 35px rgba(239, 127, 58, 0.4);
 }
 
 /* 标记完成按钮 - 绿色主题 */
@@ -464,7 +465,7 @@ const handleQuickServeAll = (): void => {
 }
 
 .btn-quick-serve:hover:not(:disabled) {
-  background: rgba(249, 115, 22, 0.1);
+  background: rgba(239, 127, 58, 0.1);
   border-style: solid;
 }
 

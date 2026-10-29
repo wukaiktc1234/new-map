@@ -9,7 +9,7 @@
   >
     <div class="stock-query-content">
       <div class="stock-warning-section">
-        <h4>⚠️ 低库存预警 (库存 &lt; 10)</h4>
+        <h4><el-icon><WarningFilled /></el-icon> 低库存预警 (库存 &lt; 10)</h4>
         <el-table
           :data="lowStockItems"
           size="small"
@@ -47,7 +47,7 @@
         </el-table>
 
         <div v-if="lowStockItems.length === 0" class="empty-stock">
-          <span>🎉 所有菜品库存充足！</span>
+          <span><el-icon><CircleCheckFilled /></el-icon> 所有菜品库存充足！</span>
         </div>
       </div>
     </div>
@@ -58,6 +58,7 @@
 </template>
 
 <script setup lang="ts">
+import { WarningFilled, CircleCheckFilled } from '@element-plus/icons-vue'
 interface LowStockItem {
   name: string
   stock: number

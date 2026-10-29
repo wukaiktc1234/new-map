@@ -15,14 +15,42 @@
       </div>
     </div>
 
-    <!-- 加载失败提示（带重试按钮） -->
-    <div v-if="loadError && !loading" class="load-error">
-      <el-icon class="error-icon"><WarningFilled /></el-icon>
-      <div class="error-text">{{ loadError }}</div>
-      <el-button type="primary" size="small" round @click="$emit('retry')">
-        <el-icon class="retry-icon"><Refresh /></el-icon>
-        <span>重试</span>
-      </el-button>
+    <!-- 加载失败 / 无权限：给"空状态插画 + 原因 + 下一步"，而不是一行红字 -->
+    <div v-if="loadError && !loading" class="load-error" :class="{ 'is-forbidden': errorStatus === 403 }">
+      <div class="load-error__art" aria-hidden="true">
+        <!-- 403：锁；其它：断线 -->
+        <svg v-if="errorStatus === 403" viewBox="0 0 120 120" fill="none">
+          <rect x="26" y="52" width="68" height="50" rx="10" stroke="currentColor" stroke-width="3" />
+          <path d="M42 52V38a18 18 0 0 1 36 0v14" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          <circle cx="60" cy="74" r="6" fill="currentColor" />
+          <path d="M60 80v8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+        </svg>
+        <svg v-else viewBox="0 0 120 120" fill="none">
+          <path d="M28 74a22 22 0 0 1 6-43 26 26 0 0 1 50 8 18 18 0 0 1 4 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          <path d="M40 92l8-8m24 8l-8-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+        </svg>
+      </div>
+
+      <div class="load-error__title">
+        {{ errorStatus === 403 ? '账号暂无商品查看权限' : '菜单加载失败' }}
+      </div>
+      <div class="load-error__desc">
+        <template v-if="errorStatus === 403">
+          当前登录账号缺少商品查看权限（403）。请联系店长开通后重试；
+          也可以先让店长在后台确认该角色的「商品 / 分类 / 套餐」查看权限。
+        </template>
+        <template v-else>
+          {{ loadError }}
+        </template>
+      </div>
+
+      <div class="load-error__actions">
+        <el-button type="primary" round @click="$emit('retry')">
+          <el-icon class="retry-icon"><Refresh /></el-icon>
+          <span>重新加载</span>
+        </el-button>
+        <span class="load-error__hint" v-if="errorStatus === 403">权限变更后无需重启，点一次重新加载即可</span>
+      </div>
     </div>
 
     <!-- 菜品网格 -->
@@ -34,24 +62,26 @@
         :class="{
           'combo-item': item.dishType === 'combo',
           'hot-item': item.isHot,
-          'out-of-stock': item.stock === 0
+          'out-of-stock': isUnavailable(item)
         }"
-        @click="item.stock > 0 && $emit('addToCart', item)"
+        :aria-disabled="isUnavailable(item)"
+        @click="handleAdd(item)"
       >
         <!-- 套餐标签 -->
         <span v-if="item.dishType === 'combo'" class="dish-badge">套餐</span>
         <!-- 热销标签 -->
         <span v-else-if="item.isHot" class="hot-badge">热销</span>
-        <!-- 库存标签 -->
+        <!-- 库存标签：只在低库存(<10)或售罄时出现，避免每个卡片都挂一个"库存99" -->
         <span
+          v-if="item.stock < 10"
           class="stock-badge"
           :class="getStockClass(item.stock)"
         >
-          {{ item.stock > 0 ? `库存${item.stock}` : '售罄' }}
+          {{ item.stock > 0 ? `仅剩 ${item.stock}` : '售罄' }}
         </span>
         <!-- 售罄遮罩 -->
-        <div v-if="item.stock === 0" class="sold-out-overlay">
-          <span>暂不可选</span>
+        <div v-if="isUnavailable(item)" class="sold-out-overlay">
+          <span>{{ unavailableReason(item) }}</span>
         </div>
         <!-- 图片或图标 -->
         <div class="dish-visual">
@@ -122,7 +152,6 @@ import {
   Dish,
   ForkSpoon,
   PieChart,
-  WarningFilled,
   Refresh,
 } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
@@ -142,6 +171,12 @@ interface DishItem {
   imageUrl?: string
   categoryId?: string
   items?: Array<{ foodId: string; foodName: string; quantity: number; price?: number }>
+  /** 商品状态：后端可能给 status / saleStatus / soldOut / available，这里统一兜底 */
+  status?: string | number
+  saleStatus?: string | number
+  soldOut?: boolean
+  available?: boolean
+  onSale?: boolean
 }
 
 interface ComboItem extends DishItem {
@@ -155,6 +190,8 @@ interface Props {
   loading: boolean
   /** 加载错误信息（非空时显示错误提示与重试按钮） */
   loadError?: string | null
+  /** 错误状态码：403 走"无权限"空态，其余走"加载失败" */
+  errorStatus?: number | null
 }
 
 const props = defineProps<Props>()
@@ -181,6 +218,31 @@ const getStockClass = (stock: number): string => {
   if (stock === 0) return 'out-of-stock'
   if (stock < 10) return 'low-stock'
   return ''
+}
+
+/**
+ * 不可售判定（前端防呆，后端仍会拦）。
+ * 覆盖字段差异：stock<=0 / soldOut / available=false / onSale=false /
+ * status 或 saleStatus 命中售罄、下架、停售等取值（含数字 0）。
+ */
+const UNAVAILABLE_STATUS = ['0', 'soldout', 'sold_out', 'out_of_stock', 'off', 'offline', 'stopsale', 'stop', 'disabled', 'unavailable']
+
+const unavailableReason = (item: DishItem): string => {
+  if (item.soldOut === true) return '已售罄'
+  if (item.available === false || item.onSale === false) return '已下架'
+  if (typeof item.stock === 'number' && item.stock <= 0) return '已售罄'
+  const rawStatus = item.saleStatus ?? item.status
+  if (rawStatus !== undefined && rawStatus !== null && rawStatus !== '') {
+    if (UNAVAILABLE_STATUS.includes(String(rawStatus).toLowerCase())) return '已下架'
+  }
+  return ''
+}
+
+const isUnavailable = (item: DishItem): boolean => unavailableReason(item) !== ''
+
+const handleAdd = (item: DishItem): void => {
+  if (isUnavailable(item)) return   // 按钮已置灰，这里再兜一层，防止键盘/误触
+  emit('addToCart', item)
 }
 
 // 食物图标组件映射：根据菜品名称关键字匹配对应图标，未匹配则使用 Food 默认图标
@@ -266,61 +328,105 @@ const getDishIcon = (item: DishItem): Component => {
   }
 }
 
+/* 分类胶囊：两端全圆角（border-radius: 9999px），流线更顺 */
 .category-item {
-  padding: 8px 20px;
-  border-radius: 20px;
+  padding: 9px 20px;
+  border-radius: var(--pos-radius-full, 9999px);
   cursor: pointer;
   white-space: nowrap;
   font-size: 14px;
   font-weight: 500;
   color: var(--pos-text-secondary, #606266);
   background-color: transparent;
-  transition: all 0.25s ease;
+  transition: background-color var(--pos-transition-fast, 150ms ease),
+    color var(--pos-transition-fast, 150ms ease),
+    transform var(--pos-transition-fast, 150ms ease);
   user-select: none;
 
   &:hover {
-    color: var(--pos-primary, #ea580c);
-    background-color: var(--pos-primary-light, rgba(234, 88, 12, 0.08));
+    color: var(--pos-primary, #e3651c);
+    background-color: var(--pos-primary-soft, #fdf1e7);
+  }
+
+  &:active {
+    transform: scale(0.97);
   }
 
   &.active {
-    background-color: var(--pos-primary, #ea580c);
-    color: var(--pos-text-inverse, #ffffff);
-    box-shadow: 0 2px 8px var(--pos-shadow-sm, rgba(234, 88, 12, 0.35));
+    background-color: var(--pos-primary, #e3651c);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(227, 101, 28, 0.28);
 
     &:hover {
-      background-color: var(--pos-primary, #ea580c);
+      background-color: var(--pos-primary, #e3651c);
       color: var(--pos-text-inverse, #ffffff);
     }
   }
 }
 
-/* 加载失败提示 */
+/* ==================== 加载失败 / 无权限空态 ====================
+ * 旧版只有一行红字 + 小按钮，收银员看到会以为"系统坏了"。
+ * 现在用「插画 + 标题 + 原因 + 下一步」的空状态结构：
+ * 403 用锁形插画 + 中性色（这是权限问题，不是故障），其它错误保留断线插画 + 危险色。
+ */
 .load-error {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 40px 16px;
+  gap: var(--pos-spacing-xs, 8px);
+  padding: 40px 24px;
+  text-align: center;
   color: var(--pos-text-secondary, #606266);
 
-  .error-icon {
-    font-size: 48px;
-    color: var(--pos-danger, #f56c6c);
-    opacity: 0.7;
+  .load-error__art {
+    width: 96px;
+    height: 96px;
+    margin-bottom: var(--pos-spacing-xs, 8px);
+    color: var(--pos-danger, #c94b4b);
+    opacity: 0.85;
   }
 
-  .error-text {
-    font-size: 14px;
-    text-align: center;
-    max-width: 360px;
-    line-height: 1.6;
+  .load-error__art svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .load-error__title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--pos-text-primary, #1e293b);
+  }
+
+  .load-error__desc {
+    max-width: 420px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--pos-text-muted, #94a3b8);
+  }
+
+  .load-error__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--pos-spacing-xs, 8px);
+    margin-top: var(--pos-spacing-xs, 8px);
+  }
+
+  .load-error__hint {
+    font-size: 12px;
+    color: var(--pos-text-muted, #94a3b8);
   }
 
   .retry-icon {
     margin-right: 4px;
+  }
+
+  /* 403 是"没权限"，不是"坏了"：换成中性/警示色，避免红色故障观感 */
+  &.is-forbidden {
+    .load-error__art {
+      color: var(--pos-warning, #c2861f);
+    }
   }
 }
 
@@ -329,9 +435,10 @@ const getDishIcon = (item: DishItem): Component => {
   flex: 1;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
-  padding: 10px;
+  /* 自适应列数：随容器宽度自动增减，缩放/窄屏都不会挤成 11px 小字 */
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: var(--pos-spacing-xs, 8px);
+  padding: var(--pos-spacing-sm, 16px);
   align-content: start;
   scrollbar-width: thin;
 
@@ -374,19 +481,25 @@ const getDishIcon = (item: DishItem): Component => {
 .dish-item {
   position: relative;
   overflow: hidden;
-  background-color: var(--pos-bg-secondary, #f5f7fa);
-  border-radius: 8px;
-  padding: 6px;
+  background-color: var(--pos-bg-primary, #ffffff);
+  border: 1px solid var(--pos-border-light, #f1f5f9);
+  border-radius: var(--pos-radius-md, 12px);
+  padding: 8px;
+  box-shadow: var(--pos-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.05));
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--pos-transition-fast, 150ms ease),
+    transform var(--pos-transition-fast, 150ms ease),
+    box-shadow var(--pos-transition-fast, 150ms ease);
 
   &:hover {
     transform: translateY(-2px);
     box-shadow: var(--pos-shadow-md, 0 6px 16px rgba(0, 0, 0, 0.1));
+    background-color: var(--pos-primary-soft, #fdf1e7);
+    border-color: var(--pos-primary, #e3651c);
   }
 
   &:active {
-    transform: translateY(0);
+    transform: scale(0.98);
   }
 
   &.out-of-stock {
@@ -395,49 +508,55 @@ const getDishIcon = (item: DishItem): Component => {
   }
 }
 
-/* 套餐/热销标签 */
+/* 套餐/热销标签：软底 + 深字，比纯色实心块更耐看 */
 .dish-badge,
 .hot-badge {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 6px;
+  left: 6px;
   z-index: 2;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: var(--pos-radius-xs, 6px);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .dish-badge {
-  background-color: var(--pos-primary, #ea580c);
-  color: var(--pos-text-inverse, #ffffff);
+  background-color: var(--pos-primary-soft, #fbf1ea);
+  color: var(--pos-primary-dark, #a94f1f);
+  box-shadow: inset 0 0 0 1px rgba(201, 98, 42, 0.2);
 }
 
 .hot-badge {
-  background-color: var(--pos-danger, #ef4444);
-  color: var(--pos-text-inverse, #ffffff);
+  background-color: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.18);
 }
 
-/* 库存标签 */
+/* 库存标签：只在低库存/售罄时出现，作为"预警"而非"常态装饰" */
 .stock-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 6px;
+  right: 6px;
   z-index: 2;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 500;
-  background-color: var(--pos-success, #10b981);
-  color: var(--pos-text-inverse, #ffffff);
+  padding: 2px 7px;
+  border-radius: var(--pos-radius-xs, 6px);
+  font-size: 10.5px;
+  font-weight: 600;
+  background-color: var(--pos-warning-soft, #fbf5e8);
+  color: #8a6114;
+  box-shadow: inset 0 0 0 1px rgba(194, 134, 31, 0.22);
 
   &.low-stock {
-    background-color: var(--pos-warning, #f59e0b);
+    background-color: var(--pos-warning-soft, #fbf5e8);
+    color: #8a6114;
   }
 
   &.out-of-stock {
-    background-color: var(--pos-danger, #ef4444);
+    background-color: var(--pos-danger-soft, #fbf0f0);
+    color: var(--pos-danger, #c94b4b);
+    box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.2);
   }
 }
 
@@ -449,15 +568,21 @@ const getDishIcon = (item: DishItem): Component => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--pos-glass-bg, rgba(0, 0, 0, 0.5));
-  backdrop-filter: var(--pos-glass-blur, blur(2px));
-  border-radius: 10px;
+  /* 固定用半透明黑：深浅两种主题下都能看清白色胶囊文案，
+   * 之前用 --pos-text-inverse 在深色下变成深字叠深底 → 整张卡片看起来"空白" */
+  background-color: rgba(12, 12, 14, 0.55);
+  backdrop-filter: blur(2px);
+  border-radius: var(--pos-radius-md, 12px);
 
   span {
-    color: var(--pos-text-inverse, #ffffff);
-    font-size: 13px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 3px 10px;
+    border-radius: var(--pos-radius-full, 9999px);
+    font-size: 12.5px;
     font-weight: 600;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
   }
 }
 
@@ -482,7 +607,7 @@ const getDishIcon = (item: DishItem): Component => {
 
 .dish-icon {
   font-size: 26px;
-  color: var(--pos-primary, #ea580c);
+  color: var(--pos-primary, #e3651c);
 }
 
 /* 菜品内容 */
@@ -491,7 +616,7 @@ const getDishIcon = (item: DishItem): Component => {
 }
 
 .dish-name {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--pos-text-primary, #303133);
   margin-bottom: 2px;
@@ -508,15 +633,17 @@ const getDishIcon = (item: DishItem): Component => {
 }
 
 .currency {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--pos-text-muted, #909399);
   font-weight: 500;
 }
 
 .amount {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  color: var(--pos-primary, #ea580c);
+  color: var(--pos-primary, #c9622a);
+  font-family: var(--pos-font-number, 'DIN Alternate', 'Roboto', sans-serif);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 骨架屏 */

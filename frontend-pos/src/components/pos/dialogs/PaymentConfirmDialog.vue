@@ -22,24 +22,31 @@
           <el-input-number
             ref="cashInputRef"
             v-model="cashReceived"
-            :min="totalAmount"
+            :min="0"
             :precision="2"
             :step="10"
             size="large"
             style="width: 200px"
+            data-test="cash-received-input"
             @keyup.enter="handleConfirm"
           />
         </div>
-        <div class="info-row change-row" v-if="selectedPaymentMethod === 'cash' && cashReceived >= totalAmount">
+        <!-- 实收 >= 应收 才显示找零 -->
+        <div class="info-row change-row" v-if="selectedPaymentMethod === 'cash' && !insufficientCash">
           <span class="label">找零</span>
-          <span class="value change">¥{{ (cashReceived - totalAmount).toFixed(2) }}</span>
+          <span class="value change">¥{{ Math.max(0, cashReceived - totalAmount).toFixed(2) }}</span>
+        </div>
+        <!-- 实收不足：不再自动把数字补成应收金额（旧 BUG：改价静默补足仍按满额结算） -->
+        <div class="info-row short-row" v-if="insufficientCash" data-test="cash-short">
+          <span class="label">实收不足</span>
+          <span class="value short">还差 ¥{{ (totalAmount - cashReceived).toFixed(2) }}</span>
         </div>
       </div>
 
       <div v-if="selectedPaymentMethod !== 'cash'" class="scan-section">
         <el-divider content-position="left">扫码支付</el-divider>
         <div class="scan-instruction">
-          <div class="scan-icon">📱</div>
+          <div class="scan-icon"><el-icon><Iphone /></el-icon></div>
           <div class="scan-text">
             <h3>请顾客出示付款码</h3>
             <p>使用扫码枪扫描顾客手机上的付款码</p>
@@ -84,7 +91,8 @@
         @click="handleConfirm"
         :loading="paying"
         size="large"
-        :disabled="selectedPaymentMethod !== 'cash' && !paymentCode"
+        data-test="payment-confirm-submit"
+        :disabled="(selectedPaymentMethod !== 'cash' && !paymentCode) || insufficientCash"
       >
         确认支付
       </el-button>
@@ -93,13 +101,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 
 interface Props {
   modelValue: boolean
   totalAmount: number
   selectedPaymentMethod: string
+  /** 支付请求进行中（父层 usePayment.paying），用于按钮 loading 与重复提交守卫 */
+  paying?: boolean
 }
 
 interface Emits {
@@ -112,13 +123,20 @@ const emit = defineEmits<Emits>()
 
 const cashReceived = ref<number>(0)
 const paymentCode = ref<string>('')
-const paying = ref<boolean>(false)
+/**
+ * 一次性提交守卫：
+ * 现金输入框的 @keyup.enter 与底部「确认支付」按钮可能是同一次按键的两条路径，
+ * 这里在 emit 前同步置位，避免同一个回车被上抛两次（重复下单）。
+ * 弹窗重新打开时复位。
+ */
+const submitted = ref(false)
 const cashInputRef = ref()
 const paymentCodeInputRef = ref()
 
 watch(
   () => props.modelValue,
   async (newVal) => {
+    submitted.value = false
     if (newVal) {
       if (props.selectedPaymentMethod === 'cash') {
         cashReceived.value = Math.ceil(props.totalAmount / 10) * 10
@@ -156,7 +174,23 @@ const getPaymentMethodText = (method: string): string => {
   return map[method] || method
 }
 
+/**
+ * 实收不足：现金支付时「收取现金 < 应收」。
+ * 旧实现把 el-input-number 的 :min 设成应收金额，用户输 65（应收 67）后
+ * 一失焦/回车就被组件自动夹回 67，导致"少收钱仍按满额结算"。
+ * 现在不再夹取，改为显式拦截：不显示找零、给出差额、禁用确认。
+ */
+const insufficientCash = computed(
+  () => props.selectedPaymentMethod === 'cash' && cashReceived.value < props.totalAmount
+)
+
 const handleConfirm = () => {
+  if (submitted.value || props.paying) return
+  if (insufficientCash.value) {
+    ElMessage.warning(`实收现金不足，还差 ¥${(props.totalAmount - cashReceived.value).toFixed(2)}`)
+    return
+  }
+  submitted.value = true
   emit('confirm', {
     method: props.selectedPaymentMethod,
     ...(props.selectedPaymentMethod === 'cash' ? { cashReceived: cashReceived.value } : { paymentCode: paymentCode.value })
@@ -217,6 +251,19 @@ const handleConfirm = () => {
   font-size: 20px;
   font-weight: 700;
   color: var(--pos-success);
+}
+
+.info-row.short-row {
+  padding: 12px 16px;
+  border-radius: var(--pos-radius-md, 12px);
+  background: var(--pos-danger-soft, #fbf0f0);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.2);
+}
+
+.info-row .value.short {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pos-danger, #c94b4b);
 }
 
 .scan-section {

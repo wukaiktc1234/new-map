@@ -17,15 +17,15 @@
         <p class="brand-desc">Food Traceability POS</p>
         <div class="brand-features">
           <div class="feature-item">
-            <span class="feature-icon">⚡</span>
+            <span class="feature-icon"><el-icon><Lightning /></el-icon></span>
             <span>快速收银</span>
           </div>
           <div class="feature-item">
-            <span class="feature-icon">🔗</span>
+            <span class="feature-icon"><el-icon><Link /></el-icon></span>
             <span>全程溯源</span>
           </div>
           <div class="feature-item">
-            <span class="feature-icon">📊</span>
+            <span class="feature-icon"><el-icon><DataLine /></el-icon></span>
             <span>智能分析</span>
           </div>
         </div>
@@ -104,6 +104,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import request from '@/api/request'
+import { clearShiftMark } from '@/utils/shiftSession'
+import { setCapabilities } from '@/composables/usePermission'
 
 interface LoginForm {
   employeeId: string
@@ -180,6 +182,8 @@ async function handleLogin(): Promise<void> {
   localStorage.removeItem('pos-token')
   localStorage.removeItem('pos-user')
   localStorage.removeItem('pos-terminal')
+  // 换人登录必须是新的资金责任起点：清掉上一位收银员的开班标记，重新弹备用金
+  clearShiftMark()
 
   try {
     // 终端号：登录后交班/班次接口需要，登录时即落盘
@@ -197,6 +201,12 @@ async function handleLogin(): Promise<void> {
       localStorage.setItem('pos-user', JSON.stringify(response.userInfo))
       // 后端 userInfo.terminalId 与请求载荷同值，作为兜底
       localStorage.setItem('pos-terminal', response.userInfo?.terminalId || terminalId)
+      // 权限唯一来源：登录响应的 userInfo.permissions（写内存，不落 localStorage）
+      // 后端 PosAuthServiceImpl.login 已回显 DB 授权结果；缺字段视为无权限（fail-closed）
+      setCapabilities(
+        response.userInfo?.permissions ?? response.userInfo?.perms ?? response.userInfo?.authorities,
+        response.userInfo?.roles ?? response.userInfo?.roleName,
+      )
       ElMessage.success('登录成功')
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/')
@@ -276,7 +286,7 @@ onUnmounted(() => {
   height: 400px;
   right: -120px;
   top: -80px;
-  background: #ea580c;
+  background: #e3651c;
   filter: blur(60px);
 }
 
@@ -285,7 +295,7 @@ onUnmounted(() => {
   height: 300px;
   left: -60px;
   bottom: -40px;
-  background: #f97316;
+  background: #ef7f3a;
   filter: blur(50px);
 }
 
@@ -315,12 +325,12 @@ onUnmounted(() => {
   width: 72px;
   height: 72px;
   border-radius: 18px;
-  background: linear-gradient(135deg, #ea580c, #f97316);
+  background: linear-gradient(135deg, #e3651c, #ef7f3a);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 24px;
-  box-shadow: 0 8px 32px rgba(234, 88, 12, 0.35);
+  box-shadow: 0 8px 32px rgba(227, 101, 28, 0.35);
 }
 
 .brand-logo svg {
@@ -365,8 +375,8 @@ onUnmounted(() => {
 }
 
 .feature-item:hover {
-  background: rgba(234, 88, 12, 0.15);
-  border-color: rgba(234, 88, 12, 0.25);
+  background: rgba(227, 101, 28, 0.15);
+  border-color: rgba(227, 101, 28, 0.25);
   color: #ffffff;
 }
 
@@ -427,7 +437,7 @@ onUnmounted(() => {
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #ea580c inset, 0 0 0 3px rgba(234, 88, 12, 0.1);
+  box-shadow: 0 0 0 1px #e3651c inset, 0 0 0 3px rgba(227, 101, 28, 0.1);
 }
 
 .login-form :deep(.el-form-item) {
@@ -447,15 +457,15 @@ onUnmounted(() => {
   border-radius: 10px;
   letter-spacing: 3px;
   transition: all 0.25s ease;
-  background: linear-gradient(135deg, #ea580c, #f97316);
+  background: linear-gradient(135deg, #e3651c, #ef7f3a);
   border: none;
-  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.3);
+  box-shadow: 0 4px 14px rgba(227, 101, 28, 0.3);
   margin-top: 4px;
 }
 
 .login-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(234, 88, 12, 0.4);
+  box-shadow: 0 6px 20px rgba(227, 101, 28, 0.4);
 }
 
 .login-btn:active:not(:disabled) {

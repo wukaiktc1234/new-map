@@ -57,11 +57,9 @@ function getUserPermissions(): string[] {
  * 注意：不再从localStorage读取权限，防止权限篡改攻击
  */
 function getFallbackPermissions(): string[] {
-  if (import.meta.env.DEV) {
-    logger.warnMessage('[v-permission] 未检测到权限数据，已启用开发模式降级（超级管理员）')
-    return ['*']
-  }
-  logger.warnMessage('[v-permission] 未检测到权限数据，生产环境不启用降级，所有受保护元素将隐藏')
+  // 【安全】默认拒绝：任何环境都不再把「取不到权限」降级成超级管理员。
+  // 取不到 → 返回空数组 → 受保护元素隐藏（fail-closed），只留一条告警日志。
+  logger.warnMessage('[v-permission] 未检测到权限数据，按默认拒绝处理（受保护元素将隐藏）')
   return []
 }
 

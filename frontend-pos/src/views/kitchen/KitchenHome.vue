@@ -478,7 +478,7 @@ onUnmounted(() => {
 .logo-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  background: linear-gradient(135deg, #ef7f3a 0%, #e3651c 100%);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -606,7 +606,7 @@ onUnmounted(() => {
 }
 
 .making-column .column-title {
-  color: #ea580c;
+  color: #e3651c;
 }
 
 .completed-column .column-title {
@@ -709,7 +709,7 @@ onUnmounted(() => {
 }
 
 .total-orders .stat-value {
-  color: #ea580c;
+  color: #e3651c;
 }
 
 .completion-rate .stat-value {
@@ -725,7 +725,7 @@ onUnmounted(() => {
 }
 
 .making-count .stat-value {
-  color: #f97316;
+  color: #ef7f3a;
 }
 
 .completed-count .stat-value {

@@ -3,34 +3,48 @@
     :model-value="modelValue"
     @update:model-value="emit('update:modelValue', $event)"
     title="订单查询"
-    width="980px"
+    width="1120px"
     class="order-query-dialog"
     :lock-scroll="false"
+    :append-to-body="true"
   >
     <div class="order-query-content">
       <div class="query-filter">
+        <!-- readonly 会让输入框完全不可点、日历面板永不弹出（历史 BUG），这里去掉 -->
         <el-date-picker
           v-model="queryDateRange"
           type="daterange"
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          style="width: 300px"
-          readonly
-          :teleported="false"
+          class="query-date"
+          data-test="order-query-date"
         />
-        <el-input v-model="queryKeyword" placeholder="输入订单号/叫号号/手机号搜索" style="width: 250px" clearable />
-        <el-button type="primary" @click="queryOrders">查询</el-button>
+        <el-input
+          v-model="queryKeyword"
+          placeholder="输入订单号 / 叫号号 / 手机号"
+          class="query-keyword"
+          clearable
+          @keyup.enter="queryOrders"
+        />
+        <el-button type="primary" class="query-submit" data-test="order-query-submit" @click="queryOrders">
+          查询
+        </el-button>
       </div>
       <div class="order-list">
-        <el-table :data="orderList" style="width: 100%">
-          <el-table-column prop="callNumber" label="叫号" width="90" align="center">
+        <el-table
+          :data="orderList"
+          style="width: 100%"
+          height="100%"
+          data-test="order-query-table"
+        >
+          <el-table-column prop="callNumber" label="叫号" width="76" align="center">
             <template #default="{ row }">
               <span class="call-number-cell">{{ row.callNumber || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="orderNumber" label="订单号" min-width="140" />
-          <el-table-column prop="createTime" label="下单时间" min-width="160">
+          <el-table-column prop="orderNumber" label="订单号" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="createTime" label="下单时间" min-width="150">
             <template #default="{ row }">
               {{ formatDateTime(row.createTime, '-') }}
             </template>
@@ -42,7 +56,7 @@
             </template>
           </el-table-column>
           <!-- 支付方式：后端已给中文（OrderQueryDTO.paymentMethod），不前端翻译；兼容 paymentMethodName -->
-          <el-table-column prop="paymentMethod" label="支付方式" width="100" align="center">
+          <el-table-column prop="paymentMethod" label="支付方式" min-width="110" align="center" show-overflow-tooltip>
             <template #default="{ row }">
               <span class="payment-method-cell">{{ row.paymentMethod || row.paymentMethodName || '-' }}</span>
             </template>
@@ -57,14 +71,17 @@
               <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="140" fixed="right">
+          <!-- 去掉 fixed="right"：固定列会强制出现横向滚动条并截断中间列 -->
+          <el-table-column label="操作" width="120" align="center">
             <template #default="{ row }">
               <el-button type="primary" link size="small" @click="emit('viewDetail', row)">详情</el-button>
+              <!-- 退款需要 order:refund 权限：无权限时按钮不渲染，避免收银员点出 403 -->
               <el-button
-                v-if="canRefund(row)"
+                v-if="allowRefund && canRefund(row)"
                 type="danger"
                 link
                 size="small"
+                data-test="order-refund-btn"
                 @click="emit('refund', row)"
               >退款</el-button>
             </template>
@@ -80,6 +97,8 @@ import { ref, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { posApi } from '@/api/posApi'
 import { formatDate, formatDateTime } from '@/utils/format'
+import { getOrderStatus } from '@/utils/orderStatus'
+import { usePermission } from '@/composables/usePermission'
 import logger from '@/utils/logger'
 
 interface Props {
@@ -105,36 +124,22 @@ function canRefund(order: any): boolean {
 }
 
 
+const { canRefund: allowRefund, refreshCapabilities } = usePermission()
+
+// 打开弹窗时按当前登录信息重算一次权限（模块级快照可能是登录前初始化的）
+watch(() => props.modelValue, (visible) => { if (visible) refreshCapabilities() }, { immediate: true })
+
 const queryDateRange = ref<any[]>([])
 const queryKeyword = ref<string>('')
 const orderList = ref<any[]>([])
 const orderQueryTimer = ref<number | null>(null)
 
-const getStatusType = (status: string) => {
-  const map: Record<string, any> = {
-    pending: 'warning',
-    paid: 'success',
-    cancelled: 'danger',
-    making: 'primary',
-    completed: 'success',
-    served: 'success',
-    refunded: 'danger'
-  }
-  return map[status] || 'info'
-}
 
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    pending: '待制作',
-    paid: '已支付',
-    cancelled: '已取消',
-    making: '制作中',
-    completed: '制作完成',
-    served: '已出餐',
-    refunded: '已退款'
-  }
-  return map[status] || status
-}
+
+// 状态映射统一走 utils/orderStatus（数字规范码 + 文本同义词都认识）
+const getStatusType = (status: string) => getOrderStatus(status).tone
+
+const getStatusText = (status: string) => getOrderStatus(status).text
 
 const queryOrders = async () => {
   try {
@@ -250,10 +255,58 @@ onUnmounted(() => {
   color: var(--pos-text-primary);
 }
 
+/* ====== 顶部筛选行：宽度弹性分配，避免固定 px 把表格挤窄 ====== */
+.order-query-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pos-spacing-sm, 16px);
+}
+
+.query-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--pos-spacing-xs, 8px);
+  flex-wrap: wrap;
+}
+
+.query-date {
+  flex: 0 1 300px;
+  min-width: 240px;
+}
+
+.query-keyword {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+
+.query-submit {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 var(--pos-spacing-md, 24px);
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  background: var(--pos-primary, #e3651c) !important;
+  border-color: var(--pos-primary, #e3651c) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.query-submit:hover {
+  background: var(--pos-primary-dark, #c25515) !important;
+  border-color: var(--pos-primary-dark, #c25515) !important;
+}
+
+.order-list {
+  flex: 1;
+  min-height: 0;
+}
+
 .order-query-dialog {
   :deep(.el-dialog) {
-    background-color: var(--pos-bg-secondary) !important;
+    background-color: var(--pos-bg-primary) !important;
+    border-radius: var(--pos-radius-md, 12px) !important;
   }
+
+  /* 主体布局（固定不滚、表格内滚）统一在全局 dialog.css 的 .order-query-dialog 段 */
 
   :deep(.el-dialog__header) {
     border-bottom: 1px solid var(--pos-border-light);
@@ -298,13 +351,19 @@ onUnmounted(() => {
     color: var(--pos-text-primary) !important;
   }
 
-  :deep(.el-table th) {
-    background-color: var(--pos-bg-secondary);
+  :deep(.el-table th.el-table__cell) {
+    background-color: var(--pos-bg-tertiary) !important;
+    color: var(--pos-text-secondary) !important;
+    font-weight: 600 !important;
+  }
+
+  :deep(.el-table td.el-table__cell) {
     color: var(--pos-text-primary) !important;
   }
 
-  :deep(.el-table td) {
-    color: var(--pos-text-secondary) !important;
+  /* 不用固定列，横向滚动条只在真的放不下时才出现 */
+  :deep(.el-table__body-wrapper) {
+    overflow-x: auto;
   }
 }
 

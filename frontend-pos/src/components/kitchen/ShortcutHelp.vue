@@ -10,7 +10,7 @@
           <!-- 面板头部 -->
           <div class="panel-header">
             <h3 class="panel-title">
-              <span class="title-icon">⌨️</span>
+              <span class="title-icon"><el-icon><Operation /></el-icon></span>
               键盘快捷键
             </h3>
             <button class="close-btn" @click="handleClose" aria-label="关闭">
@@ -88,7 +88,7 @@
           <!-- 底部提示 -->
           <div class="panel-footer">
             <p class="footer-hint">
-              💡 按 <kbd class="inline-key">?</kbd> 随时显示/隐藏此面板
+              <el-icon class="inline-tip-icon"><InfoFilled /></el-icon> 按 <kbd class="inline-key">?</kbd> 随时显示/隐藏此面板
             </p>
           </div>
         </div>
@@ -99,6 +99,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Operation, InfoFilled } from '@element-plus/icons-vue'
 import type { ShortcutConfig } from '@/composables/kitchen/useKeyboardShortcuts'
 
 /**
@@ -222,7 +223,7 @@ const systemShortcuts = computed(() => {
     box-shadow: var(--pos-shadow-2xl);
   }
   50% {
-    box-shadow: 0 0 40px rgba(249, 115, 22, 0.4);
+    box-shadow: 0 0 40px rgba(239, 127, 58, 0.4);
   }
 }
 
@@ -334,7 +335,7 @@ const systemShortcuts = computed(() => {
 }
 
 .shortcut-item.is-highlighted {
-  background: rgba(249, 115, 22, 0.1);
+  background: rgba(239, 127, 58, 0.1);
   transform: translateX(4px);
 }
 
@@ -362,7 +363,7 @@ const systemShortcuts = computed(() => {
   background: var(--pos-primary-gradient);
   border-color: var(--pos-primary-dark);
   color: white;
-  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 4px 12px rgba(239, 127, 58, 0.4);
   transform: scale(1.05);
 }
 

@@ -10,6 +10,11 @@ import './styles/variables.css'
 import './styles/index.css'
 import './styles/pos/variables.css'
 import './styles/pos/base.css'
+import './styles/pos/components/dialog.css'
+import { initPosPreferences } from './composables/usePosPreferences'
+
+// 收银端个人偏好（界面缩放等）在挂载前就作用到 DOM，避免首屏跳动
+initPosPreferences()
 
 // 检测是否为触摸设备
 const isTouchDevice = () => {

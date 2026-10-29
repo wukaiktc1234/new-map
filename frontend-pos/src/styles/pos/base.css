@@ -40,6 +40,329 @@
   scrollbar-color: var(--pos-border-color) transparent;
 }
 
+/* ==================== Element Plus 主题对齐 POS 品牌色 ====================
+ * 默认蓝色主色（#409eff）在暖橙色收银界面里非常突兀，
+ * 这里把 Element Plus 的主色令牌整体替换成品牌橙，一次覆盖按钮/开关/单选框/链接。
+ */
+:root {
+  --el-color-primary: #e3651c;
+  --el-color-primary-light-3: #ef7f3a;
+  --el-color-primary-light-5: #f59a5f;
+  --el-color-primary-light-7: #f8c3a3;
+  --el-color-primary-light-8: #fbd7c1;
+  --el-color-primary-light-9: #fdebe0;
+  --el-color-primary-dark-2: #c25515;
+  --el-border-radius-base: 8px;
+}
+
+[data-theme='dark'] {
+  --el-color-primary: #ef7f3a;
+  --el-color-primary-light-3: #f59a5f;
+  --el-color-primary-light-5: #f7ad7c;
+  --el-color-primary-light-7: #4e3320;
+  --el-color-primary-light-8: #3b2717;
+  --el-color-primary-light-9: #2c1e13;
+  --el-color-primary-dark-2: #e3651c;
+}
+
+/* ==================== 深色模式：禁纯白/白描边 ====================
+ * 抽屉、弹窗、消息框、下拉层在暗色下一律用深灰底 + 柔和文字，
+ * 否则会出现"深色页面里嵌一块白板"的黑客后台既视感。
+ */
+[data-theme='dark'] .el-drawer,
+[data-theme='dark'] .el-dialog,
+[data-theme='dark'] .el-message-box,
+[data-theme='dark'] .el-select-dropdown,
+[data-theme='dark'] .el-popper {
+  background-color: var(--pos-bg-secondary) !important;
+  color: var(--pos-text-primary) !important;
+  border-color: var(--pos-border-color) !important;
+}
+
+[data-theme='dark'] .el-drawer__header {
+  margin-bottom: 0 !important;
+  padding: 18px 20px !important;
+  color: var(--pos-text-primary) !important;
+  border-bottom: 1px solid var(--pos-border-light) !important;
+}
+
+[data-theme='dark'] .el-drawer__body {
+  color: var(--pos-text-primary) !important;
+}
+
+[data-theme='dark'] .el-drawer__title,
+[data-theme='dark'] .el-message-box__title,
+[data-theme='dark'] .el-message-box__content,
+[data-theme='dark'] .el-dialog__title {
+  color: var(--pos-text-primary) !important;
+}
+
+[data-theme='dark'] .el-input__wrapper,
+[data-theme='dark'] .el-select__wrapper {
+  background-color: var(--pos-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--pos-border-color) inset !important;
+}
+
+[data-theme='dark'] .el-input__inner,
+[data-theme='dark'] .el-select__placeholder {
+  color: var(--pos-text-primary) !important;
+}
+
+[data-theme='dark'] .el-popper.is-light {
+  border-color: var(--pos-border-color) !important;
+}
+
+/* 描述列表（订单详情）与表格：Element Plus 默认用 --el-fill-color-blank（白），
+ * 深色下会出现"深色页面里嵌一块白表"的白框，这里统一改为深灰 + 弱边框。
+ */
+[data-theme='dark'] .el-descriptions__body,
+[data-theme='dark'] .el-descriptions__table,
+[data-theme='dark'] .el-descriptions__cell,
+[data-theme='dark'] .el-descriptions__content {
+  background-color: var(--pos-bg-secondary) !important;
+  color: var(--pos-text-primary) !important;
+  border-color: var(--pos-border-color) !important;
+}
+
+[data-theme='dark'] .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+  background-color: var(--pos-bg-tertiary) !important;
+  color: var(--pos-text-secondary) !important;
+  border-color: var(--pos-border-color) !important;
+}
+
+[data-theme='dark'] .el-descriptions .el-descriptions__table.is-bordered .el-descriptions__cell {
+  border-color: var(--pos-border-color) !important;
+}
+
+[data-theme='dark'] .el-table,
+[data-theme='dark'] .el-table__inner-wrapper,
+[data-theme='dark'] .el-table tr,
+[data-theme='dark'] .el-table th.el-table__cell,
+[data-theme='dark'] .el-table td.el-table__cell {
+  background-color: var(--pos-bg-secondary) !important;
+  color: var(--pos-text-primary) !important;
+  border-color: var(--pos-border-color) !important;
+}
+
+[data-theme='dark'] .el-table th.el-table__cell {
+  background-color: var(--pos-bg-tertiary) !important;
+  color: var(--pos-text-secondary) !important;
+}
+
+[data-theme='dark'] .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background-color: var(--pos-bg-hover) !important;
+}
+
+[data-theme='dark'] .el-table::before,
+[data-theme='dark'] .el-table__inner-wrapper::before {
+  background-color: var(--pos-border-color) !important;
+}
+
+/* ==================== 界面缩放（大 = 110%） ====================
+ * 坑：zoom 会把「布局盒子」一起放大，直接 zoom 1.1 + height:100vh 的结果是
+ *     视觉高度 110vh → 页面垂直溢出、出现双滚动条。
+ * 解法：把宽高反向除以缩放系数，缩放后正好铺满视口，且内部 Flex 布局按缩小后的
+ *      盒子重新分配，永远不会溢出。
+ */
+html[data-pos-font-scale='large'] {
+  --pos-zoom: 1.1;
+}
+
+html[data-pos-font-scale='large'] .fastfood-pos {
+  zoom: var(--pos-zoom);
+  /* 宽度用 100%：百分比在 zoom 坐标系内已自动折算，再除一次会双重缩小 */
+  width: 100%;
+  /* 高度是 vh 单位，不受百分比折算影响，必须显式除以缩放系数 */
+  height: calc(100vh / var(--pos-zoom));
+}
+
+/* 头像下拉菜单（el-popover 传送体，需全局样式） */
+.pos-account-popper.el-popover {
+  padding: 10px !important;
+  border-radius: var(--pos-radius-md, 12px) !important;
+  border: 1px solid var(--pos-border-light, #f1f5f9) !important;
+  box-shadow: var(--pos-shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.15)) !important;
+}
+
+/* ==================== 控件风格统一 ====================
+ * 目标：全站按钮/输入框/卡片只用 8 / 12 / 16 三档圆角，
+ *       hover 加深、active 轻微下压缩放，避免"点了没反应"的廉价感。
+ */
+.el-button {
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  transition: background-color var(--pos-transition-fast, 150ms ease),
+    border-color var(--pos-transition-fast, 150ms ease),
+    transform var(--pos-transition-fast, 150ms ease) !important;
+}
+
+.el-button:not(.is-disabled):active {
+  transform: scale(0.97);
+}
+
+.el-button.is-loading {
+  pointer-events: none;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--pos-radius-sm, 8px) !important;
+}
+
+::selection {
+  background: rgba(227, 101, 28, 0.32);
+  color: inherit;
+}
+
+/* 画布层兜底：某些环境（旧 CSS 缓存/未热更）可能拿不到 --pos-bg-canvas，
+ * 一旦回退成浅色就会在深色界面里出现"白底/白边"。这里显式给深色值。 */
+[data-theme='dark'] .main-content,
+[data-theme='dark'] .fastfood-pos .main-content {
+  background: var(--pos-bg-canvas, #181819) !important;
+}
+
+[data-theme='dark'] ::selection {
+  background: rgba(239, 127, 58, 0.4);
+  color: #ffffff;
+}
+
+.el-tag {
+  border-radius: var(--pos-radius-sm, 8px) !important;
+}
+
+/* ==================== 全局 Toast（ElMessage）====================
+ * 旧版沿用了 Element Plus 的浅色半透明底：深色模式下会透出下面的按钮文字，
+ * 出现"提示框里还能看到'挂单/取名/叫号'"的叠字（图二）。
+ * 收银台的提示必须"不透明 + 高对比 + 不遮挡操作区"，这里按工业标准重做：
+ *   · 实底卡片（无毛玻璃/无半透明），深色 #2C2C2E
+ *   · 左侧 3px 状态色条 + 状态图标，危险/警告/成功一眼可辨
+ *   · 固定落在顶栏下方 76px，不压在按钮上
+ */
+.el-message {
+  --el-message-bg-color: var(--pos-bg-primary);
+  --el-message-border-color: var(--pos-border-color);
+  top: 76px !important;
+  z-index: 3200 !important;
+  min-width: 260px;
+  max-width: min(560px, 60vw);
+  padding: 12px 16px !important;
+  border-radius: var(--pos-radius-md, 12px) !important;
+  border: 1px solid var(--pos-border-color, #e2e8f0) !important;
+  background-color: var(--pos-bg-primary, #ffffff) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14) !important;
+  opacity: 1 !important;
+}
+
+.el-message .el-message__content {
+  color: var(--pos-text-primary, #1e293b) !important;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.el-message .el-message__icon {
+  font-size: 17px;
+}
+
+.el-message--success { border-left: 3px solid var(--pos-success, #059669) !important; }
+.el-message--warning { border-left: 3px solid var(--pos-warning, #c2861f) !important; }
+.el-message--error   { border-left: 3px solid var(--pos-danger, #c94b4b) !important; }
+.el-message--info    { border-left: 3px solid var(--pos-text-muted, #94a3b8) !important; }
+
+[data-theme='dark'] .el-message {
+  background-color: #2c2c2e !important;
+  border-color: #3a3a3e !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-theme='dark'] .el-message .el-message__content {
+  color: var(--pos-text-primary, #e5e5e5) !important;
+}
+
+/* ==================== 深色：日期 / 月份面板 ====================
+ * el-date-picker 的面板 teleport 到 body，不受弹窗深色规则覆盖，
+ * 会整块保持白底（图五）。这里补齐 popper 与表格单元格。
+ */
+[data-theme='dark'] .el-picker__popper,
+[data-theme='dark'] .el-picker-panel,
+[data-theme='dark'] .el-date-range-picker,
+[data-theme='dark'] .el-date-range-picker__body,
+[data-theme='dark'] .el-date-range-picker__content,
+[data-theme='dark'] .el-date-picker__header,
+[data-theme='dark'] .el-date-range-picker__header {
+  background-color: #2c2c2e !important;
+  color: var(--pos-text-primary, #e5e5e5) !important;
+  border-color: #3a3a3e !important;
+}
+
+[data-theme='dark'] .el-date-range-picker__content.is-left {
+  border-right-color: #3a3a3e !important;
+}
+
+[data-theme='dark'] .el-picker-panel__icon-btn,
+[data-theme='dark'] .el-date-picker__header-label,
+[data-theme='dark'] .el-date-range-picker__header-label {
+  color: var(--pos-text-secondary, #b0b0b5) !important;
+}
+
+[data-theme='dark'] .el-picker-panel__icon-btn:hover,
+[data-theme='dark'] .el-date-picker__header-label:hover {
+  color: var(--pos-primary, #ef7f3a) !important;
+}
+
+[data-theme='dark'] .el-date-table th {
+  color: var(--pos-text-muted, #85858c) !important;
+  border-bottom-color: #3a3a3e !important;
+}
+
+[data-theme='dark'] .el-date-table td .el-date-table-cell__text,
+[data-theme='dark'] .el-month-table td .cell,
+[data-theme='dark'] .el-year-table td .cell {
+  color: var(--pos-text-primary, #e5e5e5) !important;
+}
+
+[data-theme='dark'] .el-date-table td.disabled .el-date-table-cell__text,
+[data-theme='dark'] .el-date-table td.prev-month .el-date-table-cell__text,
+[data-theme='dark'] .el-date-table td.next-month .el-date-table-cell__text {
+  color: #6b6b70 !important;
+}
+
+[data-theme='dark'] .el-date-table td.today .el-date-table-cell__text {
+  color: var(--pos-primary, #ef7f3a) !important;
+}
+
+[data-theme='dark'] .el-date-table td.in-range .el-date-table-cell {
+  background-color: rgba(239, 127, 58, 0.16) !important;
+}
+
+[data-theme='dark'] .el-date-table td.start-date .el-date-table-cell__text,
+[data-theme='dark'] .el-date-table td.end-date .el-date-table-cell__text {
+  background-color: var(--pos-primary, #ef7f3a) !important;
+  color: #1a1a1a !important;
+}
+
+[data-theme='dark'] .el-popper.is-light,
+[data-theme='dark'] .el-picker__popper.el-popper {
+  background: #2c2c2e !important;
+  border-color: #3a3a3e !important;
+}
+
+[data-theme='dark'] .el-popper__arrow::before {
+  background: #2c2c2e !important;
+  border-color: #3a3a3e !important;
+}
+
+/* 通用可点控件：按下缩放的统一微交互 */
+.pos-pressable {
+  transition: background-color var(--pos-transition-fast, 150ms ease),
+    transform var(--pos-transition-fast, 150ms ease),
+    box-shadow var(--pos-transition-fast, 150ms ease);
+}
+
+.pos-pressable:active {
+  transform: scale(0.97);
+}
+
 /* 禁用文本选择（用于可拖拽元素） */
 .pos-no-select {
   user-select: none;

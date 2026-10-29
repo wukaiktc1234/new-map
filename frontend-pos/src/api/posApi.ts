@@ -21,6 +21,12 @@ export interface Dish {
   salesCount?: number;
   /** 库存数量（来自后端 FoodVO.stock），0 表示售罄 */
   stock?: number;
+  /** 可售状态（后端字段差异：status / saleStatus / soldOut / available / onSale 任一命中即置灰） */
+  status?: string | number;
+  saleStatus?: string | number;
+  soldOut?: boolean;
+  available?: boolean;
+  onSale?: boolean;
 }
 
 export interface ComboItem {
@@ -158,6 +164,12 @@ function foodVOToDish(vo: FoodVO): Dish {
     salesCount: vo.sortOrder || 0,
     // 使用后端真实库存，未返回时默认 999（兼容旧逻辑）
     stock: typeof vo.stock === 'number' ? vo.stock : 999,
+    // 可售状态透传（前端置灰依据；后端仍会二次校验）
+    status: (vo as unknown as { status?: string | number }).status,
+    saleStatus: (vo as unknown as { saleStatus?: string | number }).saleStatus,
+    soldOut: (vo as unknown as { soldOut?: boolean }).soldOut,
+    available: (vo as unknown as { available?: boolean }).available,
+    onSale: (vo as unknown as { onSale?: boolean }).onSale,
   };
 }
 
@@ -227,6 +239,15 @@ export interface PayRequest {
   openid?: string;
   /** 支付金额（元），后端必填且大于0 */
   amount: number;
+  /**
+   * 现金实收（元）。后端 PayRequestDTO.cashReceived（可选），
+   * 仅现金支付时有值，用于钱箱对账（后端换算成分落 order_payment_records.cash_received）。
+   */
+  cashReceived?: number;
+  /** 找零（元）。后端 changeAmount（可选），对账用 */
+  changeAmount?: number;
+  /** 付款码 / 交易码（扫码支付时由扫码枪录入），后端 paymentCode（可选，≤64 字符） */
+  paymentCode?: string;
 }
 
 /** 退款请求参数 */

@@ -1,129 +1,360 @@
-/* ==================== POS对话框公共样式 ==================== */
+/* ==================== POS对话框公共样式 ====================
+ *
+ * ⚠️ el-dialog 默认 teleport 到 body，不在 .fastfood-pos 容器内，
+ * 因此这里的选择器必须能从 body 直达弹窗，否则配色退回 Element Plus 默认蓝，
+ * 与 POS 暖橙主题割裂（历史缺陷：本文件此前未被任何入口 import）。
+ * 现在由 main.ts 全局引入，所有 POS 弹窗（开班 / 结账 / 挂单 / 交班…）统一走这里。
+ */
+
+/* ==================== 宽度自适应（关键）====================
+ * 旧版每个弹窗写死 width="1120px"/"660px"，在小窗口或 110% 缩放下右侧被裁，
+ * 只能横向滚动才能看全（图三/图四）。
+ * 统一改成 min(设计宽度, 94vw)，并在窄屏再收一档边距。
+ */
+body .el-dialog {
+  max-width: 94vw;
+}
+
+body .order-query-dialog.el-dialog { width: min(1120px, 94vw) !important; }
+body .retrieve-dialog.el-dialog { width: min(660px, 94vw) !important; }
+body .hold-dialog.el-dialog { width: min(560px, 92vw) !important; }
+body .order-detail-dialog.el-dialog { width: min(680px, 94vw) !important; }
+body .stock-query-dialog.el-dialog { width: min(700px, 94vw) !important; }
+body .yolo-dialog.el-dialog { width: min(640px, 94vw) !important; }
+body .payment-dialog.el-dialog { width: min(520px, 92vw) !important; }
+body .start-shift-dialog.el-dialog { width: min(560px, 92vw) !important; }
+body .coupon-dialog.el-dialog { width: min(500px, 92vw) !important; }
+body .success-dialog.el-dialog { width: min(460px, 90vw) !important; }
+
+/* 窄屏：弹窗内边距同步收窄，避免"内容被裁一点点" */
+@media (max-width: 1400px) {
+  body .el-dialog__header { padding: 16px 20px 12px !important; }
+  body .el-dialog__body { padding: 18px 20px !important; }
+  body .el-dialog__footer { padding: 12px 20px 16px !important; }
+}
 
 /* Dialog容器通用样式 */
-.fastfood-pos .el-dialog {
-  border-radius: var(--pos-radius-lg) !important;
-  background-color: var(--pos-bg-primary) !important;
-  border: 1px solid var(--pos-border-light) !important;
-  box-shadow: var(--pos-shadow-lg) !important;
+body .el-dialog {
+  border-radius: var(--pos-radius-md, 12px) !important;
+  background-color: var(--pos-bg-primary, #ffffff) !important;
+  border: 1px solid var(--pos-border-light, #f1f5f9) !important;
+  box-shadow: var(--pos-shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.15)) !important;
   overflow: hidden;
 }
 
 /* Dialog头部样式 */
-.fastfood-pos .el-dialog__header {
+body .el-dialog__header {
   padding: 20px 24px 16px !important;
   margin: 0 !important;
-  border-bottom: 1px solid var(--pos-border-light) !important;
-  background-color: var(--pos-bg-secondary) !important;
+  border-bottom: 1px solid var(--pos-border-light, #f1f5f9) !important;
+  background-color: var(--pos-bg-secondary, #f8fafc) !important;
 }
 
-.fastfood-pos .el-dialog__title {
+body .el-dialog__title {
   font-size: 18px !important;
   font-weight: 600 !important;
-  color: var(--pos-text-primary) !important;
+  color: var(--pos-text-primary, #1e293b) !important;
   line-height: 1.4 !important;
 }
 
-.fastfood-pos .el-dialog__headerbtn {
+body .el-dialog__headerbtn {
   top: 18px !important;
   right: 18px !important;
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: var(--pos-radius-sm) !important;
-  transition: background-color var(--pos-transition-fast) !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  transition: background-color var(--pos-transition-fast, 150ms ease) !important;
 }
 
-.fastfood-pos .el-dialog__headerbtn:hover {
-  background-color: var(--pos-bg-hover) !important;
+body .el-dialog__headerbtn:hover {
+  background-color: var(--pos-bg-hover, #e2e8f0) !important;
 }
 
-.fastfood-pos .el-dialog__close {
+body .el-dialog__close {
   font-size: 18px !important;
-  color: var(--pos-text-secondary) !important;
+  color: var(--pos-text-secondary, #64748b) !important;
 }
 
 /* Dialog内容区域 */
-.fastfood-pos .el-dialog__body {
-  padding: 24px !important;
-  color: var(--pos-text-primary) !important;
+body .el-dialog__body {
+  padding: var(--pos-spacing-md, 24px) !important;
+  color: var(--pos-text-primary, #1e293b) !important;
   line-height: 1.6 !important;
   max-height: 70vh;
   overflow-y: auto;
 }
 
 /* Dialog底部操作区 */
-.fastfood-pos .el-dialog__footer {
-  padding: 16px 24px 20px !important;
-  border-top: 1px solid var(--pos-border-light) !important;
-  background-color: var(--pos-bg-secondary) !important;
+body .el-dialog__footer {
+  padding: var(--pos-spacing-sm, 16px) var(--pos-spacing-md, 24px) var(--pos-spacing-sm, 16px) !important;
+  border-top: 1px solid var(--pos-border-light, #f1f5f9) !important;
+  background-color: var(--pos-bg-secondary, #f8fafc) !important;
   text-align: right !important;
 }
 
-/* Dialog中的按钮样式 */
-.fastfood-pos .el-dialog__footer .el-button {
-  min-width: 80px;
+/* Dialog中的按钮样式：统一 44px 触控热区（触屏收银机最低标准） */
+body .el-dialog__footer .el-button {
+  min-width: 88px;
+  min-height: 44px !important;
   padding: 10px 20px !important;
-  border-radius: var(--pos-radius-sm) !important;
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  font-size: 15px !important;
   font-weight: 500 !important;
-  transition: all var(--pos-transition-fast) !important;
+  transition: all var(--pos-transition-fast, 150ms ease) !important;
 }
 
-.fastfood-pos .el-dialog__footer .el-button--primary {
-  background-color: var(--pos-primary) !important;
-  border-color: var(--pos-primary) !important;
+body .el-dialog__footer .el-button--primary {
+  background-color: var(--pos-primary, #e3651c) !important;
+  border-color: var(--pos-primary, #e3651c) !important;
+  color: #ffffff !important;
 }
 
-.fastfood-pos .el-dialog__footer .el-button--primary:hover {
-  background-color: var(--pos-primary-dark) !important;
-  border-color: var(--pos-primary-dark) !important;
+body .el-dialog__footer .el-button--primary:hover {
+  background-color: var(--pos-primary-dark, #c25515) !important;
+  border-color: var(--pos-primary-dark, #c25515) !important;
 }
 
-.fastfood-pos .el-dialog__footer .el-button--default {
-  background-color: var(--pos-bg-primary) !important;
-  border-color: var(--pos-border-color) !important;
-  color: var(--pos-text-primary) !important;
+body .el-dialog__footer .el-button--default {
+  background-color: var(--pos-bg-primary, #ffffff) !important;
+  border-color: var(--pos-border-color, #e2e8f0) !important;
+  color: var(--pos-text-primary, #1e293b) !important;
 }
 
-.fastfood-pos .el-dialog__footer .el-button--default:hover {
-  border-color: var(--pos-primary) !important;
-  color: var(--pos-primary) !important;
+body .el-dialog__footer .el-button--default:hover {
+  border-color: var(--pos-primary, #e3651c) !important;
+  color: var(--pos-primary, #e3651c) !important;
+}
+
+/* 禁用态必须一眼可见：否则"实收不足"时用户仍以为可以点 */
+body .el-dialog__footer .el-button.is-disabled,
+body .el-dialog__footer .el-button:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  filter: grayscale(0.15);
+}
+
+/* ==================== 挂单弹窗：长列表布局 ====================
+ * 高度封顶 + 只有商品清单滚动，合计与按钮永远可见。
+ * 必须写全局：scoped :deep() 命中不到 teleport 到 body 的 el-dialog 内部。
+ */
+body .hold-dialog.el-dialog {
+  max-height: 86vh;
+  /* 默认 15vh 上边距 + 86vh 高度会顶出视口 9px，这里上移到 7vh */
+  margin-top: 7vh !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body .hold-dialog .el-dialog__header {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body .hold-dialog .el-dialog__body {
+  padding: 0 !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden !important;
+  max-height: none !important;
+}
+
+body .hold-dialog .el-dialog__footer {
+  padding: 0 !important;
+  flex: 0 0 auto;
+}
+
+/* ==================== 订单查询：整窗固定，仅表格内滚 ====================
+ * 旧版给 .el-dialog__body 设了 max-height:70vh + overflow:auto，
+ * 窗口变矮时整块内容（含标题与筛选栏）跟着滚，右侧出现一条贯穿弹窗的滚动条。
+ * 现在：弹窗封顶 → 头部/筛选栏/表格各占固定比例 → 只有表格 body 内部滚动。
+ */
+body .order-query-dialog.el-dialog {
+  /* 给"确定高度"而不是只给 max-height：
+   * 否则内部 flex:1 的表格拿不到可用高度，会塌成 0 或按内容撑破弹窗。 */
+  height: min(760px, 86vh);
+  max-height: 86vh;
+  margin-top: 6vh !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body .order-query-dialog .el-dialog__header {
+  padding: 16px 24px !important;
+  margin: 0 !important;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--pos-border-light, #f1f5f9);
+}
+
+body .order-query-dialog .el-dialog__body {
+  padding: 20px 24px 24px !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+  max-height: none !important;
+}
+
+body .order-query-dialog .order-query-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+body .order-query-dialog .query-filter {
+  flex: 0 0 auto;
+}
+
+/* height:0 + flex:1 才是"弹性剩余高度"的可靠写法：
+ * 只写 min-height:0 时，百分比高度的 el-table 会解析不到父高度而按内容撑开。 */
+body .order-query-dialog .order-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 表格吃满剩余高度，纵向滚动交给它自己 */
+body .order-query-dialog .el-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
+}
+
+/* ==================== 取单弹窗：与挂单同款长列表布局 ==================== */
+body .retrieve-dialog.el-dialog {
+  /* 固定高度：空载与满载窗口大小一致，不会"打开先小后大" */
+  height: min(690px, 88vh);
+  max-height: 86vh;
+  margin-top: 7vh !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body .retrieve-dialog .el-dialog__header {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body .retrieve-dialog .el-dialog__body {
+  padding: 0 !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden !important;
+  max-height: none !important;
+}
+
+body .retrieve-dialog .el-dialog__footer {
+  padding: 0 !important;
+  flex: 0 0 auto;
+}
+
+/* 交班弹窗：自绘头部，隐藏 Element Plus 的空标题条（避免顶部一条只有 ✕ 的空白） */
+body .shift-handover-dialog .el-dialog__header {
+  display: none !important;
+}
+
+/* 交班页信息密度高：上移弹窗并放宽可用高度，保证「确认交班」不用滚动就能看到 */
+body .shift-handover-dialog {
+  margin-top: 4vh !important;
+}
+
+body .shift-handover-dialog .el-dialog__body {
+  padding: 18px 24px 0 !important;
+  max-height: 88vh;
+  /* 隐藏右侧滚动条（滚轮与触屏仍可滚动）：避免对话框内出现一条突兀的白条 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body .shift-handover-dialog .el-dialog__body::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none;
+}
+
+/* 抽屉内滚动条同样收成细线（内容多时需要一点位置提示） */
+body .el-drawer__body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pos-border-color, #e2e8f0) transparent;
+}
+
+body .el-drawer__body::-webkit-scrollbar {
+  width: 6px;
+}
+
+body .el-drawer__body::-webkit-scrollbar-thumb {
+  background: var(--pos-border-color, #e2e8f0);
+  border-radius: 9999px;
+}
+
+body .el-drawer__body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Dialog中的输入框样式 */
-.fastfood-pos .el-dialog .el-input__wrapper {
-  border-radius: var(--pos-radius-sm) !important;
-  box-shadow: 0 0 0 1px var(--pos-border-color) inset !important;
-  transition: box-shadow var(--pos-transition-fast) !important;
+body .el-dialog .el-input__wrapper {
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  box-shadow: 0 0 0 1px var(--pos-border-color, #e2e8f0) inset !important;
+  transition: box-shadow var(--pos-transition-fast, 150ms ease) !important;
 }
 
-.fastfood-pos .el-dialog .el-input__wrapper:hover {
-  box-shadow: 0 0 0 1px var(--pos-text-muted) inset !important;
+body .el-dialog .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--pos-text-muted, #94a3b8) inset !important;
 }
 
-.fastfood-pos .el-dialog .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px var(--pos-primary) inset !important;
+body .el-dialog .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px var(--pos-primary, #e3651c) inset !important;
 }
 
 /* Dialog中的表单项标签 */
-.fastfood-pos .el-dialog .el-form-item__label {
-  color: var(--pos-text-secondary) !important;
+body .el-dialog .el-form-item__label {
+  color: var(--pos-text-secondary, #64748b) !important;
   font-weight: 500 !important;
   font-size: 14px !important;
   padding-right: 12px !important;
 }
 
+/* MessageBox（二次确认框）按钮：与弹窗同一套暖橙规范 */
+body .el-message-box__btns .el-button {
+  min-height: 40px;
+  min-width: 88px;
+  border-radius: var(--pos-radius-sm, 8px) !important;
+  font-size: 14px !important;
+}
+
+body .el-message-box__btns .el-button--primary {
+  background-color: var(--pos-primary, #e3651c) !important;
+  border-color: var(--pos-primary, #e3651c) !important;
+  color: #ffffff !important;
+}
+
+body .el-message-box__btns .el-button--primary:hover {
+  background-color: var(--pos-primary-dark, #c25515) !important;
+  border-color: var(--pos-primary-dark, #c25515) !important;
+}
+
 /* Dialog遮罩层 */
-.fastfood-pos .el-overlay {
+body .el-overlay {
   background-color: rgba(0, 0, 0, 0.45) !important;
   backdrop-filter: blur(4px) !important;
   -webkit-backdrop-filter: blur(4px) !important;
 }
 
 /* ========== 暗色模式弹窗增强 ========== */
-[data-theme="dark"] .fastfood-pos .el-overlay {
+[data-theme='dark'] body .el-overlay {
   background-color: rgba(0, 0, 0, 0.65) !important;
 }
 
-[data-theme="dark"] .fastfood-pos .el-dialog {
-  border: 1px solid var(--pos-border-color) !important;
+[data-theme='dark'] body .el-dialog {
+  border: 1px solid var(--pos-border-color, #3f3b37) !important;
 }

@@ -481,12 +481,12 @@ const getPayStatusClass = (orderStatus?: number) => {
 
 const getKitchenStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
-    'pending': '⏳ 待制作',
-    'received': '📋 已接单',
-    'making': '👨‍🍳 制作中',
-    'completed': '✅ 已完成',
-    'served': '🍽️ 已上菜',
-    'cancelled': '❌ 已取消'
+    'pending': '待制作',
+    'received': '已接单',
+    'making': '制作中',
+    'completed': '已完成',
+    'served': '已上菜',
+    'cancelled': '已取消'
   }
   return statusMap[status] || '待处理'
 }

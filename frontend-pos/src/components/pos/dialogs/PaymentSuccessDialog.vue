@@ -173,8 +173,8 @@ defineEmits<Emits>()
 }
 
 .pickup-card.main-card {
-  background: linear-gradient(135deg, var(--pos-primary) 0%, #ea580c 100%);
-  box-shadow: 0 8px 24px rgba(234, 88, 12, 0.25);
+  background: linear-gradient(135deg, var(--pos-primary) 0%, #e3651c 100%);
+  box-shadow: 0 8px 24px rgba(227, 101, 28, 0.25);
 }
 
 .pickup-label {

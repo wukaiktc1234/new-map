@@ -1,3 +1,4 @@
+import { hasCapabilitiesLoaded } from '@/composables/usePermission'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -119,6 +120,15 @@ function isTokenValid(token: string | null): boolean {
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('pos-token')
   const userInfo = localStorage.getItem('pos-user')
+
+  // 防前端自授权：权限只在内存（来自登录响应）。
+  // 页面刷新/新标签后内存为空 → 必须重新登录，绝不从 localStorage 恢复权限。
+  if (!to.meta.isPublic && !WHITE_LIST.includes(to.path) && to.meta.requiresAuth !== false) {
+    if (!hasCapabilitiesLoaded()) {
+      next({ path: '/login', query: { redirect: to.fullPath, reason: 'capabilities' } })
+      return
+    }
+  }
 
   if (to.meta.isPublic || WHITE_LIST.includes(to.path)) {
     next()

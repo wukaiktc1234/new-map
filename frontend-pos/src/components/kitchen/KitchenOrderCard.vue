@@ -294,8 +294,8 @@ async function handleServe(): Promise<void> {
 }
 
 .kitchen-order-card.status-making {
-  border-left: 4px solid #ea580c;
-  background: linear-gradient(135deg, rgba(234, 88, 12, 0.05) 0%, var(--pos-bg-card) 100%);
+  border-left: 4px solid #e3651c;
+  background: linear-gradient(135deg, rgba(227, 101, 28, 0.05) 0%, var(--pos-bg-card) 100%);
 }
 
 .kitchen-order-card.status-completed {
@@ -539,7 +539,7 @@ async function handleServe(): Promise<void> {
 }
 
 .start-btn {
-  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  background: linear-gradient(135deg, #e3651c 0%, #c25515 100%);
   border: none;
   color: #fff;
 }

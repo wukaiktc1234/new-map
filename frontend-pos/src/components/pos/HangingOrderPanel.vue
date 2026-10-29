@@ -130,7 +130,7 @@ const getDisplayItems = (items: OrderItem[]): OrderItem[] => {
 
 .panel-title .el-icon {
   font-size: 20px;
-  color: var(--pos-primary, #ea580c);
+  color: var(--pos-primary, #e3651c);
 }
 
 .panel-actions {
@@ -142,7 +142,7 @@ const getDisplayItems = (items: OrderItem[]): OrderItem[] => {
 .total-amount {
   font-size: 15px;
   font-weight: 700;
-  color: var(--pos-primary, #ea580c);
+  color: var(--pos-primary, #e3651c);
 }
 
 .toggle-icon {
@@ -191,8 +191,8 @@ const getDisplayItems = (items: OrderItem[]): OrderItem[] => {
 
 .held-order-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(234, 88, 12, 0.15);
-  border-color: var(--pos-primary, #ea580c);
+  box-shadow: 0 6px 20px rgba(227, 101, 28, 0.15);
+  border-color: var(--pos-primary, #e3651c);
 }
 
 .held-order-card:active {
@@ -224,13 +224,13 @@ const getDisplayItems = (items: OrderItem[]): OrderItem[] => {
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 6px;
-  background: var(--pos-primary-light, rgba(234, 88, 12, 0.1));
-  color: var(--pos-primary, #ea580c);
+  background: var(--pos-primary-light, rgba(227, 101, 28, 0.1));
+  color: var(--pos-primary, #e3651c);
   white-space: nowrap;
 }
 
 .more-items {
-  background: var(--pos-primary, #ea580c);
+  background: var(--pos-primary, #e3651c);
   color: #ffffff;
 }
 
@@ -245,7 +245,7 @@ const getDisplayItems = (items: OrderItem[]): OrderItem[] => {
 .order-amount {
   font-size: 18px;
   font-weight: 700;
-  color: var(--pos-primary, #ea580c);
+  color: var(--pos-primary, #e3651c);
 }
 
 @media (max-width: 768px) {

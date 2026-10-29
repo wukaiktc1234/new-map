@@ -1308,9 +1308,9 @@ const goHome = () => {
 }
 
 .method-card.balance .method-icon {
-  background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+  background: linear-gradient(135deg, #ef7f3a 0%, #fb923c 100%);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.3);
+  box-shadow: 0 4px 16px rgba(239, 127, 58, 0.3);
 }
 
 .method-card:hover .method-icon {
@@ -1590,7 +1590,7 @@ const goHome = () => {
 /* 倒计时 */
 .countdown-hint {
   padding: 12px;
-  background: rgba(249, 115, 22, 0.05);
+  background: rgba(239, 127, 58, 0.05);
   border-radius: 10px;
 }
 
@@ -1626,7 +1626,7 @@ const goHome = () => {
 
 .home-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 8px 28px rgba(239, 127, 58, 0.4);
 }
 
 /* ========== 打印状态区域 ========== */

@@ -42,6 +42,7 @@
         :active-category="activeCategory"
         :loading="loading"
         :load-error="loadError"
+        :error-status="loadErrorStatus"
         @select-category="activeCategory = $event"
         @add-to-cart="addToCart"
         @retry="loadMenu"
@@ -53,6 +54,7 @@
       v-model="showPaymentConfirm"
       :total-amount="totalAmount"
       :selected-payment-method="selectedPaymentMethod"
+      :paying="paying"
       @confirm="handlePaymentConfirm"
     />
 
@@ -119,6 +121,9 @@
       @add-to-cart="handleYoloAddToCart"
     />
 
+    <!-- 删除撤销条：删除立即生效，5 秒内可一键找回 -->
+    <CartUndoBar :pending="pendingUndo" @undo="undoRemove" />
+
     <!-- 开班（备用金）对话框 -->
     <StartShiftDialog
       v-model="showStartShift"
@@ -151,6 +156,7 @@ import StartShiftDialog from '@/components/pos/dialogs/StartShiftDialog.vue'
 import PosTopBar from '@/components/pos/PosTopBar.vue'
 import MenuSection from '@/components/pos/MenuSection.vue'
 import CartSection from '@/components/pos/CartSection.vue'
+import CartUndoBar from '@/components/pos/CartUndoBar.vue'
 
 // Composable 导入
 import { useCart } from '@/composables/useCart'
@@ -160,16 +166,23 @@ import { useHangingOrder } from '@/composables/useHangingOrder'
 import { useCustomerDisplayStore } from '@/stores/customer-display'
 import { useTheme } from '@/composables/useTheme'
 import { formatDate } from '@/utils/format'
+import { hasActiveShiftMark, markShiftStarted } from '@/utils/shiftSession'
+import { usePosPreferences } from '@/composables/usePosPreferences'
+import { usePermission, PERM } from '@/composables/usePermission'
 import logger from '@/utils/logger'
 
 const router = useRouter()
+
+// 权限（默认拒绝：无 order:refund 时退款入口不渲染、不请求）
+const { can, markDenied } = usePermission()
 
 // ========== 使用Composables ==========
 const {
   cart, totalQuantity, originalTotalAmount, currentOrderNumber,
   startEditQuantity, confirmEditQuantity, cancelEditQuantity,
   addToCart, increaseItem, decreaseItem,
-  swipeDeleteItem, clearCart, initFromStorage
+  swipeDeleteItem, clearCart, initFromStorage,
+  pendingUndo, undoRemove
 } = useCart()
 
 const discountAmount = ref(0)
@@ -178,12 +191,12 @@ const totalAmount = computed(() => Math.max(0, originalTotalAmount.value - disco
 const {
   showPaymentConfirm, showPaymentSuccess, selectedPaymentMethod,
   lastOrderNumber, lastPickupNumber,
-  cashInputRef,
+  cashInputRef, paying,
   quickPayment, confirmPayment, handlePaymentConfirm
 } = usePayment(cart, totalAmount, originalTotalAmount, discountAmount, clearCart)
 
 const {
-  loading, loadError, categories, activeCategory,
+  loading, loadError, loadErrorStatus, categories, activeCategory,
   filteredItems, lowStockItems, loadMenu
 } = useMenu()
 
@@ -194,6 +207,8 @@ const {
 } = useHangingOrder(cart, totalAmount as any, clearCart)
 
 const { isDark, currentTime, toggleTheme, initTime, cleanupTime } = useTheme()
+/** 个人偏好（回车确认结账 / 界面缩放），由头像菜单的「偏好设置」写入 */
+const { prefs } = usePosPreferences()
 const customerDisplayStore = useCustomerDisplayStore()
 const showOrderQuery = ref(false)
 
@@ -203,7 +218,15 @@ const terminalId = ref('')
 const employeeId = ref('')
 const employeeName = ref('')
 
-/** 登录后若无进行中的班次 → 弹出开班对话框（备用金必填/默认值见 StartShiftDialog） */
+/**
+ * 登录后若无进行中的班次 → 弹出开班对话框（备用金默认值见 StartShiftDialog）
+ *
+ * 防重复弹窗（图一 状态持久化）：
+ *   ① 先看本地开班标记（开班成功即写入，交班/登出时清除）——
+ *      刷新页面、切页返回、重新进入首页都不再弹窗，也不额外打后端；
+ *   ② 本地没有标记时才问后端 /current-shift，避免多终端共用同一终端号时状态不一致；
+ *   ③ 后端说"有班次"时回写标记，下次直接走本地快路径。
+ */
 async function maybeOpenStartShift(): Promise<void> {
   try {
     const terminal = localStorage.getItem('pos-terminal') || ''
@@ -215,9 +238,26 @@ async function maybeOpenStartShift(): Promise<void> {
       employeeName.value = user?.employeeName || user?.name || ''
     }
     if (!terminal) return
+
+    // ① 本终端当天已开班（且未交班）→ 静默跳过，刷新页面不再打扰收银员
+    if (hasActiveShiftMark(terminal)) return
+
     const current = await posApi.getCurrentShift(terminal)
-    if (!current) showStartShift.value = true
+    if (current) {
+      // ③ 后端已有进行中的班次（例如换了一台终端登录同一账号）→ 回写标记
+      markShiftStarted({
+        terminalId: terminal,
+        shiftId: current.shiftId,
+        employeeId: employeeId.value,
+        employeeName: employeeName.value,
+        openingCash: typeof current.openingCash === 'number' ? current.openingCash : null,
+        startedAt: current.startTime,
+      })
+      return
+    }
+    showStartShift.value = true
   } catch (error) {
+    // 网络异常时不打扰收银（原行为），收银员可从交班面板重试
     logger.errorMessage('[Home] 检查当前班次失败（不影响收银）', error)
   }
 }
@@ -396,6 +436,12 @@ const viewOrderDetail = async (order: any) => {
 }
 
 const refundOrder = async (order: any) => {
+  // 权限闸门：无 order:refund 直接提示，不发请求（后端也会 403，这里避免无谓的失败弹窗）
+  if (!can(PERM.REFUND)) {
+    ElMessage.warning('当前账号无退款权限，请联系店长授权')
+    return
+  }
+
   try {
     const { value: refundReason } = await ElMessageBox.prompt(
       `订单号: ${order.orderNumber}\n退款金额: ¥${order.totalAmount?.toFixed(2) || '0.00'}`,
@@ -416,9 +462,15 @@ const refundOrder = async (order: any) => {
     showOrderDetail.value = false
     await queryOrders()
   } catch (error: any) {
-    if (error !== 'cancel') {
-      ElMessage.error(error.message || '退款失败')
+    if (error === 'cancel') return
+    const status = error?.status ?? error?.response?.status
+    if (status === 403) {
+      // 后端判定越权：记住这次拒绝，本次会话不再显示退款入口
+      markDenied(PERM.REFUND)
+      ElMessage.error('退款被拒绝（403）：当前账号无 order:refund 权限，已隐藏退款入口')
+      return
     }
+    ElMessage.error(error?.message || '退款失败')
   }
 }
 
@@ -521,6 +573,15 @@ const handleOrderRefund = (message: any) => {
   }
 }
 
+/** 焦点是否落在可编辑控件内（输入框 / 文本域 / 下拉 / contenteditable） */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.tagName !== 'string') return false
+  const tag = el.tagName.toUpperCase()
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return el.isContentEditable === true
+}
+
 let timer: number | null = null
 let menuRefreshTimer: number | null = null
 let handleKeyDown: ((event: KeyboardEvent) => void) | null = null
@@ -572,11 +633,16 @@ onMounted(async () => {
   }
   
   handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && showPaymentConfirm.value) {
-      event.preventDefault()
-      event.stopPropagation()
-      confirmPayment()
-    }
+    if (event.key !== 'Enter' || !showPaymentConfirm.value) return
+    // 偏好设置里可关闭「回车直接确认」，避免误触结账（默认开启）
+    if (!prefs.enterConfirmCheckout) return
+    // 焦点在输入框内时交给弹窗自己的 @keyup.enter 处理：
+    // 否则「捕获阶段的全局监听」与「输入框局部监听」会对同一次回车各触发一遍，
+    // 叠加出两个确认框 → 点两次 → 重复下单（后厨端 useKeyboardShortcuts 有同样的排除，收银端此前缺失）。
+    if (isEditableTarget(event.target)) return
+    event.preventDefault()
+    event.stopPropagation()
+    confirmPayment()
   }
   window.addEventListener('keydown', handleKeyDown, true)
 })
@@ -651,9 +717,10 @@ watch([cart, totalAmount], ([newCart, newTotal]) => {
 .main-content {
   flex: 1;
   display: flex;
-  gap: 16px;
-  padding: 16px;
+  gap: var(--pos-spacing-sm, 16px);
+  padding: var(--pos-spacing-sm, 16px);
   overflow: hidden;
+  background: var(--pos-bg-canvas, #f2f3f5);
 }
 
 @media (max-width: 1400px) {

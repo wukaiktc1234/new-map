@@ -4,6 +4,8 @@ import type { Category, Dish, Combo } from '@/api/posApi'
 
 export function useMenu() {
   const loading = ref(false)
+  /** 加载失败时的 HTTP 状态码（403 要单独给"无权限"空态，而不是像系统坏了） */
+  const loadErrorStatus = ref<number | null>(null)
   /** 加载错误信息（null 表示无错误；非空时显示重试按钮） */
   const loadError = ref<string | null>(null)
   const categories = ref<Category[]>([])
@@ -39,6 +41,12 @@ export function useMenu() {
       imageUrl: d.imageUrl,
       // 使用后端真实库存，未返回时默认 999
       stock: typeof d.stock === 'number' ? d.stock : 999,
+      // 透传可售状态：前端据此置灰（售罄/下架），后端仍会二次拦截
+      status: (d as any).status,
+      saleStatus: (d as any).saleStatus,
+      soldOut: (d as any).soldOut,
+      available: (d as any).available,
+      onSale: (d as any).onSale,
     })))
     // P1-COMBO-ORDER-001: 恢复套餐入口（dishType=combo, id=comboId）
     items = items.concat(combos.value.map(c => ({
@@ -72,6 +80,7 @@ export function useMenu() {
     if (!silent) {
       loading.value = true
       loadError.value = null
+      loadErrorStatus.value = null
     }
     try {
       // 并行加载菜品、套餐、分类三个接口
@@ -109,11 +118,16 @@ export function useMenu() {
         }
       }
       loadError.value = null
+      loadErrorStatus.value = null
     } catch (error: unknown) {
       // 静默模式不覆盖已有错误状态，避免后台刷新时把已显示的数据"清掉"
       if (!silent) {
-        const err = error as { message?: string } | null
-        loadError.value = err?.message || '加载菜单失败，请检查后端服务是否正常'
+        const err = error as { message?: string; status?: number; response?: { status?: number } } | null
+        const status = err?.status ?? err?.response?.status ?? null
+        loadErrorStatus.value = typeof status === 'number' ? status : null
+        loadError.value = status === 403
+          ? '当前账号没有查看商品的权限（403）'
+          : (err?.message || '加载菜单失败，请检查后端服务是否正常')
       }
     } finally {
       loading.value = false
@@ -123,6 +137,7 @@ export function useMenu() {
   return {
     loading,
     loadError,
+    loadErrorStatus,
     categories,
     dishes,
     combos,

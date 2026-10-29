@@ -21,6 +21,11 @@ html, body, #app {
 
 .pos-app {
   height: 100%;
-  background: #f5f5f5;
+  /* 跟随主题：硬编码 #f5f5f5 会在深色模式下露出一圈浅色底（"白边"根因之一） */
+  background: var(--pos-bg-canvas, var(--pos-bg-primary, #f5f5f5));
+}
+
+[data-theme='dark'] .pos-app {
+  background: #181819;
 }
 </style>

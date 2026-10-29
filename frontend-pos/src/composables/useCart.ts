@@ -10,11 +10,15 @@ export interface CartItem {
   dishType: string
   isHot?: boolean
   swipeX?: number
+  /** 库存上限（有值时购物车「+」不允许超过） */
+  stock?: number
 }
 
 const MAX_QUANTITY = 999
 const SWIPE_THRESHOLD = 60
 const DELETE_WIDTH = 80
+/** 删除类操作的撤销窗口（秒）：收银高峰不能用模态确认打断节奏，改用可撤销 */
+const UNDO_SECONDS = 5
 
 export function useCart() {
   const cart = ref<CartItem[]>([])
@@ -40,9 +44,28 @@ export function useCart() {
     return hasTouchEvents && hasTouchPoints
   })
 
+  /**
+   * 商品不可售判定（前端防呆第一道闸，后端仍会再拦）。
+   * 兼容后端字段差异：stock / soldOut / available / onSale / status / saleStatus。
+   */
+  const UNAVAILABLE_STATUS = ['0', 'soldout', 'sold_out', 'out_of_stock', 'off', 'offline', 'stopsale', 'stop', 'disabled', 'unavailable']
+
+  const unavailableReason = (item: any): string => {
+    if (!item) return '商品信息异常'
+    if (item.soldOut === true) return '已售罄'
+    if (item.available === false || item.onSale === false) return '已下架'
+    if (typeof item.stock === 'number' && item.stock <= 0) return '已售罄'
+    const rawStatus = item.saleStatus ?? item.status
+    if (rawStatus !== undefined && rawStatus !== null && rawStatus !== '') {
+      if (UNAVAILABLE_STATUS.includes(String(rawStatus).toLowerCase())) return '已下架'
+    }
+    return ''
+  }
+
   const addToCart = (item: any) => {
-    if (item.stock === 0) {
-      ElMessage.warning(`${item.name} 已售罄，无法添加`)
+    const blocked = unavailableReason(item)
+    if (blocked) {
+      ElMessage.warning(`${item?.name || '该商品'} ${blocked}，无法添加`)
       return
     }
 
@@ -57,6 +80,11 @@ export function useCart() {
         ElMessage.warning(`${item.name} 数量已达上限`)
         return
       }
+      // 库存上限保护：有明确库存数字时不允许超过
+      if (typeof item.stock === 'number' && item.stock > 0 && existing.quantity >= item.stock) {
+        ElMessage.warning(`${item.name} 库存仅剩 ${item.stock} 件`)
+        return
+      }
       existing.quantity++
     } else {
       cart.value.push({
@@ -65,24 +93,83 @@ export function useCart() {
         price: item.price,
         quantity: 1,
         dishType: item.dishType,
-        isHot: item.isHot
+        isHot: item.isHot,
+        // 记录库存上限：购物车「+」按钮据此拦截超卖
+        stock: typeof item.stock === 'number' ? item.stock : undefined,
       })
     }
   }
 
   const increaseItem = (index: number) => {
-    if (cart.value[index].quantity >= MAX_QUANTITY) {
+    const line = cart.value[index]
+    if (!line) return
+    if (line.quantity >= MAX_QUANTITY) {
       ElMessage.warning('数量已达上限')
       return
     }
-    cart.value[index].quantity++
+    // 购物车里的「+」同样受库存约束（否则会绕过加购时的校验把超卖数量塞进订单）
+    const stock = (line as CartItem & { stock?: number }).stock
+    if (typeof stock === 'number' && stock > 0 && line.quantity >= stock) {
+      ElMessage.warning(`${line.name} 库存仅剩 ${stock} 件`)
+      return
+    }
+    line.quantity++
+  }
+
+  /**
+   * 待撤销的删除操作。
+   * 设计取舍：删除立刻生效（不阻断节奏），但给 5 秒后悔窗口；
+   * 不用 ElMessageBox 二次确认——高峰期「每删一行弹一次窗」会变成新的瓶颈。
+   */
+  const pendingUndo = ref<{ item: CartItem; index: number; secondsLeft: number } | null>(null)
+  let undoTimer: number | null = null
+
+  const clearPendingUndo = (): void => {
+    if (undoTimer !== null) {
+      clearInterval(undoTimer)
+      undoTimer = null
+    }
+    pendingUndo.value = null
+  }
+
+  /** 删除一行并把操作放进撤销槽（同一时刻只保留最后一次删除） */
+  const removeItemWithUndo = (index: number): void => {
+    const item = cart.value[index]
+    if (!item) return
+    // 同一行连续删除时，先落定上一条（避免撤销错位）
+    clearPendingUndo()
+    cart.value.splice(index, 1)
+    pendingUndo.value = { item: { ...item, swipeX: 0 }, index, secondsLeft: UNDO_SECONDS }
+    undoTimer = window.setInterval(() => {
+      const current = pendingUndo.value
+      if (!current) {
+        clearPendingUndo()
+        return
+      }
+      current.secondsLeft -= 1
+      if (current.secondsLeft <= 0) clearPendingUndo()
+    }, 1000)
+    // 不额外弹 toast：底部撤销条已经承载同样信息，再叠一个会盖住顶栏按钮
+  }
+
+  /** 撤销上一次删除：按原位置插回（位置越界时追加到末尾） */
+  const undoRemove = (): void => {
+    const pending = pendingUndo.value
+    if (!pending) return
+    const targetIndex = Math.min(Math.max(pending.index, 0), cart.value.length)
+    cart.value.splice(targetIndex, 0, pending.item)
+    clearPendingUndo()
+    ElMessage.success('已撤销删除')
   }
 
   const decreaseItem = (index: number) => {
-    if (cart.value[index].quantity > 1) {
-      cart.value[index].quantity--
+    const item = cart.value[index]
+    if (!item) return
+    if (item.quantity > 1) {
+      item.quantity--
     } else {
-      cart.value.splice(index, 1)
+      // 减到 0 等价于删除——但必须可撤销（旧实现是静默 splice，收银员一点就丢行）
+      removeItemWithUndo(index)
     }
   }
 
@@ -192,12 +279,14 @@ export function useCart() {
   }
 
   const swipeDeleteItem = (index: number) => {
-    cart.value.splice(index, 1)
+    // 垃圾桶删除 / 触摸左滑删除共用：同样进 5 秒撤销槽
+    removeItemWithUndo(index)
   }
 
   const clearCart = () => {
     cart.value = []
     currentOrderNumber.value = ''
+    clearPendingUndo()
     localStorage.removeItem('pos-cart')
     localStorage.removeItem('pos-current-order')
   }
@@ -257,6 +346,9 @@ export function useCart() {
     onSwipeEnd,
     bindSwipeEvents,
     swipeDeleteItem,
+    pendingUndo,
+    undoRemove,
+    clearPendingUndo,
     clearCart,
     initFromStorage
   }

@@ -28,14 +28,31 @@
           {{ formatTransactionId(order.transactionId, order.paymentMethod) }}
         </el-descriptions-item>
         <el-descriptions-item label="支付状态">
-          <span class="status-badge" :class="`status-badge--${getStatusClass(order.status)}`">
-            {{ getStatusText(order.status) }}
-          </span>
+          <!-- 状态变化时做一次"翻一下"的过渡（key 变化触发 Transition），避免数字/文字硬切 -->
+          <Transition name="status-pop" mode="out-in">
+            <span
+              :key="getStatusText(order.status)"
+              class="status-badge"
+              :class="`status-badge--${getStatusClass(order.status)}`"
+              data-test="detail-pay-status"
+            >
+              <i class="status-badge__dot" aria-hidden="true"></i>
+              {{ getStatusText(order.status) }}
+            </span>
+          </Transition>
         </el-descriptions-item>
         <el-descriptions-item label="后厨状态">
-          <span class="status-badge" :class="`status-badge--${getKitchenStatusClass(order.kitchenStatus)}`">
-            {{ getKitchenStatusText(order.kitchenStatus) }}
-          </span>
+          <Transition name="status-pop" mode="out-in">
+            <span
+              :key="getKitchenStatusText(order)"
+              class="status-badge"
+              :class="[`status-badge--${getKitchenStatusClass(order)}`, { 'is-live': isKitchenLive(order) }]"
+              data-test="detail-kitchen-status"
+            >
+              <i class="status-badge__dot" aria-hidden="true"></i>
+              {{ getKitchenStatusText(order) }}
+            </span>
+          </Transition>
         </el-descriptions-item>
         <el-descriptions-item label="订单金额">
           <span class="amount-text">¥{{ order.totalAmount?.toFixed(2) || '0.00' }}</span>
@@ -95,9 +112,11 @@
     </div>
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">关闭</el-button>
+      <!-- 退款需要 order:refund 权限：无权限时连入口都不出现 -->
       <el-button
-        v-if="order && canRefund(order)"
+        v-if="order && allowRefund && canRefund(order)"
         type="danger"
+        data-test="detail-refund-btn"
         @click="emit('refund', order)"
       >申请退款</el-button>
     </template>
@@ -105,7 +124,10 @@
 </template>
 
 <script setup lang="ts">
+import { watch } from 'vue'
 import { formatDateTime } from '@/utils/format'
+import { getOrderStatus, resolveKitchenStatus } from '@/utils/orderStatus'
+import { usePermission } from '@/composables/usePermission'
 import logger from '@/utils/logger'
 
 interface Props {
@@ -113,7 +135,12 @@ interface Props {
   order: any | null
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+
+const { canRefund: allowRefund, refreshCapabilities } = usePermission()
+
+// 打开弹窗时按当前登录信息重算一次权限（模块级快照可能是登录前初始化的）
+watch(() => props.modelValue, (visible) => { if (visible) refreshCapabilities() }, { immediate: true })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
@@ -156,54 +183,20 @@ const formatTransactionId = (transactionId: string | undefined, paymentMethod: s
  * 订单状态 → 徽章样式类名
  * 使用原生 span + CSS 类替代 el-tag，避免组件初始化开销
  */
-const getStatusClass = (status: string) => {
-  const map: Record<string, string> = {
-    pending: 'warning',
-    paid: 'success',
-    cancelled: 'danger',
-    making: 'primary',
-    completed: 'success',
-    served: 'success',
-    refunded: 'danger'
-  }
-  return map[status] || 'info'
-}
+// 状态映射统一走 utils/orderStatus：数字规范码（0/1/2/3/5）也要翻成中文，
+// 否则收银员会在「支付状态」里直接看到裸数字 "2"。
+const getStatusClass = (status: string) => getOrderStatus(status).tone
 
-const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    pending: '待制作',
-    paid: '已支付',
-    cancelled: '已取消',
-    making: '制作中',
-    completed: '制作完成',
-    served: '已出餐',
-    refunded: '已退款'
-  }
-  return map[status] || status
-}
+const getStatusText = (status: string) => getOrderStatus(status).text
 
-const getKitchenStatusClass = (status: string) => {
-  const map: Record<string, string> = {
-    pending: 'warning',
-    received: 'info',
-    making: 'primary',
-    completed: 'success',
-    served: 'success',
-    cancelled: 'danger'
-  }
-  return map[status] || 'info'
-}
+const getKitchenStatusClass = (order: any) => resolveKitchenStatus(order).tone
 
-const getKitchenStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    pending: '待制作',
-    received: '已接单',
-    making: '制作中',
-    completed: '已完成',
-    served: '已出餐',
-    cancelled: '已取消'
-  }
-  return map[status] || '待处理'
+const getKitchenStatusText = (order: any) => resolveKitchenStatus(order).text
+
+/** 制作中/待制作给一个呼吸点：让"还在后厨做"这件事在视觉上活起来 */
+const isKitchenLive = (order: any): boolean => {
+  const text = resolveKitchenStatus(order).text
+  return text === '制作中' || text === '待制作'
 }
 
 const parseDishItems = (dishItems: any): any[] => {
@@ -251,12 +244,77 @@ const parseDishItems = (dishItems: any): any[] => {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 2px 9px;
   font-size: 12px;
   line-height: 20px;
-  border-radius: 4px;
+  border-radius: var(--pos-radius-full, 9999px);
   border: 1px solid transparent;
   white-space: nowrap;
+  font-weight: 600;
+}
+
+/* 状态点：静止时是纯色圆点；"制作中/待制作"再叠一层呼吸光环 */
+.status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-badge.is-live .status-badge__dot {
+  position: relative;
+  animation: status-breathe 1.8s ease-in-out infinite;
+}
+
+.status-badge.is-live .status-badge__dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0.45;
+  animation: status-ping 1.8s ease-out infinite;
+}
+
+@keyframes status-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.82); opacity: 0.7; }
+}
+
+@keyframes status-ping {
+  0% { transform: scale(0.7); opacity: 0.5; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* 状态切换：轻微上浮 + 淡入，避免文字硬切 */
+.status-pop-enter-active,
+.status-pop-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.status-pop-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.status-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pop-enter-active,
+  .status-pop-leave-active {
+    transition: none;
+  }
+
+  .status-badge.is-live .status-badge__dot,
+  .status-badge.is-live .status-badge__dot::after {
+    animation: none;
+  }
 }
 
 .status-badge--success {

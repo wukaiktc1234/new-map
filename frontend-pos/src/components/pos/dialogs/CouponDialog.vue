@@ -12,7 +12,9 @@
         <el-form-item label="券码">
           <el-input ref="couponInputRef" v-model="couponForm.code" placeholder="请输入或扫描券码" clearable @keydown.enter.stop.prevent="verifyCoupon">
             <template #append>
-              <el-button @click="verifyCoupon">验证</el-button>
+              <el-button :loading="isVerifying" data-test="coupon-verify" @click="verifyCoupon">
+          {{ isVerifying ? '验证中' : '验证' }}
+        </el-button>
             </template>
           </el-input>
         </el-form-item>

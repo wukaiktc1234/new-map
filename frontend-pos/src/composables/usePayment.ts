@@ -61,9 +61,14 @@ export function usePayment(
       return
     }
 
+    // 幂等守卫必须在任何 await 之前同步置位：
+    // 旧实现把 isConfirming = true 放在 await ElMessageBox 之后，
+    // 于是「回车（捕获监听）+ 输入框 keyup」两条路径都会穿过守卫，
+    // 叠出两个「确认支付」框 → 点两次 → 重复下单/重复扣款。
     if (isConfirming || paying.value) {
       return
     }
+    isConfirming = true
 
     try {
       await ElMessageBox.confirm(
@@ -78,10 +83,11 @@ export function usePayment(
         }
       )
     } catch {
+      // 用户取消支付确认：释放守卫，允许重新发起
+      isConfirming = false
       return
     }
 
-    isConfirming = true
     paying.value = true
 
     try {
@@ -109,10 +115,24 @@ export function usePayment(
       const orderId = createResult.orderId
 
       const paymentMethodName = getPaymentMethodName(selectedPaymentMethod.value)
+      // 实收现金 / 找零 / 付款码必须真正上送后端（此前收集后被丢弃，导致无法对账）
+      const isCash = selectedPaymentMethod.value === 'cash'
+      const cashReceivedAmount = Number.isFinite(cashReceived.value) ? Number(cashReceived.value) : 0
+      const changeAmount =
+        isCash && cashReceivedAmount > totalAmount.value
+          ? Number((cashReceivedAmount - totalAmount.value).toFixed(2))
+          : 0
       const payResult = await posApi.payOrder({
         orderId: orderId!,
         paymentMethod: paymentMethodName,
-        amount: totalAmount.value
+        amount: totalAmount.value,
+        ...(isCash
+          ? {
+              cashReceived: Number(cashReceivedAmount.toFixed(2)),
+              changeAmount
+            }
+          : {}),
+        ...(!isCash && paymentCode.value ? { paymentCode: paymentCode.value.trim() } : {})
       }) as unknown as OrderResult
 
       if (payResult?.orderId) {

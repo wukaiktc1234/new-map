@@ -42,7 +42,7 @@
             </div>
           </div>
           <div class="no-current" v-else>
-            <div class="empty-icon">🔔</div>
+            <div class="empty-icon"><el-icon><BellFilled /></el-icon></div>
             <div class="empty-text">暂无叫号</div>
           </div>
         </div>
@@ -93,7 +93,7 @@
           </div>
         </div>
         <div class="display-empty" v-else>
-          <div class="display-empty-icon">🔔</div>
+          <div class="display-empty-icon"><el-icon><BellFilled /></el-icon></div>
           <div class="display-empty-text">等待叫号中...</div>
         </div>
       </div>
@@ -138,7 +138,7 @@
           </div>
           
           <div class="empty-queue" v-else>
-            <div class="empty-icon">✨</div>
+            <div class="empty-icon"><el-icon><Star /></el-icon></div>
             <div class="empty-text">暂无待取餐订单</div>
           </div>
         </div>
@@ -210,7 +210,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Sunny, Moon, Bell, RefreshRight, CircleCheck, Clock, Setting, Refresh } from '@element-plus/icons-vue'
+import { Sunny, Moon, Bell, BellFilled, Star, RefreshRight, CircleCheck, Clock, Setting, Refresh } from '@element-plus/icons-vue'
 import SockJS from 'sockjs-client'
 import { Client, IMessage } from '@stomp/stompjs'
 import { ttsService } from '@/services/tts'
@@ -1058,12 +1058,12 @@ onUnmounted(() => {
 .big-number {
   font-size: 80px;
   font-weight: 700;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+  background: linear-gradient(135deg, #e3651c 0%, #ef7f3a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   line-height: 1;
-  text-shadow: 0 0 60px rgba(234, 88, 12, 0.5);
+  text-shadow: 0 0 60px rgba(227, 101, 28, 0.5);
 }
 
 .order-tags {
@@ -1203,8 +1203,8 @@ onUnmounted(() => {
 }
 
 .queue-item.active {
-  border-color: #ea580c;
-  background: rgba(234, 88, 12, 0.1);
+  border-color: #e3651c;
+  background: rgba(227, 101, 28, 0.1);
 }
 
 .queue-item.called {
@@ -1350,7 +1350,7 @@ onUnmounted(() => {
 .display-big-number {
   font-size: 180px;
   font-weight: 800;
-  background: linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%);
+  background: linear-gradient(135deg, #e3651c 0%, #ef7f3a 50%, #fb923c 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
