@@ -33,6 +33,7 @@
 | 15 | 新表体检（2026-10-28 起） | `python scripts/qa/table_health_check.py --tables <新表清单>`（`preflight --full` 跑 `new-tables.txt`） | 六项全通过（主键 / `deleted` / `create_time`+`update_time` / `_id` 有索引 / 金额 `bigint` / 时间列 `timestamptz`） | **2** | 只证明**有**索引、`_id` 列**有**覆盖；不证明索引最优，也不管既有表老账（见 `tech-debt-schema.md`） |
 | 16 | 入库 location 强约束 | `python scripts/qa/schema_guard.py` | S1~S4 全 PASS（NOT NULL、两条 FK、`location_id is null` = 0） | **1** FAIL / **2** 执行错误 | 只覆盖 `purchase_stockin(s)_items` 一个业务；不证明其它表外键完整 |
 | 17 | preflight 总闸 | `python scripts/qa/preflight.py` / `--full` | 快档：棘轮 + `test-compile` + 巡检；真档：再加 `mvn test` + from-zero + 部署缺口 + 新表体检 | **0** 通过 / **2** BLOCKED / **3** WARN | EXIT=3 的含义是「**不可发版**」：`--full` 必须 EXIT=0 才准发版 |
+| 18 | 安全回归（S1~S6） | `python scripts/qa/security_regression.py`（`preflight --full` 自动跑，硬门禁） | `PASS=14 FAIL=0`、`EXIT=0`、清理残留 `orders_left=0 / shifts_left=0` | **1** 有 FAIL / **2** 未就绪（自检未过或后端没起） | 只覆盖 S1~S6 六类**已知**攻击面；**未覆盖**：IDOR（越权访问他人订单）、批量导出限流、并发竞态（同 key 并发下单）、CSRF —— 这些仍靠人工/AI 审计。**安全回归绿了 ≠ 系统安全** |
 
 ---
 
