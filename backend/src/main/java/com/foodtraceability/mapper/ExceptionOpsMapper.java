@@ -25,7 +25,14 @@ public interface ExceptionOpsMapper extends BaseMapper<ExceptionOps> {
      */
     @Update("UPDATE orders SET payment_status = 2, paid_amount = #{amountFen}, payment_method = #{paymentMethod}, "
             + "update_time = now() "
-            + "WHERE order_id = #{orderId} AND COALESCE(payment_status, 0) <> 2 AND deleted = 0")
+            // ★ P0-C（Lead 2026-10-30）：**必须限定 order_status = 0（待确认）**。
+            //   修前只有 payment_status<>2 条件 → 对「已取消(3)/已退款(5)」的单也能补收款，
+            //   实测复现：对 order_status=3 且 cancel_reason='EXPIRED_AUTO' 的单 resolve → HTTP 200，
+            //   payment_status 0→2、paid_amount 0→1800、新增 1 条 fund_flows（同一笔钱被收了两次口径上不可能）。
+            //   order_status 取值见 OrderStatusCodes:11 —— 0待确认·1已确认·2已完成·3已取消·5全额退款；
+            //   补收款只允许发生在「待确认/已确认」这类未终结状态，故取 0。
+            + "WHERE order_id = #{orderId} AND COALESCE(payment_status, 0) <> 2 "
+            + "  AND COALESCE(order_status, 0) = 0 AND deleted = 0")
     int casMarkPaid(@Param("orderId") String orderId,
                     @Param("amountFen") Long amountFen,
                     @Param("paymentMethod") Integer paymentMethod);
@@ -45,6 +52,10 @@ public interface ExceptionOpsMapper extends BaseMapper<ExceptionOps> {
     @Update("UPDATE orders SET order_status = 3, update_time = now() "
             + "WHERE order_id = #{orderId} AND COALESCE(payment_status, 0) <> 2 AND deleted = 0")
     int casCancel(@Param("orderId") String orderId);
+
+    /** 订单状态（P0-C：CAS 未命中时区分「已取消/已退款」与「已被他端处理」） */
+    @Select("SELECT order_status FROM orders WHERE order_id = #{orderId} AND deleted = 0")
+    Integer orderStatusOf(@Param("orderId") String orderId);
 
     /** 已支付判定（作废前拦截：不能作废已收款单） */
     @Select("SELECT COALESCE(payment_status, 0) FROM orders WHERE order_id = #{orderId} AND deleted = 0")

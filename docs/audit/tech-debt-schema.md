@@ -355,3 +355,48 @@ if (pick == null) {
 （订单不置 paid、流水不写、exception_ops 不写），且在 CAS 之前解析账户。
 
 **处置建议**：与异常单接口对齐为「报错阻断」，但属既有 POS 支付链路改动，需回归全链路，**单独立项**。
+
+## P0-P1 系统性缺陷：**业务码 ≠ HTTP 码**（2026-10-30，Lead 要求单独登记）
+
+### 缺陷形态
+
+```text
+Controller 返回 Result<T>，错误时 new Result.error(code, msg) 由 GlobalExceptionHandler 包成 **HTTP 200**，
+body 里才带 code=400/404/409/422。前端若只看 HTTP 状态 → 把「失败」当「成功」，随后走进业务分支，
+表现为「状态崩塌」「无班次」「数字永远是空」。
+
+今天实测过的四例：
+  ① POST /v1/pos/orders/order 无 terminalId  → HTTP 200 + body.code=400（已修：真 400）
+  ② POST /v1/pos/auth/logout（后端无此 mapping）→ HTTP 200 + body.code=404（已修：真 404）
+  ③ POST /api/v1/pos/exceptions/…（mapping 前缀重复）→ 框架层 404 + **空 body**（已修：真 404 + body）
+  ④ POST /v1/pos/auth/shift/end 交班闸 → **真 409**（这是正确的样板）
+```
+
+### 规模（实测 grep）
+
+```text
+controller 下 `public Result<…>` 方法：**2023 个**（含各域 controller）。
+这些都是「HTTP 永远 200」的潜在候选 —— 不是每一个都会误判（前端 request.ts 按 body.code 解包），
+但只要有前端/第三方按 HTTP 状态判断，就会踩同一个坑。
+
+Top 文件（Result< 方法数）：NotificationController 34、KitchenOrderController 23、UserController 23、
+EmployeeLaborContractController 21、ScheduledTaskController 20、SysDictController 19、
+HealthCertificateExpenseController 18、OrderNewController 18、EmployeeController 17、HealthCertificateController 17
+```
+
+### 处置策略（分优先级，不一次性全改）
+
+| 优先级 | 范围 | 理由 |
+|--------|------|------|
+| **P0 已完成** | POS 收银主链路：建单 / 异常单 resolve·void / 交班 / 登录 / 当前班次 | 收银现场直接受影响，已有 4 例误判 |
+| P1 | POS 其它端点（orders 查询、members、coupons、tables、shift 面板） | 同属收银端，前端同一套 request 封装 |
+| P2 | 其余业务域（2023 个中的大多数） | 前端按 body.code 解包，暂无实测误判；改造成本高、回归面大 |
+
+### 统一做法（新增端点必须遵守）
+
+```text
+1. 错误分支返回 ResponseEntity + 真状态码（4xx/5xx）；成功分支 200 + 原 body 结构；
+2. 业务码 → HTTP 的映射统一走一个方法（如 PosOrderController#mapStatus），禁止各处手写；
+3. 每个这样的端点必须有 gate 覆盖：scripts/qa/http_error_body_check.py 至少 1 条用例，
+   断言「HTTP ≥ 400 且 body 含 code/message」，并断言「命中预期分支码」（防假绿）。
+```

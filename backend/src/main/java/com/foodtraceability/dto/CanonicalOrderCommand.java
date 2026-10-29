@@ -94,4 +94,15 @@ public class CanonicalOrderCommand {
     public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
     public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
     public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    /** P0-B：建单必须绑定活跃班次（orders.shift_id） */
+    private Long shiftId;
+
+    public Long getShiftId() {
+        return shiftId;
+    }
+
+    public void setShiftId(Long shiftId) {
+        this.shiftId = shiftId;
+    }
 }

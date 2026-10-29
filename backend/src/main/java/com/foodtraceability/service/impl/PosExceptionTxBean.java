@@ -98,9 +98,17 @@ public class PosExceptionTxBean {
             throw new BusinessException(40903, "本店未配置资金账户，无法入账，请联系店长配置");
         }
 
-        // CAS：payment_status <> 2（抄自 PosOrderPaymentServiceImpl:715-717 的权威判定）
+        // CAS：payment_status <> 2 且 order_status = 0（★ P0-C 2026-10-30：加 order_status 条件）
         int casRows = exceptionOpsMapper.casMarkPaid(orderId, amountFen, paymentMethod);
         if (casRows == 0) {
+            // 区分语义：已取消/已退款 与 已被他端处理，文案必须不同（否则用户不知道该做什么）
+            Integer osNow = exceptionOpsMapper.orderStatusOf(orderId);
+            if (osNow != null && (osNow == 3 || osNow == 5)) {
+                String label = osNow == 3 ? "已取消" : "已全额退款";
+                log.info("[METRIC] exception_resolve_rejected_terminal_state orderId={} orderStatus={}", orderId, osNow);
+                return ResolveResult.fail(ResolveResult.Status.ALREADY_HANDLED,
+                        "订单" + label + "，不能补收款（如顾客确实已付，请走订单重开/线下登记流程）");
+            }
             return ResolveResult.fail(ResolveResult.Status.ALREADY_HANDLED, "该订单已被其它终端处理，请刷新后重试");
         }
 

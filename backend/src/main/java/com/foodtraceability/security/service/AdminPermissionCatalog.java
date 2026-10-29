@@ -42,6 +42,26 @@ public class AdminPermissionCatalog {
 
     private static final Set<String> CODES = ConcurrentHashMap.newKeySet();
 
+    /** ②（Lead 2026-10-30）：加载状态可观测化 —— 失败不得静默降级成 WARN。 */
+    private static volatile boolean loadedOk = false;
+    private static volatile String lastError = null;
+    private static volatile int loadedCount = 0;
+
+    /** 目录是否加载成功（供健康检查 / 巡检断言使用） */
+    public static boolean isLoadedOk() {
+        return loadedOk;
+    }
+
+    /** 目录内权限码数量 */
+    public static int codeCount() {
+        return loadedCount;
+    }
+
+    /** 最近一次加载失败原因（成功时为 null） */
+    public static String lastError() {
+        return lastError;
+    }
+
     private final PermissionMapper permissionMapper;
 
     public AdminPermissionCatalog(PermissionMapper permissionMapper) {
@@ -74,10 +94,20 @@ public class AdminPermissionCatalog {
             }
             CODES.clear();
             CODES.addAll(next);
+            loadedOk = true;
+            lastError = null;
+            loadedCount = CODES.size();
             logger.info("admin 权限目录加载完成: {} 个权限码", CODES.size());
         } catch (Exception e) {
-            // 加载失败不阻断启动：admin 退化为仅 AdminPermissions.ALL（与改造前等价，fail-safe）
-            logger.warn("admin 权限目录加载失败，admin 将仅使用 AdminPermissions.ALL: {}", e.getMessage());
+            // ②（Lead 2026-10-30）：**失败不得静默** —— 打 METRIC（可被日志告警抓），并暴露状态供健康检查/巡检，
+            //   让它在门禁里红，而不是只留一条 WARN。
+            //   仍不阻断启动（避免一台库表异常导致整个服务起不来），但状态是显式的 loadedOk=false。
+            loadedOk = false;
+            lastError = e.getMessage();
+            loadedCount = 0;
+            logger.error("[METRIC] admin_permission_catalog_load_failed count=0 err={}", e.getMessage());
+            logger.error("admin 权限目录加载失败：admin 将退化为仅 AdminPermissions.ALL({})，"
+                    + "pos:* 等 DB 权限码不可用 → admin 进不去相关端点", com.foodtraceability.security.constants.AdminPermissions.ALL.size());
         }
     }
 

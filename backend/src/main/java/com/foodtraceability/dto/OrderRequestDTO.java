@@ -238,4 +238,19 @@ public class OrderRequestDTO {
     public java.lang.String toString() {
         return "OrderRequestDTO(tableNumber=" + this.getTableNumber() + ", items=" + this.getItems() + ", totalAmount=" + this.getTotalAmount() + ", paymentMethod=" + this.getPaymentMethod() + ", userId=" + this.getUserId() + ", openid=" + this.getOpenid() + ", orderType=" + this.getOrderType() + ", contactName=" + this.getContactName() + ", contactPhone=" + this.getContactPhone() + ", deliveryAddress=" + this.getDeliveryAddress() + ", remark=" + this.getRemark() + ")";
     }
+
+    /**
+     * P0-B（Lead 2026-10-30）：建单必须绑定活跃班次，故需要终端号。
+     * 优先级：请求体 terminalId → 请求头 X-Terminal-Id；两者都没有 → 400。
+     * （**不许 fallback 到「仅按 terminalId 找」或「找不到就不绑定」** —— 那是 P0-C 同类病）
+     */
+    private String terminalId;
+
+    public String getTerminalId() {
+        return terminalId;
+    }
+
+    public void setTerminalId(String terminalId) {
+        this.terminalId = terminalId;
+    }
 }

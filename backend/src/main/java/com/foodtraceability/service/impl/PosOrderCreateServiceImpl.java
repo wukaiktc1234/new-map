@@ -68,6 +68,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
     @org.springframework.beans.factory.annotation.Autowired
     private OrderIdempotencyLookup orderIdempotencyLookup;
 
+    /** P0-B：建单强制绑定活跃班次（Lead 2026-10-30） */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.foodtraceability.mapper.PosShiftMapper posShiftMapperForShiftBinding;
+
     /** bug-㉒：保存点级插入（撞唯一键时外层事务不被中止） */
     @org.springframework.beans.factory.annotation.Autowired
     private OrderInsertAttempt orderInsertAttempt;
@@ -121,6 +125,10 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
     public Result<OrderResultDTO> createOrder(OrderRequestDTO request) {
         log.info("开始创建订单, orderType={}, items={}", request.getOrderType(), request.getItems().size());
 
+        // ★ P0-B（2026-10-30）：建单必须绑定活跃班次，取不到 → 400 拒绝（不许建 shift_id=NULL 的单）
+        //   判据 = 登录人 userId + terminalId（与 endShift 同源：employee_id + terminal_id + status='active'）
+        Long activeShiftId = requireActiveShiftId(request.getTerminalId());
+
         // 构建 Canonical 命令
         CanonicalOrderCommand command = new CanonicalOrderCommand();
         command.setTableNumber(request.getTableNumber());
@@ -136,6 +144,7 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
         command.setContactPhone(request.getContactPhone());
         command.setDeliveryAddress(request.getDeliveryAddress());
         command.setPaymentMethod(request.getPaymentMethod());
+        command.setShiftId(activeShiftId);   // ★ P0-B：绑定活跃班次
 
         // 委托统一合同方法
         Result<OrderResultDTO> result = createCanonicalOrder(command);
@@ -439,6 +448,8 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             orderNew.setCreateTime(LocalDateTime.now());
             orderNew.setUpdateTime(LocalDateTime.now());
             orderNew.setDeleted(0);
+        // ★ P0-B（2026-10-30）：建单即绑定活跃班次，杜绝 shift_id=NULL 的新单
+        orderNew.setShiftId(command.getShiftId());
             // bug-③：幂等键随订单在同一事务落库（有值才写），唯一部分索引 uk_orders_idempotency_key 兜底并发
             if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
                 orderNew.setIdempotencyKey(idempotencyKey);
@@ -1151,5 +1162,48 @@ public class PosOrderCreateServiceImpl implements PosOrderCreateService {
             throw new BusinessException(500, "订单明细回显失败：order_items.unit_price 为空（idx=" + idx + "）");
         }
         return fenToYuan(fen);
+    }
+
+    /**
+     * P0-B：解析并强制返回「登录人 + 终端」的活跃班次 ID。
+     *
+     * <p>判据来源与 endShift 完全同源：{@code pos_shifts(employee_id, terminal_id, status='active')}。
+     * employee_id 的候选集与 endShift 一致（employee_code → userId → username），**但绝不 fallback 到
+     * 「仅按 terminalId 找」** —— 那会把新人的单记到旧人班次上（P0-C 同类：两边谓词不一致）。</p>
+     *
+     * @param terminalId 请求体 terminalId，为空时从请求头 X-Terminal-Id 取
+     * @throws BusinessException 400 —— 无终端号 / 未登录 / 无活跃班次
+     */
+    private Long requireActiveShiftId(String terminalId) {
+        String terminal = terminalId;
+        if (terminal == null || terminal.isBlank()) {
+            try {
+                org.springframework.web.context.request.ServletRequestAttributes attrs =
+                        (org.springframework.web.context.request.ServletRequestAttributes)
+                                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+                if (attrs != null) {
+                    terminal = attrs.getRequest().getHeader("X-Terminal-Id");
+                }
+            } catch (Exception ignore) {
+                terminal = null;
+            }
+        }
+        if (terminal == null || terminal.isBlank()) {
+            throw new BusinessException(400, "建单必须携带终端号（terminalId 或请求头 X-Terminal-Id），以便绑定活跃班次");
+        }
+
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(400, "建单必须在登录上下文内执行（取不到当前用户，拒绝建单以免产生无班次订单）");
+        }
+
+        var shift = posShiftMapperForShiftBinding.findActiveShiftByEmployeeAndTerminal(
+                String.valueOf(userId), terminal);
+        if (shift == null) {
+            log.warn("[SHIFT-BIND] no active shift: userId={} terminalId={}", userId, terminal);
+            throw new BusinessException(400,
+                    "当前终端没有你的在班班次，请先开班再建单（terminalId=" + terminal + "）");
+        }
+        return shift.getShiftId();
     }
 }

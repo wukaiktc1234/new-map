@@ -63,10 +63,49 @@ public class PosOrderController {
     /**
      * 创建订单（委托给Service）
      */
+    /**
+     * 创建订单。
+     *
+     * <p><b>①（Lead 2026-10-30）：失败分支返回真 HTTP 状态码</b>——修前无论成功失败都是 HTTP 200 + body.code，
+     * 前端只看 HTTP 会把「建单被拒绝」当成成功（与交班 409、404、错误体为空同一形态）。
+     * 成功分支仍是 HTTP 200 + 原 body 结构（前端不感知）。</p>
+     *
+     * <p>映射：BusinessException 按 code → 400/409/422；其它异常 → 500。两种情况 body 都保留 {code,message,data,success}。</p>
+     */
     @PostMapping("/order")
     @Operation(summary = "创建订单")
-    public Result<OrderResultDTO> createOrder(@RequestBody @Valid OrderRequestDTO request) {
-        return posOrderService.createOrder(request);
+    public org.springframework.http.ResponseEntity<Result<OrderResultDTO>> createOrder(
+            @RequestBody @Valid OrderRequestDTO request) {
+        try {
+            Result<OrderResultDTO> r = posOrderService.createOrder(request);
+            if (r != null && r.getCode() != null && r.getCode() == 0) {
+                return org.springframework.http.ResponseEntity.ok(r);
+            }
+            int bizCode = (r != null && r.getCode() != null) ? r.getCode() : 500;
+            return org.springframework.http.ResponseEntity.status(mapStatus(bizCode)).body(r);
+        } catch (com.foodtraceability.common.exception.BusinessException be) {
+            return org.springframework.http.ResponseEntity.status(mapStatus(be.getCode()))
+                    .body(Result.error(be.getCode(), be.getMessage()));
+        } catch (Exception e) {
+            log.error("创建订单失败: {}", e.getMessage(), e);
+            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Result.error(500, "创建订单失败：" + e.getMessage()));
+        }
+    }
+
+    /** 业务码 → HTTP 状态（仅错误分支使用；0 不进这里） */
+    private org.springframework.http.HttpStatus mapStatus(int bizCode) {
+        switch (bizCode) {
+            case 400: return org.springframework.http.HttpStatus.BAD_REQUEST;
+            case 401: return org.springframework.http.HttpStatus.UNAUTHORIZED;
+            case 403: return org.springframework.http.HttpStatus.FORBIDDEN;
+            case 404: return org.springframework.http.HttpStatus.NOT_FOUND;
+            case 409: return org.springframework.http.HttpStatus.CONFLICT;
+            case 422: return org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY;
+            default:  return bizCode >= 400 && bizCode < 500
+                    ? org.springframework.http.HttpStatus.BAD_REQUEST
+                    : org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
+        }
     }
 
     /**
