@@ -1,4 +1,4 @@
-import { hasCapabilitiesLoaded } from '@/composables/usePermission'
+import { hasCapabilitiesLoaded, restoreCapabilities } from '@/composables/usePermission'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -117,14 +117,21 @@ function isTokenValid(token: string | null): boolean {
   return true
 }
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('pos-token')
   const userInfo = localStorage.getItem('pos-user')
 
-  // 防前端自授权：权限只在内存（来自登录响应）。
-  // 页面刷新/新标签后内存为空 → 必须重新登录，绝不从 localStorage 恢复权限。
+  // 权限仍然只信服务端（防前端自授权），但刷新后不再"直接踢人"：
+  // 有 token 时先用它向 /v1/pos/auth/me 静默换取能力快照，成功即放行；失败才回登录页。
   if (!to.meta.isPublic && !WHITE_LIST.includes(to.path) && to.meta.requiresAuth !== false) {
     if (!hasCapabilitiesLoaded()) {
+      if (isTokenValid(token) && userInfo) {
+        const restored = await restoreCapabilities()
+        if (restored) {
+          next()
+          return
+        }
+      }
       next({ path: '/login', query: { redirect: to.fullPath, reason: 'capabilities' } })
       return
     }

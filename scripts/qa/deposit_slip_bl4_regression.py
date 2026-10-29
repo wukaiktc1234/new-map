@@ -1,3 +1,12 @@
+# ==== DBGUARD（Lead 2026-10-29 死命令 1/2）====
+def _dbguard_boot():
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from _dbguard import guard as _guard
+    return _guard(__file__)
+if _dbguard_boot() != 0:
+    raise SystemExit(2)
+# ==== DBGUARD END ====
 
 # -*- coding: utf-8 -*-
 """BL-4 回归：generate/submit/receive/deposit/reverse 5 项（真实门店 1 / 班次 6）。"""
@@ -50,3 +59,5 @@ m.check("回归5 reverse → REVERSED，余额回滚、原流水 status=3",
 
 print("\n== 汇总：%d 项，%d PASS / %d FAIL ==" % (len(m.RES), sum(1 for r in m.RES if r[1]), sum(1 for r in m.RES if not r[1])))
 sys.exit(0 if all(r[1] for r in m.RES) else 1)
+
+

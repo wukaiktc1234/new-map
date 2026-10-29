@@ -1,3 +1,12 @@
+# ==== DBGUARD（Lead 2026-10-29 死命令 1/2）====
+def _dbguard_boot():
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from _dbguard import guard as _guard
+    return _guard(__file__)
+if _dbguard_boot() != 0:
+    raise SystemExit(2)
+# ==== DBGUARD END ====
 
 # -*- coding: utf-8 -*-
 """P3 收口-1 / BL-4：SL6 现金户实时余额校验（不足 → 409；刚好够 → 200）。"""
@@ -168,3 +177,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

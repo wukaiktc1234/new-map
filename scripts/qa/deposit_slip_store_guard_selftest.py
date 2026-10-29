@@ -1,3 +1,12 @@
+# ==== DBGUARD（Lead 2026-10-29 死命令 1/2）====
+def _dbguard_boot():
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from _dbguard import guard as _guard
+    return _guard(__file__)
+if _dbguard_boot() != 0:
+    raise SystemExit(2)
+# ==== DBGUARD END ====
 
 # -*- coding: utf-8 -*-
 """P3 前置：SL1 storeId 一致性校验（3 组）+ SL6/SL10 回归（generate/幂等/submit/receive/deposit/reverse）。"""
@@ -154,3 +163,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

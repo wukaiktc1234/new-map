@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import request from '@/api/request'
 
 /**
  * POS 前端能力（权限码）判定 —— **权限唯一来源：服务端登录响应**
@@ -72,6 +73,29 @@ export function clearCapabilities(): void {
 /** 能力是否已从登录响应加载（false → 需要重新登录） */
 export function hasCapabilitiesLoaded(): boolean {
   return capabilities.value.loaded
+}
+
+/**
+ * 静默恢复能力快照（刷新/新标签页用）
+ *
+ * 仍然不从 localStorage 取权限（本地可篡改），而是拿已有的 token 问服务端要一份。
+ * 成功 → 写入内存并返回 true；失败（401/403/网络）→ 返回 false，由调用方决定是否回登录页。
+ */
+export async function restoreCapabilities(): Promise<boolean> {
+  if (capabilities.value.loaded) return true
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('pos-token') : null
+  if (!token) return false
+  try {
+    const me = (await request.get('/v1/pos/auth/me')) as unknown as {
+      permissions?: unknown
+      roles?: unknown
+    } | null
+    if (!me) return false
+    setCapabilities(me.permissions ?? (me as { perms?: unknown }).perms, me.roles ?? (me as { roleName?: unknown }).roleName)
+    return capabilities.value.loaded
+  } catch {
+    return false
+  }
 }
 
 /**

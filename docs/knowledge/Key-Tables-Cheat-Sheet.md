@@ -168,3 +168,22 @@ POS 登录 findUserByEmployeeId（PosAuthServiceImpl:655-673）：
 
 对照：交班闸 `PENDING_EXCEPTIONS` 已按契约返回**真 HTTP 409** —— 同一个项目里两种风格并存，
 **判断依据必须是 HTTP 码 + body.code 双看**，前端不能只认一个。
+
+## 五、A7 的「补账」豁免口径 = flow_no 前缀 + created_by 署名，**与 flow_category 完全无关**
+
+```text
+A7（账户余额 <> 最新非补账流水快照）的豁免条件是：
+  created_by LIKE 'system/backfill-%'
+  AND (remark LIKE '%[cashBackfill]%' OR remark LIKE '%[posShift=%')
+  以及 flow_no LIKE 'FFH%' 在部分实现里作为补充线索，但**单独不构成豁免**
+
+→ 判据只看：flow_no 前缀 / created_by 署名 / remark token
+→ **完全不看 flow_category**（1=SALE / 2=REFUND / 5=内部转账 / 6=采购付款 / 7=采购付款红冲 / 8=TEST_WRITEOFF 对 A7 一律等价）
+
+代码位置：LedgerServiceImpl.java:32-33 的 NON_EXEMPT 常量（注释「A7 口径，唯一来源」）
+          consistency_check.sql 第 1680-1701 行 A7 CTE（等价写法）
+
+教训（2026-10-29）：我（Lead）曾猜「很可能是 category=5 被视为补账」→ 错。
+若要新增一个 A7 认可的冲销流水，必须让 flow_no **不以 FFH 开头**且 created_by **不是 system/backfill-**，
+否则会被当作补账而跳过（A7 会继续比旧流水，冲销等于白做）。
+```

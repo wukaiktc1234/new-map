@@ -37,6 +37,21 @@ public final class FundFlowCategory {
      */
     public static final int PURCHASE_PAYMENT_RETURN = 7;
 
+    /**
+     * 8 = **测试资金冲销**（direction=2 出账）。
+     *
+     * <p><b>⚠ 仅供测试/门禁污染清算使用，业务代码禁止使用本常量。</b></p>
+     *
+     * <p>来历（2026-10-29 Owner 授权）：夹具与门禁脚本曾向真实账户记入测试资金，
+     * 冲销时需要一个「既不是退款(2)、也不是内部转账(5)、也不是采购付款(6/7)」的类别，
+     * 否则会把冲销金额算进 A30/A31/A33 的退款对拍或 A14/A36 的转账配对。
+     * 命名带 TEST 是为了让它一眼看去不能用于业务。</p>
+     *
+     * <p>营收/台账类查询必须排除本类别（见 LedgerServiceImpl.NON_EXEMPT 与
+     * FinanceOverviewServiceImpl 的 {@code flow_category <> 8} 条件）。</p>
+     */
+    public static final int TEST_WRITEOFF = 8;
+
     private FundFlowCategory() {
     }
 }

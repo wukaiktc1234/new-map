@@ -18,7 +18,7 @@
 
     <!-- 班次三态提示：no-shift / 未上线(404) / 加载失败 三种文案必须不同，且都不阻塞收银 -->
     <div
-      v-if="shiftStateText"
+      v-if="shiftStateText && !showShiftHandover"
       class="shift-state"
       :class="'shift-state--' + shiftState"
       :data-test="'shift-state-' + shiftState"

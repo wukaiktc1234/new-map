@@ -561,7 +561,18 @@ def main():
     deploy_gap_rc = check_deploy_gap() if a.full else 0
     # 新表体检：只针对 2026-10-28 之后新建的表（既有表老账见 docs/audit/tech-debt-schema.md）
     health_rc = check_new_tables_health() if a.full else 0
-    sec_rc = check_security_regression() if a.full else 0
+    # ---- 安全回归（Lead 2026-10-29 裁定路径 2）----
+    # DBGUARD 落地后，security_regression 不能在共享库跑（它是写操作脚本，会建/删带 tag 夹具）。
+    # 下一轮做 8082 隔离实例（独立库 ft_gate_<ts> + 独立后端），跑通后改指向 8082。
+    # **在此之前显式 SKIP 并打印原因** —— 不许静默跳过，否则就是「看起来全绿」。
+    if a.full and os.environ.get("QA_SECURITY_ON_8082") != "1":
+        print('[SKIP] security_regression 未运行：等待隔离后端 8082（DBGUARD 禁止在共享库执行写操作）')
+        print('[SKIP]   原因：security_regression 会创建/清理带 tag 夹具（写操作），共享库 food_traceability 被 DBGUARD 拒绝')
+        print('[SKIP]   计划：下一轮建 ft_gate_<ts> 独立库 + 8082 实例，跑通后 preflight 改为指向 8082 并移除本 SKIP')
+        print('[SKIP]   临时手工运行：启动 8082 实例后 QA_SECURITY_ON_8082=1 python scripts/qa/preflight.py --full')
+        sec_rc = 0
+    else:
+        sec_rc = check_security_regression() if a.full else 0
     if sec_rc != 0:
         print('[RESULT] BLOCKED：安全回归未通过（EXIT=%s）→ exit 2' % sec_rc)
         return 2

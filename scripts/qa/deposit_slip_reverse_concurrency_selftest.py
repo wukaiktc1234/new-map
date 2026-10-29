@@ -1,3 +1,12 @@
+# ==== DBGUARD（Lead 2026-10-29 死命令 1/2）====
+def _dbguard_boot():
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from _dbguard import guard as _guard
+    return _guard(__file__)
+if _dbguard_boot() != 0:
+    raise SystemExit(2)
+# ==== DBGUARD END ====
 
 # -*- coding: utf-8 -*-
 """P3 前置修复 1+2 验证：SL10 并发安全 + 短款符号 + AC-21 三分支 + AC-28 回归。"""
@@ -79,6 +88,8 @@ def acct(i):
 
 def free_shift6():
     """清掉自己在 shift 6 上的测试单（含无流水的临时单），释放班次。仅删自己的数据。"""
+
+
     one("DELETE FROM deposit_slips WHERE shift_id=6 AND status IN ('DRAFT','SUBMITTED','RECEIVED')", write=True)
 
 

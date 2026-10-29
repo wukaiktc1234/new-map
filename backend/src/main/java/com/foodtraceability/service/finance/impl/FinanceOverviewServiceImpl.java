@@ -103,7 +103,9 @@ public class FinanceOverviewServiceImpl implements FinanceOverviewService {
                 + "        SELECT f.account_id, "
                 + "               SUM(CASE WHEN f.flow_direction = 1 THEN f.amount ELSE -f.amount END) AS net_fen "
                 + "          FROM fund_flows f "
-                + "         WHERE f.deleted = 0 AND f.status = 2 AND f.business_date = ? "
+                // ★ ①（Lead 2026-10-29）：测试资金冲销(category=8)不得计入今日净额
+        + "         WHERE f.deleted = 0 AND f.status = 2 AND f.business_date = ? "
+        + "           AND COALESCE(f.flow_category, 0) <> 8 "
                 + "         GROUP BY f.account_id "
                 + "  ) today ON today.account_id = a.account_id "
                 + "  LEFT JOIN ( "
@@ -114,6 +116,7 @@ public class FinanceOverviewServiceImpl implements FinanceOverviewService {
                 + "                       SUM(CASE WHEN f.flow_direction = 1 THEN f.amount ELSE -f.amount END) AS net_fen "
                 + "                  FROM fund_flows f "
                 + "                 WHERE f.deleted = 0 AND f.status = 2 "
+                + "                   AND COALESCE(f.flow_category, 0) <> 8 "   // ★ ① 同上，排除测试冲销
                 + "                   AND f.business_date >= ? AND f.business_date <= ? "
                 + "                 GROUP BY f.account_id, f.business_date "
                 + "               ) f "

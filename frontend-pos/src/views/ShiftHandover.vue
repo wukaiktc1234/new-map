@@ -17,7 +17,7 @@
     >
       <!-- 班次统计三态：404=未上线 / 网络=可重试 / 无班次=请先开班（三者文案不同，都不白屏） -->
       <div
-        v-if="shiftStatsState && shiftStatsState !== 'ok'"
+        v-if="shiftStatsState && shiftStatsState !== 'ok' && !shiftStore.statsForbidden"
         class="shift-state"
         :class="'shift-state--' + shiftStatsState"
         :data-test="'handover-state-' + shiftStatsState"
@@ -49,6 +49,16 @@
             <el-icon><Close /></el-icon>
           </button>
         </div>
+      </div>
+
+      <!-- 403：无权限访问收银数据 —— 必须显式说明并阻断交班（不允许只 console.error） -->
+      <div v-if="shiftStore.statsForbidden" class="sh-alert is-forbidden" role="alert" data-test="shift-stats-forbidden">
+        <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
+        <span class="sh-alert__text">当前账号无权限访问收银数据，请联系店长授权</span>
+        <button type="button" class="sh-alert__btn" data-test="shift-stats-retry" @click="retryStats">
+          重新获取
+          <el-icon><ArrowRight /></el-icon>
+        </button>
       </div>
 
       <!-- 班次口径说明条：只说"按什么口径交班"，异常数量与入口统一在下方统计表里，不重复 -->
@@ -487,15 +497,20 @@ const anomalyDetailCount = computed<number>(() => {
   return typeof fromServer === 'number' && Number.isFinite(fromServer) ? fromServer : anomalyOrders.value.length
 })
 /** 交班被阻断的原因（用于 tooltip） */
-/** 是否阻断交班：统计未加载（null）也算阻断，避免「数字没到就放行」 */
-const endShiftBlocked = computed<boolean>(() => pendingExceptionCount.value === null || pendingExceptionCount.value > 0)
+/** 是否阻断交班：无权限 / 统计未加载（null） / 有异常单，都算阻断 */
+const endShiftBlocked = computed<boolean>(() =>
+  shiftStore.statsForbidden || pendingExceptionCount.value === null || pendingExceptionCount.value > 0
+)
 
 const endShiftBlockReason = computed<string>(() => {
+  if (shiftStore.statsForbidden) return '当前账号无权限访问收银数据，请联系店长授权后再交班'
   if (pendingExceptionCount.value === null) return '班次统计未加载完成，暂不能交班（请稍候或点重试）'
   return pendingExceptionCount.value > 0
     ? '还有 ' + pendingExceptionCount.value + ' 笔待处理异常单，处理完才能交班'
     : ''
 })
+
+
 const filterPaymentMethod = ref<string>('')
 const handoverForm = ref({ remark: '' })
 
@@ -889,12 +904,19 @@ const shiftStatsState = computed(() => shiftStore.statsState)
 const shiftStateTexts = computed(() => {
   const kind = shiftStatsState.value
   if (kind === 'not-implemented') return SHIFT_STATE_TEXT['not-implemented']
+  if (kind === 'forbidden') return SHIFT_STATE_TEXT.forbidden
   if (kind === 'error') return SHIFT_STATE_TEXT.error
   return SHIFT_STATE_TEXT['no-shift']
 })
 
+/** 授权后无需重登：点一下重新拉统计即可恢复（403 时给出明确反馈） */
 async function retryStats(): Promise<void> {
   await shiftStore.refreshStats()
+  if (shiftStore.statsForbidden) {
+    ElMessage.error('仍未获得收银数据权限，请联系店长授权')
+  } else {
+    ElMessage.success('已恢复收银数据权限')
+  }
 }
 
 const loadShiftSummary = async (): Promise<void> => {
@@ -1281,6 +1303,18 @@ onUnmounted(() => {
   color: var(--pos-text-secondary, #64748b);
   font-size: 12.5px;
   box-shadow: inset 0 0 0 1px var(--pos-border-light, #f1f5f9);
+}
+
+/* 越权：危险色，和"待处理异常"区分开（一个是业务待办，一个是权限问题） */
+.sh-alert.is-forbidden {
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  box-shadow: inset 0 0 0 1px rgba(201, 75, 75, 0.24);
+}
+
+.sh-alert.is-forbidden .sh-alert__btn {
+  border-color: var(--pos-danger, #c94b4b);
+  color: var(--pos-danger, #c94b4b);
 }
 
 /* 有异常单时才切到 warning 语义（与抽屉同一套令牌） */

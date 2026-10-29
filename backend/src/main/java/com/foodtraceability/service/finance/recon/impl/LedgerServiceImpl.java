@@ -30,7 +30,10 @@ public class LedgerServiceImpl implements LedgerService {
 
     /** 非豁免条件（A7 口径，唯一来源） */
     private static final String NON_EXEMPT =
-            " AND COALESCE(ff.flow_no, '') NOT LIKE 'FFH%' AND COALESCE(ff.created_by, '') NOT LIKE 'system/backfill-%' ";
+            " AND COALESCE(ff.flow_no, '') NOT LIKE 'FFH%' AND COALESCE(ff.created_by, '') NOT LIKE 'system/backfill-%' "
+          // ★ ①（Lead 2026-10-29）：测试资金冲销（category=8）**不进台账营收/支出**，
+          //   否则一次「修账」会污染营收报表 —— 那是比原问题更大的问题。
+          + " AND COALESCE(ff.flow_category, 0) <> 8 ";
 
     private final JdbcTemplate jdbc;
 

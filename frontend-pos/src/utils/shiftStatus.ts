@@ -36,7 +36,7 @@ export function fenToYuan(fen: number | null | undefined): number {
   return Math.round(n) / 100
 }
 
-export type ShiftStateKind = 'no-shift' | 'bad-request' | 'not-implemented' | 'error'
+export type ShiftStateKind = 'no-shift' | 'bad-request' | 'not-implemented' | 'forbidden' | 'error'
 
 export const SHIFT_STATE_TEXT: Record<ShiftStateKind, { title: string; hint: string }> = {
   'no-shift': {
@@ -50,6 +50,10 @@ export const SHIFT_STATE_TEXT: Record<ShiftStateKind, { title: string; hint: str
   'not-implemented': {
     title: '该功能未上线（V2.0）',
     hint: '该能力后端尚未提供，不影响收银与其它操作。',
+  },
+  forbidden: {
+    title: '当前账号无权限查询班次数据',
+    hint: '请联系店长授权（班次/收银数据权限），授权后点重试即可，无需重新登录。',
   },
   error: {
     title: '班次状态加载失败，可重试',
@@ -79,6 +83,8 @@ export function classifyShiftFailure(error: unknown): ShiftStateKind {
   // 注意：POS 拦截器把 body.code 放进 `status` 抛出（HTTP 200 + body.code=400/404 的情况都走这里）
   if (status === 404) return 'not-implemented'
   if (status === 400 || status === 422) return 'bad-request'
+  // 403 是"要授权"，不是"网络坏了"——文案必须让人知道该找店长，而不是反复重试
+  if (status === 403) return 'forbidden'
   return 'error'
 }
 

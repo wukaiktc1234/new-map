@@ -20,6 +20,17 @@ R5 E2E：退款三入口 + 多笔部分退款 + 幂等
 退出码：0 全绿 / 1 断言失败 / 2 环境未就绪
 """
 from __future__ import annotations
+# ==== DBGUARD（Lead 2026-10-29 死命令 1/2）====
+def _dbguard_boot():
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from _dbguard import guard as _guard
+    return _guard(__file__)
+if _dbguard_boot() != 0:
+    raise SystemExit(2)
+# ==== DBGUARD END ====
+
+
 
 import argparse
 import json

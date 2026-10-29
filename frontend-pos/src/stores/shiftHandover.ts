@@ -29,7 +29,12 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
    * 班次统计接口的三态：ok / no-shift / not-implemented(404) / error(网络或 5xx)
    * 区分「接口不存在」与「真的没开班/网络失败」，避免把 404 当成「统计失败」而让交班按钮永久灰掉却说不清原因。
    */
-  const statsState = ref<'ok' | 'no-shift' | 'not-implemented' | 'error'>('ok')
+  const statsState = ref<'ok' | 'no-shift' | 'not-implemented' | 'forbidden' | 'error'>('ok')
+  /**
+   * 403：本账号无权访问收银数据（不是网络故障，也不是"没开班"）。
+   * 必须让 UI 明确提示并阻断交班，绝不允许静默 console.error 了事。
+   */
+  const statsForbidden = ref(false)
   /** 写操作进行中（作废/补收款/扫码下单），用于防连点 */
   const submitting = ref(false)
 
@@ -45,8 +50,10 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
 
   const hasPendingException = computed(() => pendingExceptionCount.value > 0)
 
-  /** 交班按钮是否可用：有异常单 / 统计未就绪 都不行 */
-  const canEndShift = computed(() => !hasPendingException.value && stats.value !== null)
+  /** 交班按钮是否可用：有异常单 / 统计未就绪 / 无权限 都不行 */
+  const canEndShift = computed(() =>
+    !hasPendingException.value && stats.value !== null && !statsForbidden.value
+  )
 
   const handoverCash = computed(() => stats.value?.handoverCash ?? 0)
   const drawerExpected = computed(() => stats.value?.drawerExpected ?? 0)
@@ -78,13 +85,28 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
         statsState.value = 'no-shift'
       }
       lastError.value = ''
+      statsForbidden.value = false
       return stats.value
     } catch (error) {
+      const status = Number((error as { status?: number })?.status ?? (error as { code?: number })?.code ?? 0)
+      if (status === 403) {
+        // 越权：属于"要人授权"的业务状态，UI 必须说清楚，并阻断交班
+        statsForbidden.value = true
+        statsState.value = 'error'
+        lastError.value = '当前账号无权限访问收银数据，请联系店长授权'
+        logger.warnMessage('[交班] shiftStats 403：当前账号无收银数据权限', error)
+        return null
+      }
       const kind = classifyShiftFailure(error)
       statsState.value = kind === 'bad-request' ? 'error' : kind
-      lastError.value = kind === 'not-implemented'
-        ? '班次统计接口未提供（该功能未上线）'
-        : '统计刷新失败'
+      if (kind === 'forbidden') {
+        statsForbidden.value = true
+        lastError.value = '当前账号无权限访问收银数据，请联系店长授权'
+      } else {
+        lastError.value = kind === 'not-implemented'
+          ? '班次统计接口未提供（该功能未上线）'
+          : '统计刷新失败'
+      }
       logger.warnMessage('[交班] shiftStats 拉取失败（' + kind + '）', error)
       return null
     } finally {
@@ -174,6 +196,7 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
 
   function reset(): void {
     stats.value = null
+    statsForbidden.value = false
     statsUpdatedAt.value = 0
     pending.value = []
     processed.value = []
@@ -185,7 +208,7 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
   return {
     stats, statsUpdatedAt, statsStale, terminalId,
     pending, processed, tab, currentList,
-    loadingList, loadingStats, lastError, submitting, statsState,
+    loadingList, loadingStats, lastError, submitting, statsState, statsForbidden,
     pendingExceptionCount, hasPendingException, canEndShift,
     handoverCash, drawerExpected, cashIn, cashRefund, openingCash,
     setTerminal, applyStats, refreshStats, loadExceptions, refreshAll,
