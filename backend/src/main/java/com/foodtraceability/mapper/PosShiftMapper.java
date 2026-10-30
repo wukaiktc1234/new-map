@@ -36,6 +36,35 @@ public interface PosShiftMapper extends BaseMapper<PosShift> {
                                                   @Param("terminalId") String terminalId);
 
     /**
+     * 当前登录人 + 终端 + active（getCurrentShift 的员工过滤版，Lead 2026-10-30）。
+     *
+     * <p>为什么必须带 employee：{@code findActiveShiftByTerminalId} 只按终端取「最近一个 active」，
+     * 一旦同终端残留他人班次，就会把**别人的班次**返回给当前收银员，
+     * 连带把 openingCash（钱箱金额）暴露给非本人 —— 与 X-Operator-Id 同族的越权。</p>
+     */
+    @Select("SELECT * FROM pos_shifts WHERE employee_id = #{employeeId} AND terminal_id = #{terminalId} "
+            + "AND status = 'active' ORDER BY start_time DESC LIMIT 1")
+    PosShift findMyActiveShift(@Param("employeeId") String employeeId,
+                               @Param("terminalId") String terminalId);
+
+    /**
+     * 同终端是否存在**他人**未结班次（只用于存在性提示，不返回金额/工号）。
+     */
+    @Select("SELECT COUNT(*) FROM pos_shifts WHERE terminal_id = #{terminalId} "
+            + "AND status = 'active' AND employee_id <> #{employeeId}")
+    int countOthersActiveShifts(@Param("employeeId") String employeeId,
+                                @Param("terminalId") String terminalId);
+
+    /**
+     * 同终端他人未结班次的姓名（脱敏用，仅取 employee_name）
+     */
+    @Select("SELECT employee_name FROM pos_shifts WHERE terminal_id = #{terminalId} "
+            + "AND status = 'active' AND employee_id <> #{employeeId} "
+            + "ORDER BY start_time DESC LIMIT 1")
+    String findOtherActiveEmployeeName(@Param("employeeId") String employeeId,
+                                       @Param("terminalId") String terminalId);
+
+    /**
      * 查询终端今日所有班次
      */
     @Select("SELECT * FROM pos_shifts WHERE terminal_id = #{terminalId} AND DATE(start_time) = CURRENT_DATE ORDER BY start_time DESC")
