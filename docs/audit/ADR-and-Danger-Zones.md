@@ -214,3 +214,54 @@ post("/api/v1/pos/exceptions/%s/resolve")  # 又写了一遍 /api
 
 ---
 
+
+## ADR 增补：后端挂单上线，localStorage 降级为「弱网暂存」（2026-10-30）
+
+**背景**：同日早先为「挂单越权」做过前端止血（键按 userId+terminalId 命名空间 + 跨天失效）。
+当天后端补建了 `pos_held_orders`（flyway 019：13 列 / 4 索引 / employee_id + terminal_id 双条件隔离）并上线四个端点：
+```text
+POST   /v1/pos/holds                          新建（Idempotency-Key 或 body.clientHoldId）
+GET    /v1/pos/holds?terminalId=…             列表（terminalId 必填）
+DELETE /v1/pos/holds/{id}?terminalId=…        取消（CAS，已处理 → 409）
+POST   /v1/pos/holds/{id}/checkout?terminalId=… 取出结账（CAS，已处理 → 409）
+```
+
+### 架构决定
+
+| 层 | 角色 | 约束 |
+|----|------|------|
+| 后端 `pos_held_orders` | **唯一真相** | 按 employee_id + terminal_id 过滤；expire_at 当日 23:59:59；CAS 状态机 HOLD→COMPLETED/CANCELLED |
+| 前端 API（`api/holds.ts`） | 主路径 | 金额元→分（`yuanToFen`）/ 分→元（`fenToYuan`），两函数只有一处实现 |
+| localStorage | **弱网暂存**（降级，不再是数据源） | 仅在网络类失败时写入，标 `pendingSync:true`；键仍按 `heldOrders:<userId>:<terminalId>` |
+| 同步 | 恢复后补传 | `initialize()` / `fetchHeldOrders()` 自动补传 → 成功后删本地副本；业务错误（如 409）则丢弃本地副本并记日志 |
+
+**关键判据（容易写错）**：只有「网络类失败」（无 status / ERR_NETWORK / ECONNABORTED）才降级本地暂存；
+**业务错误一律抛给用户**，绝不静默存本地——否则会出现「用户以为挂上了，其实后端拒绝」的假成功。
+
+### 实测契约修正（写进这里，避免下一个人再踩）
+```text
+· checkout / cancel **必须带 query 参数 terminalId**，放 body 后端不认（返回「缺少必填参数：terminalId」）
+· GET 的 cartData 是**字符串**（后端序列化过），前端必须 parseCartData() 后使用
+· 重复 checkout / cancel → HTTP 409「挂单已被其它终端处理或已失效」→ 前端提示 + 自动重新 GET
+```
+
+### 本次验收证据（真机）
+```text
+① 挂 2 单 → DB 两行：order_no=HOLD8f21…/HOLD4e4a…，employee_id=2080170081205395463，
+   terminal_id=pos-127.0.0.1-1793364120917，total_amount_fen=1234 / 1332（分，不是元）
+② 刷新页面 → GET /v1/pos/holds?terminalId=… 返回 2 条（列表来自后端，不是 localStorage）
+③ 登出 → qa_store_b 登录 → 列表为空（双条件隔离）
+④ 取出 → DB status=COMPLETED，本地列表移除该条
+⑤ 断网挂单 → pendingSync=true（toast「网络异常，挂单已暂存本地，恢复网络后会自动补传」）
+   恢复网络 → POST 成功（id=15, HOLDbeeda2…）+ 本地副本被删
+⑥ 后端 expire_at 过期 → GET 不返回：**待后端造一个 expire_at 为昨天的夹具**（前端不能写业务表）
+   本地暂存的跨天记录 → 已被 isUsableHeldOrder 丢弃（早先已验，日志 [HOLD-EXPIRED]）
+```
+
+### 仍然成立的 ADR 教条（不因后端上线而作废）
+> 「后端还没端点，先放 localStorage」是有期限的临时决定；一旦活过一个迭代就会变成默认架构。
+> 本次的教训是：**它只活了 11 小时就被后端替代**——快，是因为在止血阶段就把「弱网暂存」和「数据源」分清楚了。
+> 任何「多用户/多设备共享数据」的功能，永远不允许 localStorage 做数据源。
+
+---
+

@@ -688,11 +688,10 @@ let handleKeyDown: ((event: KeyboardEvent) => void) | null = null
 onMounted(async () => {
   // 挂单：启动即按「当前账号命名空间 + 跨天失效」清理一次（Owner 要求凌晨强制失效）
   // 不放在懒加载里，否则收银员不打开取单对话框时，旧挂单会一直躺在浏览器里
-  try {
-    hangingOrderStore.initialize()
-  } catch (e) {
+  // initialize 现在是 async（会补传弱网暂存 + 拉后端列表），用 catch 兜住不阻断收银
+  hangingOrderStore.initialize().catch((e: unknown) => {
     logger.warnMessage('[HOLD-INIT] 挂单初始化失败（不影响收银）:', e)
-  }
+  })
 
   // 主题初始化
   initTime()
