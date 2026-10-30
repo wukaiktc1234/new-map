@@ -29,6 +29,19 @@ public interface PosAuthService {
     PosShift getCurrentShift(String terminalId);
 
     /**
+     * 当前登录人 + 终端 的进行中班次（Lead 2026-10-30）。
+     *
+     * <p>与 {@link #getCurrentShift(String)} 的区别：**带 employee 过滤**。
+     * 只有本方法的结果允许回传给前端 —— 否则会把同终端他人的 openingCash（钱箱金额）暴露出去。</p>
+     */
+    PosShift getMyCurrentShift(String terminalId);
+
+    /**
+     * 同终端是否存在他人未结班次（只返回存在性与脱敏姓名，绝不返回金额/shiftId/employeeId）。
+     */
+    java.util.Map<String, Object> terminalOpenShiftExists(String terminalId);
+
+    /**
      * 开始新班次
      * @param terminalId 终端ID
      * @param employeeId 员工ID

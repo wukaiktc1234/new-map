@@ -336,6 +336,86 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
         return posShiftMapper.findActiveShiftByTerminalId(terminalId);
     }
 
+    /**
+     * 当前登录人 + 终端的进行中班次（Lead 2026-10-30）。
+     *
+     * <p><b>为什么不直接用 getCurrentShift</b>：后者按终端取「最近一个 active」，
+     * 同终端若有他人未结班次，会把<b>他人的 openingCash（钱箱金额）</b>返回给当前收银员 —— 与 X-Operator-Id 同族的越权。
+     * 这里用 JWT 解析出的登录人标识过滤。</p>
+     */
+    @Override
+    public PosShift getMyCurrentShift(String terminalId) {
+        if (terminalId == null || terminalId.isEmpty()) {
+            return null;
+        }
+        String selfKey = resolveSelfKey();
+        PosShift mine = posShiftMapper.findMyActiveShift(selfKey, terminalId);
+        if (mine != null) {
+            return mine;
+        }
+        // 兼容历史数据：早期班次可能存 userId 或 username
+        Long uid = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (uid != null) {
+            PosShift byUid = posShiftMapper.findMyActiveShift(String.valueOf(uid), terminalId);
+            if (byUid != null) {
+                return byUid;
+            }
+        }
+        String uname = com.foodtraceability.utils.SecurityUtils.getCurrentUsername();
+        if (uname != null && !uname.isBlank()) {
+            return posShiftMapper.findMyActiveShift(uname, terminalId);
+        }
+        return null;
+    }
+
+    /**
+     * 同终端是否存在他人未结班次 —— 只返回存在性与<b>脱敏</b>姓名。
+     *
+     * <p>返回体<b>禁止</b>包含 openingCash / shiftId / employeeId（资金与身份信息）。</p>
+     */
+    @Override
+    public java.util.Map<String, Object> terminalOpenShiftExists(String terminalId) {
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+        if (terminalId == null || terminalId.isEmpty()) {
+            data.put("exists", false);
+            return data;
+        }
+        String selfKey = resolveSelfKey();
+        int n = posShiftMapper.countOthersActiveShifts(selfKey, terminalId);
+        data.put("exists", n > 0);
+        if (n > 0) {
+            String name = posShiftMapper.findOtherActiveEmployeeName(selfKey, terminalId);
+            data.put("employeeNameMasked", maskName(name));
+        }
+        return data;
+    }
+
+    /** 姓名脱敏：保留首字，其余用 * （避免跨人可见完整姓名） */
+    private String maskName(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return name.length() == 1 ? name + "**" : name.charAt(0) + "***";
+    }
+
+    /** 解析「当前登录人标识」：employeeCode 优先，回退 userId（与开班写入口径一致） */
+    private String resolveSelfKey() {
+        Long jwtUserId = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (jwtUserId != null) {
+            try {
+                User self = userMapper.selectById(jwtUserId);
+                if (self != null && self.getEmployeeCode() != null && !self.getEmployeeCode().isBlank()) {
+                    return self.getEmployeeCode();
+                }
+            } catch (Exception e) {
+                logger.warn("解析当前登录人标识失败，使用 userId={}", jwtUserId);
+            }
+            return String.valueOf(jwtUserId);
+        }
+        String uname = com.foodtraceability.utils.SecurityUtils.getCurrentUsername();
+        return uname == null ? "" : uname;
+    }
+
     @Override
     public PosShift startShift(String terminalId, String employeeId, String employeeName,
                                String shiftType, BigDecimal openingCash) {

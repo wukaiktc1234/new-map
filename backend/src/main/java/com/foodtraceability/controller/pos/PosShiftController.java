@@ -80,7 +80,7 @@ public class PosShiftController {
     @Operation(summary = "读取备用金", description = "只读当前班次 opening_cash")
     public Result<Map<String, Object>> getOpeningCash(@RequestParam String terminalId) {
         assertTerminalBelongsToMe(terminalId);   // ★ ② 数据边界
-        PosShift shift = posAuthService.getCurrentShift(terminalId);
+        PosShift shift = posAuthService.getMyCurrentShift(terminalId);
         if (shift == null) {
             return Result.success(null, "没有进行中的班次");
         }
@@ -125,7 +125,7 @@ public class PosShiftController {
      * 无活跃班次 → 该终端没有数据（业务态，返回 null/空）；<b>有班次但不属于我 → 403</b>。</p>
      */
     private void assertTerminalBelongsToMe(String terminalId) {
-        com.foodtraceability.entity.PosShift shift = posAuthService.getCurrentShift(terminalId);
+        com.foodtraceability.entity.PosShift shift = posAuthService.getMyCurrentShift(terminalId);
         if (shift == null) {
             return;   // 该终端本来就没有进行中的班次 → 不是越权，交给业务返回 null
         }

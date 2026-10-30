@@ -65,6 +65,17 @@ public class PosAuthController {
         return Result.success(last);
     }
 
+    /**
+     * 同终端是否存在他人未结班次（Lead 2026-10-30）。
+     *
+     * <p>返回体只含 exists 与脱敏姓名，<b>禁止</b>包含 openingCash / shiftId / employeeId。</p>
+     */
+    @GetMapping("/terminal-open-shift-exists")
+    @Operation(summary = "同终端是否存在他人未结班次", description = "只返回存在性与脱敏姓名，不含金额/ID")
+    public Result<Map<String, Object>> terminalOpenShiftExists(@RequestParam String terminalId) {
+        return Result.success(posAuthService.terminalOpenShiftExists(terminalId), "查询成功");
+    }
+
     @GetMapping("/current-shift")
     @Operation(summary = "获取当前班次", description = "获取指定终端当前进行中的班次信息")
     public Result<PosShift> getCurrentShift(@RequestParam String terminalId) {
@@ -72,7 +83,8 @@ public class PosAuthController {
             return Result.error(400, "终端ID不能为空");
         }
 
-        PosShift shift = posAuthService.getCurrentShift(terminalId);
+        // Lead 2026-10-30：带 employee 过滤 —— 不得把同终端他人的 openingCash 返回给当前收银员
+        PosShift shift = posAuthService.getMyCurrentShift(terminalId);
         if (shift == null) {
             return Result.success(null, "没有进行中的班次");
         }
