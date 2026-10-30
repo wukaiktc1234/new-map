@@ -7,6 +7,8 @@ import com.foodtraceability.entity.Role;
 import com.foodtraceability.entity.StatusCount;
 import com.foodtraceability.entity.RoleTypeCount;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
@@ -130,4 +132,28 @@ public interface RoleMapper extends BaseMapper<Role> {
      */
     @Select("SELECT USER_ID FROM user_roles WHERE ROLE_ID = #{roleId}")
     List<String> findUserIdsByRoleId(@Param("roleId") Long roleId);
+
+    /**
+     * P0 fix (Lead 2026-10-30): real role permissions live in role_permissions,
+     * keyed by role_id_str (e.g. 'ROLE_CASHIER'), not by numeric role_id.
+     */
+    @Select("SELECT p.permission_code FROM role_permissions rp "
+            + "JOIN permissions p ON p.permission_id_str = rp.permission_id AND p.deleted = 0 "
+            + "WHERE rp.role_id = #{roleIdStr} AND rp.deleted = 0 ORDER BY p.permission_code")
+    List<String> selectPermissionCodesByRoleIdStr(@Param("roleIdStr") String roleIdStr);
+
+    /** P0 fix: 校验权限码有效数量（用于 M<N 回滚判断） */
+    @Select("SELECT COUNT(*) FROM permissions WHERE permission_code = ANY(#{codes}) AND deleted = 0")
+    int countValidCodes(@Param("codes") String[] codes);
+
+    /** P0 fix: 软删目标角色的全部旧授权（仅动目标 role_id） */
+    @Update("UPDATE role_permissions SET deleted = 1 WHERE role_id = #{roleIdStr} AND deleted = 0")
+    int softDeleteByRoleIdStr(@Param("roleIdStr") String roleIdStr);
+
+    /** P0 fix: 一条 INSERT...SELECT 完成 code -> PERM_* 转换 + upsert */
+    @Insert("INSERT INTO role_permissions (role_id, permission_id, deleted, create_time) "
+            + "SELECT #{roleIdStr}, p.permission_id_str, 0, NOW() FROM permissions p "
+            + "WHERE p.permission_code = ANY(#{codes}) AND p.deleted = 0 "
+            + "ON CONFLICT (role_id, permission_id) DO UPDATE SET deleted = 0")
+    int upsertRolePermissions(@Param("roleIdStr") String roleIdStr, @Param("codes") String[] codes);
 }

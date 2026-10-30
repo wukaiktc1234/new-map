@@ -5,7 +5,6 @@ import com.foodtraceability.mapper.TtlOrderCloseMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,8 +28,14 @@ class TtlOrderCloseTxBeanTest {
     @Mock
     private FoodNewMapper foodNewMapper;
 
-    @InjectMocks
     private TtlOrderCloseTxBean txBean;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        // RT-4：库存回补逻辑已抽到 PosOrderStockRestorer（TTL 与异常单作废共用同一份实现），
+        // 这里用真实组件 + mock 的 mapper 组装，断言点保持不变。
+        txBean = new TtlOrderCloseTxBean(closeMapper, new PosOrderStockRestorer(closeMapper, foodNewMapper));
+    }
 
     @Test
     @DisplayName("CAS 0 行（顾客刚好已支付）→ closeOne 返回 false，且不做任何库存联动")

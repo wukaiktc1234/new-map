@@ -23,6 +23,11 @@ import java.util.List;
  */
 @Service
 public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements RoleService {
+    
+    /** P0 fix: 真实授权在 role_permissions 表，需要直查 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private RoleMapper rolePermissionMapper;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RoleServiceImpl.class);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PermissionVerifyService permissionVerifyService;
@@ -209,20 +214,32 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public boolean assignPermissions(Long roleId, List<String> permissions) {
         Role role = getRoleById(roleId);
         if (role == null) {
-            throw new RuntimeException("角色不存在");
+            throw new BusinessException(404, "角色不存在");
         }
-        
-        try {
-            String permissionsJson = objectMapper.writeValueAsString(permissions);
-            role.setPermissions(permissionsJson);
-            return updateById(role);
-        } catch (Exception e) {
-            throw new RuntimeException("权限序列化失败", e);
+        // 防护 2（Lead 2026-10-30）：空列表保护，防误操作清空角色权限
+        if (permissions == null || permissions.isEmpty()) {
+            throw new BusinessException(400, "不允许清空角色权限，请显式指定权限码");
         }
+        String roleIdStr = role.getRoleIdStr();
+        List<String> before = rolePermissionMapper.selectPermissionCodesByRoleIdStr(roleIdStr);
+        String[] codes = permissions.toArray(new String[0]);
+        int n = permissions.size();
+        int valid = rolePermissionMapper.countValidCodes(codes);
+        if (valid < n) {
+            throw new BusinessException(400, "部分权限码不存在，已拒绝（期望 " + n + "，有效 " + valid + "）");
+        }
+        int softDeleted = rolePermissionMapper.softDeleteByRoleIdStr(roleIdStr);
+        int upserted = rolePermissionMapper.upsertRolePermissions(roleIdStr, codes);
+        if (upserted < n) {
+            throw new BusinessException(500, "插入数不符（期望 " + n + "，实际 " + upserted + "），事务回滚");
+        }
+        log.warn("[PERM-CHANGE] role={} before={} after={} softDeleted={} upserted={}",
+                roleIdStr, before.size(), n, softDeleted, upserted);
+        return true;
     }
 
     @Override
@@ -231,16 +248,12 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
         if (role == null) {
             throw new RuntimeException("角色不存在");
         }
-        
-        if (role.getPermissions() == null || role.getPermissions().isEmpty()) {
-            return List.of();
-        }
-        
-        try {
-            return objectMapper.readValue(role.getPermissions(), new TypeReference<List<String>>() {});
-        } catch (Exception e) {
-            throw new RuntimeException("权限反序列化失败", e);
-        }
+        // ★ P0 修复（Lead 2026-10-30）：原实现读 role.getPermissions()，
+        //   而该字段是 @TableField(exist = false)（roles 表根本没有 permissions 列）
+        //   → 永远返回空列表 → Admin「获取角色权限」自上线起一直显示 0 条。
+        //   真实授权在 role_permissions 表（role_id 存的是 role_id_str）。
+        List<String> codes = rolePermissionMapper.selectPermissionCodesByRoleIdStr(role.getRoleIdStr());
+        return codes == null ? List.of() : codes;
     }
 
     @Override

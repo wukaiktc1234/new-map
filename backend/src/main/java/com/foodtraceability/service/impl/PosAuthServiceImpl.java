@@ -641,7 +641,13 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
                 logger.warn("[METRIC] permission_assembly_failed userId={} username={} reason=DB_ERROR error={}（已降级为 POS 基础集）",
                     user.getId(), user.getUsername(), e.getMessage());
             }
-            permissions.addAll(POS_BASE_PERMISSIONS);
+            // P0 fix (Lead 2026-10-30): 原先无条件并入 POS_BASE_PERMISSIONS = 代码层提权
+            // 现改为仅当 DB 授权为空时兜底（避免「新店漏配导致收银台全瘫」的历史故障），
+            // 正常情况一切权限来自 role_permissions / user_permissions。
+            if (permissions.isEmpty()) {
+                logger.warn("[SECURITY] permission_empty_fallback userId={} -> using POS_BASE_PERMISSIONS（请在 Admin 补齐角色授权）", user.getId());
+                permissions.addAll(POS_BASE_PERMISSIONS);
+            }
             securityUser.setPermissions(new ArrayList<>(permissions));
         }
 
@@ -929,7 +935,11 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
                         userId, roles, e.getMessage());
                 permissionSource = "FALLBACK_EMPTY";
             }
-            set.addAll(POS_BASE_PERMISSIONS);
+            // P0 fix (Lead 2026-10-30): 同上，仅在 DB 授权为空时兜底，不再无条件并入
+            if (set.isEmpty()) {
+                logger.warn("[SECURITY] permission_empty_fallback userId={} -> using POS_BASE_PERMISSIONS（请在 Admin 补齐角色授权）", userId);
+                set.addAll(POS_BASE_PERMISSIONS);
+            }
             permissions = new ArrayList<>(set);
             if (permissions.isEmpty()) {
                 permissionSource = "FALLBACK_EMPTY";

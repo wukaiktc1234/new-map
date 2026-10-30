@@ -131,6 +131,12 @@ spring:
 # 登录/注册/短信验证码接口必须严格限流，防止暴力破解和短信轰炸
 rate-limit:
   enabled: true
+  # ★ RT-1（R7 P0 修复）：可信反向代理白名单（IP 或 CIDR，逗号分隔）。
+  #   - 留空 = 一个代理都不信 → 限流键恒为 req.getRemoteAddr()，客户端伪造 X-Real-IP / X-Forwarded-For 无效；
+  #   - 只有 remoteAddr 命中白名单时，才解析 X-Forwarded-For（从右往左取第一个非代理地址）/ X-Real-IP；
+  #   - 生产有 Nginx 时填 Nginx 地址，例如 "10.0.0.10, 10.0.0.11" 或 "172.16.0.0/12"。
+  #   改完看启动日志：[SECURITY] rate_limit keySource=... trusted_proxies=[...]
+  trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
   # 默认限流策略（按 IP+URI 维度）
   default:
     qps: 100    # 每秒最多 100 次

@@ -47,10 +47,19 @@ public interface ExceptionOpsMapper extends BaseMapper<ExceptionOps> {
      * <p>⚠ 已知冲突：{@code OrderTimeoutTask:45 STATUS_CANCELLED = 5}，但该类操作的是**遗留 Order（orders 旧表）**，
      * 不是 canonical orders；故本方法取 3。</p>
      *
-     * @return 1=抢到；0=已被处理 → 409
+     * <p>★ RT-3 [P1]（R7 红队审计）：**必须补 {@code COALESCE(order_status, 0) = 0}**，与
+     * {@link #casMarkPaid} 保持同一谓词族。修前只有 {@code payment_status <> 2} 条件 →
+     * 对「已取消(3)」的单二次作废时 {@code casCancel} 依然 rows=1（把已终态的单又"取消"一次），
+     * 直到后面插 exception_ops 撞 {@code uk_exception_ops_order} 才炸 → 前端拿到 500 与裸 SQL 错误。</p>
+     *
+     * <p>加上本条件后：二次作废在 <b>第一道 CAS</b> 就被挡下（rows=0），由调用方按当前状态返回 409，
+     * 且**不会**再多释放一次库存（CAS 是库存回补的唯一闸门，见 {@code PosExceptionTxBean}）。</p>
+     *
+     * @return 1=抢到；0=已被处理/已终态 → 409
      */
     @Update("UPDATE orders SET order_status = 3, update_time = now() "
-            + "WHERE order_id = #{orderId} AND COALESCE(payment_status, 0) <> 2 AND deleted = 0")
+            + "WHERE order_id = #{orderId} AND COALESCE(order_status, 0) = 0 "
+            + "  AND COALESCE(payment_status, 0) <> 2 AND deleted = 0")
     int casCancel(@Param("orderId") String orderId);
 
     /** 订单状态（P0-C：CAS 未命中时区分「已取消/已退款」与「已被他端处理」） */

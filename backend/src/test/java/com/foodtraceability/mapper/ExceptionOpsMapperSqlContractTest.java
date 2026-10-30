@@ -45,10 +45,12 @@ class ExceptionOpsMapperSqlContractTest {
     }
 
     @Test
-    @DisplayName("casCancel 不带 order_status 条件时仍是安全的（只对未支付单生效）")
-    void casCancelKeepsPaymentCondition() throws Exception {
+    @DisplayName("casCancel 必须限定 order_status = 0（RT-3：拒绝二次作废已终态的单）")
+    void casCancelRequiresPendingOrderStatus() throws Exception {
         String sql = sqlOf("casCancel").replaceAll("\\s+", " ");
         assertTrue(sql.contains("payment_status"), "casCancel 必须保留 payment_status 条件");
         assertTrue(sql.contains("deleted = 0"));
+        assertTrue(sql.replace(" ", "").contains("order_status,0)=0"),
+                "casCancel 的 order_status 条件必须是 = 0；实际 SQL：" + sql);
     }
 }

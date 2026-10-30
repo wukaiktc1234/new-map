@@ -32,9 +32,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     
-    @Value("${app.security.enabled:true}")
-    private boolean securityEnabled;
-
     private static final List<String> PUBLIC_PATHS = Arrays.asList(
         "/auth/",
         "/v1/auth/",
@@ -70,12 +67,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        if (!securityEnabled) {
-            logger.debug("Security disabled, skipping JWT filter");
-            filterChain.doFilter(request, response);
-            return;
-        }
-        
+        // ★ RT-5（R7）：此处原有「if (!securityEnabled) 跳过 JWT」分支，属于同一后门的两半
+        //   （SecurityConfig 放开授权 + 这里不解析身份）。已删除：JWT 解析恒执行。
         try {
             String requestUri = request.getRequestURI();
             String method = request.getMethod();

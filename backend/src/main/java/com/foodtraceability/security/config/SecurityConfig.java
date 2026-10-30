@@ -5,6 +5,8 @@ import com.foodtraceability.security.filter.JwtAuthenticationFilter;
 import com.foodtraceability.security.filter.KdsTokenFilter;
 import com.foodtraceability.security.filter.MfaAuthenticationFilter;
 import com.foodtraceability.security.filter.RateLimitFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,8 +34,29 @@ import java.util.List;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    /**
+     * 历史开关 app.security.enabled（RT-5 / RT-6）。
+     *
+     * <p><b>已废弃：本类不再用它决定授权策略</b>（原分支 anyRequest().permitAll() 已删除）。
+     * 保留读取只为两件事：① 旧启动脚本/配置里写 false 时**大声报警**，避免运维误以为“安全已关”；
+     * ② 让 grep 得到“这个属性现在只在日志里出现”的结论。</p>
+     */
     @Value("${app.security.enabled:true}")
-    private boolean securityEnabled;
+    private boolean legacySecuritySwitch;
+
+    /** 启动自检：安全链恒开启，任何企图关掉它的配置都会在日志里被点名 */
+    @jakarta.annotation.PostConstruct
+    public void warnIfLegacySwitchOff() {
+        if (!legacySecuritySwitch) {
+            log.error("[SECURITY] mode=enforced —— 配置 app.security.enabled=false **已被忽略**："
+                    + "R7 RT-5/RT-6 后门（anyRequest().permitAll）已删除，鉴权规则恒为生效。"
+                    + "若确实需要免鉴权联调，请使用独立测试 profile 而不是关闭安全链。");
+        } else {
+            log.info("[SECURITY] mode=enforced (app.security.enabled 已废弃，安全链恒开启)");
+        }
+    }
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, MfaAuthenticationFilter mfaAuthenticationFilter, RateLimitFilter rateLimitFilter, DeviceWhitelistFilter deviceWhitelistFilter, KdsTokenFilter kdsTokenFilter, UserDetailsService userDetailsService, LogoutHandler logoutHandler) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -79,9 +102,10 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> {
-                if (!securityEnabled) {
-                    authz.anyRequest().permitAll();
-                } else {
+                // ★ RT-5 / RT-6 [P2]（R7 红队审计）：**已删除 app.security.enabled=false
+                    //   → anyRequest().permitAll() 的一键全裸后门**。
+                    //   修前只要配置/环境变量里写错一个 false，整站鉴权归零，且没有任何日志。
+                    //   现在授权规则恒为生效；开关若被置 false，只在启动日志报警（见 warnIfLegacySwitchOff）。
                     authz
                         // 公开端点 - 无需认证
                         // 注意：由于context-path设置为/api，服务器看到的路径不包含/api前缀
@@ -168,7 +192,6 @@ public class SecurityConfig {
                         .requestMatchers("/v1/receipt-confirmations/verify/**").permitAll()
                         // 所有其他请求需要认证
                         .anyRequest().authenticated();
-                }
             })
             .addFilterBefore(deviceWhitelistFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

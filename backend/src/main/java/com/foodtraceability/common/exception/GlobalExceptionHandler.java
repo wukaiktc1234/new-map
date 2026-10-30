@@ -264,6 +264,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理HttpMessageNotReadableException（请求体不是合法 JSON / 类型不匹配）。
+     *
+     * <p>严格说这是客户端错误，修前落到 {@code RuntimeException} 兜底 → 200 + body 500，
+     * 既误导监控也误导用户。这里给真 400。</p>
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<?>> handleMessageNotReadable(
+            org.springframework.http.converter.HttpMessageNotReadableException e) {
+        log.warn("HttpMessageNotReadableException: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.error(HttpStatus.BAD_REQUEST.value(), "请求体格式错误：不是合法的 JSON"));
+    }
+
+    /**
      * 处理HttpRequestMethodNotSupportedException异常（请求方法不允许）
      */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -316,12 +330,13 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理NullPointerException异常（空指针异常）
+     *
+     * <p>★ RT-2 [P1]（R7 红队审计）：**必须返回真 HTTP 500**。修前返回 {@code Result}，
+     * HTTP 状态由 Spring 默认成 200 —— 监控按状态码告警永远不响，前端也只能靠 body.code 兜底。</p>
      */
     @ExceptionHandler(NullPointerException.class)
-    public Result<?> handleNullPointerException(NullPointerException e) {
-        String traceId = generateTraceId();
-        logServerError(e, traceId, "NullPointerException");
-        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), buildUserMessage(traceId));
+    public ResponseEntity<Result<?>> handleNullPointerException(NullPointerException e) {
+        return internalServerError(e, "NullPointerException");
     }
 
     /**
@@ -337,22 +352,41 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理其他运行时异常
+     *
+     * <p>★ RT-2 [P1]：真 HTTP 500（修前是 200 + body.code=500，实测
+     * {@code POST /v1/appeals/NOPE/process} → HTTP 200）。</p>
      */
     @ExceptionHandler(RuntimeException.class)
-    public Result<?> handleRuntimeException(RuntimeException e) {
-        String traceId = generateTraceId();
-        logServerError(e, traceId, "RuntimeException");
-        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), buildUserMessage(traceId));
+    public ResponseEntity<Result<?>> handleRuntimeException(RuntimeException e) {
+        return internalServerError(e, "RuntimeException");
     }
 
     /**
-     * 处理Exception异常（所有未被捕获的异常）
+     * 处理Exception异常（所有未被捕获的异常）—— 最终兜底。
+     *
+     * <p>★ RT-2 [P1]：{@code ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)}，
+     * 不允许再出现「HTTP 200 带 body 500」；traceId 同时进日志（MDC + error 行）、
+     * 响应头 {@code X-Trace-Id} 和用户文案，三处同源同值，便于按 ID 反查。</p>
      */
     @ExceptionHandler(Exception.class)
-    public Result<?> handleException(Exception e) {
+    public ResponseEntity<Result<?>> handleException(Exception e) {
+        return internalServerError(e, "Exception");
+    }
+
+    /**
+     * 统一的 5xx 出口：**HTTP 状态码与 body.code 都是 500**，并带同一 traceId。
+     *
+     * <p>为什么集中在一个方法：三个 handler（NPE / RuntimeException / Exception）如果各写一遍，
+     * 迟早出现「一个改了真码、另一个忘了」的半修形态 —— R7 的 RT-2 就是这么来的。</p>
+     */
+    private ResponseEntity<Result<?>> internalServerError(Exception e, String source) {
         String traceId = generateTraceId();
-        logServerError(e, traceId, "Exception");
-        return Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), buildUserMessage(traceId));
+        // 日志里必须能按 traceId 检索：MDC[traceId] + 异常行内 traceId=xxx
+        logServerError(e, traceId, source);
+        Result<?> body = Result.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), buildUserMessage(traceId));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .header("X-Trace-Id", traceId)
+                .body(body);
     }
 
     /**

@@ -75,11 +75,11 @@ public class PosExceptionController {
                 default:
                     return respond(false, 500, r.getMessage(), false);
             }
-        } catch (com.foodtraceability.exception.BusinessException be) {
-            if (be.getCode() == 40903) {
-                return respond(false, 409, be.getMessage(), false);
-            }
-            return respond(false, 400, be.getMessage(), false);
+        } catch (com.foodtraceability.common.exception.BusinessException be) {
+            // ★ RT-3：**httpStatus 优先** —— 唯一键冲突/并发冲突在 TxBean 里已转成 httpStatus=409，
+            //   修前这里只认 40903，于是 409 的业务冲突被降级成 HTTP 400。异常类已统一继承 common 版，
+            //   一处 catch 覆盖旧 exception.BusinessException。
+            return respond(false, resolveBusinessHttpCode(be), be.getMessage(), false);
         } catch (Exception e) {
             log.error("异常单补收款失败: orderId={} err={}", orderId, e.getMessage());
             return respond(false, 500, "补收款失败：" + e.getMessage(), false);
@@ -122,12 +122,30 @@ public class PosExceptionController {
                 default:
                     return respond(false, 500, r.getMessage(), false);
             }
-        } catch (com.foodtraceability.exception.BusinessException be) {
-            return respond(false, be.getCode() == 40903 ? 409 : 400, be.getMessage(), false);
+        } catch (com.foodtraceability.common.exception.BusinessException be) {
+            // ★ RT-3：同上，httpStatus 优先（二次作废的 409 必须真是 409）
+            return respond(false, resolveBusinessHttpCode(be), be.getMessage(), false);
         } catch (Exception e) {
             log.error("异常单作废失败: orderId={} err={}", orderId, e.getMessage());
             return respond(false, 500, "作废失败：" + e.getMessage(), false);
         }
+    }
+
+    /**
+     * 业务异常 → HTTP 状态码（RT-3）。
+     *
+     * <p>顺序：显式 {@code httpStatus} → 历史 40903（无资金账户）→ 其余 400。
+     * 这样"唯一键冲突"这类并发语义不会再被压成 400，也不会漏成 500。</p>
+     */
+    private int resolveBusinessHttpCode(com.foodtraceability.common.exception.BusinessException be) {
+        if (be.getHttpStatus() != null) {
+            return be.getHttpStatus();
+        }
+        Integer code = be.getCode();
+        if (code != null && (code == 409 || code == 40903 || code == 40902)) {
+            return 409;
+        }
+        return 400;
     }
 
     private ResponseEntity<Map<String, Object>> respond(boolean ok, int code, String message, boolean replayed) {
@@ -146,10 +164,14 @@ public class PosExceptionController {
         }
         body.put("data", data);
         body.put("replayed", replayed);
-        HttpStatus status = ok ? HttpStatus.OK
-                : (code == 409 ? HttpStatus.CONFLICT
-                : (code == 422 ? HttpStatus.UNPROCESSABLE_ENTITY
-                : (code == 400 ? HttpStatus.BAD_REQUEST : HttpStatus.INTERNAL_SERVER_ERROR)));
+        // 状态码按 code 通用映射：409→CONFLICT / 422→UNPROCESSABLE / 400→BAD_REQUEST / 5xx→500 …
+        HttpStatus status;
+        if (ok) {
+            status = HttpStatus.OK;
+        } else {
+            HttpStatus resolved = HttpStatus.resolve(code);
+            status = (resolved != null && resolved.isError()) ? resolved : HttpStatus.INTERNAL_SERVER_ERROR;
+        }
         return ResponseEntity.status(status).body(body);
     }
 

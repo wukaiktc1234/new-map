@@ -1,16 +1,11 @@
 package com.foodtraceability.service.impl;
 
-import com.foodtraceability.entity.FoodNew;
-import com.foodtraceability.mapper.FoodNewMapper;
 import com.foodtraceability.mapper.TtlOrderCloseMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.Map;
 
 /**
  * TTL 关单：单笔一个独立事务（REQUIRES_NEW）。
@@ -33,11 +28,11 @@ public class TtlOrderCloseTxBean {
     public static final String REASON_AUTO = "EXPIRED_AUTO";
 
     private final TtlOrderCloseMapper closeMapper;
-    private final FoodNewMapper foodNewMapper;
+    private final PosOrderStockRestorer stockRestorer;
 
-    public TtlOrderCloseTxBean(TtlOrderCloseMapper closeMapper, FoodNewMapper foodNewMapper) {
+    public TtlOrderCloseTxBean(TtlOrderCloseMapper closeMapper, PosOrderStockRestorer stockRestorer) {
         this.closeMapper = closeMapper;
-        this.foodNewMapper = foodNewMapper;
+        this.stockRestorer = stockRestorer;
     }
 
     /** @return true=本次关单成功；false=CAS 未命中（已被支付/处理），放弃不覆盖 */
@@ -48,31 +43,9 @@ public class TtlOrderCloseTxBean {
             log.info("[TTL] CAS 未命中（顾客刚好已支付），放弃不覆盖 orderId={}", orderId);
             return false;
         }
-        // 库存回补：与 recoverStockForRefundNew 同源（order_items.food_id 是数字 id，需换 food_code）
-        List<Map<String, Object>> items = closeMapper.findItems(orderId);
-        int ok = 0;
-        if (items != null) {
-            for (Map<String, Object> it : items) {
-                Object fidObj = it.get("food_id");
-                Object qtyObj = it.get("quantity");
-                if (fidObj == null || qtyObj == null) {
-                    continue;
-                }
-                Long fid = Long.valueOf(String.valueOf(fidObj));
-                Integer qty = Integer.valueOf(String.valueOf(qtyObj));
-                if (qty <= 0) {
-                    continue;
-                }
-                FoodNew food = foodNewMapper.selectById(fid);
-                if (food == null || food.getFoodCode() == null) {
-                    log.warn("[TTL] 找不到菜品编码，跳过回补 orderId={} foodId={}", orderId, fid);
-                    continue;
-                }
-                foodNewMapper.addStock(food.getFoodCode(), qty);
-                ok++;
-            }
-        }
-        log.info("[TTL] 订单超时关单回补 orderId={} 回补明细数={} remark=[TTL] 订单超时关单回补", orderId, ok);
+        // 库存回补：与 recoverStockForRefundNew 同源，实现已抽到 PosOrderStockRestorer
+        // （RT-4：异常单作废也复用它，禁止两份口径各自演化）
+        int ok = stockRestorer.restoreForOrder(orderId, "[TTL]");
         // 明确记录：本项目无原料锁定实现，无需释放（不假装释放）
         log.info("[METRIC] ttl_close_inventory_locked_untouched orderId={} reason=no_lock_implementation", orderId);
         return true;
