@@ -265,3 +265,54 @@ POST   /v1/pos/holds/{id}/checkout?terminalId=… 取出结账（CAS，已处理
 
 ---
 
+
+## ADR 增补：terminalId 必须设备级持久化（2026-10-30，挂单功能的致命矛盾）
+
+**为什么必须改（Lead 定性为致命矛盾）**：
+```text
+Owner 立项动机：浏览器崩溃 / 清缓存 / 跨终端时挂单不能丢
+但 terminalId = pos-${hostname}-${Date.now()} —— 每次登录都变
+→ 崩溃后必须重新登录 → 新 terminalId → 后端按 terminal_id 隔离 → **看不到刚才挂的单**
+→ 功能完全没解决它要解决的问题
+```
+
+**改法（前端最小改动）**：
+| 项 | 内容 |
+|----|------|
+| 新增 | `frontend-pos/src/utils/deviceId.ts`：键 `pos-device-id`，值 `pos-<hostname>-<uuid16>`，生成一次永久复用 |
+| 登录 | `Login.vue` 的 `currentTerminalId()` → `getDeviceId()`；`pos-terminal` 仍写入（值 = 设备 ID，兼容既有读取方） |
+| 迁移 | 仅有老 `pos-terminal` 而无 `pos-device-id` 时：生成设备 ID 并 console 提示「本机旧挂单需重新登录一次」 |
+| 重置 | `resetDeviceId()` 仅供「明确重置设备」使用，常规流程不调用 |
+
+**验收（真机，持久 profile 模拟关闭浏览器）**：
+```text
+① 挂 2 单 → 关闭浏览器 → 重开 + 重新登录 → 列表仍 2 条（来自后端 GET）
+   pos-device-id=pos-127.0.0.1-2eb6c42a37814ae1，与 pos-terminal 相同；重启后同一 ID
+   列表：[{id:17,13.32,HOLD940caf9…},{id:16,12.34,HOLDfc38882…}]
+② 换账号（qa_store_b）→ 列表为空；设备 ID 不变（隔离靠 employee_id，不是靠换终端号）
+```
+
+**连带影响（Lead 要求核实的第 ③ 项）—— 实测证据**：
+```text
+terminalId 稳定后，班次维度出现跨人可见（后端按 terminal 返回，不按 employee）：
+  A 开班（openingCash=321）→
+  B 的 token 调 GET /v1/pos/auth/current-shift?terminalId=<同一设备>
+    → 200 返回 A 的班次：employeeId=2080170081205395463, employeeName=测试收银员, openingCash=321.00
+  GET /v1/pos/auth/shift/today?terminalId=<同设备> → 同样返回 A 的班次
+  GET /v1/pos/shift/stats?terminalId=<同设备>     → 403（B 无该权限，另属权限面问题）
+前端已做的防守（不改后端契约）：
+  · StartShiftDialog「沿用上一班」改为按 employeeId/userId 双集合匹配；
+    实测 id 命名空间不一致（shift.employeeId=…463 vs userInfo.userId=…5500 vs employeeId=工号），
+    匹配不到 → **默认 0.00，绝不沿用别人的备用金**（宁可功能退步，不可串人）
+后端需定口径（二选一）：
+  a) current-shift / shift/today / shift/stats 增加 employee 过滤（换人即视为「无进行中班次」）
+  b) 返回中带 isCurrentEmployee:boolean，前端据此提示「本终端有上一位收银员的未结班次，请先交班」
+```
+
+**教条**：
+> 「终端号 = 每次登录生成」这种写法，把**设备身份**和**登录会话**混成了一个东西。
+> 一旦有数据要按终端归属（挂单、班次、钱箱），设备身份必须独立且持久；
+> 会话相关的状态（谁在上班）必须靠 employee_id，不能靠 terminal_id。
+
+---
+

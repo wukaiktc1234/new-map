@@ -107,6 +107,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { clearShiftMark } from '@/utils/shiftSession'
+import { getDeviceId } from '@/utils/deviceId'
 import { resetBusinessState, resetStoresInMemory, markSessionUser, readSessionUser } from '@/utils/resetAppState'
 import { setCapabilities, clearCapabilities } from '@/composables/usePermission'
 import { useShiftHandoverStore } from '@/stores/shiftHandover'
@@ -163,9 +164,15 @@ const rules: FormRules<LoginForm> = {
   ]
 }
 
-function generateTerminalId(): string {
-  const hostname = window.location.hostname || 'localhost'
-  return `pos-${hostname}-${Date.now()}`
+/**
+ * 终端号 = **设备级持久 ID**（P0 修复）
+ *
+ * 历史实现是 `pos-${hostname}-${Date.now()}`：每次登录都变，
+ * 而后端挂单/班次按 terminal_id 隔离 → 浏览器崩溃后重新登录就取不回自己的挂单，
+ * 正好废掉 Owner 立项要解决的问题。现在改为 getDeviceId()：生成一次、永久复用。
+ */
+function currentTerminalId(): string {
+  return getDeviceId()
 }
 
 /**
@@ -249,7 +256,7 @@ async function handleLogin(): Promise<void> {
 
   try {
     // 终端号：登录后交班/班次接口需要，登录时即落盘
-    const terminalId = generateTerminalId()
+    const terminalId = currentTerminalId()
     const payload = {
       employeeId: form.employeeId,
       password: form.password,

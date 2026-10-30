@@ -68,7 +68,7 @@ public class PosHoldController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", r.getId());
             m.put("orderNo", r.getOrderNo());
-            m.put("cartData", r.getCartData());
+            m.put("cartData", parseCart(r.getCartData()));
             m.put("totalAmountFen", r.getTotalAmountFen());
             m.put("createTime", r.getCreateTime());
             m.put("expireAt", r.getExpireAt());
@@ -83,9 +83,12 @@ public class PosHoldController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('pos:order:void')")
     @Operation(summary = "作废挂单", description = "CAS：仅 HOLD + 本人 + 本终端；0 行更新 → 409")
-    public Result<Void> cancel(@PathVariable Long id, @RequestParam String terminalId) {
+    public Result<Void> cancel(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(required = false) String terminalId) {
         Long uid = SecurityUtils.getCurrentUserId();
-        boolean ok = service.cancel(id, uid, terminalId);
+        String terminal = resolveTerminal(body, terminalId);
+        boolean ok = service.cancel(id, uid, terminal);
         if (!ok) {
             throw new BusinessException(409, "挂单已被其它终端处理或已失效");
         }
@@ -95,12 +98,48 @@ public class PosHoldController {
     @PostMapping("/{id}/checkout")
     @PreAuthorize("hasAuthority('pos:order:pay')")
     @Operation(summary = "挂单结账", description = "CAS：仅 HOLD + 本人 + 本终端；0 行更新 → 409")
-    public Result<Void> checkout(@PathVariable Long id, @RequestParam String terminalId) {
+    public Result<Void> checkout(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(required = false) String terminalId) {
         Long uid = SecurityUtils.getCurrentUserId();
-        boolean ok = service.checkout(id, uid, terminalId);
+        String terminal = resolveTerminal(body, terminalId);
+        boolean ok = service.checkout(id, uid, terminal);
         if (!ok) {
             throw new BusinessException(409, "挂单已被其它终端处理或已失效");
         }
         return Result.success(null, "挂单已结账");
+    }
+
+    /**
+     * 终端解析（Lead 2026-10-30）：<b>body 优先，回退 query</b> —— 与幂等键「body 优先→header」同一策略。
+     * <p>建单从 body 取 terminalId；checkout/cancel 若只接受 query 会造成同一资源两种取参方式。</p>
+     */
+    private String resolveTerminal(Map<String, Object> body, String queryTerminalId) {
+        Object v = body == null ? null : body.get("terminalId");
+        String terminal = v == null ? null : String.valueOf(v);
+        if (terminal == null || terminal.isBlank()) {
+            terminal = queryTerminalId;
+        }
+        if (terminal == null || terminal.isBlank()) {
+            throw new BusinessException(400, "terminalId 必填（body.terminalId 或 query 参数，二选一）");
+        }
+        return terminal;
+    }
+
+    /**
+     * cartData 返回类型统一为 JSON 对象（Lead 2026-10-30）。
+     *
+     * <p>jsonb 的语义就是对象；返回字符串会让前端每次都要 parse，且容易双序列化。
+     * 解析失败时退回原始字符串（不吞数据、不 500）。</p>
+     */
+    private Object parseCart(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+        } catch (Exception e) {
+            return json;
+        }
     }
 }

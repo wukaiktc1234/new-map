@@ -72,13 +72,36 @@ async function loadStoreReserve(): Promise<number | null> {
   return null
 }
 
-/** 上一次该终端班次的 openingCash（元） */
+/**
+ * 上一次**本收银员**在**本终端**的 openingCash（元）
+ *
+ * ⚠ terminalId 现在是**设备级持久 ID**（不再每次登录变），所以「按终端取最后一条班次」
+ *   会拿到**上一位收银员**的备用金 → 串人。
+ * 因此必须再按 employeeId 过滤：只沿用同一收银员的班次作为默认值。
+ */
 async function loadLastShiftOpeningCash(): Promise<number | null> {
   try {
     const shifts = await posApi.getTodayShifts(props.terminalId)
     const list = Array.isArray(shifts) ? shifts : []
+    // 身份匹配同时接受 employeeId（工号）与 userId（用户数字 id）：
+    // 后端 shift.employeeId 用的是「员工表 id」，而登录返回的 employeeId 是工号、userId 是用户 id，
+    // 三者命名空间不一致（实测：shift.employeeId=2080170081205395463 ≠ userInfo.userId=…5500）。
+    // 只有真正命中才沿用；命中不了就退回 0.00 —— **宁可默认 0，也绝不沿用别人的备用金**。
+    const myIds = new Set<string>()
+    const push = (v: unknown): void => { const s = String(v ?? '').trim(); if (s) myIds.add(s) }
+    push(props.employeeId)
+    try {
+      const user = JSON.parse(localStorage.getItem('pos-user') || '{}') as { employeeId?: unknown; userId?: unknown }
+      push(user?.employeeId)
+      push(user?.userId)
+    } catch {
+      /* ignore */
+    }
+    if (myIds.size === 0) return null
     for (let i = list.length - 1; i >= 0; i -= 1) {
-      const value = list[i]?.openingCash
+      const shift = list[i]
+      if (!myIds.has(String(shift?.employeeId ?? '').trim())) continue
+      const value = shift?.openingCash
       if (typeof value === 'number' && Number.isFinite(value)) return value
     }
     return null
