@@ -156,7 +156,7 @@ public class PosExceptionTxBean {
         ops.setAmountFen(amountFen);
         ops.setPayType(payType);
         ops.setCashReceivedFen(cashReceivedFen);
-        ops.setOperatorId(operatorId);
+        ops.setOperatorId(String.valueOf(SecurityUtils.getCurrentUserId()));   // P0-D: 不信任传入值，自己取 SecurityContext
         ops.setShiftId(order.getShiftId());
         ops.setFlowNo(flowNo);
         ops.setCreateTime(LocalDateTime.now());
@@ -229,7 +229,7 @@ public class PosExceptionTxBean {
         ops.setReason(reason);
         ops.setNote(note);
         ops.setIdempotencyKey(idempotencyKey);
-        ops.setOperatorId(operatorId);
+        ops.setOperatorId(String.valueOf(SecurityUtils.getCurrentUserId()));   // P0-D: 同上
         ops.setShiftId(order.getShiftId());
         // VOID 不产生资金流水，金额与 flow_no 一律 NULL
         ops.setAmountFen(null);

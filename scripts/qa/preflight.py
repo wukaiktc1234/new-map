@@ -467,6 +467,16 @@ def acquire_lock():
     return lock
 
 
+def _current_db_name():
+    """打印 mvn test 实际使用的库名（可见，不许猜）。
+
+    当前 mvn test 的 profile 由 application.yml 决定（active: pg → PG_DB_NAME 默认 food_traceability），
+    环境变量可覆盖；这里只做**如实显示**。"""
+    return (os.environ.get("PG_DB_NAME")
+            or os.environ.get("SPRING_DATASOURCE_URL", "").rsplit("/", 1)[-1].split("?")[0]
+            or "food_traceability(来自 application.yml active=pg)")
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -557,7 +567,13 @@ def main():
         clean_db_rc = check_clean_db_migration()
     test_rc = None
     if a.full:
-        test_rc = mvn(["test"], a.verbose)
+        # ★ Step 1 止血（Lead 2026-10-30）：**排除 IntegrationTest**，避免 mvn test 往共享库写单。
+        #   背景：8 个 @SpringBootTest 里只有 2 个声明 @ActiveProfiles("test")，其余继承
+        #   application.yml:54 `active: pg` → 连 **food_traceability（共享库）**；且
+        #   OrderManagementIntegrationTest **没有 @Transactional** → 每跑一次 full gate 就 +1~2 条 IT 单。
+        #   根因见 docs/audit/it-test-isolation-p1.md；Step 2 建测试库后恢复 IT。
+        test_rc = mvn(["test", "-Dtest=!*IntegrationTest", "-DfailIfNoSpecifiedTests=false"], a.verbose)
+        print("[GATE] mvn test 使用库=%s 跑法=**unit-only**（已排除 *IntegrationTest）" % _current_db_name())
         if test_rc != 0:
             print("[WARN] mvn test 失败（rc=%s）—— 这是真验证档，失败必须修" % test_rc)
             warn = True

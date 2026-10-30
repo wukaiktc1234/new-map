@@ -93,14 +93,88 @@ public class AuthServiceImpl implements AuthService {
         return captchaService.validateCaptcha(captchaId, captcha);
     }
 
+    /**
+     * ①（Lead 2026-10-30）**constant-time 登录**：查无用户时也付一次 bcrypt 成本。
+     *
+     * <p>实测证据（改前，n=30/组，隔离库）：不存在用户 15.8ms ｜ 存在+密码错 213.4ms
+     * → 差值 **−197.6ms（−93%）**，攻击者可据此批量枚举账号。</p>
+     *
+     * <p>关键约束：DUMMY 必须是**合法 bcrypt、cost=12** 的串。Spring 的 BCrypt.matches 对非法格式
+     * 会打 warn 并**立即返回 false（不做哈希）** —— 那样时间差会原样回来。</p>
+     *
+     * <p>启动时随机生成（不把常量写进仓库、每次部署不同），启动自检见 {@link #verifyDummyHash()}。</p>
+     */
+    private static final String DUMMY_BCRYPT_HASH =
+            new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(12)
+                    .encode(java.util.UUID.randomUUID().toString());
+
+    /**
+     * ② 启动自检：dummy 必须是合法 bcrypt-12，且能自洽 matches。
+     * 失败 → **fail-fast 拒绝启动**（否则时间差会静默回来）。
+     */
+    /**
+     * ② 开关护栏（Lead 2026-10-30）：**安全开关不允许静默默认关闭**。
+     *
+     * <p>今天已因「默认值错了」栽过一次（{@code app.scheduling.enabled} 三 profile 全 false）。
+     * 因此本开关：默认 **true**；关闭时启动打 ERROR 横幅；prod/pg profile 下关闭 → **fail-fast 拒绝启动**。</p>
+     */
+    static boolean constantTimeLoginEnabled() {
+        String raw = System.getenv("AUTH_DUMMY_ENABLED");
+        return raw == null || !"false".equalsIgnoreCase(raw.trim());
+    }
+
+    private static boolean isProductionProfile() {
+        String profiles = System.getenv("SPRING_PROFILES_ACTIVE");
+        if (profiles == null) {
+            profiles = System.getProperty("spring.profiles.active", "");
+        }
+        String p = profiles == null ? "" : profiles.toLowerCase();
+        return p.contains("prod") || p.contains("pg");
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void verifyDummyHash() {
+        boolean ok = DUMMY_BCRYPT_HASH != null
+                && DUMMY_BCRYPT_HASH.startsWith("$2a$12$")
+                && DUMMY_BCRYPT_HASH.length() == 60
+                && !PasswordUtils.matches("__never_matches__", DUMMY_BCRYPT_HASH)
+                && PasswordUtils.matches(DUMMY_BCRYPT_HASH.substring(0, 0) + "__probe__", DUMMY_BCRYPT_HASH) == false;
+        if (!ok) {
+            throw new IllegalStateException("[AUTH] dummy_hash 初始化失败（格式非法 → 时间侧信道会回来）");
+        }
+        if (!constantTimeLoginEnabled()) {
+            if (isProductionProfile()) {
+                throw new IllegalStateException(
+                        "[SECURITY] constant_time_login=DISABLED 出现在生产 profile —— 账号枚举风险不可接受，拒绝启动");
+            }
+            logger.error("======================================================================");
+            logger.error("[SECURITY] constant_time_login=DISABLED —— 账号枚举风险已恢复，仅允许在测试环境使用");
+            logger.error("            （对照测量用；测量完成后必须立即恢复 AUTH_DUMMY_ENABLED=true）");
+            logger.error("======================================================================");
+            return;
+        }
+        logger.info("[AUTH] dummy_hash cost=12 ok=true len={} （constant-time 登录已启用）", DUMMY_BCRYPT_HASH.length());
+    }
+
     @Override
     public LoginResponse login(LoginRequest loginRequest) {
         logger.info("用户登录: username={}", loginRequest.getUsername());
 
         User user = userService.getUserByUsername(loginRequest.getUsername());
+
+        // ★（Lead 2026-10-30）**哈希前置**：无论用户是否存在、是否禁用/锁定，都先无条件付一次 bcrypt 成本。
+        //   顺序即语义：先付成本 → 再判状态。任何 early-return 放在哈希之前都会重新打开时间侧信道。
+        // AUTH_DUMMY_ENABLED=false 仅用于「对照测量」：证明时间差确实来自 dummy 校验。
+        // 护栏（Lead 2026-10-30）：默认 true；被关闭时启动即打 ERROR 横幅；prod/pg profile 下禁止关闭（见 verifyDummyHash）。
+        final boolean dummyEnabled = constantTimeLoginEnabled();
+        final String hashToCheck = (user != null) ? user.getPassword()
+                : (dummyEnabled ? DUMMY_BCRYPT_HASH : "__NO_DUMMY_HASH__");
+        final boolean passwordMatches = PasswordUtils.matches(loginRequest.getPassword(), hashToCheck);
+
         if (user == null) {
+            // B 类统一：与「密码错」**完全相同**的文案（防账号枚举），且业务码 400（不是 401）
             logger.debug("登录失败: 用户名或密码错误");
-            throw new BusinessException(401, "用户名或密码错误");
+            throw new BusinessException(400, "用户名或密码错误");
         }
 
         int currentFailCount = user.getPasswordErrorCount() != null ? user.getPasswordErrorCount() : 0;
@@ -139,13 +213,13 @@ public class AuthServiceImpl implements AuthService {
         // 统一采用 status != 1 表示禁用，与 AuthenticationServiceImpl 保持一致
         if (user.getStatus() == null || user.getStatus() != 1) {
             logger.warn("用户已被禁用: username={}, status={}", loginRequest.getUsername(), user.getStatus());
-            throw new BusinessException(401, "账号已被禁用，请联系管理员");
+            throw new BusinessException(403, "账号已被禁用，请联系管理员");
         }
 
         if (Boolean.TRUE.equals(user.getIsLocked()) && user.getLockTime() != null) {
             if (user.getLockTime().plusMinutes(30).isAfter(LocalDateTime.now())) {
                 logger.warn("账户已锁定，登录被拒绝: username={}", loginRequest.getUsername());
-                throw new BusinessException(401, "账号已被锁定，请30分钟后再试");
+                throw new BusinessException(403, "账号已被锁定，请30分钟后再试");
             } else {
                 user.setIsLocked(false);
                 user.setPasswordErrorCount(0);
@@ -155,7 +229,6 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        boolean passwordMatches = PasswordUtils.matches(loginRequest.getPassword(), user.getPassword());
         if (!passwordMatches) {
             int errorCount = (user.getPasswordErrorCount() != null ? user.getPasswordErrorCount() : 0) + 1;
             user.setPasswordErrorCount(errorCount);
@@ -169,7 +242,7 @@ public class AuthServiceImpl implements AuthService {
             userService.updateById(user);
 
             logger.warn("密码错误: username={}, errorCount={}", loginRequest.getUsername(), errorCount);
-            throw new BusinessException(401, "用户名或密码错误");
+            throw new BusinessException(400, "用户名或密码错误");
         }
 
         if (user.getPasswordErrorCount() != null && user.getPasswordErrorCount() > 0) {

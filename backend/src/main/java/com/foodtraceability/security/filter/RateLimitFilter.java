@@ -44,7 +44,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
      */
     private static final java.util.LinkedHashMap<String, Integer> PATH_LIMITS = new java.util.LinkedHashMap<>();
     static {
-        PATH_LIMITS.put("/auth/login", 5);      // 管理端 /v1/auth/login 与 POS /v1/pos/auth/login 都命中
+        // 默认 5/60s；可用环境变量 RATE_LIMIT_LOGIN 覆盖（仅用于计时测量等特殊场景，勿在生产调高）
+        int loginLimit = 5;
+        try {
+            String env = System.getenv("RATE_LIMIT_LOGIN");
+            if (env != null && !env.isBlank()) {
+                loginLimit = Integer.parseInt(env.trim());
+            }
+        } catch (NumberFormatException ignored) {
+            loginLimit = 5;
+        }
+        PATH_LIMITS.put("/auth/login", loginLimit);   // 管理端 /v1/auth/login 与 POS /v1/pos/auth/login 都命中
         PATH_LIMITS.put("/auth/captcha", 10);   // 原注解 10/60s
         PATH_LIMITS.put("/pos/orders", 60);     // POS 开单/支付/退款
     }

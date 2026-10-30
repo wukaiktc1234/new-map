@@ -1,5 +1,7 @@
 package com.foodtraceability.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
@@ -10,6 +12,15 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 
+/**
+ * P0 containment (Lead 2026-10-30): this is a startup DDL runner with IRREVERSIBLE operations:
+ *   ALTER TABLE kitchen_order DROP COLUMN total_amount;
+ *   ALTER TABLE kitchen_order DROP COLUMN payment_method;
+ * Dropped columns cannot be restored and the change never enters flyway_schema_history.
+ * Disabled by default: requires app.ddl.kitchen-order-migration.enabled=true explicitly.
+ */
+@ConditionalOnProperty(name = "app.ddl.kitchen-order-migration.enabled",
+        havingValue = "true", matchIfMissing = false)
 @Component
 public class KitchenOrderMigrationConfig {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(KitchenOrderMigrationConfig.class);

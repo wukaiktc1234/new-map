@@ -106,6 +106,7 @@ import { User, Lock } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { clearShiftMark } from '@/utils/shiftSession'
 import { setCapabilities, clearCapabilities } from '@/composables/usePermission'
+import { useShiftHandoverStore } from '@/stores/shiftHandover'
 
 interface LoginForm {
   employeeId: string
@@ -175,10 +176,27 @@ async function probePosAccess(terminal: string): Promise<boolean> {
     await request.get('/v1/pos/shift/stats', { params: { terminalId: terminal } })
     return true
   } catch (err: unknown) {
-    const status = Number((err as { status?: number })?.status ?? (err as { code?: number })?.code ?? 0)
-    if (status === 403) return false
-    return true
+    const e = err as { status?: number; code?: number; fromBodyCode?: boolean }
+    const status = Number(e?.status ?? e?.code ?? 0)
+    if (status !== 403) return true
+    if (e?.fromBodyCode) {
+      // 契约违约：HTTP 200 + body.code=403。前端仍按"无权限"处理，但必须提醒后端改真实状态码，
+      // 否则所有基于 HTTP 状态的全局链路（刷新、跳转、监控）都是瞎的。
+      // eslint-disable-next-line no-console
+      console.warn('[login] 权限预检命中反模式：/v1/pos/shift/stats 返回 200 + body.code=403，必须改为真实 HTTP 403')
+      ElMessage.warning('后端以 200+code=403 返回权限错误，请改为真实 403 状态码（已按无权限处理）')
+    }
+    return false
   }
+}
+
+/** 彻底清空登录态：localStorage + Pinia 内存 + 能力快照，避免"半个登录"残留 */
+function purgeSession(): void {
+  localStorage.removeItem('pos-token')
+  localStorage.removeItem('pos-user')
+  localStorage.removeItem('pos-terminal')
+  clearCapabilities()
+  useShiftHandoverStore().reset()
 }
 
 async function handleLogin(): Promise<void> {
@@ -227,10 +245,7 @@ async function handleLogin(): Promise<void> {
       // 登录即校验"能不能收银"：无收银数据权限的账号不该等到交班才被拦下
       const granted = await probePosAccess(response.userInfo?.terminalId || terminalId)
       if (!granted) {
-        localStorage.removeItem('pos-token')
-        localStorage.removeItem('pos-user')
-        localStorage.removeItem('pos-terminal')
-        clearCapabilities()
+        purgeSession()
         error.value = '该账号无收银数据权限，请联系店长授权后再登录'
         ElMessage.error(error.value)
         return

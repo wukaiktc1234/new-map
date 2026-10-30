@@ -140,6 +140,27 @@ request.interceptors.response.use(
       if (data.code === 200) {
         return data.data !== undefined ? data.data : data
       }
+
+      // 反模式：HTTP 200 却用 body.code=401/403 表达鉴权失败。
+      // 这会绕开所有基于 HTTP 状态码的全局处理（刷新 token、路由跳转、埋点），必须当作缺陷上报。
+      if (data.code === 401 || data.code === 403) {
+        const message = String(data.message || '')
+        // eslint-disable-next-line no-console
+        console.error(
+          '[request] 接口以 200 + body.code=' + data.code + ' 返回鉴权失败（反模式）：' +
+          String(response.config?.url || '') +
+          ' —— 后端必须改为真实 HTTP ' + data.code + '，否则权限判定与刷新链路都会失效'
+        )
+        return Promise.reject({
+          message: message || (data.code === 403 ? '无权限执行该操作（403）' : '登录已过期，请重新登录'),
+          status: data.code,
+          code: data.code,
+          /** 标记：这是 body 里的伪状态码，不是真实 HTTP 状态 */
+          fromBodyCode: true,
+          originalError: response
+        })
+      }
+
       return Promise.reject({ message: data.message || '请求失败', status: data.code })
     }
 

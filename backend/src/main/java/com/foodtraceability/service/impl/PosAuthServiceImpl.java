@@ -864,7 +864,11 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
         }
         User user = userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException(401, "用户不存在或已被删除");
+        // ★（Lead 2026-10-30）：这里**不得**用「账号是否存在」类文案——那是账号枚举泄露（message 直接给答案）。
+        //   这里没有密码校验（用户已持有效 token），所以用**中性文案**而不是「用户名或密码错误」：
+        //   会话确实无效 → 仍是 401（真会话失效，与「业务 401 押后映射」不冲突）。
+        logger.warn("[METRIC] pos_me_user_missing userId={}", userId);
+        throw new BusinessException(401, "登录状态无效，请重新登录");
         }
 
         // 角色（与登录同源：user_roles → roles.role_id_str）

@@ -3,6 +3,7 @@ package com.foodtraceability.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,13 +12,41 @@ import jakarta.annotation.Nonnull;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * ⚠（Lead 2026-10-30，P0 止血）：本类是**启动期 DDL 执行器**（CommandLineRunner），历史上：
+ * <ul>
+ *   <li>无 profile 限制 —— 任何环境（含 prod/pg）启动即执行；</li>
+ *   <li>含 <b>DROP TABLE IF EXISTS order_items / orders</b>（触发条件是「orders 缺 order_number 列」）；</li>
+ *   <li>建表用 {@code DECIMAL(12,2)}（元），与项目「金额一律 bigint 分」铁律冲突；</li>
+ *   <li>改动**不进 flyway_schema_history** → 造成不可审计的 schema 漂移
+ *       （今晚追查的「迁移全绿但 schema 不一致 / 113 列缺失」即与此类混合执行有关）。</li>
+ * </ul>
+ *
+ * <p><b>双保险</b>：① 默认**关闭**（{@code app.db.fix.enabled} 必须显式为 true 才启用）；</p>
+ * <p>② 运行时护栏：即使被打开，只要 profile 含 prod/pg 也直接拒绝执行并打 ERROR。</p>
+ *
+ * <p>根治方向见 P0 缺陷单：删除本类，必要 DDL 转 Flyway。</p>
+ */
 @Configuration
+@ConditionalOnProperty(name = "app.db.fix.enabled", havingValue = "true", matchIfMissing = false)
 public class DatabaseFixConfig {
     private static final Logger log = LoggerFactory.getLogger(DatabaseFixConfig.class);
 
     @Bean
     public CommandLineRunner fixDatabaseSchema(JdbcTemplate jdbcTemplate) {
         return args -> {
+            // ② 运行时护栏（Lead 2026-10-30）：即使开关被打开，prod/pg profile 也拒绝执行。
+            String profiles = String.valueOf(System.getenv("SPRING_PROFILES_ACTIVE"))
+                    + "," + System.getProperty("spring.profiles.active", "");
+            String lower = profiles.toLowerCase();
+            if (lower.contains("prod") || lower.contains("pg")) {
+                log.error("[SECURITY] db_fix_runner disabled in production profile —— "
+                        + "本类含 DROP TABLE orders/order_items 且不进 flyway 历史，禁止在生产执行。"
+                        + " profiles=" + profiles);
+                return;
+            }
+            log.warn("⚠ [SECURITY] db_fix_runner ENABLED（app.db.fix.enabled=true，非生产 profile）"
+                    + " —— 本类会执行启动期 DDL（含可能的 DROP TABLE），要执行的 DDL 共约 26 条");
             log.info("===== 检查并修复数据库表结构 =====");
 
             try {

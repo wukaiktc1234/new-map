@@ -40,17 +40,12 @@ public class PosAuthController {
     @PostMapping("/login")
     @Operation(summary = "POS收银端登录", description = "员工通过工号和密码登录POS系统")
     public Result<Map<String, Object>> login(@Valid @RequestBody PosLoginDTO params) {
-        try {
-            Map<String, Object> result = posAuthService.login(params.getEmployeeId(), params.getPassword(), params.getTerminalId());
-            return Result.success(result, "登录成功");
-        } catch (com.foodtraceability.common.exception.BusinessException be) {
-            // ★（Lead 2026-10-30）业务异常必须保留业务码：密码错=400 不能被吞成 500（500 会让前端显示「服务器内部错误」）
-            logger.warn("POS登录被拒: code={}, msg={}", be.getCode(), be.getMessage());
-            return Result.error(be.getCode(), be.getMessage());
-        } catch (Exception e) {
-            logger.error("POS登录失败: {}", e.getMessage());
-            return Result.error(e.getMessage());
-        }
+        // ★（Lead 2026-10-30 试点，裁定 (a)）：**删掉整段 try-catch**。
+        //   controller 内 catch → return Result 会让 Spring 认为「正常返回」→ HTTP 恒定 200，
+        //   全局处理器的 400/403/404 映射**根本收不到**（实测：POS 登录密码错 = HTTP 200 + code=400）。
+        //   现在让 BusinessException 冒泡，由 GlobalExceptionHandler 映射成真 HTTP 状态码。
+        Map<String, Object> result = posAuthService.login(params.getEmployeeId(), params.getPassword(), params.getTerminalId());
+        return Result.success(result, "登录成功");
     }
 
     /**
@@ -90,19 +85,16 @@ public class PosAuthController {
     @PostMapping("/shift/start")
     @Operation(summary = "开始新班次", description = "在指定终端开始一个新的工作班次")
     public Result<PosShift> startShift(@Valid @RequestBody PosStartShiftDTO params) {
-        try {
-            PosShift shift = posAuthService.startShift(
-                    params.getTerminalId(), params.getEmployeeId(), params.getEmployeeName(),
-                    params.getShiftType(), params.getOpeningCash());
-            return Result.success(shift, "班次开始成功");
-        } catch (com.foodtraceability.exception.BusinessException be) {
-            // 保留业务码：403「不得为他人开班」不能被吞成 500
-            logger.warn("开始班次被拒: code={}, msg={}", be.getCode(), be.getMessage());
-            return Result.error(be.getCode(), be.getMessage());
-        } catch (Exception e) {
-            logger.error("开始班次失败: {}", e.getMessage());
-            return Result.error(e.getMessage());
-        }
+        // ★（Lead 2026-10-30 试点 #2）：**删掉整段 try-catch**，同 login。
+        //   修前 catch 内只有 log + return，会让「403 不得为他人开班」变成 HTTP 200 + code=403（两套表达）。
+        //   现在 BusinessException 冒泡 → GlobalExceptionHandler 映射 403 → 真 HTTP 403。
+        //   前端核对（Lead 要求）：PosShiftDialog 走 posApi.startShift → 拦截器 httpStatus===403 分支
+        //   reject({message: errData?.message || '无权限执行该操作（403）', status:403, code:…})
+        //   → StartShiftDialog catch 取 error.message → toast 仍显示**服务端原文**，不依赖 code 判定。
+        PosShift shift = posAuthService.startShift(
+                params.getTerminalId(), params.getEmployeeId(), params.getEmployeeName(),
+                params.getShiftType(), params.getOpeningCash());
+        return Result.success(shift, "班次开始成功");
     }
 
     /**

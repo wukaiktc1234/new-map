@@ -44,17 +44,14 @@
         <div class="sh-meta">
           <!-- 账号/班次信息放抬头：收银员一眼确认"我现在以谁的身份、交哪一班" -->
           <span class="sh-operator" data-test="shift-operator">
-            <b>{{ operator || '当前收银员' }}</b>
-            <template v-if="shiftInfo?.employeeName && shiftInfo.employeeName !== operator">
-              · {{ shiftInfo.employeeName }}
-            </template>
+            <b>{{ operator || '未知收银员' }}</b>
           </span>
-          <span class="sh-shift-chip" :class="{ active: shiftActive }">
-            {{ shiftActive ? '班次进行中' : '今日汇总' }}
+          <span class="sh-shift-chip" :class="{ active: shiftActive }" data-test="shift-chip">
+            {{ shiftActive ? '班次进行中' : '暂无班次' }}
             <template v-if="shiftInfo?.shiftId"> #{{ shiftInfo.shiftId }}</template>
           </span>
-          <span v-if="shiftActive" class="sh-shift-start" data-test="shift-start-at">
-            开始于 {{ formatTime(shiftInfo?.startTime || summaryStartTime, '--:--') }}
+          <span class="sh-shift-start" data-test="shift-start-at">
+            {{ shiftActive ? '开始于 ' + formatTime(shiftInfo?.startTime || summaryStartTime, '--:--') : '今日汇总' }}
           </span>
           <span class="sh-date">{{ currentDate }}</span>
           <span class="sh-time">{{ currentTime }}</span>
@@ -270,9 +267,14 @@
       data-test="shift-detail-drawer"
     >
       <div class="sh-drawer">
-        <div class="sh-drawer-summary">
-          共 <b>{{ validOrders.length }}</b> 笔有效订单 · 净营业额 <b>¥{{ netRevenue.toFixed(2) }}</b> ·
-          应上交现金 <b>¥{{ handoverShown.toFixed(2) }}</b>
+        <!-- 表头合计与"收款统计"合计行同源同值：都用 paidOrders.length + 后端 netRevenue -->
+        <div class="sh-drawer-summary" data-test="detail-summary">
+          共 <b data-test="detail-total-count">{{ paidOrders.length }}</b> 笔 ·
+          合计 <b data-test="detail-total-amount">¥{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</b>
+          <template v-if="filterPaymentMethod">
+            · 已筛选：{{ getPaymentMethodName(filterPaymentMethod) }}
+            <button type="button" class="sh-link" data-test="detail-clear-filter" @click="filterPaymentMethod = ''">查看全部</button>
+          </template>
         </div>
         <div class="sh-section">
           <div class="sh-section-header">

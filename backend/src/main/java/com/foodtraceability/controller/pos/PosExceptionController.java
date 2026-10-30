@@ -44,7 +44,6 @@ public class PosExceptionController {
     @Operation(summary = "补收款（异常单）", description = "真 409/422；响应含 replayed")
     public ResponseEntity<Map<String, Object>> resolve(@PathVariable String orderId,
                                                        @RequestBody Map<String, Object> body,
-                                                       @RequestHeader(value = "X-Operator-Id", required = false) String operatorId,
                                                        @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader) {
         // ①（Lead 2026-10-29）：**幂等键双读** —— body 优先，回退 Header。
         //   网关/代理去重靠 Header，业务透传靠 body；只支持一个必然有一方撞墙（前端第一次就撞了）。
@@ -58,8 +57,11 @@ public class PosExceptionController {
         Long amountFen = asLong(body.get("amountFen"));
         Long cashReceivedFen = asLong(body.get("cashReceivedFen"));
         String payType = asString(body.get("payType"));
-        String op = operatorId != null ? operatorId
-                : String.valueOf(com.foodtraceability.utils.SecurityUtils.getCurrentUserId());
+        Long operatorUserId = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (operatorUserId == null) {
+            return respond(false, 401, "未认证，无法确定操作人", false);
+        }
+        String op = String.valueOf(operatorUserId);
         try {
             ResolveResult r = service.resolve(orderId, amountFen, payType, cashReceivedFen, idemKey, op);
             switch (r.getStatus()) {
@@ -89,7 +91,6 @@ public class PosExceptionController {
     @Operation(summary = "作废异常单", description = "不产生资金流水；已支付单 409 ALREADY_PAID")
     public ResponseEntity<Map<String, Object>> voidOrder(@PathVariable String orderId,
                                                          @RequestBody Map<String, Object> body,
-                                                         @RequestHeader(value = "X-Operator-Id", required = false) String operatorId,
                                                          @RequestHeader(value = "Idempotency-Key", required = false) String idemHeader) {
         // ①（Lead 2026-10-29）：幂等键双读，body 优先，回退 Header（与 resolve 保持一致）
         String idemKey = asString(body.get("idempotencyKey"));
@@ -103,8 +104,11 @@ public class PosExceptionController {
         if (reason == null || reason.isBlank()) {
             return respond(false, 400, "reason 必填", false);
         }
-        String op = operatorId != null ? operatorId
-                : String.valueOf(com.foodtraceability.utils.SecurityUtils.getCurrentUserId());
+        Long operatorUserId = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        if (operatorUserId == null) {
+            return respond(false, 401, "未认证，无法确定操作人", false);
+        }
+        String op = String.valueOf(operatorUserId);
         try {
             ResolveResult r = service.voidOrder(orderId, reason, asString(body.get("note")), idemKey, op);
             switch (r.getStatus()) {
