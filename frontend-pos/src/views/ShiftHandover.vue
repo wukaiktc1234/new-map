@@ -71,6 +71,13 @@
         </button>
       </div>
 
+      <!-- 数据过期：账目超 60s 未刷新，禁止交班 -->
+      <div v-if="statsStaleBlocked && !shiftStore.statsForbidden" class="sh-alert is-stale" role="alert" data-test="shift-stats-stale">
+        <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
+        <span class="sh-alert__text">账目已超过 60 秒未刷新，请刷新后再交班</span>
+        <button type="button" class="sh-alert__btn" data-test="shift-stats-refresh" @click="retryStats">刷新账目</button>
+      </div>
+
       <!-- 班次口径说明条：只说"按什么口径交班"，异常数量与入口统一在下方统计表里，不重复 -->
       <div class="sh-alert" :class="{ 'is-warn': endShiftBlocked }" role="status" data-test="shift-banner">
         <el-icon class="sh-alert__icon"><WarningFilled /></el-icon>
@@ -90,12 +97,13 @@
           <span
             class="sh-metric__value"
             data-test="shift-total-received"
+            :data-amount-fen="totalReceivedShown === null ? '' : Math.round(totalReceivedShown * 100)"
             :data-source="totalReceivedShown === null ? 'missing' : 'server'"
           >{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</span>
         </div>
         <div class="sh-metric">
           <span class="sh-metric__label">现金收款（元）</span>
-          <span class="sh-metric__value" data-test="shift-cash-in">{{ cashInShown.toFixed(2) }}</span>
+          <span class="sh-metric__value" data-test="shift-cash-in" :data-amount-fen="Math.round(cashInShown * 100)">{{ cashInShown.toFixed(2) }}</span>
           <span v-if="cashRefundShown > 0" class="sh-metric__sub" data-test="shift-cash-refund">
             退款已扣 {{ cashRefundShown.toFixed(2) }}
           </span>
@@ -103,14 +111,14 @@
         <div class="sh-metric">
           <span class="sh-metric__label">备用金</span>
           <span class="sh-metric__value">
-            <b data-test="shift-opening-cash">{{ openingShown.toFixed(2) }}</b>
+            <b data-test="shift-opening-cash" :data-amount-fen="Math.round(openingShown * 100)">{{ openingShown.toFixed(2) }}</b>
             <button type="button" class="sh-metric__edit" data-test="shift-opening-edit" @click="openOpeningEdit">修改</button>
           </span>
           <span v-if="openingCashMissing" class="sh-metric__warn" data-test="shift-opening-missing">未读取到</span>
         </div>
         <div class="sh-metric is-primary">
           <span class="sh-metric__label">上交现金（元）</span>
-          <span class="sh-metric__value sh-metric__value--hero" data-test="shift-cash-handover">
+          <span class="sh-metric__value sh-metric__value--hero" data-test="shift-cash-handover" :data-amount-fen="Math.round(handoverShown * 100)">
             <AnimatedAmount :value="handoverShown" />
           </span>
         </div>
@@ -161,7 +169,7 @@
             {{ row.count }} 笔
             <em v-if="row.refundCount > 0" class="sh-paytable__sub">退 {{ row.refundCount }}</em>
           </span>
-          <span class="is-num" :class="{ 'is-danger': row.amount < 0 }">¥{{ row.amount.toFixed(2) }}</span>
+          <span class="is-num" :class="{ 'is-danger': row.amount < 0 }" :data-amount-fen="Math.round(row.amount * 100)">¥{{ row.amount.toFixed(2) }}</span>
           <span class="is-num" :class="{ 'is-danger': row.anomalyCount > 0 }">
             {{ row.anomalyCount > 0 ? row.anomalyCount + ' 笔' : '—' }}
           </span>
@@ -212,6 +220,12 @@
           <button type="button" class="sh-link" data-test="shift-export" :disabled="exporting" @click="exportReport">导出报表</button>
           <button type="button" class="sh-link" data-test="shift-print-preview" @click="printReport">预打交班单</button>
           <button type="button" class="sh-link" data-test="shift-help" @click="helpVisible = true">对账说明</button>
+        </div>
+
+        <!-- 交班失败就地提示（操作点在右侧按钮） -->
+        <div v-if="actionError" class="sh-action-error" role="alert" data-test="shift-action-error">
+          <el-icon><WarningFilled /></el-icon>
+          <span>{{ actionError }}</span>
         </div>
 
         <div class="sh-actions__buttons">
@@ -270,7 +284,7 @@
         <!-- 表头合计与"收款统计"合计行同源同值：都用 paidOrders.length + 后端 netRevenue -->
         <div class="sh-drawer-summary" data-test="detail-summary">
           共 <b data-test="detail-total-count">{{ paidOrders.length }}</b> 笔 ·
-          合计 <b data-test="detail-total-amount">¥{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</b>
+          合计 <b data-test="detail-total-amount" :data-amount-fen="totalReceivedShown === null ? '' : Math.round(totalReceivedShown * 100)">¥{{ totalReceivedShown === null ? '—' : totalReceivedShown.toFixed(2) }}</b>
           <template v-if="filterPaymentMethod">
             · 已筛选：{{ getPaymentMethodName(filterPaymentMethod) }}
             <button type="button" class="sh-link" data-test="detail-clear-filter" @click="filterPaymentMethod = ''">查看全部</button>
@@ -507,14 +521,32 @@ const anomalyDetailCount = computed<number>(() => {
   return typeof fromServer === 'number' && Number.isFinite(fromServer) ? fromServer : anomalyOrders.value.length
 })
 /** 交班被阻断的原因（用于 tooltip） */
-/** 是否阻断交班：无权限 / 统计未加载（null） / 有异常单，都算阻断 */
+/** 交班/操作失败的内联提示（错误只出现在用户操作的地方） */
+const actionError = ref('')
+
+/** 新鲜度闸门（R8 P1-3）：账目超过 60s 未刷新不允许交班，避免展示值与落库值不一致 */
+const FEN_MS = 60_000
+const nowTick = ref(Date.now())
+const staleTimer = setInterval(() => { nowTick.value = Date.now() }, 5000)
+onUnmounted(() => clearInterval(staleTimer))
+const statsStaleBlocked = computed<boolean>(() => {
+  // 依赖 nowTick：否则 statsStale 是"静止"的 computed，时间过去也不会重算
+  void nowTick.value
+  return shiftStore.stats !== null && Date.now() - shiftStore.statsUpdatedAt > FEN_MS
+})
+
+/** 是否阻断交班：无权限 / 统计未加载 / 数据过期 / 有异常单，都算阻断 */
 const endShiftBlocked = computed<boolean>(() =>
-  shiftStore.statsForbidden || pendingExceptionCount.value === null || pendingExceptionCount.value > 0
+  shiftStore.statsForbidden ||
+  pendingExceptionCount.value === null ||
+  pendingExceptionCount.value > 0 ||
+  statsStaleBlocked.value
 )
 
 const endShiftBlockReason = computed<string>(() => {
   if (shiftStore.statsForbidden) return '当前账号无权限访问收银数据，请联系店长授权后再交班'
   if (pendingExceptionCount.value === null) return '班次统计未加载完成，暂不能交班（请稍候或点重试）'
+  if (statsStaleBlocked.value) return '账目已超过 60 秒未刷新，请先刷新再交班（防止展示值与落库值不一致）'
   return pendingExceptionCount.value > 0
     ? '还有 ' + pendingExceptionCount.value + ' 笔待处理异常单，处理完才能交班'
     : ''
@@ -757,7 +789,7 @@ const submitOpeningEdit = async (): Promise<void> => {
     if (classifyShiftFailure(error) === 'not-implemented') {
       ElMessage.warning('该功能未上线（V2.0）：暂不支持修改备用金')
     } else {
-      ElMessage.error('备用金保存失败，请重试')
+      actionError.value = '备用金保存失败，请重试'
     }
   } finally {
     openingSaving.value = false
@@ -1020,6 +1052,7 @@ const refreshAll = async (): Promise<void> => {
 // ---- 操作 ----
 /** @param printAfter 交班后是否立刻打印交班单（美团式双按钮） */
 const confirmHandover = async (printAfter = false): Promise<void> => {
+  actionError.value = ''
   if (endingShift.value) return
   if (pendingExceptionCount.value === null) {
     ElMessage.warning('班次统计未加载完成，请稍候再交班')
@@ -1069,7 +1102,8 @@ const confirmHandover = async (printAfter = false): Promise<void> => {
     await refreshAll()
     visible.value = false
   } catch (error) {
-    ElMessage.error(resolveErrorMessage(error, '交班失败，请稍后重试'))
+    // 操作型失败：就地显示在按钮上方，不弹全局 toast
+    actionError.value = resolveErrorMessage(error, '交班失败，请稍后重试')
   } finally {
     endingShift.value = false
   }
@@ -1327,6 +1361,26 @@ onUnmounted(() => {
 }
 
 /* 越权：危险色，和"待处理异常"区分开（一个是业务待办，一个是权限问题） */
+.sh-action-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 12px;
+  max-width: 520px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  font-size: 12.5px;
+}
+
+.sh-alert.is-stale {
+  background: var(--pos-warning-soft, #fbf5e8);
+  color: var(--pos-warning-text, #8a6114);
+  box-shadow: inset 0 0 0 1px var(--pos-warning-border, rgba(194, 134, 31, 0.3));
+}
+
 .sh-alert.is-forbidden {
   background: var(--pos-danger-soft, #fbf0f0);
   color: var(--pos-danger, #c94b4b);

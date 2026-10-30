@@ -66,7 +66,13 @@
         </button>
 
         <!-- 交班 -->
-        <button class="action-btn shift-handover-btn" title="交班日结" @click="$emit('shiftHandover')">
+        <button
+          class="action-btn shift-handover-btn"
+          :class="{ 'is-active': shiftActive }"
+          :data-shift-active="shiftActive ? '1' : '0'"
+          :title="shiftActive ? '交班日结（本班进行中）' : '交班日结'"
+          @click="$emit('shiftHandover')"
+        >
           <el-icon><SwitchButton /></el-icon>
           <span>交班</span>
         </button>
@@ -208,13 +214,15 @@ import {
 import ChangePasswordDialog from '@/components/pos/dialogs/ChangePasswordDialog.vue'
 import PreferenceDialog from '@/components/pos/dialogs/PreferenceDialog.vue'
 import { terminalDisplayName, terminalTooltip } from '@/utils/terminal'
-import { clearPosRuntimeCache } from '@/utils/posCache'
+import { clearAuthSession } from '@/utils/resetAppState'
 
 interface Props {
   currentTime: string
   heldCount: number
   callNumberPendingCount: number
   isDark: boolean
+  /** 是否有在班班次：决定「交班」按钮是否高亮（开班成功后立即变） */
+  shiftActive?: boolean
 }
 
 defineProps<Props>()
@@ -343,7 +351,7 @@ async function handleLogout(): Promise<void> {
 
   try {
     await ElMessageBox.confirm(
-      '退出后将清理本机登录凭证与当前购物车草稿（挂单会保留），需重新登录才能继续收银。',
+      '退出后将清理本机登录凭证、当前购物车草稿与挂单（挂单按账号隔离、跨天自动失效），需重新登录才能继续收银。',
       '确认退出登录？',
       {
         confirmButtonText: '退出登录',
@@ -376,8 +384,8 @@ async function handleLogout(): Promise<void> {
       }
     }
   } finally {
-    // 清理凭证 + 开班标记 + 购物车/客显等运行态缓存（挂单与个人偏好保留）
-    clearPosRuntimeCache()
+    // 清理凭证 + 开班标记 + 购物车 + **挂单** + 草稿，并 $reset 所有业务 store
+    clearAuthSession()
     clearCapabilities()
     posUser.value = null
     loggingOut.value = false
@@ -397,7 +405,7 @@ async function handlePasswordChanged(): Promise<void> {
   } catch {
     return
   }
-  clearPosRuntimeCache()
+  clearAuthSession()
   router.push('/login')
 }
 
@@ -419,6 +427,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 在班高亮：开班成功后「交班」按钮立刻变成品牌橙，收银员一眼知道该交班了 */
+.shift-handover-btn.is-active {
+  color: var(--pos-primary, #e3651c);
+  background: var(--pos-primary-soft, #fdebe0);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(227, 101, 28, 0.32);
+}
+
 .pos-top-bar {
   display: flex;
   justify-content: space-between;

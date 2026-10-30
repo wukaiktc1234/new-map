@@ -5,6 +5,7 @@
       :held-count="hangingOrderStore.heldCount"
       :call-number-pending-count="callNumberPendingCount"
       :is-dark="isDark"
+      :shift-active="shiftStore.hasActiveShift"
       @hold="showHoldOrderDialog"
       @retrieve="showRetrieveOrderDialog"
       @order-query="showOrderQueryDialog"
@@ -18,7 +19,7 @@
 
     <!-- 班次三态提示：no-shift / 未上线(404) / 加载失败 三种文案必须不同，且都不阻塞收银 -->
     <div
-      v-if="shiftStateText && !showShiftHandover"
+      v-if="shiftStateText && !showShiftHandover && !shiftStore.hasActiveShift"
       class="shift-state"
       :class="'shift-state--' + shiftState"
       :data-test="'shift-state-' + shiftState"
@@ -194,6 +195,7 @@ import { usePayment } from '@/composables/usePayment'
 import { useMenu } from '@/composables/useMenu'
 import { useHangingOrder } from '@/composables/useHangingOrder'
 import { useCustomerDisplayStore } from '@/stores/customer-display'
+import { useShiftHandoverStore } from '@/stores/shiftHandover'
 import { useTheme } from '@/composables/useTheme'
 import { formatDate } from '@/utils/format'
 import { hasActiveShiftMark, markShiftStarted } from '@/utils/shiftSession'
@@ -240,6 +242,7 @@ const { isDark, currentTime, toggleTheme, initTime, cleanupTime } = useTheme()
 /** 个人偏好（回车确认结账 / 界面缩放），由头像菜单的「偏好设置」写入 */
 const { prefs } = usePosPreferences()
 const customerDisplayStore = useCustomerDisplayStore()
+const shiftStore = useShiftHandoverStore()
 const showOrderQuery = ref(false)
 
 /* ===== 班次三态：no-shift（正常无班次）/ not-implemented（404）/ error（网络或 5xx） ===== */
@@ -282,7 +285,14 @@ async function maybeOpenStartShift(): Promise<void> {
     if (!terminal) return
 
     // ① 本终端当天已开班（且未交班）→ 静默跳过，刷新页面不再打扰收银员
-    if (hasActiveShiftMark(terminal)) return
+    if (hasActiveShiftMark(terminal)) {
+      // 本地有标记 = 在班：同步进 store，警告条与交班入口都依赖它
+      shiftState.value = ''
+      if (!shiftStore.currentShift) {
+        shiftStore.setCurrentShift({ employeeId: employeeId.value, employeeName: employeeName.value })
+      }
+      return
+    }
 
     const current = await posApi.getCurrentShift(terminal)
     // b) 200 + data=null → 真的没开班（正常业务态）：提示 + 开班入口，绝不当作故障
@@ -293,6 +303,13 @@ async function maybeOpenStartShift(): Promise<void> {
       return
     }
     shiftState.value = ''
+    shiftStore.setCurrentShift({
+      shiftId: current.shiftId,
+      employeeId: employeeId.value,
+      employeeName: employeeName.value,
+      openingCash: typeof current.openingCash === 'number' ? current.openingCash : null,
+      startTime: current.startTime
+    })
     if (current) {
       // ③ 后端已有进行中的班次（例如换了一台终端登录同一账号）→ 回写标记
       markShiftStarted({
@@ -314,9 +331,39 @@ async function maybeOpenStartShift(): Promise<void> {
   }
 }
 
-function handleShiftStarted(): void {
-  ElMessage.success('班次已开始')
+/**
+ * 开班成功回调（本轮修复重点）
+ *
+ * 之前只关弹窗、不写状态 → 「无在班班次」警告条要等手动刷新才消失。
+ * 现在三件事一起做：
+ *   ① 立即清空 shiftState（警告条的 v-if 直接响应它）；
+ *   ② 写入本地开班标记，刷新/切页不再弹开班弹窗；
+ *   ③ 同步到交班 store 的 currentShift，交班面板立刻知道"这班是谁、备用金多少"。
+ */
+function handleShiftStarted(shift?: { shiftId?: number | string; openingCash?: number | null; startTime?: string }): void {
+  const terminal = terminalId.value || localStorage.getItem('pos-terminal') || ''
+  shiftState.value = ''
+  shiftStateDetail.value = ''
   showStartShift.value = false
+  if (terminal) {
+    markShiftStarted({
+      terminalId: terminal,
+      shiftId: shift?.shiftId,
+      employeeId: employeeId.value,
+      employeeName: employeeName.value,
+      openingCash: typeof shift?.openingCash === 'number' ? shift.openingCash : null,
+      startedAt: shift?.startTime,
+    })
+  }
+  shiftStore.setCurrentShift({
+    shiftId: shift?.shiftId,
+    employeeId: employeeId.value,
+    employeeName: employeeName.value,
+    openingCash: typeof shift?.openingCash === 'number' ? shift.openingCash : null,
+    startTime: shift?.startTime
+  })
+  void shiftStore.refreshStats()
+  ElMessage.success('班次已开始')
 }
 const showOrderDetail = ref(false)
 const showCoupon = ref(false)
@@ -639,6 +686,14 @@ let menuRefreshTimer: number | null = null
 let handleKeyDown: ((event: KeyboardEvent) => void) | null = null
 
 onMounted(async () => {
+  // 挂单：启动即按「当前账号命名空间 + 跨天失效」清理一次（Owner 要求凌晨强制失效）
+  // 不放在懒加载里，否则收银员不打开取单对话框时，旧挂单会一直躺在浏览器里
+  try {
+    hangingOrderStore.initialize()
+  } catch (e) {
+    logger.warnMessage('[HOLD-INIT] 挂单初始化失败（不影响收银）:', e)
+  }
+
   // 主题初始化
   initTime()
   

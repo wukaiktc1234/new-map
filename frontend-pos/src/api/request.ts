@@ -2,10 +2,30 @@ import axios, { type AxiosRequestConfig, type AxiosError } from 'axios'
 import router from '../router'
 import { clearCapabilities } from '../composables/usePermission'
 
+/**
+ * 扩展请求配置：
+ *   silent=true → 该请求的任何失败都**不弹全局提示**，由业务层用内联方式呈现。
+ * 登录、后台轮询、权限预检一律 silent，避免"页面弹窗 + 操作点提示"重复。
+ */
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    silent?: boolean
+  }
+}
+
 const request = axios.create({
   baseURL: '/api',
   timeout: 30000
 })
+
+/** 登录类接口：即使调用方忘了 silent，也绝不允许全局提示（错误只回给登录页表单） */
+const AUTH_SILENT_PATTERNS = ['/v1/pos/auth/login', '/v1/pos/auth/me']
+
+export function isSilentRequest(config?: AxiosRequestConfig): boolean {
+  if (config?.silent) return true
+  const url = String(config?.url || '')
+  return AUTH_SILENT_PATTERNS.some((pattern) => url.includes(pattern))
+}
 
 // 清理历史遗留的演示模式标志，避免旧状态影响新逻辑
 if (localStorage.getItem('pos-demo-mode')) {
@@ -173,6 +193,8 @@ request.interceptors.response.use(
 
     // ★ 登录接口返回 401 = 凭据错误：只把服务端原文抛给登录页，绝不触发刷新/跳登录
     const isLoginCall = String(error.config?.url || '').includes('/v1/pos/auth/login')
+    /** silent：登录、权限预检、后台轮询 —— 失败一律交给业务层内联呈现，不弹全局提示 */
+    const silent = isSilentRequest(originalRequest)
 
     // B3 修复：401 时尝试用 refresh token 刷新，刷新失败再跳登录
     if (status === 401 && !isLoginCall && originalRequest && !originalRequest._retry) {
@@ -210,9 +232,9 @@ request.interceptors.response.use(
         notifyTokenRefresh(null)
       }
 
-      // 刷新失败，清理凭证并跳转登录
-      clearAuthAndRedirect()
-      return Promise.reject({ message: '登录已过期，请重新登录', status: 401 })
+      // 刷新失败：silent 请求（登录/预检/轮询）只 reject，不跳转、不弹窗
+      if (!silent) clearAuthAndRedirect()
+      return Promise.reject({ message: '登录已过期，请重新登录', status: 401, silent })
     }
 
     // 限流 429：服务端 message 优先；无 message 给「可重试」兜底文案，有 Retry-After 就补等待时长
@@ -225,6 +247,9 @@ request.interceptors.response.use(
       return Promise.reject({
         message: (rateData?.message || '请求过于频繁，请稍后重试') + waitHint,
         status: 429,
+        /** 供登录页做"XX 秒后可重试"的倒计时（秒） */
+        retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+        silent,
         originalError: error,
       })
     }
@@ -238,12 +263,55 @@ request.interceptors.response.use(
         message: errData?.message || '无权限执行该操作（403）',
         status: 403,
         code: errData?.code ?? 403,
+        silent,
         originalError: error
       })
     }
-    const message = errData?.message || error.message || '请求失败'
-    return Promise.reject({ message, status: httpStatus, originalError: error })
+    // 网络层错误汉化（R8 P1-2）：axios 的英文原文绝不直出到 UI
+    const rawMessage = errData?.message || error.message || ''
+    const message = toChineseNetworkMessage(rawMessage, httpStatus, error.code)
+    return Promise.reject({ message, status: httpStatus, silent, originalError: error })
   }
 )
+
+/**
+ * 把网络层/框架层的英文错误翻译成中文（R8 P1-2）
+ *
+ * 覆盖：
+ *   Network Error / Failed to fetch            → 网络连接失败，请检查网络后重试
+ *   ECONNABORTED / timeout / ETIMEDOUT         → 请求超时，请检查网络后重试
+ *   5xx 无 message                              → 服务暂时不可用，请稍后重试
+ *   其它英文（无中文）                            → 兜底「请求失败，请稍后重试」
+ * 已经是中文的 message 原样返回（后端中文提示优先级最高）。
+ */
+export function toChineseNetworkMessage(rawMessage: string, httpStatus?: number, code?: string): string {
+  const msg = String(rawMessage || '').trim()
+  const isChinese = /[\u4e00-\u9fa5]/.test(msg)
+  if (isChinese) return msg
+
+  const lower = msg.toLowerCase()
+  if (
+    lower.includes('network error') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('err_network') ||
+    lower.includes('networkerror')
+  ) {
+    return '网络连接失败，请检查网络后重试'
+  }
+  if (
+    lower.includes('econnaborted') ||
+    lower.includes('timeout') ||
+    lower.includes('etimedout') ||
+    code === 'ECONNABORTED'
+  ) {
+    return '请求超时，请检查网络后重试'
+  }
+  if (typeof httpStatus === 'number' && httpStatus >= 500) {
+    return '服务暂时不可用，请稍后重试'
+  }
+  if (!msg) return '请求失败，请稍后重试'
+  // 仍是非中文（例如 "Request failed with status code 500"）→ 统一兜底
+  return /[a-zA-Z]/.test(msg) ? '请求失败，请稍后重试' : msg
+}
 
 export default request

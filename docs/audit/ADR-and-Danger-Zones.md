@@ -167,3 +167,50 @@ post("/api/v1/pos/exceptions/%s/resolve")  # 又写了一遍 /api
 | 2026-10-29 | 清理 46 个残留班次（漏查②窗口断言） | A37 从 0 变 8 |
 | 2026-10-29 | 清理 5 条夹具流水（漏查④余额快照） | A7 从 0 变 1（差 11000 分） |
 | 2026-10-29 | gate 第一版用真 resolve prime 409 夹具 | 每跑一次往真实账户记 2200 分，累计 4400 分；A7 偶然愈合 |
+
+## ADR：临时用 localStorage 兜底的功能，够久就变成了默认架构（2026-10-30，挂单越权）
+
+**事故**：Owner 报「挂单越权」——A 收银员挂的单，B 收银员登录后能看到（含菜品与金额）。
+
+**事实层（必须先说清）**：
+```text
+· 后端 grep 'hold-orders|holdOrders|挂单|HOLD' → 0 命中：**根本不存在服务端实现**
+· 因此「SQL 少一个 where employee_id=?」这种根因**不存在**，也没有「加过滤条件」可加
+· 真实机制：localStorage 是**浏览器级**存储，不区分登录账号；
+  frontend-pos/src/stores/hanging-order.ts 历史上用**全局键** 'heldOrders'
+  → 换账号后读到的是同一个键 → 这就是「越权」的全部真相
+```
+
+**但它仍是真实的越权隐患**：任何能操作这台机器/浏览器的人，都能看到上一位收银员的挂单内容（菜品、金额、备注）。
+
+**临时修复（2026-10-30，前端侧）**：
+
+| 措施 | 位置 | 效果 |
+|------|------|------|
+| 键加命名空间 `heldOrders:<userId>:<terminalId>` | `stores/hanging-order.ts` | 换账号读到的是另一个键，天然隔离 |
+| 加载前清理非本账号键 + 老全局键 | `purgeForeignHoldKeys()` | 老数据不再被任何账号读到 |
+| 跨天失效（holdTime 业务日期 != 今天即丢弃） | `isUsableHeldOrder()` + `initialize()` 在 App 启动执行 | 满足 Owner「凌晨强制失效」 |
+| 切号/退出清空所有 `heldOrders:*` | `utils/posCache.ts` | 机器上不留别人的挂单 |
+
+**根治方案（新功能，需单独立项排期）**：后端补建挂单端点
+```text
+表：pos_held_orders（id, terminal_id, employee_id, store_id, items_json, total_fen, status, hold_at, expire_at）
+端点：POST /v1/pos/orders/hold ｜ GET /v1/pos/orders/held ｜ POST /v1/pos/orders/{id}/resume
+约束：按 employee_id + store_id 过滤（不是按浏览器）；expire_at 当天 23:59:59 或次日 0 点；状态机 held→resumed/expired
+```
+
+**ADR 结论（写给未来的自己）**：
+> 「后端还没端点，先放 localStorage」是一个**有期限的临时决定**。
+> 一旦它活过了一个迭代，就会有人当成默认架构、在上面继续加功能（本次就是加到了「多收银员共用一台机器」的场景）。
+> **凡涉及「多个用户/多台设备共享同一份数据」的功能，禁止用 localStorage 兜底**；
+> 只能兜底「纯本地、单人、可随时丢弃」的状态（如主题、草稿、购物车）。
+
+**防回归检查项（代码评审用）**：
+```text
+1. localStorage 的 key 里有没有 userId/terminalId？没有 → 一律视为隐患
+2. 这份数据是否允许「上一位登录者」看到？允许才可放本地
+3. 有没有过期/上限策略？只增不删的本地缓存 = 定时炸弹
+```
+
+---
+

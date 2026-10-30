@@ -87,13 +87,15 @@ export interface ShiftWriteResult {
 const idempotencyHeader = (key: string) => ({ headers: { 'Idempotency-Key': key } })
 
 export const shiftApi = {
+  /** 后台轮询类：silent，失败由交班面板用内联横幅呈现，不弹全局提示 */
   getStats(terminalId: string): Promise<ShiftStats | null> {
-    return request.get(`${BASE}/stats`, { params: { terminalId } }) as unknown as Promise<ShiftStats | null>
+    return request.get(`${BASE}/stats`, { params: { terminalId }, silent: true }) as unknown as Promise<ShiftStats | null>
   },
 
   listExceptions(terminalId: string, tab: ExceptionTab): Promise<ExceptionOrder[]> {
     return request.get(`${BASE}/exceptions`, {
-      params: { terminalId, tab }
+      params: { terminalId, tab },
+      silent: true
     }) as unknown as Promise<ExceptionOrder[]>
   },
 

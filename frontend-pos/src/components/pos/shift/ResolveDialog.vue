@@ -34,8 +34,8 @@
           </el-form>
         </el-tab-pane>
 
-        <!-- 扫码 -->
-        <el-tab-pane label="扫码" name="scan">
+        <!-- 扫码：后端接口就绪才出现（F-P0-1 断头路） -->
+        <el-tab-pane v-if="scanReady" label="扫码" name="scan">
           <div class="rd-scan">
             <div v-if="!scanPay" class="rd-scan__placeholder">
               <el-button
@@ -83,6 +83,8 @@ import { fenToYuan, yuanToFen } from '@/utils/shiftStatus'
 import { resolveErrorMessage } from '@/utils/errorMessage'
 import type { ExceptionOrder, ScanPayment } from '@/api/shiftExceptions'
 import { useScanPaymentPolling } from '@/composables/useScanPaymentPolling'
+import { POS_FLAGS } from '@/config/posFlags'
+import { useDraft } from '@/composables/useDraft'
 
 const props = defineProps<{
   modelValue: boolean
@@ -98,8 +100,21 @@ const emit = defineEmits<{
   (e: 'scan-paid'): void
 }>()
 
-const method = ref<'cash' | 'scan'>('cash')
-const receivedInput = ref('')
+/** 后端没就绪的支付方式一律不画入口 */
+const scanReady = computed<boolean>(() => POS_FLAGS.SCAN_BACKEND_READY)
+/** 草稿：实收金额/当前方式实时落 sessionStorage（R8 P1-4） */
+const { draft: resolveDraft, clear: clearResolveDraft } = useDraft<{ method: 'cash' | 'scan'; received: string }>(
+  () => 'resolve:' + (props.order?.orderId || 'new'),
+  { method: 'cash', received: '' }
+)
+const method = computed<'cash' | 'scan'>({
+  get: (): 'cash' | 'scan' => (scanReady.value ? resolveDraft.value.method : 'cash'),
+  set: (v: 'cash' | 'scan') => { resolveDraft.value.method = v }
+})
+const receivedInput = computed<string>({
+  get: () => resolveDraft.value.received,
+  set: (v: string) => { resolveDraft.value.received = v }
+})
 const scanPay = ref<ScanPayment | null>(null)
 const creatingScan = ref(false)
 const { start: startPolling, stop: stopPolling, remainMs } = useScanPaymentPolling()
@@ -142,6 +157,12 @@ function onTabChange(): void {
 }
 
 async function createScan(): Promise<void> {
+  // 兜底：即使被外围强行切到扫码，也只给中文提示，绝不发请求（避免 405/501 英文报错直出）
+  if (!scanReady.value) {
+    ElMessage.warning('扫码功能暂未开放，请使用现金收款')
+    method.value = 'cash'
+    return
+  }
   if (creatingScan.value || !props.order || !props.createScan) return
   creatingScan.value = true
   try {
@@ -175,7 +196,12 @@ function submitCash(): void {
   emit('submit-cash', { amountFen: dueFen.value, cashReceivedFen: receivedFen.value })
 }
 
-defineExpose({ method, receivedInput, scanPay })
+/** 父组件提交成功后调用：清掉本单草稿 */
+function markSubmitted(): void {
+  clearResolveDraft()
+}
+
+defineExpose({ method, receivedInput, scanPay, markSubmitted })
 </script>
 
 <style scoped>

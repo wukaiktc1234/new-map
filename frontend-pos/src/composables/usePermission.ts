@@ -75,27 +75,43 @@ export function hasCapabilitiesLoaded(): boolean {
   return capabilities.value.loaded
 }
 
+export type RestoreResult = 'ok' | 'auth-failed' | 'network-error'
+
+const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms) })
+
 /**
  * 静默恢复能力快照（刷新/新标签页用）
  *
- * 仍然不从 localStorage 取权限（本地可篡改），而是拿已有的 token 问服务端要一份。
- * 成功 → 写入内存并返回 true；失败（401/403/网络）→ 返回 false，由调用方决定是否回登录页。
+ * 弱网防误踢（R8 P1-1）：
+ *   - 只有服务端明确 401/403 才算"权限没了"；
+ *   - 网络错误（无 response / 超时 / 5xx）最多重试 3 次，仍失败则返回 network-error，由调用方放行；
+ *   - 仍然不从 localStorage 读权限（防自授权），只拿 token 向服务端换。
  */
-export async function restoreCapabilities(): Promise<boolean> {
-  if (capabilities.value.loaded) return true
+export async function restoreCapabilities(retries = 2): Promise<RestoreResult> {
+  if (capabilities.value.loaded) return 'ok'
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('pos-token') : null
-  if (!token) return false
-  try {
-    const me = (await request.get('/v1/pos/auth/me')) as unknown as {
-      permissions?: unknown
-      roles?: unknown
-    } | null
-    if (!me) return false
-    setCapabilities(me.permissions ?? (me as { perms?: unknown }).perms, me.roles ?? (me as { roleName?: unknown }).roleName)
-    return capabilities.value.loaded
-  } catch {
-    return false
+  if (!token) return 'auth-failed'
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const me = (await request.get('/v1/pos/auth/me')) as unknown as {
+        permissions?: unknown
+        roles?: unknown
+      } | null
+      setCapabilities(
+        me?.permissions ?? (me as { perms?: unknown } | null)?.perms,
+        me?.roles ?? (me as { roleName?: unknown } | null)?.roleName
+      )
+      return 'ok'
+    } catch (error) {
+      const e = error as { status?: number; code?: number }
+      const status = Number(e?.status ?? e?.code ?? 0)
+      if (status === 401 || status === 403) return 'auth-failed'
+      // 网络类错误：保留 token（绝不 removeItem），退避后重试
+      if (attempt < retries) await sleep(400 * (attempt + 1))
+    }
   }
+  return 'network-error'
 }
 
 /**

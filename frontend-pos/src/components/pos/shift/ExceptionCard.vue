@@ -147,9 +147,13 @@ const handledLabel = computed(() => {
   gap: 8px;
 }
 
+/* 触控基准 48px（R8 P1-5）：收银台湿手/戴手套也要点得中 */
 .exc-btn {
-  min-height: 36px;
-  padding: 0 16px;
+  min-height: 48px;
+  min-width: 104px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .exc-card__handled {

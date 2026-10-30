@@ -83,9 +83,11 @@
             size="large"
             class="login-btn"
             :loading="loading"
+            :disabled="retryLeft > 0"
+            data-test="login-submit"
             @click="handleLogin"
           >
-            {{ loading ? '登录中...' : '登 录' }}
+            {{ loading ? '登录中...' : (retryLeft > 0 ? retryLeft + ' 秒后可重试' : '登 录') }}
           </el-button>
         </el-form>
 
@@ -105,6 +107,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import request from '@/api/request'
 import { clearShiftMark } from '@/utils/shiftSession'
+import { resetBusinessState, resetStoresInMemory, markSessionUser, readSessionUser } from '@/utils/resetAppState'
 import { setCapabilities, clearCapabilities } from '@/composables/usePermission'
 import { useShiftHandoverStore } from '@/stores/shiftHandover'
 
@@ -173,7 +176,7 @@ function generateTerminalId(): string {
  */
 async function probePosAccess(terminal: string): Promise<boolean> {
   try {
-    await request.get('/v1/pos/shift/stats', { params: { terminalId: terminal } })
+    await request.get('/v1/pos/shift/stats', { params: { terminalId: terminal }, silent: true })
     return true
   } catch (err: unknown) {
     const e = err as { status?: number; code?: number; fromBodyCode?: boolean }
@@ -199,7 +202,31 @@ function purgeSession(): void {
   useShiftHandoverStore().reset()
 }
 
+/** 限流倒计时：默认 48 秒，防连续狂点 */
+const RETRY_SECONDS = 48
+const retryLeft = ref(0)
+let retryTimer: ReturnType<typeof setInterval> | null = null
+
+function startRetryCountdown(seconds: number): void {
+  if (retryTimer) clearInterval(retryTimer)
+  retryLeft.value = Math.max(1, Math.ceil(seconds))
+  retryTimer = setInterval(() => {
+    retryLeft.value -= 1
+    if (retryLeft.value <= 0) {
+      if (retryTimer) clearInterval(retryTimer)
+      retryTimer = null
+      retryLeft.value = 0
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (retryTimer) clearInterval(retryTimer)
+})
+
 async function handleLogin(): Promise<void> {
+  // 限流倒计时内直接拦住（按钮已 disabled，这里是键盘 Enter 的兜底）
+  if (retryLeft.value > 0) return
   error.value = ''
 
   if (!formRef.value) return
@@ -246,10 +273,20 @@ async function handleLogin(): Promise<void> {
       const granted = await probePosAccess(response.userInfo?.terminalId || terminalId)
       if (!granted) {
         purgeSession()
+        // 只保留登录表单内的错误提示（图1 里 toast + 内联重复，删掉 toast）
         error.value = '该账号无收银数据权限，请联系店长授权后再登录'
-        ElMessage.error(error.value)
         return
       }
+      // 换人先清场：上一位收银员的购物车/挂单/草稿绝不能带进新会话。
+      // 同一账号重新登录（例如刚改密码）只重置内存快照，别把本人挂单误删。
+      const currentUser = String(response.userInfo?.employeeId || form.employeeId || '')
+      const previousUser = readSessionUser()
+      if (previousUser && currentUser && previousUser !== currentUser) {
+        resetBusinessState()
+      } else {
+        resetStoresInMemory()
+      }
+      markSessionUser(currentUser)
       ElMessage.success('登录成功')
       const redirect = router.currentRoute.value.query.redirect as string
       router.push(redirect || '/')
@@ -257,12 +294,12 @@ async function handleLogin(): Promise<void> {
       error.value = '登录响应异常，请联系管理员'
     }
   } catch (err: unknown) {
-    const errorMsg = err && typeof err === 'object' && 'message' in err
-      ? String((err as { message: unknown }).message)
-      : '登录失败，请稍后重试'
-    // 行内提示 + toast 各一次（POS 拦截器从不弹 toast，所以不会重复）
-    error.value = errorMsg
-    ElMessage.error(errorMsg)
+    // 登录页只做**内联提示**：全局拦截器对 /pos/auth/login 已静默，绝不会再弹 toast
+    const e = err as { message?: unknown; status?: number; retryAfter?: number } | null
+    error.value = e && e.message ? String(e.message) : '登录失败，请稍后重试'
+    if (e && e.status === 429) {
+      startRetryCountdown(Number(e.retryAfter) > 0 ? Number(e.retryAfter) : RETRY_SECONDS)
+    }
   } finally {
     loading.value = false
   }

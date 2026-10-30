@@ -14,11 +14,27 @@ import { classifyShiftFailure } from '@/utils/shiftStatus'
  *      后端没给时才退化为列表长度（列表同样来自后端，仍不是前端算账）；
  *   3) 交班按钮 disabled 只认 canEndShift，不认任何本地状态。
  */
+/** 当前在班班次（开班响应 / current-shift 接口） */
+export interface CurrentShift {
+  shiftId?: number | string
+  employeeId?: string
+  employeeName?: string
+  openingCash?: number | null
+  startTime?: string
+}
+
 export const useShiftHandoverStore = defineStore('shiftHandover', () => {
   // ---------- state ----------
   const stats = ref<ShiftStats | null>(null)
   const statsUpdatedAt = ref<number>(0)
   const terminalId = ref<string>('')
+  /**
+   * 当前在班班次（开班成功 / 查到班次时写入）
+   *
+   * Home 的「无在班班次」警告条、交班面板的抬头都读它 —— 之前开班成功只关弹窗不写状态，
+   * 警告条要手动刷新才消失，就是缺了这个单一事实源。
+   */
+  const currentShift = ref<CurrentShift | null>(null)
   const pending = ref<ExceptionOrder[]>([])
   const processed = ref<ExceptionOrder[]>([])
   const tab = ref<ExceptionTab>('pending')
@@ -37,6 +53,13 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
   const statsForbidden = ref(false)
   /** 写操作进行中（作废/补收款/扫码下单），用于防连点 */
   const submitting = ref(false)
+
+  /** 是否在班：警告条 / 交班入口的唯一判定 */
+  const hasActiveShift = computed<boolean>(() => currentShift.value !== null)
+
+  function setCurrentShift(shift: CurrentShift | null): void {
+    currentShift.value = shift
+  }
 
   // ---------- getters ----------
   const currentList = computed(() => (tab.value === 'pending' ? pending.value : processed.value))
@@ -196,6 +219,7 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
 
   function reset(): void {
     stats.value = null
+    currentShift.value = null
     statsForbidden.value = false
     statsUpdatedAt.value = 0
     pending.value = []
@@ -207,6 +231,7 @@ export const useShiftHandoverStore = defineStore('shiftHandover', () => {
 
   return {
     stats, statsUpdatedAt, statsStale, terminalId,
+    currentShift, hasActiveShift, setCurrentShift,
     pending, processed, tab, currentList,
     loadingList, loadingStats, lastError, submitting, statsState, statsForbidden,
     pendingExceptionCount, hasPendingException, canEndShift,

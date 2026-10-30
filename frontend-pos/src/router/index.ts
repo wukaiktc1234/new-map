@@ -1,4 +1,5 @@
 import { hasCapabilitiesLoaded, restoreCapabilities } from '@/composables/usePermission'
+import { ensureSessionUser } from '@/utils/resetAppState'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -127,7 +128,8 @@ router.beforeEach(async (to, _from, next) => {
     if (!hasCapabilitiesLoaded()) {
       if (isTokenValid(token) && userInfo) {
         const restored = await restoreCapabilities()
-        if (restored) {
+        // ok=恢复成功；network-error=弱网，先放行（绝不因网络抖动踢人）；只有 auth-failed 才回登录页
+        if (restored !== 'auth-failed') {
           next()
           return
         }
@@ -143,6 +145,15 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   if (to.meta.requiresAuth !== false) {
+    // 兜底换人检测：万一走了非正常路径（直接改 localStorage、旧标签页继续用），进首页前也要清场
+    if (userInfo) {
+      try {
+        const parsed = JSON.parse(userInfo) as { employeeId?: string | number }
+        ensureSessionUser(parsed?.employeeId != null ? String(parsed.employeeId) : '')
+      } catch {
+        /* 脏 user 交给下面的登录跳转处理 */
+      }
+    }
     if (!isTokenValid(token)) {
       next({
         path: '/login',

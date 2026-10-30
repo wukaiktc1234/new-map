@@ -60,11 +60,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { WarningFilled } from '@element-plus/icons-vue'
 import type { ExceptionOrder } from '@/api/shiftExceptions'
 import { fenToYuan } from '@/utils/shiftStatus'
+import { useDraft } from '@/composables/useDraft'
 
 const props = defineProps<{
   modelValue: boolean
@@ -87,8 +88,19 @@ const REASONS = [
   { value: 'other', label: '其他（需备注）' }
 ]
 
-const reason = ref('')
-const remark = ref('')
+/** 草稿：原因/备注实时落 sessionStorage，手抖刷新不白干（R8 P1-4） */
+const { draft, clear: clearDraft } = useDraft(
+  () => 'void:' + (props.order?.orderId || 'new'),
+  { reason: '', remark: '' }
+)
+const reason = computed<string>({
+  get: () => draft.value.reason,
+  set: (v: string) => { draft.value.reason = v }
+})
+const remark = computed<string>({
+  get: () => draft.value.remark,
+  set: (v: string) => { draft.value.remark = v }
+})
 const needRemark = computed(() => reason.value === 'other')
 const canSubmit = computed(() => {
   if (!reason.value) return false
@@ -97,10 +109,8 @@ const canSubmit = computed(() => {
 })
 
 watch(() => props.modelValue, (visible) => {
-  if (visible) {
-    reason.value = ''
-    remark.value = ''
-  }
+  // 打开不再清空：草稿优先（上次没提交完的原因/备注要能继续填）
+  if (!visible && props.submitting) clearDraft()
 })
 
 function close(): void {
@@ -126,7 +136,14 @@ async function submit(): Promise<void> {
   })
 }
 
-defineExpose({ reason, remark })
+/** 父组件提交成功后调用：清掉本单草稿 */
+function markSubmitted(): void {
+  clearDraft()
+}
+
+defineExpose({ reason, remark, markSubmitted })
+
+
 </script>
 
 <style scoped>

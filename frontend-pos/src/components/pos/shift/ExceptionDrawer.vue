@@ -22,6 +22,13 @@
         </el-tab-pane>
       </el-tabs>
 
+      <!-- 操作型错误就地展示（作废/补收/409 冲突），不弹全局 toast -->
+      <div v-if="actionError" class="exc-inline-error" role="alert" data-test="exc-action-error">
+        <el-icon><WarningFilled /></el-icon>
+        <span>{{ actionError }}</span>
+        <button type="button" class="exc-inline-error__close" aria-label="关闭" @click="clearActionError">×</button>
+      </div>
+
       <div v-if="store.tab === 'pending'" class="exc-tip sh-anomaly-tip">
         <el-icon><InfoFilled /></el-icon>
         这些订单未计入营业额与应上交现金。补收款或作废后，账目由服务端重新下发。
@@ -65,7 +72,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { InfoFilled } from '@element-plus/icons-vue'
+import { InfoFilled, WarningFilled } from '@element-plus/icons-vue'
 import ExceptionCard from './ExceptionCard.vue'
 import ResolveDialog from './ResolveDialog.vue'
 import VoidDialog from './VoidDialog.vue'
@@ -127,12 +134,25 @@ function onTabChange(name: string | number): void {
   void store.loadExceptions(name as ExceptionTab)
 }
 
+/** 抽屉内联错误（操作点提示：作废/补收失败就地显示，不弹全局 toast） */
+const actionError = ref('')
+
+function setActionError(message: string): void {
+  actionError.value = message
+}
+
+function clearActionError(): void {
+  actionError.value = ''
+}
+
 function openVoid(order: ExceptionOrder): void {
+  clearActionError()
   activeOrder.value = order
   voidVisible.value = true
 }
 
 function openResolve(order: ExceptionOrder): void {
+  clearActionError()
   activeOrder.value = order
   resolveVisible.value = true
 }
@@ -141,8 +161,8 @@ function openResolve(order: ExceptionOrder): void {
 function handleConflict(error: unknown): boolean {
   const status = (error as { status?: number })?.status
   if (status === 409) {
-    // 优先显示后端原文（例如「该订单已被其它终端处理，请刷新后重试」），再补一句「已为你刷新列表」
-    ElMessage.warning(resolveErrorMessage(error, '该订单已被其他终端处理') + '，已为你刷新列表')
+    // 内联提示后端原文（例如「该订单已被其它终端处理，请刷新后重试」），再补一句「已为你刷新列表」
+    setActionError(resolveErrorMessage(error, '该订单已被其他终端处理') + '，已为你刷新列表')
     void store.refreshAll()
     return true
   }
@@ -156,7 +176,7 @@ async function onSubmitVoid(payload: { reason: string; remark?: string }): Promi
     voidVisible.value = false
     ElMessage.success(replayed ? '该单此前已作废（幂等重放），账目已刷新' : '已作废，账目已刷新')
   } catch (error) {
-    if (!handleConflict(error)) ElMessage.error('作废失败：' + resolveErrorMessage(error, '请重试'))
+    if (!handleConflict(error)) setActionError('作废失败：' + resolveErrorMessage(error, '请重试'))
   }
 }
 
@@ -168,7 +188,7 @@ async function onSubmitCash(payload: { amountFen: number; cashReceivedFen: numbe
     resolveVisible.value = false
     ElMessage.success(replayed ? '该单此前已补收款（幂等重放），账目已刷新' : '补收款成功，账目已刷新')
   } catch (error) {
-    if (!handleConflict(error)) ElMessage.error('补收款失败：' + resolveErrorMessage(error, '请重试'))
+    if (!handleConflict(error)) setActionError('补收款失败：' + resolveErrorMessage(error, '请重试'))
   }
 }
 
@@ -193,6 +213,28 @@ async function onScanPaid(): Promise<void> {
   flex-direction: column;
   gap: 10px;
   height: 100%;
+}
+
+.exc-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--pos-danger-soft, #fbf0f0);
+  color: var(--pos-danger, #c94b4b);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.exc-inline-error__close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
 }
 
 .exc-tip {
