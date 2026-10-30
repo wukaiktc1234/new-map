@@ -465,6 +465,15 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
             throw new BusinessException(403, "不得为他人开班");
         }
         // 写入时**以 JWT 解析出的标识为准**，不用 body 值
+        // ★ 应用层不变量（Lead 2026-10-30）：pos_shifts.employee_id 必须恒为 user_id 纯数字。
+        //   现状：users.employee_code 全为 NULL → selfKey 回退成 userId，落库是纯数字。
+        //   风险：一旦有人填了 employee_code，selfKey 会变成工号字符串 → 历史班次（userId）与新班次（code）
+        //   永久分裂，且【没有任何报错】。这里用断言把不变量钉死，宁可 500 也不静默分裂。
+        if (selfKey == null || !selfKey.matches("^\\d+$")) {
+            throw new BusinessException(500,
+                    "班次归属键必须是 user_id 纯数字，禁止混入工号/用户名（当前=" + selfKey + "）；"
+                            + "请修 users.employee_code 或调整 resolveSelfKey 口径后再开班");
+        }
         employeeId = selfKey;
         shift.setEmployeeId(employeeId);
         shift.setEmployeeName(employeeName != null ? employeeName : "");
@@ -641,7 +650,28 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
         if (terminalId == null || terminalId.isEmpty()) {
             return Collections.emptyList();
         }
-        return posShiftMapper.findTodayShiftsByTerminalId(terminalId);
+        // 数据边界（Lead 2026-10-30）：原实现返回该终端今日【所有】班次，含他人 openingCash（钱箱金额）。
+        // 实测：vtest01 调此端点拿到 vcashier01 的 shiftId=682 / openingCash=321.0 → 与 current-shift/stats 同族越权。
+        // 现在只返回【本人】班次；若产品需要「上一班备用金参考」，必须另定脱敏口径。
+        String selfKey = resolveSelfKey();
+        Long uid = com.foodtraceability.utils.SecurityUtils.getCurrentUserId();
+        String uidStr = uid == null ? null : String.valueOf(uid);
+        String uname = com.foodtraceability.utils.SecurityUtils.getCurrentUsername();
+        List<PosShift> all = posShiftMapper.findTodayShiftsByTerminalId(terminalId);
+        List<PosShift> mine = new java.util.ArrayList<>();
+        for (PosShift sh : all) {
+            String emp = sh.getEmployeeId();
+            if (emp == null) {
+                continue;
+            }
+            if (emp.equals(selfKey) || emp.equals(uidStr) || emp.equals(uname)) {
+                mine.add(sh);
+            }
+        }
+        if (mine.size() != all.size()) {
+            logger.info("[METRIC] shift_today_filtered terminalId={} total={} mine={}", terminalId, all.size(), mine.size());
+        }
+        return mine;
     }
 
     /**
@@ -1049,7 +1079,7 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
     @Override
     public java.util.Map<String, Object> getShiftStatsForPanel(String terminalId) {
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
-        PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
+        PosShift shift = getMyCurrentShift(terminalId);
         if (shift == null) {
             return null;   // 前端约定：null = 无进行中班次（不 404）
         }
@@ -1096,7 +1126,7 @@ private static final List<String> POS_BASE_PERMISSIONS = Collections.unmodifiabl
      */
     @Override
     public java.util.List<java.util.Map<String, Object>> listShiftExceptions(String terminalId, String tab) {
-        PosShift shift = posShiftMapper.findActiveShiftByTerminalId(terminalId);
+        PosShift shift = getMyCurrentShift(terminalId);
         if (shift == null) {
             return java.util.Collections.emptyList();
         }

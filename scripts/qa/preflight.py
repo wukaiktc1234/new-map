@@ -477,12 +477,51 @@ def _current_db_name():
             or "food_traceability(来自 application.yml active=pg)")
 
 
+
+def run_fixture_scan(verbose=False):
+    """夹具扫描（Lead 2026-10-30）：WARN 级，不阻断。
+
+    命中 = 业务表里 terminal_id / order_no / remark / account_name 命中 T-* / AUDIT-* / *PROBE*
+    输出契约：无论命中与否都**无条件打印一行** [GATE] fixture_scan ...（与既有门禁一致）
+    """
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixture_scan.py")
+    if not os.path.exists(script):
+        print("[GATE] fixture_scan：脚本不存在，跳过（WARN, non-blocking）")
+        return 0
+    try:
+        r = subprocess.run([sys.executable, script], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=120)
+    except Exception as e:
+        print("[GATE] fixture_scan：执行异常 %s（WARN, non-blocking）" % e)
+        return 0
+    out = (r.stdout or "") + (r.stderr or "")
+    hits = "?"
+    for line in out.splitlines():
+        if line.startswith("[STAT] fixture_hits="):
+            hits = line.split("=", 1)[1].strip()
+    print("[GATE] fixture_scan hits=%s exit=%d (WARN, non-blocking)" % (hits, r.returncode))
+    detail = [l for l in out.splitlines() if " | " in l and not l.startswith("[")][:5]
+    for l in detail:
+        print("       " + l)
+    result_dir = os.environ.get("QA_RESULT_DIR", ".verify-tmp")
+    try:
+        os.makedirs(result_dir, exist_ok=True)
+        path = os.path.join(result_dir, "fixture_scan.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(out)
+        print("       完整清单见 %s" % path)
+    except Exception:
+        pass
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
     ap.add_argument("--verbose", action="store_true", help="打印 mvn 与巡检完整输出")
     ap.add_argument("--skip-compile", action="store_true", help="跳过 mvn（仅看巡检）")
     a = ap.parse_args()
+    run_fixture_scan(verbose=("--verbose" in sys.argv))
     print("=" * 86)
     print("PREFLIGHT GATE   mode=%s" % ("FULL(mvn test)" if a.full else "FAST(test-compile)"))
     print("  提醒：本脚本是开工闸门，不是系统健康证明；分母不足时 PASS 不可信。")
