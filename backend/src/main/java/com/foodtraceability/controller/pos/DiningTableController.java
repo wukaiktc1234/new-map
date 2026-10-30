@@ -66,6 +66,7 @@ public class DiningTableController {
         return Result.success(tables.get(0));
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PostMapping
     public Result<DiningTable> createTable(@RequestBody DiningTable table) {
         try {
@@ -75,6 +76,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PutMapping("/{id}")
     public Result<DiningTable> updateTable(@PathVariable Long id, @RequestBody DiningTable table) {
         try {
@@ -84,6 +86,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @DeleteMapping("/{id}")
     public Result<Void> deleteTable(@PathVariable Long id) {
         try {
@@ -94,6 +97,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PostMapping("/{id}/occupy")
     public Result<DiningTable> occupyTable(
             @PathVariable Long id,
@@ -106,6 +110,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PostMapping("/{id}/release")
     public Result<DiningTable> releaseTable(@PathVariable Long id) {
         try {
@@ -115,6 +120,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PostMapping("/transfer")
     public Result<DiningTable> transferTable(
             @RequestParam Long fromId,
@@ -126,6 +132,7 @@ public class DiningTableController {
         }
     }
     
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('store:table:manage') or hasAuthority('*')")
     @PostMapping("/{id}/regenerate-qrcode")
     public Result<DiningTable> regenerateQrCode(@PathVariable Long id) {
         try {

@@ -515,6 +515,28 @@ def run_fixture_scan(verbose=False):
     return 0
 
 
+
+def run_preauthorize_coverage(verbose=False):
+    """@PreAuthorize 覆盖率棘轮（Lead 2026-10-30，第 4 道棘轮）。BLOCK 级：新增无门禁端点即失败。"""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "preauthorize_coverage_gate.py")
+    if not os.path.exists(script):
+        print("[GATE] preauthorize_coverage：脚本不存在，跳过（BLOCK 级门禁缺失，请修）")
+        return 2
+    try:
+        r = subprocess.run([sys.executable, script], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=180)
+    except Exception as e:
+        print("[GATE] preauthorize_coverage：执行异常 %s" % e)
+        return 2
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    for line in out.splitlines():
+        if line.startswith("[GATE]") or line.startswith("[BLOCK]"):
+            print(line)
+    if not any(l.startswith("[GATE]") for l in out.splitlines()):
+        print("[GATE] preauthorize_coverage 无输出（exit=%d）" % r.returncode)
+    return r.returncode
+
+
 def main():
     ap = argparse.ArgumentParser(description="开工闸门：test-compile + 巡检（--full 才跑 mvn test）")
     ap.add_argument("--full", action="store_true", help="E2E 前/发版前：额外跑 mvn test")
@@ -522,6 +544,7 @@ def main():
     ap.add_argument("--skip-compile", action="store_true", help="跳过 mvn（仅看巡检）")
     a = ap.parse_args()
     run_fixture_scan(verbose=("--verbose" in sys.argv))
+    rc_preauth = run_preauthorize_coverage(verbose=("--verbose" in sys.argv))
     print("=" * 86)
     print("PREFLIGHT GATE   mode=%s" % ("FULL(mvn test)" if a.full else "FAST(test-compile)"))
     print("  提醒：本脚本是开工闸门，不是系统健康证明；分母不足时 PASS 不可信。")
